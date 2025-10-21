@@ -9,7 +9,6 @@ logger = logging.getLogger(__name__)
 
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
-FIREBASE_AVAILABLE = True
 
 
 _app = None
@@ -27,10 +26,6 @@ def initialize_firebase() -> Optional[firebase_admin.App]:
     
     if _app is not None:
         return _app
-    
-    if not FIREBASE_AVAILABLE:
-        logger.error("Firebase Admin SDK is not available")
-        return None
     
     cred_path = os.environ.get('FIREBASE_CREDENTIALS')
     

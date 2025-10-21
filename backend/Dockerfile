@@ -14,7 +14,7 @@ COPY backend/requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy project code
-COPY backend/ /app/
+COPY . /app/
 
 # Set environment variables for Django
 ENV PYTHONUNBUFFERED=1 \
