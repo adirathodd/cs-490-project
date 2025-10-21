@@ -18,7 +18,7 @@ COPY backend/ /app/
 
 # Set environment variables for Django
 ENV PYTHONUNBUFFERED=1 \
-    DJANGO_SETTINGS_MODULE=your_project.settings \
+    DJANGO_SETTINGS_MODULE=backend.settings \
     DATABASE_URL=postgres://postgres:postgres@db:5432/yourdb \
     REDIS_URL=redis://redis:6379/0
 

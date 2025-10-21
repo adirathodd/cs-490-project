@@ -32,6 +32,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # Project apps
+    'core',
     # Add any third-party apps here, for example:
     # 'rest_framework',
     # 'corsheaders',
