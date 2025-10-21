@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
@@ -6,6 +6,19 @@ import './Dashboard.css';
 const Dashboard = () => {
   const navigate = useNavigate();
   const { currentUser, userProfile, signOut } = useAuth();
+  const [showConfirm, setShowConfirm] = useState(false);
+  const confirmRef = useRef(null);
+
+  useEffect(() => {
+    // Close dropdown when clicking outside
+    const handleClickOutside = (e) => {
+      if (confirmRef.current && !confirmRef.current.contains(e.target)) {
+        setShowConfirm(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSignOut = async () => {
     try {
@@ -13,6 +26,18 @@ const Dashboard = () => {
       navigate('/login');
     } catch (error) {
       console.error('Error signing out:', error);
+    }
+  };
+
+  const handleSignOutClick = () => {
+    setShowConfirm((s) => !s);
+  };
+
+  const handleConfirm = async (confirm) => {
+    if (confirm) {
+      await handleSignOut();
+    } else {
+      setShowConfirm(false);
     }
   };
 
@@ -26,9 +51,20 @@ const Dashboard = () => {
           <span className="user-name">
             {userProfile ? `${userProfile.first_name} ${userProfile.last_name}` : currentUser?.email}
           </span>
-          <button onClick={handleSignOut} className="sign-out-button">
-            Sign Out
-          </button>
+          <div className="signout-wrapper" ref={confirmRef}>
+            <button onClick={handleSignOutClick} className="sign-out-button">
+              Sign Out
+            </button>
+            {showConfirm && (
+              <div className="signout-confirm">
+                <p>Are you sure you want to sign out?</p>
+                <div className="confirm-actions">
+                  <button className="confirm-yes" onClick={() => handleConfirm(true)}>Yes</button>
+                  <button className="confirm-no" onClick={() => handleConfirm(false)}>No</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
 

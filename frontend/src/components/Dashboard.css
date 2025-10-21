@@ -53,6 +53,53 @@
   color: white;
 }
 
+.signout-wrapper {
+  position: relative;
+}
+
+.signout-confirm {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  background: white;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  padding: 12px;
+  border-radius: 8px;
+  width: 220px;
+  z-index: 200;
+}
+
+.signout-confirm p {
+  margin: 0 0 8px 0;
+  color: #2d3748;
+  font-size: 14px;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.confirm-yes {
+  padding: 6px 10px;
+  background: #e53e3e;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.confirm-no {
+  padding: 6px 10px;
+  background: #edf2f7;
+  color: #2d3748;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
 .dashboard-content {
   max-width: 1200px;
   margin: 0 auto;
