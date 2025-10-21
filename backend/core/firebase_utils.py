@@ -7,13 +7,9 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-try:
-    import firebase_admin
-    from firebase_admin import credentials, auth, firestore
-    FIREBASE_AVAILABLE = True
-except ImportError:
-    FIREBASE_AVAILABLE = False
-    logger.warning("firebase_admin not installed. Firebase features will be disabled.")
+import firebase_admin
+from firebase_admin import credentials, auth, firestore
+FIREBASE_AVAILABLE = True
 
 
 _app = None
