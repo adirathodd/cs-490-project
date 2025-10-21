@@ -3,7 +3,7 @@ FROM python:3.12-slim AS base
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    netcat gcc postgresql-client build-essential \
+    netcat-openbsd gcc postgresql-client build-essential \
  && rm -rf /var/lib/apt/lists/*
 
 # Set work directory

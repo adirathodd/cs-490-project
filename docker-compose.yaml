@@ -3,8 +3,8 @@ version: '3.8'
 services:
   backend:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ./backend          # Points to your Django project folder
+      dockerfile: Dockerfile      # Uses backend/Dockerfile
     container_name: ats_backend
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
@@ -21,8 +21,8 @@ services:
 
   frontend:
     build:
-      context: .
-    dockerfile: frontend/Dockerfile
+      context: ./frontend         # Points to your React app folder
+      dockerfile: Dockerfile      # Uses frontend/Dockerfile
     container_name: ats_frontend
     ports:
       - "3000:80"
