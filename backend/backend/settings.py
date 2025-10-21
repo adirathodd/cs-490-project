@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     # Add any third-party apps here, for example:
     # 'rest_framework',
     # 'corsheaders',
+    'ats.apps.AtsConfig',
 ]
 
 MIDDLEWARE = [
