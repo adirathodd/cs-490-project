@@ -24,6 +24,27 @@ api.interceptors.request.use(
   }
 );
 
+// Profile API calls
+export const profileAPI = {
+  getUserProfile: async (userId) => {
+    try {
+      const response = await api.get(userId ? `/users/${userId}/profile` : '/users/profile');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.message;
+    }
+  },
+  
+  updateProfile: async (userId, profileData) => {
+    try {
+      const response = await api.put(userId ? `/users/${userId}/profile` : '/users/profile', profileData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.message;
+    }
+  }
+};
+
 // Auth API calls
 export const authAPI = {
   register: async (userData) => {

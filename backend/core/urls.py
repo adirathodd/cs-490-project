@@ -12,4 +12,6 @@ urlpatterns = [
     path('auth/login', views.login_user, name='login'),
     path('auth/verify-token', views.verify_token, name='verify-token'),
     path('users/me', views.get_current_user, name='current-user'),
+    path('users/profile', views.user_profile, name='user-profile'),
+    path('users/<str:user_id>/profile', views.user_profile, name='user-profile-detail'),
 ]

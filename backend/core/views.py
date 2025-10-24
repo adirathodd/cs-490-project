@@ -3,7 +3,7 @@ Authentication views for Firebase-based user registration and login.
 """
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
 from core.serializers import (
@@ -14,6 +14,7 @@ from core.serializers import (
 )
 from core.models import CandidateProfile
 from core.firebase_utils import create_firebase_user, initialize_firebase
+from core.permissions import IsOwnerOrAdmin
 import firebase_admin
 from firebase_admin import auth as firebase_auth
 import logging
@@ -351,5 +352,118 @@ def verify_token(request):
         logger.error(f"Token verification error: {e}")
         return Response(
             {'error': {'code': 'verification_failed', 'message': 'Token verification failed.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['GET', 'PUT'])
+@permission_classes([IsAuthenticated])
+def user_profile(request, user_id=None):
+    """
+    UC-008: User Profile Access Control
+    
+    GET: Retrieve a user's profile
+    PUT: Update a user's profile
+    
+    URL Parameters:
+    - user_id: The Firebase UID of the user whose profile to retrieve/update
+               If not provided, returns the current user's profile
+    
+    Returns:
+    {
+        "profile": {...},
+        "user": {...}
+    }
+    """
+    try:
+        # Debug: log authenticated user and incoming auth header for troubleshooting
+        try:
+            auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        except Exception:
+            auth_header = ''
+        logger.debug(
+            "user_profile called: request.user=%s is_staff=%s username=%s auth_header=%s",
+            request.user,
+            getattr(request.user, 'is_staff', None),
+            getattr(request.user, 'username', None),
+            (auth_header[:80] + '...') if auth_header else 'None'
+        )
+
+        # If no user_id provided, use the current user's id
+        target_uid = user_id or request.user.username
+        
+        # Get the target user
+        try:
+            target_user = User.objects.get(username=target_uid)
+        except User.DoesNotExist:
+            # Check if user exists in Firebase
+            try:
+                firebase_user = firebase_auth.get_user(target_uid)
+                # Create Django user if they exist in Firebase
+                target_user = User.objects.create_user(
+                    username=target_uid,
+                    email=firebase_user.email,
+                    first_name=firebase_user.display_name.split()[0] if firebase_user.display_name else "",
+                    last_name=" ".join(firebase_user.display_name.split()[1:]) if firebase_user.display_name else ""
+                )
+                logger.info(f"Created Django user for existing Firebase user: {target_uid}")
+            except firebase_admin.exceptions.NotFoundError:
+                return Response(
+                    {'error': 'User not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        # Debug permissions check
+        logger.debug(
+            "Profile access check: authenticated_user=%s (id=%s, staff=%s, superuser=%s) trying to access target_user=%s (id=%s)",
+            request.user.username,
+            request.user.id,
+            request.user.is_staff,
+            request.user.is_superuser,
+            target_user.username,
+            target_user.id
+        )
+        
+        # Check permissions
+        if not request.user.is_staff and request.user != target_user:
+            logger.debug(
+                "Access denied: is_staff=%s, users_match=%s",
+                request.user.is_staff,
+                request.user == target_user
+            )
+            return Response(
+                {'error': 'You do not have permission to access this profile'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get or create profile
+        profile, created = CandidateProfile.objects.get_or_create(user=target_user)
+        
+        if request.method == 'GET':
+            return Response({
+                'profile': UserProfileSerializer(profile).data,
+                'user': UserSerializer(target_user).data
+            })
+        
+        elif request.method == 'PUT':
+            # Only allow profile owner or admin to edit
+            if not request.user.is_staff and request.user != target_user:
+                return Response(
+                    {'error': 'You do not have permission to edit this profile'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            serializer = UserProfileSerializer(profile, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'profile': serializer.data,
+                    'user': UserSerializer(target_user).data
+                })
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        logger.error(f"Profile operation error: {e}")
+        return Response(
+            {'error': 'An error occurred while processing your request'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

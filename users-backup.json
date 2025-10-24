@@ -1,0 +1,56 @@
+[
+{
+  "model": "auth.user",
+  "pk": 1,
+  "fields": {
+    "password": "pbkdf2_sha256$1000000$mmqBIZPlDHR6fnGk7DfILu$HcTXwIXq7ZxG8nANzjy0AMfnQ+NplcvPfB1WTzt8Kuo=",
+    "last_login": null,
+    "is_superuser": true,
+    "username": "nishant",
+    "first_name": "",
+    "last_name": "",
+    "email": "nnair4002@gmail.com",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2025-10-23T22:18:36.160Z",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "auth.user",
+  "pk": 2,
+  "fields": {
+    "password": "!5PDjHyr3AvX3D9tckIJStUIsqTB4G75qhSoll9Ww",
+    "last_login": null,
+    "is_superuser": false,
+    "username": "UDFkmZmtdWewvXrvIGJlX0HWCzz1",
+    "first_name": "Nishant",
+    "last_name": "Nair",
+    "email": "rainpublic002@gmail.com",
+    "is_staff": false,
+    "is_active": true,
+    "date_joined": "2025-10-24T15:19:16.658Z",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "auth.user",
+  "pk": 4,
+  "fields": {
+    "password": "",
+    "last_login": null,
+    "is_superuser": false,
+    "username": "fXE7FDF6f0aiuKvUYU4pUHxRdsH3",
+    "first_name": "Nishant",
+    "last_name": "Nair",
+    "email": "nnair4002@gmail.com",
+    "is_staff": false,
+    "is_active": false,
+    "date_joined": "2025-10-24T17:03:03.948Z",
+    "groups": [],
+    "user_permissions": []
+  }
+}
+]

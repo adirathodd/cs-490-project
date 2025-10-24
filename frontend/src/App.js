@@ -5,6 +5,7 @@ import PrivateRoute from './components/PrivateRoute';
 import Register from './components/Register';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
+import Profile from './components/Profile';
 import './App.css';
 
 function App() {
@@ -20,6 +21,22 @@ function App() {
             element={
               <PrivateRoute>
                 <Dashboard />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/profile" 
+            element={
+              <PrivateRoute>
+                <Profile />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/profile/:userId" 
+            element={
+              <PrivateRoute>
+                <Profile />
               </PrivateRoute>
             } 
           />
