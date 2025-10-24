@@ -24,6 +24,15 @@ class CandidateProfile(models.Model):
     industry = models.CharField(max_length=120, blank=True)
     experience_level = models.CharField(max_length=20, choices=EXPERIENCE_LEVELS, blank=True)
     
+    # Profile Picture (UC-022)
+    profile_picture = models.ImageField(
+        upload_to='profile_pictures/%Y/%m/',
+        blank=True,
+        null=True,
+        help_text="Profile picture image file"
+    )
+    profile_picture_uploaded_at = models.DateTimeField(null=True, blank=True)
+    
     # Legacy fields
     location = models.CharField(max_length=160, blank=True)  # Deprecated in favor of city/state
     years_experience = models.PositiveSmallIntegerField(default=0)

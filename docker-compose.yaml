@@ -9,6 +9,7 @@ services:
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - ./backend/:/app/
+      - media_files:/app/media    # Persistent storage for uploaded files
     ports:
       - "8000:8000"
     env_file:
@@ -58,3 +59,4 @@ services:
 
 volumes:
   postgres_data:
+  media_files:  # Volume for user-uploaded media files

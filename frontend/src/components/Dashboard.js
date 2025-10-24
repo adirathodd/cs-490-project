@@ -1,19 +1,56 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import authAPI from '../services/api';
 import './Dashboard.css';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { currentUser, userProfile, signOut, loading: authLoading } = useAuth();
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [profilePictureUrl, setProfilePictureUrl] = useState(null);
   const confirmRef = useRef(null);
+  const userMenuRef = useRef(null);
 
   useEffect(() => {
-    // Close dropdown when clicking outside
+    // Fetch profile picture
+    const fetchProfilePicture = async () => {
+      if (currentUser) {
+        try {
+          const response = await authAPI.getProfilePicture();
+          console.log('Profile picture response:', response);
+          
+          // The response from authAPI.getProfilePicture is already response.data
+          if (response.profile_picture_url) {
+            // Build full URL - the backend returns relative path like /media/profile_pictures/...
+            const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+            const fullUrl = response.profile_picture_url.startsWith('http') 
+              ? response.profile_picture_url 
+              : `${apiBaseUrl}${response.profile_picture_url}`;
+            setProfilePictureUrl(fullUrl);
+          }
+        } catch (error) {
+          console.log('Profile picture fetch error:', error);
+          // Silently handle 404 or 400 - no profile picture exists
+          if (error.response && (error.response.status === 404 || error.response.status === 400)) {
+            setProfilePictureUrl(null);
+          }
+        }
+      }
+    };
+
+    fetchProfilePicture();
+  }, [currentUser]);
+
+  useEffect(() => {
+    // Close dropdowns when clicking outside
     const handleClickOutside = (e) => {
       if (confirmRef.current && !confirmRef.current.contains(e.target)) {
         setShowConfirm(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setShowUserMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -47,6 +84,15 @@ const Dashboard = () => {
     }
   };
 
+  const handleProfile = () => {
+    setShowUserMenu(false);
+    navigate('/profile');
+  };
+
+  const toggleUserMenu = () => {
+    setShowUserMenu(!showUserMenu);
+  };
+
   if (authLoading) {
     return (
       <div className="dashboard-container">
@@ -64,13 +110,28 @@ const Dashboard = () => {
           <h1>ATS Candidate System</h1>
         </div>
         <div className="nav-user">
-          <span className="user-name">
-            {userProfile ? `${userProfile.first_name} ${userProfile.last_name}` : currentUser?.email}
-          </span>
-          <div className="signout-wrapper" ref={confirmRef}>
-            <button onClick={handleSignOutClick} className="sign-out-button">
-              Sign Out
+          <div className="user-menu-wrapper" ref={userMenuRef}>
+            <button onClick={toggleUserMenu} className="user-menu-button">
+              <span className="user-name">
+                {userProfile ? `${userProfile.first_name} ${userProfile.last_name}` : currentUser?.email}
+              </span>
+              <span className="dropdown-arrow">{showUserMenu ? '▲' : '▼'}</span>
             </button>
+            {showUserMenu && (
+              <div className="user-dropdown">
+                <button className="dropdown-item" onClick={handleProfile}>
+                  <span className="dropdown-icon">👤</span>
+                  My Profile
+                </button>
+                <div className="dropdown-divider"></div>
+                <button className="dropdown-item sign-out-item" onClick={handleSignOutClick}>
+                  <span className="dropdown-icon">🚪</span>
+                  Sign Out
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="signout-wrapper" ref={confirmRef}>
             {showConfirm && (
               <div className="signout-confirm">
                 <p>Are you sure you want to sign out?</p>
@@ -85,23 +146,59 @@ const Dashboard = () => {
       </nav>
 
       <div className="dashboard-content">
+        {/* Account Information Banner */}
+        <div className="account-banner">
+          <div className="account-banner-content">
+            <div className="account-profile-section">
+              <div className="account-avatar">
+                {profilePictureUrl ? (
+                  <img src={profilePictureUrl} alt="Profile" className="account-avatar-img" />
+                ) : (
+                  <div className="account-avatar-placeholder">
+                    {userProfile?.first_name?.[0]?.toUpperCase() || currentUser?.email?.[0]?.toUpperCase() || '?'}
+                  </div>
+                )}
+              </div>
+              <div className="account-details">
+                <h2 className="account-name">
+                  {userProfile ? `${userProfile.first_name} ${userProfile.last_name}` : 'Welcome'}
+                </h2>
+                <p className="account-email">{currentUser?.email}</p>
+                {userProfile && (
+                  <div className="account-info-row">
+                    {userProfile.phone && (
+                      <span className="account-info-item">
+                        📱 {userProfile.phone}
+                      </span>
+                    )}
+                    {userProfile.location && (
+                      <span className="account-info-item">
+                        📍 {userProfile.location}
+                      </span>
+                    )}
+                    {userProfile.city && userProfile.state && (
+                      <span className="account-info-item">
+                        🏙️ {userProfile.city}, {userProfile.state}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            <button className="edit-profile-button" onClick={handleUpdateProfile}>
+              ✏️ Edit Profile
+            </button>
+          </div>
+        </div>
+
         <div className="welcome-section">
-          <h2>Welcome to Your Dashboard</h2>
+          <h2>Your Dashboard</h2>
           <p>Manage your job search and applications all in one place.</p>
         </div>
 
         <div className="dashboard-grid">
           <div className="dashboard-card">
-            <div className="card-icon">📝</div>
-            <h3>Profile</h3>
-            <p>Complete your professional profile</p>
-            <button className="card-button" onClick={handleUpdateProfile}>
-              Update Profile
-            </button>
-          </div>
-
-          <div className="dashboard-card">
-            <div className="card-icon">💼</div>
+            <div className="card-icon"></div>
             <h3>Job Opportunities</h3>
             <p>Browse and track job openings</p>
             <button className="card-button">View Jobs</button>
@@ -133,38 +230,6 @@ const Dashboard = () => {
             <h3>Notifications</h3>
             <p>Stay updated on your applications</p>
             <button className="card-button">View Notifications</button>
-          </div>
-        </div>
-
-        <div className="user-info-section">
-          <h3>Account Information</h3>
-          <div className="info-grid">
-            <div className="info-item">
-              <span className="info-label">Email:</span>
-              <span className="info-value">{currentUser?.email}</span>
-            </div>
-            {userProfile && (
-              <>
-                <div className="info-item">
-                  <span className="info-label">Name:</span>
-                  <span className="info-value">
-                    {userProfile.first_name} {userProfile.last_name}
-                  </span>
-                </div>
-                {userProfile.phone && (
-                  <div className="info-item">
-                    <span className="info-label">Phone:</span>
-                    <span className="info-value">{userProfile.phone}</span>
-                  </div>
-                )}
-                {userProfile.location && (
-                  <div className="info-item">
-                    <span className="info-label">Location:</span>
-                    <span className="info-value">{userProfile.location}</span>
-                  </div>
-                )}
-              </>
-            )}
           </div>
         </div>
       </div>

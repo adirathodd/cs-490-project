@@ -80,6 +80,41 @@ export const authAPI = {
       throw error;
     }
   },
+
+  // UC-022: Profile Picture Upload
+  getProfilePicture: async () => {
+    try {
+      const response = await api.get('/profile/picture');
+      return response.data; // Returns { profile_picture_url, has_profile_picture, profile_picture_uploaded_at }
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  uploadProfilePicture: async (file) => {
+    try {
+      const formData = new FormData();
+      formData.append('profile_picture', file);
+      
+      const response = await api.post('/profile/picture/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  deleteProfilePicture: async () => {
+    try {
+      const response = await api.delete('/profile/picture/delete');
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
 };
 
-export default api;
+export default authAPI;

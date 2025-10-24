@@ -2,19 +2,27 @@
 Authentication views for Firebase-based user registration and login.
 """
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import AllowAny
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from core.serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
     UserProfileSerializer,
     UserSerializer,
     BasicProfileSerializer,
+    ProfilePictureUploadSerializer,
+    ProfilePictureSerializer,
 )
 from core.models import CandidateProfile
 from core.firebase_utils import create_firebase_user, initialize_firebase
+from core.storage_utils import (
+    process_profile_picture,
+    delete_old_picture,
+)
 import firebase_admin
 from firebase_admin import auth as firebase_auth
 import logging
@@ -448,3 +456,213 @@ def update_basic_profile(request):
             {'error': {'code': 'internal_error', 'message': 'Failed to update profile.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['POST'])
+@parser_classes([MultiPartParser, FormParser])
+def upload_profile_picture(request):
+    """
+    UC-022: Profile Picture Upload
+    
+    Upload a profile picture for the authenticated user.
+    
+    **Authentication Required**: User must be logged in with valid Firebase token.
+    
+    **Request**: multipart/form-data
+    - profile_picture: Image file (JPG, PNG, or GIF, max 5MB)
+    
+    **Response**:
+    {
+        "profile_picture_url": "/media/profile_pictures/2025/10/user_pic.jpg",
+        "has_profile_picture": true,
+        "profile_picture_uploaded_at": "2025-10-24T10:30:00Z",
+        "message": "Profile picture uploaded successfully"
+    }
+    
+    **Acceptance Criteria**:
+    - File upload button accepts image files (JPG, PNG, GIF)
+    - Image preview shown before confirming upload
+    - Maximum file size of 5MB enforced
+    - Images automatically resized to standard dimensions (400x400)
+    - Upload progress indicator during file processing
+    - Error messages for invalid file types or oversized files
+    """
+    try:
+        # Security: Check if user is authenticated
+        if not request.user or not request.user.is_authenticated:
+            return Response(
+                {'error': {'code': 'authentication_required', 'message': 'You must be logged in to upload a profile picture.'}},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        user = request.user
+        
+        # Get or create profile
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            profile = CandidateProfile.objects.create(user=user)
+            logger.info(f"Created new profile for user during picture upload: {user.email}")
+        
+        # Validate request data
+        serializer = ProfilePictureUploadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {'error': {'code': 'validation_error', 'message': 'Invalid file upload.', 'details': serializer.errors}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        profile_picture = serializer.validated_data['profile_picture']
+        
+        # Process image (validate, resize, optimize)
+        logger.info(f"Processing profile picture for user: {user.email}")
+        processed_file, error_msg = process_profile_picture(profile_picture)
+        
+        if error_msg:
+            return Response(
+                {'error': {'code': 'processing_failed', 'message': error_msg}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Delete old profile picture if exists
+        if profile.profile_picture:
+            logger.info(f"Deleting old profile picture: {profile.profile_picture.name}")
+            delete_old_picture(profile.profile_picture.name)
+        
+        # Save new profile picture
+        profile.profile_picture = processed_file
+        profile.profile_picture_uploaded_at = timezone.now()
+        profile.save()
+        
+        logger.info(f"Profile picture uploaded successfully for user: {user.email}")
+        
+        # Return response
+        picture_serializer = ProfilePictureSerializer(profile, context={'request': request})
+        
+        return Response({
+            **picture_serializer.data,
+            'message': 'Profile picture uploaded successfully'
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.error(f"Error uploading profile picture for user {request.user.email if request.user.is_authenticated else 'anonymous'}: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to upload profile picture.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['DELETE'])
+def delete_profile_picture(request):
+    """
+    UC-022: Profile Picture Upload - Remove Picture
+    
+    Delete the profile picture for the authenticated user.
+    
+    **Authentication Required**: User must be logged in with valid Firebase token.
+    
+    **Response**:
+    {
+        "message": "Profile picture deleted successfully"
+    }
+    
+    **Acceptance Criteria**:
+    - Replace/remove picture options available
+    - Deleted picture removed from storage
+    - Default avatar shown when no image uploaded
+    """
+    try:
+        # Security: Check if user is authenticated
+        if not request.user or not request.user.is_authenticated:
+            return Response(
+                {'error': {'code': 'authentication_required', 'message': 'You must be logged in to delete your profile picture.'}},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        user = request.user
+        
+        # Get profile
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            return Response(
+                {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if profile picture exists
+        if not profile.profile_picture:
+            return Response(
+                {'error': {'code': 'no_picture', 'message': 'No profile picture to delete.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Delete file from storage
+        logger.info(f"Deleting profile picture for user: {user.email}")
+        delete_old_picture(profile.profile_picture.name)
+        
+        # Clear profile picture field
+        profile.profile_picture = None
+        profile.profile_picture_uploaded_at = None
+        profile.save()
+        
+        logger.info(f"Profile picture deleted successfully for user: {user.email}")
+        
+        return Response({
+            'message': 'Profile picture deleted successfully'
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.error(f"Error deleting profile picture for user {request.user.email if request.user.is_authenticated else 'anonymous'}: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to delete profile picture.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def get_profile_picture(request):
+    """
+    UC-022: Profile Picture Upload - Get Picture Information
+    
+    Get profile picture information for the authenticated user.
+    
+    **Authentication Required**: User must be logged in with valid Firebase token.
+    
+    **Response**:
+    {
+        "profile_picture_url": "/media/profile_pictures/2025/10/user_pic.jpg",
+        "has_profile_picture": true,
+        "profile_picture_uploaded_at": "2025-10-24T10:30:00Z"
+    }
+    """
+    try:
+        # Security: Check if user is authenticated
+        if not request.user or not request.user.is_authenticated:
+            return Response(
+                {'error': {'code': 'authentication_required', 'message': 'You must be logged in to view profile picture.'}},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        user = request.user
+        
+        # Get profile
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            # Create profile if it doesn't exist
+            profile = CandidateProfile.objects.create(user=user)
+        
+        # Serialize and return
+        serializer = ProfilePictureSerializer(profile, context={'request': request})
+        
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.error(f"Error fetching profile picture for user {request.user.email if request.user.is_authenticated else 'anonymous'}: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to fetch profile picture.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+

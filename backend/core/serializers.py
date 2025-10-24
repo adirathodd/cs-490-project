@@ -1,11 +1,12 @@
 """
 Serializers for authentication and user management.
 """
+import os
+import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from core.models import CandidateProfile
-import re
 
 User = get_user_model()
 
@@ -244,3 +245,78 @@ class AuthResponseSerializer(serializers.Serializer):
     profile = UserProfileSerializer(read_only=True)
     token = serializers.CharField(read_only=True)
     message = serializers.CharField(read_only=True)
+
+
+class ProfilePictureUploadSerializer(serializers.Serializer):
+    """
+    Serializer for UC-022: Profile Picture Upload.
+    Handles profile picture file upload with validation.
+    """
+    profile_picture = serializers.ImageField(
+        required=True,
+        help_text="Profile picture image file (JPG, PNG, or GIF, max 5MB)"
+    )
+    
+    def validate_profile_picture(self, value):
+        """
+        Validate profile picture file.
+        """
+        # Check file size (5MB max)
+        max_size = 5 * 1024 * 1024  # 5MB in bytes
+        if value.size > max_size:
+            raise serializers.ValidationError(
+                "Profile picture file size must not exceed 5MB."
+            )
+        
+        # Check file extension
+        allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif']
+        file_ext = os.path.splitext(value.name)[1].lower()
+        if file_ext not in allowed_extensions:
+            raise serializers.ValidationError(
+                f"Invalid file type. Allowed types: {', '.join(allowed_extensions)}"
+            )
+        
+        # Validate it's a valid image
+        try:
+            from PIL import Image
+            img = Image.open(value)
+            img.verify()
+            # Reset file pointer after verify
+            value.seek(0)
+        except Exception as e:
+            raise serializers.ValidationError(
+                "Invalid or corrupted image file."
+            )
+        
+        return value
+
+
+class ProfilePictureSerializer(serializers.ModelSerializer):
+    """
+    Serializer for profile picture information.
+    """
+    profile_picture_url = serializers.SerializerMethodField(read_only=True)
+    has_profile_picture = serializers.SerializerMethodField(read_only=True)
+    profile_picture_uploaded_at = serializers.DateTimeField(read_only=True)
+    
+    class Meta:
+        model = CandidateProfile
+        fields = [
+            'profile_picture_url',
+            'has_profile_picture',
+            'profile_picture_uploaded_at'
+        ]
+    
+    def get_profile_picture_url(self, obj):
+        """Get the full URL for the profile picture."""
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
+    
+    def get_has_profile_picture(self, obj):
+        """Check if user has uploaded a profile picture."""
+        return bool(obj.profile_picture)
+
