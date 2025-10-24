@@ -11,6 +11,7 @@ from core.serializers import (
     UserLoginSerializer,
     UserProfileSerializer,
     UserSerializer,
+    BasicProfileSerializer,
 )
 from core.models import CandidateProfile
 from core.firebase_utils import create_firebase_user, initialize_firebase
@@ -351,5 +352,99 @@ def verify_token(request):
         logger.error(f"Token verification error: {e}")
         return Response(
             {'error': {'code': 'verification_failed', 'message': 'Token verification failed.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'PUT', 'PATCH'])
+def update_basic_profile(request):
+    """
+    UC-021: Basic Profile Information Form
+    
+    Get or update basic profile information including:
+    - Full name (first_name, last_name)
+    - Contact info (email, phone, city, state)
+    - Professional details (headline, summary, industry, experience_level)
+    
+    **Authentication Required**: User must be logged in with valid Firebase token.
+    **Authorization**: Users can only view/edit their own profile.
+    
+    GET: Returns current profile information
+    PUT/PATCH: Updates profile information
+    
+    Request Body (PUT/PATCH):
+    {
+        "first_name": "John",
+        "last_name": "Doe",
+        "phone": "+1 (555) 123-4567",
+        "city": "New York",
+        "state": "NY",
+        "headline": "Senior Software Engineer",
+        "summary": "Experienced developer with 5+ years...",
+        "industry": "Technology",
+        "experience_level": "senior"
+    }
+    
+    Response:
+    {
+        "email": "user@example.com",
+        "first_name": "John",
+        "last_name": "Doe",
+        "full_name": "John Doe",
+        "phone": "+1 (555) 123-4567",
+        "city": "New York",
+        "state": "NY",
+        "full_location": "New York, NY",
+        "headline": "Senior Software Engineer",
+        "summary": "Experienced developer with 5+ years...",
+        "character_count": 35,
+        "industry": "Technology",
+        "experience_level": "senior"
+    }
+    """
+    try:
+        # Security: Check if user is authenticated
+        if not request.user or not request.user.is_authenticated:
+            return Response(
+                {'error': {'code': 'authentication_required', 'message': 'You must be logged in to access this resource.'}},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        user = request.user
+        
+        # Get or create profile for this user
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            # Create profile if it doesn't exist
+            profile = CandidateProfile.objects.create(user=user)
+            logger.info(f"Created new profile for user: {user.email}")
+        
+        if request.method == 'GET':
+            serializer = BasicProfileSerializer(profile)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        elif request.method in ['PUT', 'PATCH']:
+            partial = request.method == 'PATCH'
+            serializer = BasicProfileSerializer(profile, data=request.data, partial=partial)
+            
+            if not serializer.is_valid():
+                return Response(
+                    {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            serializer.save()
+            logger.info(f"Profile updated for user: {user.email}")
+            
+            return Response({
+                'profile': serializer.data,
+                'message': 'Profile updated successfully.'
+            }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.error(f"Error updating profile for user {request.user.email if request.user.is_authenticated else 'anonymous'}: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to update profile.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

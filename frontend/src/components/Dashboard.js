@@ -5,7 +5,7 @@ import './Dashboard.css';
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { currentUser, userProfile, signOut } = useAuth();
+  const { currentUser, userProfile, signOut, loading: authLoading } = useAuth();
   const [showConfirm, setShowConfirm] = useState(false);
   const confirmRef = useRef(null);
 
@@ -40,6 +40,22 @@ const Dashboard = () => {
       setShowConfirm(false);
     }
   };
+
+  const handleUpdateProfile = () => {
+    if (!authLoading && currentUser) {
+      navigate('/profile');
+    }
+  };
+
+  if (authLoading) {
+    return (
+      <div className="dashboard-container">
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+          <div>Loading dashboard...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-container">
@@ -79,7 +95,9 @@ const Dashboard = () => {
             <div className="card-icon">📝</div>
             <h3>Profile</h3>
             <p>Complete your professional profile</p>
-            <button className="card-button">Update Profile</button>
+            <button className="card-button" onClick={handleUpdateProfile}>
+              Update Profile
+            </button>
           </div>
 
           <div className="dashboard-card">

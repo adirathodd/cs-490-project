@@ -61,6 +61,25 @@ export const authAPI = {
       throw error.response?.data?.error || { message: 'Failed to update profile' };
     }
   },
+
+  // UC-021: Basic Profile Information
+  getBasicProfile: async () => {
+    try {
+      const response = await api.get('/profile/basic');
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  updateBasicProfile: async (profileData) => {
+    try {
+      const response = await api.patch('/profile/basic', profileData);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
 };
 
 export default api;
