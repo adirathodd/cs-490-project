@@ -240,12 +240,13 @@ const Skills = () => {
   return (
     <div className="skills-container">
       <div className="skills-header">
-        <div className="header-left">
-          <button className="btn-back" onClick={() => navigate('/dashboard')}>
-            ← Back to Dashboard
-          </button>
-          <h2>My Skills</h2>
-        </div>
+        <button className="btn-back" onClick={() => navigate('/dashboard')}>
+          ← Back to Dashboard
+        </button>
+      </div>
+      
+      <div className="skills-actions-bar">
+        <h2>My Skills</h2>
         <div className="header-actions">
           <button 
             className="btn-secondary"
