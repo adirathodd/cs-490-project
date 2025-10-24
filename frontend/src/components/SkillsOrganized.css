@@ -226,12 +226,15 @@
 .skills-drop-zone {
   min-height: 100px;
   padding: 15px;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, border 0.2s;
+  border-radius: 0 0 8px 8px;
 }
 
 .skills-drop-zone.dragging-over {
   background-color: #eff6ff;
   border: 2px dashed #3b82f6;
+  margin: -2px;
+  padding: 13px;
 }
 
 .empty-category {
@@ -240,6 +243,13 @@
   padding: 30px 20px;
   font-size: 14px;
   font-style: italic;
+  transition: all 0.2s;
+}
+
+.skills-drop-zone.dragging-over .empty-category {
+  color: #3b82f6;
+  font-weight: 500;
+  font-style: normal;
 }
 
 .skill-card {

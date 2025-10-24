@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   DndContext,
-  closestCenter,
+  closestCorners,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   DragOverlay,
+  useDroppable,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -19,6 +20,20 @@ import { CSS } from '@dnd-kit/utilities';
 import { skillsAPI } from '../services/api';
 import './SkillsOrganized.css';
 
+// Droppable category container component
+const DroppableCategory = ({ category, children, isOver }) => {
+  const { setNodeRef } = useDroppable({
+    id: `category-${category}`,
+    data: { category }
+  });
+
+  return (
+    <div ref={setNodeRef} className={`skills-drop-zone ${isOver ? 'dragging-over' : ''}`}>
+      {children}
+    </div>
+  );
+};
+
 // Sortable skill card component
 const SortableSkillCard = ({ skill, getProficiencyColor }) => {
   const {
@@ -28,7 +43,10 @@ const SortableSkillCard = ({ skill, getProficiencyColor }) => {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: skill.id });
+  } = useSortable({ 
+    id: skill.id,
+    data: { skill }
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -64,6 +82,31 @@ const SortableSkillCard = ({ skill, getProficiencyColor }) => {
   );
 };
 
+// Skill card for overlay
+const SkillCard = ({ skill, getProficiencyColor }) => {
+  return (
+    <div className="skill-card dragging">
+      <div className="skill-drag-handle">⋮⋮</div>
+      <div className="skill-info">
+        <div className="skill-name">{skill.skill_name}</div>
+        <div className="skill-details">
+          <span 
+            className="proficiency-badge"
+            style={{ backgroundColor: getProficiencyColor(skill.level) }}
+          >
+            {skill.level.charAt(0).toUpperCase() + skill.level.slice(1)}
+          </span>
+          {skill.years > 0 && (
+            <span className="years-badge">
+              {skill.years} {skill.years === 1 ? 'year' : 'years'}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SkillsOrganized = () => {
   const [skillsByCategory, setSkillsByCategory] = useState({});
   const [loading, setLoading] = useState(true);
@@ -72,9 +115,15 @@ const SkillsOrganized = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [activeId, setActiveId] = useState(null);
+  const [activeSkill, setActiveSkill] = useState(null);
+  const [overId, setOverId] = useState(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -98,39 +147,71 @@ const SkillsOrganized = () => {
   };
 
   const handleDragStart = (event) => {
-    setActiveId(event.active.id);
+    const { active } = event;
+    setActiveId(active.id);
+    
+    // Find the active skill
+    Object.values(skillsByCategory).forEach(categoryData => {
+      const skill = categoryData.skills.find(s => s.id === active.id);
+      if (skill) {
+        setActiveSkill(skill);
+      }
+    });
+  };
+
+  const handleDragOver = (event) => {
+    const { over } = event;
+    setOverId(over?.id);
   };
 
   const handleDragEnd = async (event) => {
     const { active, over } = event;
     setActiveId(null);
+    setActiveSkill(null);
+    setOverId(null);
 
     if (!over || active.id === over.id) {
       return;
     }
 
-    // Find which category the active and over items belong to
+    // Find which category the active skill belongs to
     let sourceCategory = null;
     let sourceIndex = -1;
-    let destCategory = null;
-    let destIndex = -1;
 
     Object.keys(skillsByCategory).forEach(category => {
       const skills = skillsByCategory[category].skills;
       const activeIdx = skills.findIndex(s => s.id === active.id);
-      const overIdx = skills.findIndex(s => s.id === over.id);
       
       if (activeIdx !== -1) {
         sourceCategory = category;
         sourceIndex = activeIdx;
       }
-      if (overIdx !== -1) {
-        destCategory = category;
-        destIndex = overIdx;
-      }
     });
 
-    if (!sourceCategory || !destCategory) return;
+    if (!sourceCategory) return;
+
+    // Determine destination category and index
+    let destCategory = null;
+    let destIndex = -1;
+
+    // Check if dropped on a category container
+    if (over.id.toString().startsWith('category-')) {
+      destCategory = over.id.toString().replace('category-', '');
+      destIndex = skillsByCategory[destCategory].skills.length; // Add to end
+    } else {
+      // Dropped on another skill
+      Object.keys(skillsByCategory).forEach(category => {
+        const skills = skillsByCategory[category].skills;
+        const overIdx = skills.findIndex(s => s.id === over.id);
+        
+        if (overIdx !== -1) {
+          destCategory = category;
+          destIndex = overIdx;
+        }
+      });
+    }
+
+    if (!destCategory) return;
 
     // Create a copy of the state
     const newSkillsByCategory = { ...skillsByCategory };
@@ -371,14 +452,16 @@ const SkillsOrganized = () => {
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={closestCorners}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
         <div className="categories-grid">
           {Object.keys(filteredCategories).map(category => {
             const data = filteredCategories[category];
             const skillIds = data.skills.map(s => s.id);
+            const isOver = overId && overId.toString().startsWith('category-') && overId === `category-${category}`;
 
             return (
               <div key={category} className="category-section">
@@ -388,9 +471,11 @@ const SkillsOrganized = () => {
                 </div>
                 
                 <SortableContext items={skillIds} strategy={verticalListSortingStrategy}>
-                  <div className="skills-drop-zone">
+                  <DroppableCategory category={category} isOver={isOver}>
                     {data.skills.length === 0 ? (
-                      <div className="empty-category">No skills in this category</div>
+                      <div className="empty-category">
+                        {isOver ? 'Drop here to add to this category' : 'No skills in this category'}
+                      </div>
                     ) : (
                       data.skills.map((skill) => (
                         <SortableSkillCard
@@ -400,12 +485,18 @@ const SkillsOrganized = () => {
                         />
                       ))
                     )}
-                  </div>
+                  </DroppableCategory>
                 </SortableContext>
               </div>
             );
           })}
         </div>
+        
+        <DragOverlay>
+          {activeId && activeSkill ? (
+            <SkillCard skill={activeSkill} getProficiencyColor={getProficiencyColor} />
+          ) : null}
+        </DragOverlay>
       </DndContext>
 
       <div className="organized-footer">
