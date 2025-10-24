@@ -12,4 +12,7 @@ urlpatterns = [
     path('auth/login', views.login_user, name='login'),
     path('auth/verify-token', views.verify_token, name='verify-token'),
     path('users/me', views.get_current_user, name='current-user'),
+    
+    # Profile endpoints (UC-021)
+    path('profile/basic', views.update_basic_profile, name='basic-profile'),
 ]
