@@ -7,7 +7,10 @@ import {
   onAuthStateChanged,
   updateProfile,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  sendPasswordResetEmail,
+  verifyPasswordResetCode,
+  confirmPasswordReset
 } from 'firebase/auth';
 import firebaseConfig from '../config/firebase';
 
@@ -24,5 +27,8 @@ export {
   onAuthStateChanged,
   updateProfile,
   googleProvider,
-  signInWithPopup
+  signInWithPopup,
+  sendPasswordResetEmail,
+  verifyPasswordResetCode,
+  confirmPasswordReset
 };

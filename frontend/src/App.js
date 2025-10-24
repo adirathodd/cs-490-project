@@ -6,6 +6,8 @@ import Register from './components/Register';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import ProfileForm from './components/ProfileForm';
+import ForgotPassword from './components/ForgotPassword';
+import ResetPassword from './components/ResetPassword';
 import './App.css';
 
 function App() {
@@ -32,6 +34,8 @@ function App() {
               </PrivateRoute>
             } 
           />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </AuthProvider>
