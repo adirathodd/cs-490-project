@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { skillsAPI } from '../services/api';
 import './Skills.css';
 
 const Skills = () => {
+  const navigate = useNavigate();
   const [skills, setSkills] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -238,13 +240,26 @@ const Skills = () => {
   return (
     <div className="skills-container">
       <div className="skills-header">
-        <h2>My Skills</h2>
-        <button 
-          className="btn-add-skill"
-          onClick={() => setShowForm(!showForm)}
-        >
-          {showForm ? 'Cancel' : '+ Add Skill'}
-        </button>
+        <div className="header-left">
+          <button className="btn-back" onClick={() => navigate('/dashboard')}>
+            ← Back to Dashboard
+          </button>
+          <h2>My Skills</h2>
+        </div>
+        <div className="header-actions">
+          <button 
+            className="btn-secondary"
+            onClick={() => navigate('/skills/organized')}
+          >
+            📊 Organize by Category
+          </button>
+          <button 
+            className="btn-add-skill"
+            onClick={() => setShowForm(!showForm)}
+          >
+            {showForm ? 'Cancel' : '+ Add Skill'}
+          </button>
+        </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}

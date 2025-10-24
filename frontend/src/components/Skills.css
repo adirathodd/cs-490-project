@@ -9,6 +9,56 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
+  gap: 20px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.btn-back {
+  padding: 8px 16px;
+  background: transparent;
+  color: #667eea;
+  border: 2px solid #667eea;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-back:hover {
+  background: #667eea;
+  color: white;
+  transform: translateX(-2px);
+}
+
+.btn-secondary {
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
+}
+
+.btn-secondary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
 }
 
 .skills-header h2 {
@@ -28,6 +78,7 @@
   font-weight: 500;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
 }
 
 .btn-add-skill:hover {
@@ -385,6 +436,24 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+  }
+
+  .header-left {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .btn-back,
+  .btn-secondary,
+  .btn-add-skill {
+    width: 100%;
+    justify-content: center;
   }
 
   .form-row {
