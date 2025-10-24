@@ -1,11 +1,12 @@
 """
 Serializers for authentication and user management.
 """
+import os
+import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from core.models import CandidateProfile
-import re
 
 User = get_user_model()
 
@@ -86,24 +87,119 @@ class UserProfileSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(source='user.first_name', max_length=150)
     last_name = serializers.CharField(source='user.last_name', max_length=150)
     full_name = serializers.SerializerMethodField()
+    full_location = serializers.SerializerMethodField()
     
     class Meta:
         model = CandidateProfile
         fields = [
             'email', 'first_name', 'last_name', 'full_name',
-            'headline', 'location', 'summary', 'years_experience',
-            'preferred_roles', 'portfolio_url', 'visibility'
+            'phone', 'city', 'state', 'full_location',
+            'headline', 'summary', 'industry', 'experience_level',
+            'location', 'years_experience', 'preferred_roles', 
+            'portfolio_url', 'visibility'
         ]
     
     def get_full_name(self, obj):
         """Get user's full name."""
         return f"{obj.user.first_name} {obj.user.last_name}".strip()
     
+    def get_full_location(self, obj):
+        """Get formatted location."""
+        return obj.get_full_location()
+    
+    def validate_summary(self, value):
+        """Validate summary is within 500 character limit."""
+        if len(value) > 500:
+            raise serializers.ValidationError("Summary must not exceed 500 characters.")
+        return value
+    
+    def validate_phone(self, value):
+        """Validate phone number format."""
+        if value:
+            # Remove common formatting characters
+            cleaned = re.sub(r'[\s\-\(\)\.]', '', value)
+            if not re.match(r'^\+?1?\d{10,15}$', cleaned):
+                raise serializers.ValidationError("Please enter a valid phone number.")
+        return value
+    
     def update(self, instance, validated_data):
         """Update user and profile information."""
         user_data = validated_data.pop('user', {})
         
         # Update user fields
+        if user_data:
+            user = instance.user
+            for attr, value in user_data.items():
+                setattr(user, attr, value)
+            user.save()
+        
+        # Update profile fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        return instance
+
+
+class BasicProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer for UC-021: Basic Profile Information Form.
+    Handles basic profile information including name, contact, and professional details.
+    """
+    first_name = serializers.CharField(source='user.first_name', max_length=150, required=False)
+    last_name = serializers.CharField(source='user.last_name', max_length=150, required=False)
+    email = serializers.EmailField(source='user.email', read_only=True)
+    full_name = serializers.SerializerMethodField(read_only=True)
+    full_location = serializers.SerializerMethodField(read_only=True)
+    character_count = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = CandidateProfile
+        fields = [
+            'email', 'first_name', 'last_name', 'full_name',
+            'phone', 'city', 'state', 'full_location',
+            'headline', 'summary', 'character_count',
+            'industry', 'experience_level'
+        ]
+    
+    def get_full_name(self, obj):
+        """Get user's full name."""
+        return f"{obj.user.first_name} {obj.user.last_name}".strip()
+    
+    def get_full_location(self, obj):
+        """Get formatted location."""
+        return obj.get_full_location()
+    
+    def get_character_count(self, obj):
+        """Get current character count for summary."""
+        return len(obj.summary) if obj.summary else 0
+    
+    def validate_summary(self, value):
+        """Validate summary is within 500 character limit."""
+        if value and len(value) > 500:
+            raise serializers.ValidationError("Summary must not exceed 500 characters.")
+        return value
+    
+    def validate_phone(self, value):
+        """Validate phone number format."""
+        if value:
+            # Remove common formatting characters
+            cleaned = re.sub(r'[\s\-\(\)\.]', '', value)
+            if not re.match(r'^\+?1?\d{10,15}$', cleaned):
+                raise serializers.ValidationError("Please enter a valid phone number.")
+        return value
+    
+    def validate_headline(self, value):
+        """Validate headline length."""
+        if value and len(value) > 160:
+            raise serializers.ValidationError("Headline must not exceed 160 characters.")
+        return value
+    
+    def update(self, instance, validated_data):
+        """Update user and profile information."""
+        user_data = validated_data.pop('user', {})
+        
+        # Update user fields (first_name, last_name)
         if user_data:
             user = instance.user
             for attr, value in user_data.items():
@@ -149,3 +245,78 @@ class AuthResponseSerializer(serializers.Serializer):
     profile = UserProfileSerializer(read_only=True)
     token = serializers.CharField(read_only=True)
     message = serializers.CharField(read_only=True)
+
+
+class ProfilePictureUploadSerializer(serializers.Serializer):
+    """
+    Serializer for UC-022: Profile Picture Upload.
+    Handles profile picture file upload with validation.
+    """
+    profile_picture = serializers.ImageField(
+        required=True,
+        help_text="Profile picture image file (JPG, PNG, or GIF, max 5MB)"
+    )
+    
+    def validate_profile_picture(self, value):
+        """
+        Validate profile picture file.
+        """
+        # Check file size (5MB max)
+        max_size = 5 * 1024 * 1024  # 5MB in bytes
+        if value.size > max_size:
+            raise serializers.ValidationError(
+                "Profile picture file size must not exceed 5MB."
+            )
+        
+        # Check file extension
+        allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif']
+        file_ext = os.path.splitext(value.name)[1].lower()
+        if file_ext not in allowed_extensions:
+            raise serializers.ValidationError(
+                f"Invalid file type. Allowed types: {', '.join(allowed_extensions)}"
+            )
+        
+        # Validate it's a valid image
+        try:
+            from PIL import Image
+            img = Image.open(value)
+            img.verify()
+            # Reset file pointer after verify
+            value.seek(0)
+        except Exception as e:
+            raise serializers.ValidationError(
+                "Invalid or corrupted image file."
+            )
+        
+        return value
+
+
+class ProfilePictureSerializer(serializers.ModelSerializer):
+    """
+    Serializer for profile picture information.
+    """
+    profile_picture_url = serializers.SerializerMethodField(read_only=True)
+    has_profile_picture = serializers.SerializerMethodField(read_only=True)
+    profile_picture_uploaded_at = serializers.DateTimeField(read_only=True)
+    
+    class Meta:
+        model = CandidateProfile
+        fields = [
+            'profile_picture_url',
+            'has_profile_picture',
+            'profile_picture_uploaded_at'
+        ]
+    
+    def get_profile_picture_url(self, obj):
+        """Get the full URL for the profile picture."""
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
+    
+    def get_has_profile_picture(self, obj):
+        """Check if user has uploaded a profile picture."""
+        return bool(obj.profile_picture)
+

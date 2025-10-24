@@ -2,19 +2,28 @@
 Authentication views for Firebase-based user registration and login.
 """
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from core.serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
     UserProfileSerializer,
     UserSerializer,
+    BasicProfileSerializer,
+    ProfilePictureUploadSerializer,
+    ProfilePictureSerializer,
 )
 from core.models import CandidateProfile
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
+from core.storage_utils import (
+    process_profile_picture,
+    delete_old_picture,
+)
 import firebase_admin
 from firebase_admin import auth as firebase_auth
 import logging
@@ -355,19 +364,20 @@ def verify_token(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+# --- UC-008: User Profile Access Control ---
 @api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
 def user_profile(request, user_id=None):
     """
     UC-008: User Profile Access Control
-    
+
     GET: Retrieve a user's profile
     PUT: Update a user's profile
-    
+
     URL Parameters:
     - user_id: The Firebase UID of the user whose profile to retrieve/update
                If not provided, returns the current user's profile
-    
+
     Returns:
     {
         "profile": {...},
@@ -390,15 +400,14 @@ def user_profile(request, user_id=None):
 
         # If no user_id provided, use the current user's id
         target_uid = user_id or request.user.username
-        
+
         # Get the target user
         try:
             target_user = User.objects.get(username=target_uid)
         except User.DoesNotExist:
-            # Check if user exists in Firebase
+            # Check if user exists in Firebase; if so, create a Django user
             try:
                 firebase_user = firebase_auth.get_user(target_uid)
-                # Create Django user if they exist in Firebase
                 target_user = User.objects.create_user(
                     username=target_uid,
                     email=firebase_user.email,
@@ -411,10 +420,11 @@ def user_profile(request, user_id=None):
                     {'error': 'User not found'},
                     status=status.HTTP_404_NOT_FOUND
                 )
-        
+
         # Debug permissions check
         logger.debug(
-            "Profile access check: authenticated_user=%s (id=%s, staff=%s, superuser=%s) trying to access target_user=%s (id=%s)",
+            "Profile access check: authenticated_user=%s (id=%s, staff=%s, superuser=%s) "
+            "trying to access target_user=%s (id=%s)",
             request.user.username,
             request.user.id,
             request.user.is_staff,
@@ -422,8 +432,8 @@ def user_profile(request, user_id=None):
             target_user.username,
             target_user.id
         )
-        
-        # Check permissions
+
+        # Check permissions: owner or staff/admin
         if not request.user.is_staff and request.user != target_user:
             logger.debug(
                 "Access denied: is_staff=%s, users_match=%s",
@@ -434,36 +444,223 @@ def user_profile(request, user_id=None):
                 {'error': 'You do not have permission to access this profile'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
+
         # Get or create profile
         profile, created = CandidateProfile.objects.get_or_create(user=target_user)
-        
+
         if request.method == 'GET':
             return Response({
                 'profile': UserProfileSerializer(profile).data,
                 'user': UserSerializer(target_user).data
             })
-        
-        elif request.method == 'PUT':
-            # Only allow profile owner or admin to edit
-            if not request.user.is_staff and request.user != target_user:
-                return Response(
-                    {'error': 'You do not have permission to edit this profile'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-            
-            serializer = UserProfileSerializer(profile, data=request.data, partial=True)
-            if serializer.is_valid():
-                serializer.save()
-                return Response({
-                    'profile': serializer.data,
-                    'user': UserSerializer(target_user).data
-                })
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            
+
+        # PUT
+        if not request.user.is_staff and request.user != target_user:
+            return Response(
+                {'error': 'You do not have permission to edit this profile'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = UserProfileSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'profile': serializer.data,
+                'user': UserSerializer(target_user).data
+            })
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     except Exception as e:
         logger.error(f"Profile operation error: {e}")
         return Response(
             {'error': 'An error occurred while processing your request'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# --- UC-021: Basic Profile Information Form ---
+@api_view(['GET', 'PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def update_basic_profile(request):
+    """
+    Get or update basic profile information for the authenticated user.
+    Authorization: users can only view/edit their own profile.
+    """
+    try:
+        user = request.user
+
+        # Get or create profile for this user
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            profile = CandidateProfile.objects.create(user=user)
+            logger.info(f"Created new profile for user: {user.email}")
+
+        if request.method == 'GET':
+            serializer = BasicProfileSerializer(profile)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        # PUT/PATCH
+        partial = request.method == 'PATCH'
+        serializer = BasicProfileSerializer(profile, data=request.data, partial=partial)
+
+        if not serializer.is_valid():
+            return Response(
+                {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer.save()
+        logger.info(f"Profile updated for user: {user.email}")
+
+        return Response({
+            'profile': serializer.data,
+            'message': 'Profile updated successfully.'
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        ident = request.user.email if getattr(request.user, "is_authenticated", False) else 'anonymous'
+        logger.error(f"Error updating profile for user {ident}: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to update profile.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# --- UC-022: Profile Picture Upload ---
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
+def upload_profile_picture(request):
+    """
+    Upload a profile picture for the authenticated user.
+    """
+    try:
+        user = request.user
+
+        # Get or create profile
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            profile = CandidateProfile.objects.create(user=user)
+            logger.info(f"Created new profile for user during picture upload: {user.email}")
+
+        # Validate request data
+        serializer = ProfilePictureUploadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {'error': {'code': 'validation_error', 'message': 'Invalid file upload.', 'details': serializer.errors}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        profile_picture = serializer.validated_data['profile_picture']
+
+        # Process image (validate, resize, optimize)
+        logger.info(f"Processing profile picture for user: {user.email}")
+        processed_file, error_msg = process_profile_picture(profile_picture)
+
+        if error_msg:
+            return Response(
+                {'error': {'code': 'processing_failed', 'message': error_msg}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Delete old profile picture if exists
+        if profile.profile_picture:
+            logger.info(f"Deleting old profile picture: {profile.profile_picture.name}")
+            delete_old_picture(profile.profile_picture.name)
+
+        # Save new profile picture
+        profile.profile_picture = processed_file
+        profile.profile_picture_uploaded_at = timezone.now()
+        profile.save()
+
+        logger.info(f"Profile picture uploaded successfully for user: {user.email}")
+
+        picture_serializer = ProfilePictureSerializer(profile, context={'request': request})
+        return Response({
+            **picture_serializer.data,
+            'message': 'Profile picture uploaded successfully'
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        ident = request.user.email if getattr(request.user, "is_authenticated", False) else 'anonymous'
+        logger.error(f"Error uploading profile picture for user {ident}: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to upload profile picture.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_profile_picture(request):
+    """
+    Delete the profile picture for the authenticated user.
+    """
+    try:
+        user = request.user
+
+        # Get profile
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            return Response(
+                {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Check if profile picture exists
+        if not profile.profile_picture:
+            return Response(
+                {'error': {'code': 'no_picture', 'message': 'No profile picture to delete.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Delete file from storage
+        logger.info(f"Deleting profile picture for user: {user.email}")
+        delete_old_picture(profile.profile_picture.name)
+
+        # Clear profile picture field
+        profile.profile_picture = None
+        profile.profile_picture_uploaded_at = None
+        profile.save()
+
+        logger.info(f"Profile picture deleted successfully for user: {user.email}")
+
+        return Response({'message': 'Profile picture deleted successfully'}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        ident = request.user.email if getattr(request.user, "is_authenticated", False) else 'anonymous'
+        logger.error(f"Error deleting profile picture for user {ident}: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to delete profile picture.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_profile_picture(request):
+    """
+    Get profile picture information for the authenticated user.
+    """
+    try:
+        user = request.user
+
+        # Get or create profile
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            profile = CandidateProfile.objects.create(user=user)
+
+        serializer = ProfilePictureSerializer(profile, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        ident = request.user.email if getattr(request.user, "is_authenticated", False) else 'anonymous'
+        logger.error(f"Error fetching profile picture for user {ident}: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to fetch profile picture.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

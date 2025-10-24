@@ -4,10 +4,37 @@ from django.db import models
 from django.utils import timezone
 
 class CandidateProfile(models.Model):
+    EXPERIENCE_LEVELS = [
+        ('entry', 'Entry Level'),
+        ('mid', 'Mid Level'),
+        ('senior', 'Senior Level'),
+        ('executive', 'Executive'),
+    ]
+    
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
-    headline = models.CharField(max_length=160, blank=True)
-    location = models.CharField(max_length=160, blank=True)
-    summary = models.TextField(blank=True)
+    
+    # Basic Information (UC-021)
+    phone = models.CharField(max_length=20, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    state = models.CharField(max_length=100, blank=True)
+    
+    # Professional Information
+    headline = models.CharField(max_length=160, blank=True, help_text="Professional title/headline (LinkedIn-style)")
+    summary = models.TextField(max_length=500, blank=True, help_text="Brief bio/summary (500 character limit)")
+    industry = models.CharField(max_length=120, blank=True)
+    experience_level = models.CharField(max_length=20, choices=EXPERIENCE_LEVELS, blank=True)
+    
+    # Profile Picture (UC-022)
+    profile_picture = models.ImageField(
+        upload_to='profile_pictures/%Y/%m/',
+        blank=True,
+        null=True,
+        help_text="Profile picture image file"
+    )
+    profile_picture_uploaded_at = models.DateTimeField(null=True, blank=True)
+    
+    # Legacy fields
+    location = models.CharField(max_length=160, blank=True)  # Deprecated in favor of city/state
     years_experience = models.PositiveSmallIntegerField(default=0)
     preferred_roles = models.JSONField(default=list, blank=True)
     portfolio_url = models.URLField(blank=True)
@@ -15,6 +42,12 @@ class CandidateProfile(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=["user"])]
+    
+    def get_full_location(self):
+        """Return formatted location string"""
+        if self.city and self.state:
+            return f"{self.city}, {self.state}"
+        return self.city or self.state or self.location
 
 class Skill(models.Model):
     name = models.CharField(max_length=120, unique=True)

@@ -6,6 +6,9 @@ import Register from './components/Register';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import Profile from './components/Profile';
+import ProfileForm from './components/ProfileForm';
+import ForgotPassword from './components/ForgotPassword';
+import ResetPassword from './components/ResetPassword';
 import './App.css';
 
 function App() {
@@ -13,33 +16,48 @@ function App() {
     <Router>
       <AuthProvider>
         <Routes>
+          {/* public */}
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/register" element={<Register />} />
           <Route path="/login" element={<Login />} />
-          <Route 
-            path="/dashboard" 
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+
+          {/* protected */}
+          <Route
+            path="/dashboard"
             element={
               <PrivateRoute>
                 <Dashboard />
               </PrivateRoute>
-            } 
+            }
           />
-          <Route 
-            path="/profile" 
+          <Route
+            path="/profile"
             element={
               <PrivateRoute>
                 <Profile />
               </PrivateRoute>
-            } 
+            }
           />
-          <Route 
-            path="/profile/:userId" 
+          <Route
+            path="/profile/:userId"
             element={
               <PrivateRoute>
                 <Profile />
               </PrivateRoute>
-            } 
+            }
           />
+          <Route
+            path="/profile/basic"
+            element={
+              <PrivateRoute>
+                <ProfileForm />
+              </PrivateRoute>
+            }
+          />
+
+          {/* catch-all */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </AuthProvider>
