@@ -1,16 +1,17 @@
 # Use an official Python image as a parent image
 FROM python:3.12-slim AS base
 
-# Install system dependencies
+# Install system dependencies (including Pillow dependencies)
 RUN apt-get update && apt-get install -y \
     netcat-openbsd gcc postgresql-client build-essential \
+    libjpeg-dev zlib1g-dev libpng-dev \
  && rm -rf /var/lib/apt/lists/*
 
 # Set work directory
 WORKDIR /app
 
 # Install Python dependencies
-COPY backend/requirements.txt /app/
+COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy project code

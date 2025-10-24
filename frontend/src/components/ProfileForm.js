@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authAPI } from '../services/api';
+import ProfilePictureUpload from './ProfilePictureUpload';
 import './ProfileForm.css';
 
 const EXPERIENCE_LEVELS = [
@@ -356,6 +357,12 @@ const ProfileForm = () => {
         )}
 
         <form onSubmit={handleSubmit} className="profile-form">
+          {/* Profile Picture Section (UC-022) */}
+          <div className="form-section">
+            <h3>Profile Picture</h3>
+            <ProfilePictureUpload />
+          </div>
+
           {/* Personal Information Section */}
           <div className="form-section">
             <h3>Personal Information</h3>
