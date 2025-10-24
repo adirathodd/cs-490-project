@@ -138,4 +138,69 @@ export const authAPI = {
   },
 };
 
+// UC-026: Skills API calls
+export const skillsAPI = {
+  // Get all skills for the current user
+  getSkills: async () => {
+    try {
+      const response = await api.get('/skills');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch skills' };
+    }
+  },
+
+  // Add a new skill
+  addSkill: async (skillData) => {
+    try {
+      const response = await api.post('/skills', skillData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to add skill' };
+    }
+  },
+
+  // Update skill proficiency level or years
+  updateSkill: async (skillId, skillData) => {
+    try {
+      const response = await api.patch(`/skills/${skillId}`, skillData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to update skill' };
+    }
+  },
+
+  // Delete a skill
+  deleteSkill: async (skillId) => {
+    try {
+      const response = await api.delete(`/skills/${skillId}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete skill' };
+    }
+  },
+
+  // Get autocomplete suggestions for skills
+  autocompleteSkills: async (query, category = '', limit = 10) => {
+    try {
+      const params = new URLSearchParams({ q: query, limit });
+      if (category) params.append('category', category);
+      const response = await api.get(`/skills/autocomplete?${params.toString()}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch suggestions' };
+    }
+  },
+
+  // Get available skill categories
+  getCategories: async () => {
+    try {
+      const response = await api.get('/skills/categories');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch categories' };
+    }
+  },
+};
+
 export default authAPI;

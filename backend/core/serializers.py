@@ -6,7 +6,7 @@ import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from core.models import CandidateProfile
+from core.models import CandidateProfile, Skill, CandidateSkill
 
 User = get_user_model()
 
@@ -319,4 +319,95 @@ class ProfilePictureSerializer(serializers.ModelSerializer):
     def get_has_profile_picture(self, obj):
         """Check if user has uploaded a profile picture."""
         return bool(obj.profile_picture)
+
+
+# ======================
+# UC-026: SKILLS SERIALIZERS
+# ======================
+
+class SkillSerializer(serializers.ModelSerializer):
+    """Serializer for Skill model - represents available skills."""
+    class Meta:
+        model = Skill
+        fields = ['id', 'name', 'category']
+        read_only_fields = ['id']
+
+
+class CandidateSkillSerializer(serializers.ModelSerializer):
+    """
+    Serializer for UC-026: Add and Manage Skills.
+    Handles adding, updating, and displaying user skills with proficiency levels.
+    """
+    skill_name = serializers.CharField(source='skill.name', read_only=True)
+    skill_category = serializers.CharField(source='skill.category', read_only=True)
+    skill_id = serializers.IntegerField(write_only=True, required=False)
+    name = serializers.CharField(write_only=True, required=False, help_text="Skill name for creating new skill")
+    category = serializers.CharField(write_only=True, required=False, help_text="Skill category")
+    
+    class Meta:
+        model = CandidateSkill
+        fields = [
+            'id', 'skill_id', 'skill_name', 'skill_category',
+            'name', 'category', 'level', 'years'
+        ]
+        read_only_fields = ['id']
+    
+    def validate_level(self, value):
+        """Validate proficiency level."""
+        valid_levels = ['beginner', 'intermediate', 'advanced', 'expert']
+        if value.lower() not in valid_levels:
+            raise serializers.ValidationError(
+                f"Invalid proficiency level. Must be one of: {', '.join(valid_levels)}"
+            )
+        return value.lower()
+    
+    def validate(self, data):
+        """Validate that either skill_id or name is provided."""
+        skill_id = data.get('skill_id')
+        name = data.get('name')
+        
+        if not skill_id and not name:
+            raise serializers.ValidationError(
+                "Either skill_id or name must be provided."
+            )
+        
+        return data
+    
+    def create(self, validated_data):
+        """Create or get skill, then create candidate skill."""
+        candidate = validated_data.get('candidate')
+        skill_id = validated_data.pop('skill_id', None)
+        skill_name = validated_data.pop('name', None)
+        skill_category = validated_data.pop('category', '')
+        
+        # Get or create skill
+        if skill_id:
+            try:
+                skill = Skill.objects.get(id=skill_id)
+            except Skill.DoesNotExist:
+                raise serializers.ValidationError({"skill_id": "Skill not found."})
+        else:
+            # Create or get skill by name
+            skill, created = Skill.objects.get_or_create(
+                name__iexact=skill_name,
+                defaults={'name': skill_name, 'category': skill_category}
+            )
+        
+        # Check for duplicates
+        if CandidateSkill.objects.filter(candidate=candidate, skill=skill).exists():
+            raise serializers.ValidationError(
+                {"skill": "You have already added this skill."}
+            )
+        
+        # Create candidate skill
+        validated_data['skill'] = skill
+        return super().create(validated_data)
+
+
+class SkillAutocompleteSerializer(serializers.Serializer):
+    """Serializer for skill autocomplete suggestions."""
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    category = serializers.CharField()
+    usage_count = serializers.IntegerField(required=False)
 

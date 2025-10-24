@@ -7,6 +7,7 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import Profile from './components/Profile';
 import ProfileForm from './components/ProfileForm';
+import Skills from './components/Skills';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
 import './App.css';
@@ -53,6 +54,14 @@ function App() {
             element={
               <PrivateRoute>
                 <ProfileForm />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/skills"
+            element={
+              <PrivateRoute>
+                <Skills />
               </PrivateRoute>
             }
           />
