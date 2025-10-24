@@ -216,6 +216,9 @@ const Dashboard = () => {
             <h3>Skills</h3>
             <p>Add and manage your skills</p>
             <button className="card-button" onClick={() => navigate('/skills')}>Manage Skills</button>
+            <button className="card-button card-button-secondary" onClick={() => navigate('/skills/organized')}>
+              Organize by Category
+            </button>
           </div>
 
           <div className="dashboard-card">

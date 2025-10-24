@@ -201,6 +201,52 @@ export const skillsAPI = {
       throw error.response?.data?.error || { message: 'Failed to fetch categories' };
     }
   },
+  
+  // UC-027: Category Organization endpoints
+  
+  // Get skills grouped by category
+  getSkillsByCategory: async () => {
+    try {
+      const response = await api.get('/skills/by-category');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch skills by category' };
+    }
+  },
+  
+  // Reorder a single skill
+  reorderSkill: async (skillId, newOrder, newCategory = null) => {
+    try {
+      const data = { skill_id: skillId, new_order: newOrder };
+      if (newCategory) data.new_category = newCategory;
+      const response = await api.post('/skills/reorder', data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to reorder skill' };
+    }
+  },
+  
+  // Bulk reorder skills
+  bulkReorderSkills: async (skillsData) => {
+    try {
+      const response = await api.post('/skills/bulk-reorder', { skills: skillsData });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to reorder skills' };
+    }
+  },
+  
+  // Export skills
+  exportSkills: async (format = 'json') => {
+    try {
+      const response = await api.get(`/skills/export?format=${format}`, {
+        responseType: format === 'csv' ? 'blob' : 'json'
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to export skills' };
+    }
+  },
 };
 
 export default authAPI;

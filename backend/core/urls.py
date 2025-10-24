@@ -28,4 +28,10 @@ urlpatterns = [
     path('skills/<int:skill_id>', views.skill_detail, name='skill-detail'),
     path('skills/autocomplete', views.skills_autocomplete, name='skills-autocomplete'),
     path('skills/categories', views.skills_categories, name='skills-categories'),
+    
+    # Skills Category Organization endpoints (UC-027)
+    path('skills/by-category', views.skills_by_category, name='skills-by-category'),
+    path('skills/reorder', views.skills_reorder, name='skills-reorder'),
+    path('skills/bulk-reorder', views.skills_bulk_reorder, name='skills-bulk-reorder'),
+    path('skills/export', views.skills_export, name='skills-export'),
 ]

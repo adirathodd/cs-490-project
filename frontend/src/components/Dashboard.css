@@ -396,6 +396,7 @@
   font-weight: 500;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
+  margin-top: 4px;
 }
 
 .card-button:hover {
@@ -405,6 +406,17 @@
 
 .card-button:active {
   transform: translateY(0);
+}
+
+.card-button-secondary {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  margin-top: 8px;
+  font-size: 13px;
+  padding: 8px 16px;
+}
+
+.card-button-secondary:hover {
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
 }
 
 /* Responsive design */

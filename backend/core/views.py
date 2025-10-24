@@ -894,3 +894,264 @@ def skills_categories(request):
         "Industry-Specific"
     ]
     return Response(categories, status=status.HTTP_200_OK)
+
+
+# ======================
+# UC-027: SKILLS CATEGORY ORGANIZATION VIEWS
+# ======================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def skills_reorder(request):
+    """
+    UC-027: Reorder Skills (Drag and Drop)
+    
+    POST: Reorder skills within a category or move between categories
+    
+    Request Body:
+    {
+        "skill_id": 1,
+        "new_order": 2,
+        "new_category": "Technical"  // Optional - for moving between categories
+    }
+    """
+    try:
+        user = request.user
+        profile = CandidateProfile.objects.get(user=user)
+        
+        skill_id = request.data.get('skill_id')
+        new_order = request.data.get('new_order')
+        new_category = request.data.get('new_category')
+        
+        if skill_id is None or new_order is None:
+            return Response(
+                {'error': {'code': 'invalid_data', 'message': 'skill_id and new_order are required.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get the skill to reorder
+        try:
+            candidate_skill = CandidateSkill.objects.get(id=skill_id, candidate=profile)
+        except CandidateSkill.DoesNotExist:
+            return Response(
+                {'error': {'code': 'skill_not_found', 'message': 'Skill not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        old_category = candidate_skill.skill.category
+        
+        # If moving to a new category, update the skill's category
+        if new_category and new_category != old_category:
+            candidate_skill.skill.category = new_category
+            candidate_skill.skill.save()
+        
+        # Update the order
+        candidate_skill.order = new_order
+        candidate_skill.save()
+        
+        return Response(
+            {'message': 'Skill reordered successfully.', 'skill': CandidateSkillSerializer(candidate_skill).data},
+            status=status.HTTP_200_OK
+        )
+    
+    except Exception as e:
+        logger.error(f"Error in skills_reorder: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def skills_bulk_reorder(request):
+    """
+    UC-027: Bulk Reorder Skills
+    
+    POST: Update order for multiple skills at once (for drag-and-drop optimization)
+    
+    Request Body:
+    {
+        "skills": [
+            {"skill_id": 1, "order": 0},
+            {"skill_id": 2, "order": 1},
+            {"skill_id": 3, "order": 2}
+        ]
+    }
+    """
+    try:
+        user = request.user
+        profile = CandidateProfile.objects.get(user=user)
+        
+        skills_data = request.data.get('skills', [])
+        
+        if not skills_data:
+            return Response(
+                {'error': {'code': 'invalid_data', 'message': 'skills array is required.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Update all skills in a single transaction
+        from django.db import transaction
+        
+        with transaction.atomic():
+            for skill_data in skills_data:
+                skill_id = skill_data.get('skill_id')
+                order = skill_data.get('order')
+                
+                if skill_id is not None and order is not None:
+                    CandidateSkill.objects.filter(
+                        id=skill_id,
+                        candidate=profile
+                    ).update(order=order)
+        
+        return Response(
+            {'message': 'Skills reordered successfully.'},
+            status=status.HTTP_200_OK
+        )
+    
+    except Exception as e:
+        logger.error(f"Error in skills_bulk_reorder: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def skills_by_category(request):
+    """
+    UC-027: Get Skills Grouped by Category
+    
+    GET: Return skills organized by category with counts and summaries
+    
+    Response:
+    {
+        "Technical": {
+            "skills": [...],
+            "count": 5,
+            "proficiency_distribution": {"beginner": 1, "intermediate": 2, "advanced": 1, "expert": 1},
+            "avg_years": 3.5
+        },
+        ...
+    }
+    """
+    try:
+        user = request.user
+        profile = CandidateProfile.objects.get(user=user)
+        
+        # Get all skills
+        skills = CandidateSkill.objects.filter(candidate=profile).select_related('skill').order_by('order', 'id')
+        
+        # Group by category
+        from collections import defaultdict
+        from decimal import Decimal
+        
+        categories_data = defaultdict(lambda: {
+            'skills': [],
+            'count': 0,
+            'proficiency_distribution': {'beginner': 0, 'intermediate': 0, 'advanced': 0, 'expert': 0},
+            'total_years': Decimal('0'),
+        })
+        
+        for skill in skills:
+            category = skill.skill.category or 'Uncategorized'
+            skill_data = CandidateSkillSerializer(skill).data
+            
+            categories_data[category]['skills'].append(skill_data)
+            categories_data[category]['count'] += 1
+            categories_data[category]['proficiency_distribution'][skill.level] += 1
+            categories_data[category]['total_years'] += skill.years
+        
+        # Calculate averages
+        result = {}
+        for category, data in categories_data.items():
+            result[category] = {
+                'skills': data['skills'],
+                'count': data['count'],
+                'proficiency_distribution': data['proficiency_distribution'],
+                'avg_years': float(data['total_years'] / data['count']) if data['count'] > 0 else 0
+            }
+        
+        return Response(result, status=status.HTTP_200_OK)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in skills_by_category: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def skills_export(request):
+    """
+    UC-027: Export Skills
+    
+    GET: Export skills in CSV or JSON format, grouped by category
+    
+    Query Parameters:
+    - format: csv|json (default: json)
+    
+    Example: /api/skills/export?format=csv
+    """
+    try:
+        import csv
+        from io import StringIO
+        
+        user = request.user
+        profile = CandidateProfile.objects.get(user=user)
+        
+        export_format = request.GET.get('format', 'json').lower()
+        
+        # Get all skills
+        skills = CandidateSkill.objects.filter(candidate=profile).select_related('skill').order_by('skill__category', 'order', 'id')
+        
+        if export_format == 'csv':
+            # Create CSV
+            output = StringIO()
+            writer = csv.writer(output)
+            writer.writerow(['Category', 'Skill Name', 'Proficiency Level', 'Years of Experience'])
+            
+            for skill in skills:
+                writer.writerow([
+                    skill.skill.category or 'Uncategorized',
+                    skill.skill.name,
+                    skill.level.capitalize(),
+                    float(skill.years)
+                ])
+            
+            response = Response(output.getvalue(), content_type='text/csv')
+            response['Content-Disposition'] = 'attachment; filename="skills_export.csv"'
+            return response
+        
+        else:  # JSON format
+            data = []
+            for skill in skills:
+                data.append({
+                    'category': skill.skill.category or 'Uncategorized',
+                    'name': skill.skill.name,
+                    'level': skill.level,
+                    'years': float(skill.years)
+                })
+            
+            return Response(data, status=status.HTTP_200_OK)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in skills_export: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

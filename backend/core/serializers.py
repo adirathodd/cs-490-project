@@ -336,6 +336,7 @@ class SkillSerializer(serializers.ModelSerializer):
 class CandidateSkillSerializer(serializers.ModelSerializer):
     """
     Serializer for UC-026: Add and Manage Skills.
+    UC-027: Enhanced with ordering support for category organization.
     Handles adding, updating, and displaying user skills with proficiency levels.
     """
     skill_name = serializers.CharField(source='skill.name', read_only=True)
@@ -348,7 +349,7 @@ class CandidateSkillSerializer(serializers.ModelSerializer):
         model = CandidateSkill
         fields = [
             'id', 'skill_id', 'skill_name', 'skill_category',
-            'name', 'category', 'level', 'years'
+            'name', 'category', 'level', 'years', 'order'
         ]
         read_only_fields = ['id']
     
@@ -410,4 +411,32 @@ class SkillAutocompleteSerializer(serializers.Serializer):
     name = serializers.CharField()
     category = serializers.CharField()
     usage_count = serializers.IntegerField(required=False)
+
+
+# ======================
+# UC-027: SKILLS CATEGORY ORGANIZATION SERIALIZERS
+# ======================
+
+class SkillReorderSerializer(serializers.Serializer):
+    """Serializer for reordering skills within or between categories."""
+    skill_id = serializers.IntegerField(required=True)
+    new_order = serializers.IntegerField(required=True, min_value=0)
+    new_category = serializers.CharField(required=False, allow_blank=True)
+
+
+class BulkSkillReorderSerializer(serializers.Serializer):
+    """Serializer for bulk reordering of skills."""
+    skills = serializers.ListField(
+        child=serializers.DictField(),
+        required=True,
+        help_text="List of {skill_id, order} objects"
+    )
+
+
+class CategorySummarySerializer(serializers.Serializer):
+    """Serializer for category-based skill summaries."""
+    category = serializers.CharField()
+    count = serializers.IntegerField()
+    proficiency_distribution = serializers.DictField()
+    avg_years = serializers.FloatField()
 

@@ -58,10 +58,16 @@ class CandidateSkill(models.Model):
     skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name="candidates")
     level = models.CharField(max_length=20, default="intermediate")  # beginner|intermediate|advanced|expert
     years = models.DecimalField(max_digits=4, decimal_places=1, default=0)
+    order = models.IntegerField(default=0, help_text="Display order within category")
 
     class Meta:
         unique_together = [("candidate", "skill")]
-        indexes = [models.Index(fields=["candidate"]), models.Index(fields=["skill"])]
+        indexes = [
+            models.Index(fields=["candidate"]), 
+            models.Index(fields=["skill"]),
+            models.Index(fields=["candidate", "order"])
+        ]
+        ordering = ['order', 'id']
 
 class Company(models.Model):
     name = models.CharField(max_length=180)
