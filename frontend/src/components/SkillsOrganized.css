@@ -5,27 +5,78 @@
 }
 
 .skills-organized-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   margin-bottom: 30px;
   padding-bottom: 15px;
   border-bottom: 2px solid #e5e7eb;
+}
+
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+}
+
+.btn-back {
+  padding: 8px 16px;
+  background: transparent;
+  color: #667eea;
+  border: 2px solid #667eea;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-back:hover {
+  background: #667eea;
+  color: white;
+  transform: translateX(-2px);
 }
 
 .skills-organized-header h2 {
   margin: 0;
   color: #1f2937;
   font-size: 28px;
+  font-weight: 600;
 }
 
 .header-actions {
   display: flex;
   gap: 10px;
+  align-items: center;
+}
+
+.btn-manage {
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-manage:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
 .btn-export {
-  padding: 10px 20px;
+  padding: 10px 18px;
   background-color: #10b981;
   color: white;
   border: none;
@@ -33,11 +84,41 @@
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
+  white-space: nowrap;
 }
 
 .btn-export:hover {
   background-color: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.info-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-left: 4px solid #3b82f6;
+  padding: 16px 20px;
+  border-radius: 8px;
+  margin-bottom: 25px;
+}
+
+.info-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.info-content {
+  color: #1e40af;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.info-content strong {
+  color: #1e3a8a;
+  font-weight: 600;
 }
 
 .controls-bar {
@@ -371,10 +452,35 @@
 
 /* Responsive design */
 @media (max-width: 768px) {
-  .skills-organized-header {
+  .skills-organized-container {
+    padding: 16px;
+  }
+
+  .header-top {
     flex-direction: column;
     align-items: flex-start;
-    gap: 15px;
+  }
+
+  .header-left {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .btn-back,
+  .btn-manage,
+  .btn-export {
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .skills-organized-header h2 {
+    font-size: 22px;
   }
 
   .controls-bar {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   DndContext,
   closestCorners,
@@ -108,6 +109,7 @@ const SkillCard = ({ skill, getProficiencyColor }) => {
 };
 
 const SkillsOrganized = () => {
+  const navigate = useNavigate();
   const [skillsByCategory, setSkillsByCategory] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -371,19 +373,36 @@ const SkillsOrganized = () => {
   return (
     <div className="skills-organized-container">
       <div className="skills-organized-header">
-        <h2>My Skills - Organized by Category</h2>
-        <div className="header-actions">
-          <button className="btn-export" onClick={() => handleExport('json')}>
-            📥 Export JSON
-          </button>
-          <button className="btn-export" onClick={() => handleExport('csv')}>
-            📥 Export CSV
-          </button>
+        <div className="header-top">
+          <div className="header-left">
+            <button className="btn-back" onClick={() => navigate('/dashboard')}>
+              ← Back to Dashboard
+            </button>
+            <h2>Skills - Organized by Category</h2>
+          </div>
+          <div className="header-actions">
+            <button className="btn-manage" onClick={() => navigate('/skills')}>
+              ✏️ Manage Skills
+            </button>
+            <button className="btn-export" onClick={() => handleExport('json')}>
+              📥 JSON
+            </button>
+            <button className="btn-export" onClick={() => handleExport('csv')}>
+              📥 CSV
+            </button>
+          </div>
         </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
       {success && <div className="alert alert-success">{success}</div>}
+
+      <div className="info-banner">
+        <div className="info-icon">ℹ️</div>
+        <div className="info-content">
+          <strong>Organize Your Skills:</strong> Search and filter skills, drag and drop to reorder or move between categories, and export your organized list.
+        </div>
+      </div>
 
       <div className="controls-bar">
         <div className="search-box">
