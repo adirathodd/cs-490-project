@@ -198,7 +198,7 @@ const Dashboard = () => {
 
         <div className="dashboard-grid">
           <div className="dashboard-card">
-            <div className="card-icon"></div>
+            <div className="card-icon">💼</div>
             <h3>Job Opportunities</h3>
             <p>Browse and track job openings</p>
             <button className="card-button">View Jobs</button>
@@ -209,6 +209,13 @@ const Dashboard = () => {
             <h3>Applications</h3>
             <p>Track your job applications</p>
             <button className="card-button">View Applications</button>
+          </div>
+
+          <div className="dashboard-card">
+            <div className="card-icon">⭐</div>
+            <h3>Skills</h3>
+            <p>Add and manage your skills</p>
+            <button className="card-button" onClick={() => navigate('/skills')}>Manage Skills</button>
           </div>
 
           <div className="dashboard-card">

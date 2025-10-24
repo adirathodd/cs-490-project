@@ -16,8 +16,11 @@ from core.serializers import (
     BasicProfileSerializer,
     ProfilePictureUploadSerializer,
     ProfilePictureSerializer,
+    SkillSerializer,
+    CandidateSkillSerializer,
+    SkillAutocompleteSerializer,
 )
-from core.models import CandidateProfile
+from core.models import CandidateProfile, Skill, CandidateSkill
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (
@@ -664,3 +667,230 @@ def get_profile_picture(request):
             {'error': {'code': 'internal_error', 'message': 'Failed to fetch profile picture.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# ======================
+# UC-026: SKILLS VIEWS
+# ======================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def skills_list_create(request):
+    """
+    UC-026: Add and Manage Skills
+    
+    GET: List all skills for the authenticated user
+    POST: Add a new skill to the user's profile
+    
+    POST Request Body:
+    {
+        "skill_id": 1,  // OR "name": "Python" (if creating new skill)
+        "name": "Python",  // Optional if skill_id provided
+        "category": "Technical",  // Optional
+        "level": "advanced",  // beginner|intermediate|advanced|expert
+        "years": 3.5  // Optional
+    }
+    """
+    try:
+        user = request.user
+        
+        # Get or create profile
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            profile = CandidateProfile.objects.create(user=user)
+        
+        if request.method == 'GET':
+            # List all user skills
+            candidate_skills = CandidateSkill.objects.filter(candidate=profile).select_related('skill')
+            serializer = CandidateSkillSerializer(candidate_skills, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        elif request.method == 'POST':
+            # Add new skill
+            serializer = CandidateSkillSerializer(data=request.data)
+            
+            if not serializer.is_valid():
+                return Response(
+                    {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            serializer.save(candidate=profile)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    except Exception as e:
+        logger.error(f"Error in skills_list_create: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def skill_detail(request, skill_id):
+    """
+    UC-026: Manage Individual Skill
+    
+    GET: Retrieve a specific skill
+    PUT/PATCH: Update skill proficiency level or years
+    DELETE: Remove skill from profile (with confirmation)
+    
+    PUT/PATCH Request Body:
+    {
+        "level": "expert",
+        "years": 5.0
+    }
+    """
+    try:
+        user = request.user
+        
+        # Get profile
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            return Response(
+                {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get candidate skill
+        try:
+            candidate_skill = CandidateSkill.objects.get(id=skill_id, candidate=profile)
+        except CandidateSkill.DoesNotExist:
+            return Response(
+                {'error': {'code': 'skill_not_found', 'message': 'Skill not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if request.method == 'GET':
+            serializer = CandidateSkillSerializer(candidate_skill)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        elif request.method in ['PUT', 'PATCH']:
+            # Update skill proficiency or years
+            partial = request.method == 'PATCH'
+            
+            # Only allow updating level and years
+            update_data = {}
+            if 'level' in request.data:
+                update_data['level'] = request.data['level']
+            if 'years' in request.data:
+                update_data['years'] = request.data['years']
+            
+            serializer = CandidateSkillSerializer(candidate_skill, data=update_data, partial=True)
+            
+            if not serializer.is_valid():
+                return Response(
+                    {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        elif request.method == 'DELETE':
+            # Delete skill
+            skill_name = candidate_skill.skill.name
+            candidate_skill.delete()
+            return Response(
+                {'message': f'Skill "{skill_name}" removed successfully.'},
+                status=status.HTTP_200_OK
+            )
+    
+    except Exception as e:
+        logger.error(f"Error in skill_detail: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def skills_autocomplete(request):
+    """
+    UC-026: Skill Autocomplete Suggestions
+    
+    GET: Return autocomplete suggestions for common skills based on query parameter
+    
+    Query Parameters:
+    - q: Search query (minimum 2 characters)
+    - category: Optional filter by category
+    - limit: Maximum results (default 10)
+    
+    Example: /api/skills/autocomplete?q=pyt&category=Technical&limit=5
+    """
+    try:
+        query = request.GET.get('q', '').strip()
+        category = request.GET.get('category', '').strip()
+        limit = int(request.GET.get('limit', 10))
+        
+        if len(query) < 2:
+            return Response(
+                {'error': {'code': 'invalid_query', 'message': 'Search query must be at least 2 characters.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Search skills by name
+        skills_query = Skill.objects.filter(name__icontains=query)
+        
+        # Filter by category if provided
+        if category:
+            skills_query = skills_query.filter(category__iexact=category)
+        
+        # Annotate with usage count and order by popularity
+        from django.db.models import Count
+        skills_query = skills_query.annotate(
+            usage_count=Count('candidates')
+        ).order_by('-usage_count', 'name')[:limit]
+        
+        # Serialize results
+        results = []
+        for skill in skills_query:
+            results.append({
+                'id': skill.id,
+                'name': skill.name,
+                'category': skill.category,
+                'usage_count': skill.usage_count
+            })
+        
+        return Response(results, status=status.HTTP_200_OK)
+    
+    except ValueError:
+        return Response(
+            {'error': {'code': 'invalid_parameter', 'message': 'Invalid limit parameter.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except Exception as e:
+        logger.error(f"Error in skills_autocomplete: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def skills_categories(request):
+    """
+    UC-026: Get Skill Categories
+    
+    GET: Return list of available skill categories
+    
+    Response:
+    [
+        "Technical",
+        "Soft Skills",
+        "Languages",
+        "Industry-Specific"
+    ]
+    """
+    categories = [
+        "Technical",
+        "Soft Skills",
+        "Languages",
+        "Industry-Specific"
+    ]
+    return Response(categories, status=status.HTTP_200_OK)

@@ -22,4 +22,10 @@ urlpatterns = [
     path('profile/picture', views.get_profile_picture, name='get-profile-picture'),
     path('profile/picture/upload', views.upload_profile_picture, name='upload-profile-picture'),
     path('profile/picture/delete', views.delete_profile_picture, name='delete-profile-picture'),
+    
+    # Skills endpoints (UC-026)
+    path('skills', views.skills_list_create, name='skills-list-create'),
+    path('skills/<int:skill_id>', views.skill_detail, name='skill-detail'),
+    path('skills/autocomplete', views.skills_autocomplete, name='skills-autocomplete'),
+    path('skills/categories', views.skills_categories, name='skills-categories'),
 ]
