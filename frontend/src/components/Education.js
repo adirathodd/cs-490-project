@@ -26,6 +26,21 @@ const Education = () => {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
 
+  const sortEducations = (arr) => {
+    if (!Array.isArray(arr)) return [];
+    const toNum = (d) => (d ? Date.parse(d) : 0);
+    return [...arr].sort((a, b) => {
+      // Currently enrolled first
+      if (!!a.currently_enrolled !== !!b.currently_enrolled) {
+        return a.currently_enrolled ? -1 : 1;
+      }
+      const aDate = toNum(a.graduation_date || a.start_date);
+      const bDate = toNum(b.graduation_date || b.start_date);
+      if (aDate !== bDate) return bDate - aDate; // desc
+      return (b.id || 0) - (a.id || 0);
+    });
+  };
+
   useEffect(() => {
     const init = async () => {
       setLoading(true);
@@ -35,7 +50,7 @@ const Education = () => {
           educationAPI.getEducations()
         ]);
         setLevels(levelsResp);
-        setItems(itemsResp);
+        setItems(sortEducations(itemsResp));
       } catch (e) {
         setError(e?.message || 'Failed to load education data');
       } finally {
@@ -86,10 +101,10 @@ const Education = () => {
     try {
       if (editingId) {
         const updated = await educationAPI.updateEducation(editingId, toPayload(form));
-        setItems((prev) => (prev || []).map((i) => (i.id === editingId ? updated : i)));
+        setItems((prev) => sortEducations((prev || []).map((i) => (i.id === editingId ? updated : i))));
       } else {
         const created = await educationAPI.addEducation(toPayload(form));
-        setItems((prev) => [created, ...(prev || [])]);
+        setItems((prev) => sortEducations([...(prev || []), created]));
       }
       resetForm();
     } catch (e) {
@@ -137,6 +152,17 @@ const Education = () => {
 
   return (
     <div className="education-container">
+      <div className="page-backbar">
+        <a
+          className="btn-back"
+          href="/dashboard"
+          aria-label="Back to dashboard"
+          title="Back to dashboard"
+        >
+          ← Back to Dashboard
+        </a>
+      </div>
+
       <h2>Education</h2>
 
       {error && <div className="error-banner">{error}</div>}
@@ -168,9 +194,9 @@ const Education = () => {
           <div className="form-group">
             <label htmlFor="gpa">GPA (optional)</label>
             <input id="gpa" type="number" step="0.01" min="0" max="4" name="gpa" value={form.gpa} onChange={onChange} />
-            <label className="inline-checkbox">
+            <label className="inline-checkbox" htmlFor="gpa_private">
               <input id="gpa_private" type="checkbox" name="gpa_private" checked={form.gpa_private} onChange={onChange} />
-              Hide GPA from others
+              <span className="checkbox-label-text">Hide GPA from others</span>
             </label>
             {fieldErrors.gpa && <div className="error-message">{fieldErrors.gpa}</div>}
           </div>
@@ -185,11 +211,16 @@ const Education = () => {
             <label htmlFor="graduation_date">Graduation Date {form.currently_enrolled ? '' : <span className="required">*</span>}</label>
             <input id="graduation_date" type="date" name="graduation_date" value={form.graduation_date || ''} onChange={onChange} disabled={form.currently_enrolled} className={fieldErrors.graduation_date ? 'error' : ''} />
             {fieldErrors.graduation_date && <div className="error-message">{fieldErrors.graduation_date}</div>}
-            <label className="inline-checkbox">
+            <label className="inline-checkbox" htmlFor="currently_enrolled">
               <input id="currently_enrolled" type="checkbox" name="currently_enrolled" checked={form.currently_enrolled} onChange={onChange} />
-              Currently enrolled
+              <span className="checkbox-label-text">Currently enrolled</span>
             </label>
           </div>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="honors">Honors</label>
+          <input id="honors" name="honors" value={form.honors} onChange={onChange} placeholder="e.g., Summa Cum Laude, Dean's List" />
         </div>
 
         <div className="form-group">
@@ -214,28 +245,34 @@ const Education = () => {
         </div>
       </form>
 
-      <div className="education-list">
+      <div className="education-list timeline">
         {(items || []).length === 0 ? (
           <div className="empty-state">No education entries yet. Add your first one above.</div>
         ) : (
           (items || []).map((item) => (
-            <div key={item.id} className="education-item">
+            <div key={item.id} className={`education-item ${item.currently_enrolled ? 'ongoing' : 'completed'}`}>
               <div className="education-item-main">
                 <div className="education-item-title">{item.institution}</div>
                 <div className="education-item-sub">
                   <span>{(levels || []).find((l) => l.value === item.degree_type)?.label || item.degree_type}</span>
                   {item.field_of_study && <span> • {item.field_of_study}</span>}
+                  {item.honors && <span className="honors-badge">{item.honors}</span>}
                 </div>
                 <div className="education-item-dates">
                   {item.currently_enrolled ? (
-                    <span>Enrolled</span>
+                    <span className="status ongoing">Enrolled</span>
                   ) : (
-                    <span>Graduated {item.graduation_date}</span>
+                    <span className="status completed">Graduated {item.graduation_date}</span>
                   )}
                 </div>
               </div>
-              {(item.achievements || item.description) && (
+              {(item.gpa != null || item.achievements || item.description) && (
                 <div className="education-item-details">
+                  {item.gpa != null && (
+                    <div className={`gpa-badge ${item.gpa_private ? 'private' : ''}`}>
+                      GPA {item.gpa}{item.gpa_private ? ' 🔒' : ''}
+                    </div>
+                  )}
                   {item.achievements && <div><strong>Achievements:</strong> {item.achievements}</div>}
                   {item.description && <div><strong>Details:</strong> {item.description}</div>}
                 </div>
