@@ -262,7 +262,8 @@ def login_user(request):
         )
 
 
-@api_view(['GET'])
+@api_view(['GET', 'DELETE'])
+@permission_classes([IsAuthenticated])
 def get_current_user(request):
     """
     Get current authenticated user profile.
@@ -277,11 +278,66 @@ def get_current_user(request):
     """
     try:
         user = request.user
+
+        # Handle account deletion
+        if request.method == 'DELETE':
+            try:
+                uid = user.username
+                email = user.email
+
+                # Delete candidate profile and related data
+                try:
+                    profile = CandidateProfile.objects.get(user=user)
+                    # Delete profile picture file if present
+                    if profile.profile_picture:
+                        try:
+                            delete_old_picture(profile.profile_picture.name)
+                        except Exception as e:
+                            logger.warning(f"Failed to delete profile picture file for {email}: {e}")
+                    # Delete related CandidateSkill entries
+                    CandidateSkill.objects.filter(candidate=profile).delete()
+                    profile.delete()
+                except CandidateProfile.DoesNotExist:
+                    logger.info(f"No profile found when deleting user {email}")
+
+                # Delete Django user
+                user.delete()
+
+                # Delete Firebase user
+                try:
+                    firebase_auth.delete_user(uid)
+                except Exception as e:
+                    logger.warning(f"Failed to delete Firebase user {uid}: {e}")
+
+                # Send confirmation email
+                try:
+                    from django.core.mail import send_mail
+                    from django.conf import settings
+
+                    subject = 'Your account has been deleted'
+                    message = (
+                        'This is a confirmation that your account and all associated data have been permanently deleted from ATS.'
+                    )
+                    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'noreply@example.com'
+                    if email:
+                        send_mail(subject, message, from_email, [email], fail_silently=True)
+                except Exception as e:
+                    logger.warning(f"Failed to send account deletion email to {email}: {e}")
+
+                return Response({'message': 'Account deleted successfully.'}, status=status.HTTP_200_OK)
+            except Exception as e:
+                logger.error(f"Error deleting account for user {getattr(request.user, 'email', 'unknown')}: {e}")
+                return Response(
+                    {'error': {'code': 'deletion_failed', 'message': 'Failed to delete account.'}},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+        # For GET, return profile as before
         profile = CandidateProfile.objects.get(user=user)
-        
+
         user_serializer = UserSerializer(user)
         profile_serializer = UserProfileSerializer(profile)
-        
+
         return Response({
             'user': user_serializer.data,
             'profile': profile_serializer.data,

@@ -136,6 +136,16 @@ export const authAPI = {
       throw error;
     }
   },
+
+  // UC-009: Account Deletion
+  deleteAccount: async () => {
+    try {
+      const response = await api.delete('/users/me');
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
 };
 
 // UC-026: Skills API calls
