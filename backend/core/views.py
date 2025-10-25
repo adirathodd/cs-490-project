@@ -19,8 +19,9 @@ from core.serializers import (
     SkillSerializer,
     CandidateSkillSerializer,
     SkillAutocompleteSerializer,
+    EducationSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill
+from core.models import CandidateProfile, Skill, CandidateSkill, Education
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (
@@ -1207,6 +1208,108 @@ def skills_export(request):
         )
     except Exception as e:
         logger.error(f"Error in skills_export: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# ======================
+# Education views
+# ======================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def education_levels(request):
+    """
+    Return available education levels for dropdown.
+    """
+    levels = [
+        {'value': k, 'label': v} for k, v in Education.DEGREE_CHOICES
+    ]
+    return Response(levels, status=status.HTTP_200_OK)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def education_list_create(request):
+    """
+    List and create education entries for the authenticated user.
+
+    GET: List all education entries
+    POST: Create new education entry
+    """
+    try:
+        user = request.user
+        # Ensure profile exists
+        profile, _ = CandidateProfile.objects.get_or_create(user=user)
+
+        if request.method == 'GET':
+            qs = Education.objects.filter(candidate=profile).order_by('-end_date', '-id')
+            return Response(EducationSerializer(qs, many=True).data, status=status.HTTP_200_OK)
+
+        # POST
+        serializer = EducationSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        instance = serializer.save(candidate=profile)
+        return Response(EducationSerializer(instance).data, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        logger.error(f"Error in education_list_create: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def education_detail(request, education_id):
+    """
+    Retrieve/Update/Delete an education entry for the authenticated user.
+    """
+    try:
+        user = request.user
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            return Response(
+                {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            edu = Education.objects.get(id=education_id, candidate=profile)
+        except Education.DoesNotExist:
+            return Response(
+                {'error': {'code': 'education_not_found', 'message': 'Education entry not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if request.method == 'GET':
+            return Response(EducationSerializer(edu).data, status=status.HTTP_200_OK)
+
+        if request.method in ['PUT', 'PATCH']:
+            partial = request.method == 'PATCH'
+            serializer = EducationSerializer(edu, data=request.data, partial=partial)
+            if not serializer.is_valid():
+                return Response(
+                    {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        # DELETE
+        edu.delete()
+        return Response({'message': 'Education entry deleted successfully.'}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Error in education_detail: {e}")
         return Response(
             {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

@@ -34,4 +34,9 @@ urlpatterns = [
     path('skills/reorder', views.skills_reorder, name='skills-reorder'),
     path('skills/bulk-reorder', views.skills_bulk_reorder, name='skills-bulk-reorder'),
     path('skills/export', views.skills_export, name='skills-export'),
+
+    # Education endpoints
+    path('education/levels', views.education_levels, name='education-levels'),
+    path('education', views.education_list_create, name='education-list-create'),
+    path('education/<int:education_id>', views.education_detail, name='education-detail'),
 ]

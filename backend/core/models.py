@@ -195,23 +195,31 @@ class Education(models.Model):
         ('cert', 'Certificate'),
         ('boot', 'Bootcamp'),
     ]
-    
-    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="education")
+
+    # Note: related_name changed to 'educations' for natural access; this does not affect DB schema
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="educations")
     institution = models.CharField(max_length=200)
+    # Education level dropdown
     degree_type = models.CharField(max_length=10, choices=DEGREE_CHOICES)
     field_of_study = models.CharField(max_length=200, blank=True)
+    # Timeline
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
+    currently_enrolled = models.BooleanField(default=False)
+    # GPA
     gpa = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True)
+    gpa_private = models.BooleanField(default=False, help_text="If true, GPA is hidden from shared/public views")
+    # Achievements/Honors
     honors = models.CharField(max_length=200, blank=True)
+    achievements = models.TextField(blank=True)
     description = models.TextField(blank=True)
-    
+
     class Meta:
         ordering = ['-end_date']
         indexes = [models.Index(fields=["candidate", "-end_date"])]
 
     def __str__(self):
-        return f"{self.degree_type} in {self.field_of_study} - {self.institution}"
+        return f"{self.get_degree_type_display()} in {self.field_of_study or ''} - {self.institution}"
 
 
 class Certification(models.Model):

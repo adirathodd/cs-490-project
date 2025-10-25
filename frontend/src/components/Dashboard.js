@@ -222,6 +222,13 @@ const Dashboard = () => {
           </div>
 
           <div className="dashboard-card">
+            <div className="card-icon">🎓</div>
+            <h3>Education</h3>
+            <p>Add and manage your educational background</p>
+            <button className="card-button" onClick={() => navigate('/education')}>Manage Education</button>
+          </div>
+
+          <div className="dashboard-card">
             <div className="card-icon">📊</div>
             <h3>Analytics</h3>
             <p>View your job search metrics</p>

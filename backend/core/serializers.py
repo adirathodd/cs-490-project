@@ -6,7 +6,7 @@ import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from core.models import CandidateProfile, Skill, CandidateSkill
+from core.models import CandidateProfile, Skill, CandidateSkill, Education
 
 User = get_user_model()
 
@@ -439,4 +439,70 @@ class CategorySummarySerializer(serializers.Serializer):
     count = serializers.IntegerField()
     proficiency_distribution = serializers.DictField()
     avg_years = serializers.FloatField()
+
+
+# ======================
+# Education serializers
+# ======================
+
+class EducationSerializer(serializers.ModelSerializer):
+    """Serializer for educational background entries"""
+    graduation_date = serializers.DateField(source='end_date', allow_null=True, required=False)
+
+    class Meta:
+        model = Education
+        fields = [
+            'id',
+            'institution',
+            'degree_type',
+            'field_of_study',
+            'start_date',
+            'graduation_date',
+            'currently_enrolled',
+            'gpa',
+            'gpa_private',
+            'honors',
+            'achievements',
+            'description',
+        ]
+        read_only_fields = ['id']
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+
+        institution = data.get('institution') or getattr(self.instance, 'institution', None)
+        degree_type = data.get('degree_type') or getattr(self.instance, 'degree_type', None)
+        end_date = data.get('end_date') or getattr(self.instance, 'end_date', None)
+        start_date = data.get('start_date') or getattr(self.instance, 'start_date', None)
+        currently_enrolled = data.get('currently_enrolled')
+        if currently_enrolled is None and self.instance is not None:
+            currently_enrolled = self.instance.currently_enrolled
+
+        errors = {}
+        # Required fields
+        if not institution:
+            errors['institution'] = 'Institution name is required.'
+        if not degree_type:
+            errors['degree_type'] = 'Education level is required.'
+
+        # GPA bounds (0.0 - 4.0 typical but allow up to 9.99 by DB; enforce 0-4 for UX)
+        gpa = data.get('gpa')
+        if gpa is not None:
+            try:
+                if gpa < 0 or gpa > 4:
+                    errors['gpa'] = 'GPA must be between 0.00 and 4.00.'
+            except Exception:
+                errors['gpa'] = 'Invalid GPA value.'
+
+        # Date logic
+        if not currently_enrolled and not end_date:
+            errors['graduation_date'] = 'Graduation date is required unless currently enrolled.'
+        if start_date and end_date and start_date > end_date:
+            errors['start_date'] = 'Start date cannot be after graduation date.'
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return data
+
 
