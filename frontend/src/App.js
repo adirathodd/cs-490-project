@@ -51,6 +51,14 @@ function App() {
             }
           />
           <Route
+            path="/profile/edit"
+            element={
+              <PrivateRoute>
+                <ProfileForm />
+              </PrivateRoute>
+            }
+          />
+          <Route
             path="/profile/basic"
             element={
               <PrivateRoute>

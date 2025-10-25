@@ -80,7 +80,7 @@ const Dashboard = () => {
 
   const handleUpdateProfile = () => {
     if (!authLoading && currentUser) {
-      navigate('/profile');
+      navigate('/profile/edit');
     }
   };
 
