@@ -361,14 +361,18 @@ const ProfileForm = () => {
   return (
     <div className="profile-form-container">
       <div className="profile-form-card">
-        <div className="profile-header">
-          <button 
-            className="back-button" 
+        <div className="page-backbar">
+          <button
+            className="btn-back"
             onClick={handleBackClick}
-            aria-label="Go back to dashboard"
+            aria-label="Back to dashboard"
+            title="Back to dashboard"
           >
-            ← Back
+            ← Back to Dashboard
           </button>
+        </div>
+
+        <div className="profile-header">
           <div>
             <h2>Basic Profile Information</h2>
             <p className="form-subtitle">Complete your professional profile to get started</p>

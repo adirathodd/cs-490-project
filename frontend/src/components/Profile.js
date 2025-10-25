@@ -57,6 +57,16 @@ const Profile = () => {
 
   return (
     <div className="profile-container">
+      <div className="page-backbar">
+        <a
+          className="btn-back"
+          href="/dashboard"
+          aria-label="Back to dashboard"
+          title="Back to dashboard"
+        >
+          ← Back to Dashboard
+        </a>
+      </div>
       <h2>Profile</h2>
       {profile && (
         <div className="profile-details">

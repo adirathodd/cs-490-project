@@ -36,3 +36,28 @@
     transform: rotate(360deg);
   }
 }
+
+/* Shared page header and back button styles */
+.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+
+/* Match Skills page placement and styling */
+.page-backbar { margin-bottom: 16px; }
+.btn-back {
+  padding: 8px 16px;
+  background: transparent;
+  color: #667eea;
+  border: 2px solid #667eea;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-block;
+}
+.btn-back:hover {
+  background: #667eea;
+  color: white;
+  transform: translateX(-2px);
+}

@@ -1,11 +1,14 @@
 .education-container { max-width: 900px; margin: 32px auto; padding: 0 16px; }
+/* header styles moved to App.css for consistency across pages */
 .education-form { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 24px; }
 .form-row { display: flex; gap: 16px; }
 .form-group { flex: 1; display: flex; flex-direction: column; margin-bottom: 12px; }
 .form-group input, .form-group select, .form-group textarea { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
 .form-group input.error, .form-group select.error { border-color: #b00020; }
 .required { color: #b00020; }
-.inline-checkbox { display: inline-flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 14px; }
+.inline-checkbox { display: inline-flex; align-items: center; margin-top: 8px; font-size: 14px; white-space: nowrap; gap: 0; }
+.inline-checkbox input[type="checkbox"] { margin: 0; }
+.inline-checkbox .checkbox-label-text { margin-left: 0; }
 .error-banner { background: #fde8e8; color: #b00020; border: 1px solid #f8c7c7; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; }
 .error-message { color: #b00020; font-size: 12px; margin-top: 4px; }
 .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
@@ -14,7 +17,7 @@
 .delete-button { background: #b00020; color: white; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
 .edit-button { background: #0f766e; color: white; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
 .education-list { display: flex; flex-direction: column; gap: 12px; }
-.education-item { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #fff; }
+.education-item { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #fff; position: relative; }
 .education-item-main { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .education-item-title { font-weight: 600; font-size: 16px; }
 .education-item-sub { color: #4b5563; font-size: 14px; }
@@ -22,3 +25,17 @@
 .education-item-actions { display: flex; gap: 8px; margin-top: 8px; }
 .empty-state { color: #6b7280; font-style: italic; padding: 16px; text-align: center; }
 @media (max-width: 640px) { .form-row { flex-direction: column; } }
+
+/* Timeline styles */
+.timeline { position: relative; padding-left: 24px; }
+.timeline::before { content: ''; position: absolute; left: 10px; top: 0; bottom: 0; width: 2px; background: #e5e7eb; }
+.education-item::before { content: ''; position: absolute; left: -2px; top: 20px; width: 10px; height: 10px; background: #2563eb; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 2px #e5e7eb; }
+.education-item.ongoing::before { background: #10b981; }
+.education-item.completed::before { background: #6b7280; }
+.status.ongoing { color: #065f46; font-weight: 500; }
+.status.completed { color: #1f2937; }
+
+/* Badges */
+.honors-badge { display: inline-block; margin-left: 8px; background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 999px; font-size: 12px; }
+.gpa-badge { display: inline-block; background: #e0f2fe; color: #075985; padding: 2px 6px; border-radius: 6px; font-size: 12px; margin-bottom: 6px; }
+.gpa-badge.private { background: #f3e8ff; color: #6b21a8; }

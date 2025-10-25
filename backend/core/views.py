@@ -28,6 +28,8 @@ from core.storage_utils import (
     process_profile_picture,
     delete_old_picture,
 )
+from django.db.models import Case, When, Value, IntegerField, F
+from django.db.models.functions import Coalesce
 import firebase_admin
 from firebase_admin import auth as firebase_auth
 import logging
@@ -1245,7 +1247,20 @@ def education_list_create(request):
         profile, _ = CandidateProfile.objects.get_or_create(user=user)
 
         if request.method == 'GET':
-            qs = Education.objects.filter(candidate=profile).order_by('-end_date', '-id')
+            # Order: currently enrolled first, then by most recent graduation/start date
+            qs = (
+                Education.objects
+                .filter(candidate=profile)
+                .annotate(
+                    current=Case(
+                        When(currently_enrolled=True, then=Value(1)),
+                        default=Value(0),
+                        output_field=IntegerField(),
+                    ),
+                    end_sort=Coalesce('end_date', 'start_date')
+                )
+                .order_by(F('current').desc(), F('end_sort').desc(nulls_last=True), '-id')
+            )
             return Response(EducationSerializer(qs, many=True).data, status=status.HTTP_200_OK)
 
         # POST
