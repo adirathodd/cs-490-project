@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { reauthenticateWithCredential, EmailAuthProvider } from '../services/firebase';
 import { authAPI } from '../services/api';
 import ProfilePictureUpload from './ProfilePictureUpload';
 import './ProfileForm.css';
@@ -36,7 +37,7 @@ const US_STATES = [
 ];
 
 const ProfileForm = () => {
-  const { currentUser, loading: authLoading } = useAuth();
+  const { currentUser, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [fetchingProfile, setFetchingProfile] = useState(true);
@@ -47,6 +48,10 @@ const ProfileForm = () => {
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [originalData, setOriginalData] = useState({});
   const [isInitialized, setIsInitialized] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
   
   const [formData, setFormData] = useState({
     first_name: '',
@@ -276,6 +281,60 @@ const ProfileForm = () => {
       setShowDiscardDialog(true);
     } else {
       navigate('/dashboard');
+    }
+  };
+
+  const openDeleteDialog = () => {
+    setDeleteError('');
+    setDeletePassword('');
+    setShowDeleteDialog(true);
+  };
+
+  const closeDeleteDialog = () => {
+    setShowDeleteDialog(false);
+    setDeleteError('');
+    setDeletePassword('');
+  };
+
+  const handleDeleteConfirm = async () => {
+    setDeleteError('');
+    if (!deletePassword) {
+      setDeleteError('Please enter your password to confirm deletion.');
+      return;
+    }
+
+    if (!currentUser) {
+      setDeleteError('No authenticated user found.');
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      // Reauthenticate the user with provided password
+      const credential = EmailAuthProvider.credential(currentUser.email, deletePassword);
+      await reauthenticateWithCredential(currentUser, credential);
+
+      // Refresh token and store it so backend receives a fresh token
+      const token = await currentUser.getIdToken(true);
+      localStorage.setItem('firebaseToken', token);
+
+      // Call backend to delete account
+      await authAPI.deleteAccount();
+
+      // Sign out locally and redirect to login
+      await signOut();
+      navigate('/login');
+    } catch (error) {
+      console.error('Account deletion error:', error);
+      if (error?.code === 'auth/wrong-password' || error?.response?.status === 401) {
+        setDeleteError('Incorrect password. Please try again.');
+      } else if (error?.response?.data?.error?.message) {
+        setDeleteError(error.response.data.error.message);
+      } else {
+        setDeleteError('Failed to delete account. Please try again later.');
+      }
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -587,8 +646,45 @@ const ProfileForm = () => {
             >
               {loading ? 'Saving...' : 'Save Profile'}
             </button>
+            <button
+              type="button"
+              className="delete-button"
+              onClick={openDeleteDialog}
+              disabled={loading}
+              aria-label="Delete account"
+            >
+              Delete Account
+            </button>
           </div>
         </form>
+        {/* Delete Account Confirmation Dialog */}
+        {showDeleteDialog && (
+          <div className="modal-overlay">
+            <div className="modal-dialog">
+              <h3 style={{ color: '#b00020' }}>Delete Account — Permanent</h3>
+              <p>
+                This will permanently delete your account and all associated data immediately. This action cannot be undone.
+              </p>
+              <p>Please confirm by entering your password:</p>
+              <input
+                type="password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                placeholder="Your password"
+                className={deleteError ? 'error' : ''}
+              />
+              {deleteError && <div className="error-message">{deleteError}</div>}
+              <div className="modal-actions">
+                <button className="modal-cancel-button" onClick={closeDeleteDialog} disabled={deleting}>
+                  Cancel
+                </button>
+                <button className="modal-confirm-button" onClick={handleDeleteConfirm} disabled={deleting}>
+                  {deleting ? 'Deleting...' : 'Delete Account'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
