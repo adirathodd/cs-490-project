@@ -259,4 +259,52 @@ export const skillsAPI = {
   },
 };
 
+// Education API calls
+export const educationAPI = {
+  getLevels: async () => {
+    try {
+      const response = await api.get('/education/levels');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch education levels' };
+    }
+  },
+
+  getEducations: async () => {
+    try {
+      const response = await api.get('/education');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch education entries' };
+    }
+  },
+
+  addEducation: async (data) => {
+    try {
+      const response = await api.post('/education', data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to add education' };
+    }
+  },
+
+  updateEducation: async (id, data) => {
+    try {
+      const response = await api.patch(`/education/${id}` , data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to update education' };
+    }
+  },
+
+  deleteEducation: async (id) => {
+    try {
+      const response = await api.delete(`/education/${id}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete education' };
+    }
+  }
+};
+
 export default authAPI;
