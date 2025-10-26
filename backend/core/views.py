@@ -23,8 +23,10 @@ from core.serializers import (
     SkillAutocompleteSerializer,
     EducationSerializer,
     CertificationSerializer,
+    ProjectSerializer,
+    ProjectMediaSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (
@@ -32,10 +34,12 @@ from core.storage_utils import (
     delete_old_picture,
 )
 from django.core.files.base import ContentFile
-import imghdr
+from PIL import Image
+import io
 import logging
 import traceback
 from django.db.models import Case, When, Value, IntegerField, F
+from django.db import models
 from django.db.models.functions import Coalesce
 import firebase_admin
 from firebase_admin import auth as firebase_auth
@@ -444,7 +448,8 @@ def request_account_deletion(request):
     try:
         user = request.user
         # Create a new deletion request token (invalidate older by allowing overwrite behavior on retrieve)
-        deletion = AccountDeletionRequest.create_for_user(user)
+        # Token valid for 1 hour
+        deletion = AccountDeletionRequest.create_for_user(user, ttl_hours=1)
 
         # Build confirmation URL
         confirm_path = f"/api/auth/delete/confirm/{deletion.token}"
@@ -460,6 +465,7 @@ def request_account_deletion(request):
                 'confirm_url': confirm_url,
                 'primary_start': '#667eea',
                 'primary_end': '#764ba2',
+                'ttl_hours': 1,
             }
             html_content = render_to_string('emails/account_deletion_request.html', context)
             text_content = render_to_string('emails/account_deletion_request.txt', context)
@@ -963,8 +969,17 @@ def get_profile_picture(request):
                         elif 'gif' in content_type:
                             ext = 'gif'
                     if not ext:
-                        guessed = imghdr.what(None, h=content)
-                        ext = guessed if guessed else 'jpg'
+                        try:
+                            img = Image.open(io.BytesIO(content))
+                            fmt = (img.format or '').lower()
+                            if fmt in ('jpeg', 'jpg'):
+                                ext = 'jpg'
+                            elif fmt in ('png', 'gif', 'webp'):
+                                ext = fmt
+                            else:
+                                ext = 'jpg'
+                        except Exception:
+                            ext = 'jpg'
 
                     filename = f"profile_{profile.user.username}.{ext}"
                     try:
@@ -1834,3 +1849,194 @@ def certification_detail(request, certification_id):
             {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+    
+# ======================
+# UC-031: PROJECTS VIEWS
+# ======================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def projects_list_create(request):
+    """List and create projects for the authenticated user.
+
+    GET: list all
+    POST: create (supports multipart for media uploads using key 'media')
+    """
+    try:
+        user = request.user
+        profile, _ = CandidateProfile.objects.get_or_create(user=user)
+
+        if request.method == 'GET':
+            qs = Project.objects.filter(candidate=profile).order_by('-start_date', '-created_at', '-id')
+            data = ProjectSerializer(qs, many=True, context={'request': request}).data
+            return Response(data, status=status.HTTP_200_OK)
+
+        # POST create
+        payload = request.data.copy()
+        # If technologies is a comma-separated string, split it
+        techs = payload.get('technologies')
+        if isinstance(techs, str):
+            # Allow JSON list string or comma-separated
+            import json
+            try:
+                parsed = json.loads(techs)
+                if isinstance(parsed, list):
+                    payload.setlist('technologies', parsed) if hasattr(payload, 'setlist') else payload.update({'technologies': parsed})
+            except Exception:
+                payload['technologies'] = [t.strip() for t in techs.split(',') if t.strip()]
+
+        serializer = ProjectSerializer(data=payload, context={'request': request})
+        if not serializer.is_valid():
+            msgs = _validation_messages(serializer.errors)
+            return Response(
+                {
+                    'error': {
+                        'code': 'validation_error',
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': serializer.errors
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        project = serializer.save(candidate=profile)
+
+        # Handle media files (multiple allowed)
+        files = request.FILES.getlist('media')
+        for idx, f in enumerate(files):
+            ProjectMedia.objects.create(project=project, image=f, order=idx)
+
+        return Response(ProjectSerializer(project, context={'request': request}).data, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        logger.error(f"Error in projects_list_create: {e}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def project_detail(request, project_id):
+    """Retrieve/Update/Delete a project; PATCH/PUT may accept additional 'media' files to append."""
+    try:
+        user = request.user
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            return Response(
+                {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            project = Project.objects.get(id=project_id, candidate=profile)
+        except Project.DoesNotExist:
+            return Response(
+                {'error': {'code': 'project_not_found', 'message': 'Project not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if request.method == 'GET':
+            return Response(ProjectSerializer(project, context={'request': request}).data, status=status.HTTP_200_OK)
+
+        if request.method in ['PUT', 'PATCH']:
+            partial = request.method == 'PATCH'
+            payload = request.data.copy()
+            techs = payload.get('technologies')
+            if isinstance(techs, str):
+                import json
+                try:
+                    parsed = json.loads(techs)
+                    if isinstance(parsed, list):
+                        payload.setlist('technologies', parsed) if hasattr(payload, 'setlist') else payload.update({'technologies': parsed})
+                except Exception:
+                    payload['technologies'] = [t.strip() for t in techs.split(',') if t.strip()]
+
+            serializer = ProjectSerializer(project, data=payload, partial=partial, context={'request': request})
+            if not serializer.is_valid():
+                msgs = _validation_messages(serializer.errors)
+                return Response(
+                    {
+                        'error': {
+                            'code': 'validation_error',
+                            'message': (msgs[0] if msgs else 'Validation error'),
+                            'messages': msgs,
+                            'details': serializer.errors
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            instance = serializer.save()
+
+            # Append any uploaded media
+            files = request.FILES.getlist('media')
+            if files:
+                # continue ordering from last
+                start_order = (instance.media.aggregate(m=models.Max('order')).get('m') or 0) + 1
+                for offset, f in enumerate(files):
+                    ProjectMedia.objects.create(project=instance, image=f, order=start_order + offset)
+
+            return Response(ProjectSerializer(instance, context={'request': request}).data, status=status.HTTP_200_OK)
+
+        # DELETE
+        project.delete()
+        return Response({'message': 'Project deleted successfully.'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error in project_detail: {e}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
+def project_media_upload(request, project_id):
+    """Upload one or more media files for a project. Field name: 'media' (multiple)."""
+    try:
+        user = request.user
+        profile = CandidateProfile.objects.get(user=user)
+        project = Project.objects.get(id=project_id, candidate=profile)
+        files = request.FILES.getlist('media')
+        if not files:
+            return Response({'error': {'code': 'no_files', 'message': 'No files provided.'}}, status=status.HTTP_400_BAD_REQUEST)
+        start_order = (project.media.aggregate(m=models.Max('order')).get('m') or 0) + 1
+        created = []
+        for i, f in enumerate(files):
+            m = ProjectMedia.objects.create(project=project, image=f, order=start_order + i)
+            created.append(m)
+        return Response(ProjectMediaSerializer(created, many=True, context={'request': request}).data, status=status.HTTP_201_CREATED)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}}, status=status.HTTP_404_NOT_FOUND)
+    except Project.DoesNotExist:
+        return Response({'error': {'code': 'project_not_found', 'message': 'Project not found.'}}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error in project_media_upload: {e}\n{traceback.format_exc()}")
+        return Response({'error': {'code': 'internal_error', 'message': 'Failed to upload media.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def project_media_delete(request, project_id, media_id):
+    """Delete a specific media item from a project."""
+    try:
+        user = request.user
+        profile = CandidateProfile.objects.get(user=user)
+        project = Project.objects.get(id=project_id, candidate=profile)
+        media = ProjectMedia.objects.get(id=media_id, project=project)
+        media.delete()
+        return Response({'message': 'Media deleted successfully.'}, status=status.HTTP_200_OK)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}}, status=status.HTTP_404_NOT_FOUND)
+    except Project.DoesNotExist:
+        return Response({'error': {'code': 'project_not_found', 'message': 'Project not found.'}}, status=status.HTTP_404_NOT_FOUND)
+    except ProjectMedia.DoesNotExist:
+        return Response({'error': {'code': 'media_not_found', 'message': 'Media not found.'}}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error in project_media_delete: {e}\n{traceback.format_exc()}")
+        return Response({'error': {'code': 'internal_error', 'message': 'Failed to delete media.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

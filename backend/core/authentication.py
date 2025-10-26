@@ -10,7 +10,8 @@ import logging
 import os
 from django.utils import timezone
 from django.core.files.base import ContentFile
-import imghdr
+from PIL import Image
+import io
 import re
 
 logger = logging.getLogger(__name__)
@@ -160,9 +161,18 @@ class FirebaseAuthentication(authentication.BaseAuthentication):
                                             elif 'gif' in content_type:
                                                 ext = 'gif'
                                         if not ext:
-                                            # Fallback: try to guess from bytes
-                                            guessed = imghdr.what(None, h=content)
-                                            ext = guessed if guessed else 'jpg'
+                                            # Fallback: try to guess from bytes using Pillow
+                                            try:
+                                                img = Image.open(io.BytesIO(content))
+                                                fmt = (img.format or '').lower()
+                                                if fmt in ('jpeg', 'jpg'):
+                                                    ext = 'jpg'
+                                                elif fmt in ('png', 'gif', 'webp'):
+                                                    ext = fmt
+                                                else:
+                                                    ext = 'jpg'
+                                            except Exception:
+                                                ext = 'jpg'
 
                                         filename = f"profile_{user.username}.{ext}"
                                         # Save to profile.profile_picture (ImageField)

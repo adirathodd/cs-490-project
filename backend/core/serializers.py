@@ -6,7 +6,7 @@ import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia
 
 User = get_user_model()
 
@@ -561,5 +561,101 @@ class CertificationSerializer(serializers.ModelSerializer):
             # When it expires, expiry_date can be optional, but we'll allow null (user may add later)
             pass
         return data
+
+
+# ======================
+# UC-031: PROJECTS SERIALIZERS
+# ======================
+
+class ProjectMediaSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = ProjectMedia
+        fields = ['id', 'image_url', 'caption', 'order', 'uploaded_at']
+        read_only_fields = ['id', 'image_url', 'uploaded_at']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image:
+            url = obj.image.url
+            return request.build_absolute_uri(url) if request else url
+        return None
+
+
+class ProjectSerializer(serializers.ModelSerializer):
+    """Serializer for project entries."""
+    # Accept and return technologies as a list of skill names
+    technologies = serializers.ListField(child=serializers.CharField(), required=False)
+    status = serializers.ChoiceField(choices=[('completed','Completed'),('ongoing','Ongoing'),('planned','Planned')])
+    media = ProjectMediaSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Project
+        fields = [
+            'id', 'name', 'description', 'role', 'start_date', 'end_date',
+            'project_url', 'team_size', 'collaboration_details', 'outcomes',
+            'industry', 'category', 'status', 'technologies', 'media',
+        ]
+        read_only_fields = ['id', 'media']
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Derive technologies from linked skills if not explicitly set
+        data['technologies'] = [s.name for s in instance.skills_used.all()]
+        return data
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        start_date = data.get('start_date') or getattr(self.instance, 'start_date', None)
+        end_date = data.get('end_date') or getattr(self.instance, 'end_date', None)
+        status_val = data.get('status') or getattr(self.instance, 'status', None)
+
+        errors = {}
+        if start_date and end_date and start_date > end_date:
+            errors['start_date'] = 'Start date cannot be after end date.'
+
+        # Team size validation
+        team_size = data.get('team_size')
+        if team_size is not None and team_size <= 0:
+            errors['team_size'] = 'Team size must be a positive number.'
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return data
+
+    def _sync_technologies(self, project: Project, technologies):
+        if technologies is None:
+            return
+        # Map list of names to Skill instances
+        names = [str(n).strip() for n in technologies if str(n).strip()]
+        if not names:
+            project.skills_used.clear()
+            return
+        skills = []
+        for name in names:
+            # get_or_create case-insensitive
+            existing = Skill.objects.filter(name__iexact=name).first()
+            if existing:
+                skills.append(existing)
+            else:
+                skills.append(Skill.objects.create(name=name, category=''))
+        project.skills_used.set(skills)
+
+    def create(self, validated_data):
+        technologies = validated_data.pop('technologies', None)
+        project = Project.objects.create(**validated_data)
+        self._sync_technologies(project, technologies)
+        return project
+
+    def update(self, instance, validated_data):
+        technologies = validated_data.pop('technologies', None)
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+        instance.save()
+        if technologies is not None:
+            self._sync_technologies(instance, technologies)
+        return instance
 
 

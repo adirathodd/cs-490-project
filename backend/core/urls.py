@@ -47,6 +47,12 @@ urlpatterns = [
     path('certifications', views.certifications_list_create, name='certifications-list-create'),
     path('certifications/<int:certification_id>', views.certification_detail, name='certification-detail'),
 
+    # Projects endpoints (UC-031)
+    path('projects', views.projects_list_create, name='projects-list-create'),
+    path('projects/<int:project_id>', views.project_detail, name='project-detail'),
+    path('projects/<int:project_id>/media', views.project_media_upload, name='project-media-upload'),
+    path('projects/<int:project_id>/media/<int:media_id>', views.project_media_delete, name='project-media-delete'),
+
     # Account Deletion confirmation (email link landing)
     path('auth/delete/confirm/<str:token>', views.confirm_account_deletion, name='confirm-account-deletion'),
 ]

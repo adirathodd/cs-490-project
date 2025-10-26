@@ -1,0 +1,38 @@
+.projects-container { padding: 24px; max-width: 1000px; margin: 0 auto; }
+.page-backbar { margin-bottom: 12px; }
+.btn-back { text-decoration: none; color: #5b21b6; }
+
+.projects-form { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-group { display: flex; flex-direction: column; margin-bottom: 12px; }
+.form-group label { font-weight: 600; margin-bottom: 6px; }
+.form-group input, .form-group select, .form-group textarea { padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; }
+.form-group .hint { font-size: 12px; color: #6b7280; margin-top: 4px; }
+.required { color: #dc2626; }
+.error-banner { background:#fee2e2; color:#991b1b; padding:10px; border-radius:6px; margin-bottom: 12px; }
+.error { border-color: #ef4444 !important; }
+.error-message { color:#991b1b; font-size: 12px; margin-top: 4px; }
+
+.form-actions { display:flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+.save-button { background:#5b21b6; color:#fff; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; }
+.cancel-button { background:#e5e7eb; color:#111827; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; }
+
+.preview-grid { display:flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.preview-item { background:#f3f4f6; border:1px dashed #d1d5db; padding:6px 8px; border-radius:6px; font-size: 12px; }
+
+.projects-list .empty-state { color:#6b7280; padding: 12px; }
+.project-item { background:#fff; border:1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.project-header { display:flex; align-items:center; justify-content: space-between; gap: 8px; }
+.project-title { display:flex; align-items:center; gap: 8px; }
+.badge { border-radius: 999px; padding: 4px 8px; font-size: 12px; background:#f3f4f6; }
+.badge.completed { background:#dcfce7; color:#166534; }
+.badge.ongoing { background:#dbeafe; color:#1e40af; }
+.badge.planned { background:#fee2e2; color:#991b1b; }
+.project-meta { display:flex; gap: 12px; flex-wrap: wrap; color:#374151; margin-top: 6px; }
+.project-tech { display:flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.tag { background:#ede9fe; color:#5b21b6; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+.project-section { margin-top: 8px; color:#111827; }
+.project-media-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin-top: 10px; }
+.media-item img { width: 100%; height: 120px; object-fit: cover; border-radius: 6px; border: 1px solid #e5e7eb; }
+.edit-button, .delete-button { background: #f3f4f6; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+.delete-button { color:#991b1b; }

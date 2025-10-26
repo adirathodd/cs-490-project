@@ -275,6 +275,13 @@ const Dashboard = () => {
           </div>
 
           <div className="dashboard-card">
+            <div className="card-icon" aria-label="Projects">🧩</div>
+            <h3>Projects</h3>
+            <p>Showcase significant work beyond employment</p>
+            <button className="card-button" onClick={() => navigate('/projects')}>Manage Projects</button>
+          </div>
+
+          <div className="dashboard-card">
             <div className="card-icon" aria-label="Analytics">📊</div>
             <h3>Analytics</h3>
             <p>View your job search metrics</p>
