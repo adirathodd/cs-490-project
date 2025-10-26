@@ -20,8 +20,9 @@ from core.serializers import (
     CandidateSkillSerializer,
     SkillAutocompleteSerializer,
     EducationSerializer,
+    CertificationSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (
@@ -33,6 +34,43 @@ from django.db.models.functions import Coalesce
 import firebase_admin
 from firebase_admin import auth as firebase_auth
 import logging
+
+
+# ------------------------------
+# Validation error message helpers
+# ------------------------------
+def _validation_messages(errors) -> list[str]:
+    """Return a list of human-readable validation error messages.
+
+    Example input:
+      {"credential_url": ["Enter a valid URL."], "issue_date": ["This field is required."]}
+    Output list:
+      ["Credential url: Enter a valid URL.", "Issue date: This field is required."]
+    """
+    messages = []
+    try:
+        if isinstance(errors, dict):
+            for field, err in errors.items():
+                # Normalize to first meaningful message per field
+                if isinstance(err, (list, tuple)) and err:
+                    msg = str(err[0])
+                else:
+                    msg = str(err)
+                if field == 'non_field_errors':
+                    messages.append(msg)
+                else:
+                    field_label = str(field).replace('_', ' ').capitalize()
+                    messages.append(f"{field_label}: {msg}")
+        elif isinstance(errors, (list, tuple)):
+            for e in errors:
+                if e:
+                    messages.append(str(e))
+        elif errors:
+            messages.append(str(errors))
+    except Exception:
+        # Fallback to a generic message if formatting fails
+        messages.append("Validation error")
+    return messages
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -66,8 +104,16 @@ def register_user(request):
     serializer = UserRegistrationSerializer(data=request.data)
     
     if not serializer.is_valid():
+        msgs = _validation_messages(serializer.errors)
         return Response(
-            {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+            {
+                'error': {
+                    'code': 'validation_error',
+                    'message': (msgs[0] if msgs else 'Validation error'),
+                    'messages': msgs,
+                    'details': serializer.errors
+                }
+            },
             status=status.HTTP_400_BAD_REQUEST
         )
     
@@ -188,8 +234,16 @@ def login_user(request):
     serializer = UserLoginSerializer(data=request.data)
     
     if not serializer.is_valid():
+        msgs = _validation_messages(serializer.errors)
         return Response(
-            {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+            {
+                'error': {
+                    'code': 'validation_error',
+                    'message': (msgs[0] if msgs else 'Validation error'),
+                    'messages': msgs,
+                    'details': serializer.errors
+                }
+            },
             status=status.HTTP_400_BAD_REQUEST
         )
     
@@ -503,7 +557,13 @@ def user_profile(request, user_id=None):
                 request.user == target_user
             )
             return Response(
-                {'error': 'You do not have permission to access this profile'},
+                {
+                    'error': {
+                        'code': 'forbidden',
+                        'message': 'You do not have permission to access this profile',
+                        'messages': ['You do not have permission to access this profile']
+                    }
+                },
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -519,7 +579,13 @@ def user_profile(request, user_id=None):
         # PUT
         if not request.user.is_staff and request.user != target_user:
             return Response(
-                {'error': 'You do not have permission to edit this profile'},
+                {
+                    'error': {
+                        'code': 'forbidden',
+                        'message': 'You do not have permission to edit this profile',
+                        'messages': ['You do not have permission to edit this profile']
+                    }
+                },
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -567,8 +633,16 @@ def update_basic_profile(request):
         serializer = BasicProfileSerializer(profile, data=request.data, partial=partial)
 
         if not serializer.is_valid():
+            msgs = _validation_messages(serializer.errors)
             return Response(
-                {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                {
+                    'error': {
+                        'code': 'validation_error',
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': serializer.errors
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -610,8 +684,16 @@ def upload_profile_picture(request):
         # Validate request data
         serializer = ProfilePictureUploadSerializer(data=request.data)
         if not serializer.is_valid():
+            msgs = _validation_messages(serializer.errors)
             return Response(
-                {'error': {'code': 'validation_error', 'message': 'Invalid file upload.', 'details': serializer.errors}},
+                {
+                    'error': {
+                        'code': 'validation_error',
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': serializer.errors
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -770,8 +852,16 @@ def skills_list_create(request):
             serializer = CandidateSkillSerializer(data=request.data)
             
             if not serializer.is_valid():
+                msgs = _validation_messages(serializer.errors)
                 return Response(
-                    {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                    {
+                        'error': {
+                            'code': 'validation_error',
+                            'message': (msgs[0] if msgs else 'Validation error'),
+                            'messages': msgs,
+                            'details': serializer.errors
+                        }
+                    },
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
@@ -1266,8 +1356,16 @@ def education_list_create(request):
         # POST
         serializer = EducationSerializer(data=request.data)
         if not serializer.is_valid():
+            msgs = _validation_messages(serializer.errors)
             return Response(
-                {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                {
+                    'error': {
+                        'code': 'validation_error',
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': serializer.errors
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
         instance = serializer.save(candidate=profile)
@@ -1312,8 +1410,16 @@ def education_detail(request, education_id):
             partial = request.method == 'PATCH'
             serializer = EducationSerializer(edu, data=request.data, partial=partial)
             if not serializer.is_valid():
+                msgs = _validation_messages(serializer.errors)
                 return Response(
-                    {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                    {
+                        'error': {
+                            'code': 'validation_error',
+                            'message': (msgs[0] if msgs else 'Validation error'),
+                            'messages': msgs,
+                            'details': serializer.errors
+                        }
+                    },
                     status=status.HTTP_400_BAD_REQUEST
                 )
             serializer.save()
@@ -1325,6 +1431,226 @@ def education_detail(request, education_id):
 
     except Exception as e:
         logger.error(f"Error in education_detail: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# ======================
+# UC-030: CERTIFICATIONS VIEWS
+# ======================
+
+# Predefined categories (can be expanded later or driven from data)
+CERTIFICATION_CATEGORIES = [
+    "Cloud",
+    "Security",
+    "Project Management",
+    "Data & Analytics",
+    "Networking",
+    "Software Development",
+    "DevOps",
+    "Design / UX",
+    "Healthcare",
+    "Finance",
+    "Other",
+]
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def certification_categories(request):
+    return Response(CERTIFICATION_CATEGORIES, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def certification_org_search(request):
+    """Autocomplete search for issuing organizations"""
+    query = request.GET.get('q', '').strip()
+    limit = int(request.GET.get('limit', 10))
+    if len(query) < 2:
+        return Response(
+            {'error': {'code': 'invalid_query', 'message': 'Search query must be at least 2 characters.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    # Search distinct orgs in DB
+    orgs = (
+        Certification.objects
+        .filter(issuing_organization__icontains=query)
+        .values_list('issuing_organization', flat=True)
+        .distinct()[:limit]
+    )
+    # Seed common orgs if DB is empty
+    if not orgs:
+        seed = [
+            # Cloud & Platform
+            'Amazon Web Services (AWS)',
+            'Microsoft',
+            'Google Cloud',
+            'Oracle',
+            'IBM',
+            'Red Hat',
+            'VMware',
+            'Salesforce',
+            'ServiceNow',
+            'SAP',
+            'Linux Foundation',
+            'Cloud Native Computing Foundation (CNCF)',
+
+            # Networking & Security Vendors
+            'Cisco',
+            'Palo Alto Networks',
+            'Fortinet',
+            'Juniper Networks',
+
+            # Security & Governance Bodies
+            '(ISC)²',
+            'ISACA',
+            'GIAC',
+            'EC-Council',
+            'Offensive Security',
+
+            # IT Generalist / Ops
+            'CompTIA',
+            'Atlassian',
+            'HashiCorp',
+
+            # Data & Analytics
+            'Snowflake',
+            'Databricks',
+            'Tableau',
+            'MongoDB',
+            'Elastic',
+
+            # Agile / Project / ITSM
+            'PMI',
+            'Scrum Alliance',
+            'Scrum.org',
+            'Scaled Agile (SAFe)',
+            'AXELOS / PeopleCert (ITIL)',
+
+            # Other notable issuers
+            'Adobe',
+            'NVIDIA',
+        ]
+        orgs = [o for o in seed if query.lower() in o.lower()][:limit]
+    return Response(list(orgs), status=status.HTTP_200_OK)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def certifications_list_create(request):
+    """
+    List and create certifications for the authenticated user.
+
+    GET: list all
+    POST: create (supports multipart for document upload)
+    """
+    try:
+        user = request.user
+        profile, _ = CandidateProfile.objects.get_or_create(user=user)
+
+        if request.method == 'GET':
+            qs = Certification.objects.filter(candidate=profile).order_by('-issue_date', '-id')
+            return Response(CertificationSerializer(qs, many=True, context={'request': request}).data, status=status.HTTP_200_OK)
+
+        # POST create
+        data = request.data.copy()
+        serializer = CertificationSerializer(data=data, context={'request': request})
+        if not serializer.is_valid():
+            msgs = _validation_messages(serializer.errors)
+            return Response(
+                {
+                    'error': {
+                        'code': 'validation_error',
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': serializer.errors
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        instance = serializer.save(candidate=profile)
+
+        # Handle file upload if present
+        document = request.FILES.get('document')
+        if document:
+            instance.document = document
+            instance.save()
+
+        return Response(CertificationSerializer(instance, context={'request': request}).data, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        logger.error(f"Error in certifications_list_create: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def certification_detail(request, certification_id):
+    """Retrieve/Update/Delete a certification"""
+    try:
+        user = request.user
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            return Response(
+                {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            cert = Certification.objects.get(id=certification_id, candidate=profile)
+        except Certification.DoesNotExist:
+            return Response(
+                {'error': {'code': 'certification_not_found', 'message': 'Certification not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if request.method == 'GET':
+            return Response(CertificationSerializer(cert, context={'request': request}).data, status=status.HTTP_200_OK)
+
+        if request.method in ['PUT', 'PATCH']:
+            partial = request.method == 'PATCH'
+            data = request.data.copy()
+            serializer = CertificationSerializer(cert, data=data, partial=partial, context={'request': request})
+            if not serializer.is_valid():
+                msgs = _validation_messages(serializer.errors)
+                return Response(
+                    {
+                        'error': {
+                            'code': 'validation_error',
+                            'message': (msgs[0] if msgs else 'Validation error'),
+                            'messages': msgs,
+                            'details': serializer.errors
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            instance = serializer.save()
+
+            # Update document if provided
+            document = request.FILES.get('document')
+            if document is not None:
+                instance.document = document
+                instance.save()
+            # Allow clearing document by sending empty value
+            elif 'document' in request.data and (request.data.get('document') in ['', None]):
+                instance.document = None
+                instance.save()
+
+            return Response(CertificationSerializer(instance, context={'request': request}).data, status=status.HTTP_200_OK)
+
+        # DELETE
+        cert.delete()
+        return Response({'message': 'Certification deleted successfully.'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error in certification_detail: {e}")
         return Response(
             {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

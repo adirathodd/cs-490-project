@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useParams } from 'react-router-dom';
+import { authAPI, profileAPI } from '../services/api';
 import './Profile.css';
 
 const Profile = () => {
@@ -26,16 +27,25 @@ const Profile = () => {
           return;
         }
 
-        // If trying to access another user's profile, verify permissions
-        if (currentUser.uid !== userId && !userProfile?.isAdmin) {
+        // If trying to access another user's profile, verify permissions via backend
+        // Determine admin status from backend /users/me (checks is_staff/is_superuser)
+        const me = await authAPI.getCurrentUser();
+        const isAdmin = !!(me?.user?.is_staff || me?.user?.is_superuser);
+
+        if (!isAdmin) {
           setError('Unauthorized: You can only view your own profile');
           navigate('/profile');
           return;
         }
 
-        // For admin users, fetch the requested user's profile
-        if (userProfile?.isAdmin) {
-          // TODO: Implement admin profile fetch
+        // Admin: fetch the requested user's profile
+        try {
+          const res = await profileAPI.getUserProfile(userId);
+          setProfile(res.profile);
+        } catch (err) {
+          const msg = err?.error?.message || err?.message || 'Error loading user profile';
+          setError(msg);
+        } finally {
           setLoading(false);
         }
       } catch (error) {

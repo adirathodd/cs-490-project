@@ -39,4 +39,10 @@ urlpatterns = [
     path('education/levels', views.education_levels, name='education-levels'),
     path('education', views.education_list_create, name='education-list-create'),
     path('education/<int:education_id>', views.education_detail, name='education-detail'),
+
+    # Certifications endpoints (UC-030)
+    path('certifications/categories', views.certification_categories, name='certification-categories'),
+    path('certifications/orgs', views.certification_org_search, name='certification-org-search'),
+    path('certifications', views.certifications_list_create, name='certifications-list-create'),
+    path('certifications/<int:certification_id>', views.certification_detail, name='certification-detail'),
 ]

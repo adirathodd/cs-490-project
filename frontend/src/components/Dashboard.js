@@ -13,6 +13,13 @@ const Dashboard = () => {
   const confirmRef = useRef(null);
   const userMenuRef = useRef(null);
 
+  // Prefer full_name from API; fallback to first/last; then email
+  const displayName = (
+    (userProfile?.full_name && userProfile.full_name.trim()) ||
+    (((userProfile?.first_name || userProfile?.last_name) && `${userProfile.first_name || ''} ${userProfile.last_name || ''}`.trim()) || '') ||
+    currentUser?.email
+  );
+
   useEffect(() => {
     // Fetch profile picture
     const fetchProfilePicture = async () => {
@@ -113,7 +120,7 @@ const Dashboard = () => {
           <div className="user-menu-wrapper" ref={userMenuRef}>
             <button onClick={toggleUserMenu} className="user-menu-button">
               <span className="user-name">
-                {userProfile ? `${userProfile.first_name} ${userProfile.last_name}` : currentUser?.email}
+                {displayName}
               </span>
               <span className="dropdown-arrow">{showUserMenu ? '▲' : '▼'}</span>
             </button>
@@ -161,7 +168,7 @@ const Dashboard = () => {
               </div>
               <div className="account-details">
                 <h2 className="account-name">
-                  {userProfile ? `${userProfile.first_name} ${userProfile.last_name}` : 'Welcome'}
+                  {displayName || 'Welcome'}
                 </h2>
                 <p className="account-email">{currentUser?.email}</p>
                 {userProfile && (
@@ -212,7 +219,20 @@ const Dashboard = () => {
           </div>
 
           <div className="dashboard-card">
-            <div className="card-icon">⭐</div>
+            <div className="card-icon" aria-label="Certifications">
+              <svg
+                width="48"
+                height="48"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                role="img"
+                aria-hidden="true"
+              >
+                <path d="M12 2l2.39 4.84 5.34.78-3.87 3.77.91 5.3L12 14.77 7.23 16.7l.91-5.3L4.27 7.62l5.34-.78L12 2z" stroke="#6B46C1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M9 22v-5l3 2 3-2v5" stroke="#6B46C1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
             <h3>Skills</h3>
             <p>Add and manage your skills</p>
             <button className="card-button" onClick={() => navigate('/skills')}>Manage Skills</button>
@@ -229,7 +249,14 @@ const Dashboard = () => {
           </div>
 
           <div className="dashboard-card">
-            <div className="card-icon">📊</div>
+            <div className="card-icon" aria-label="Certifications">🏅</div>
+            <h3>Certifications</h3>
+            <p>Add and manage your professional certifications</p>
+            <button className="card-button" onClick={() => navigate('/certifications')}>Manage Certifications</button>
+          </div>
+
+          <div className="dashboard-card">
+            <div className="card-icon" aria-label="Analytics">📊</div>
             <h3>Analytics</h3>
             <p>View your job search metrics</p>
             <button className="card-button">View Analytics</button>

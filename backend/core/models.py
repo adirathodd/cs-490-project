@@ -232,6 +232,21 @@ class Certification(models.Model):
     credential_id = models.CharField(max_length=100, blank=True)
     credential_url = models.URLField(blank=True)
     never_expires = models.BooleanField(default=False)
+    # UC-030 extensions
+    category = models.CharField(max_length=100, blank=True)
+    verification_status = models.CharField(
+        max_length=20,
+        default="unverified",
+        choices=[
+            ("unverified", "Unverified"),
+            ("pending", "Pending"),
+            ("verified", "Verified"),
+            ("rejected", "Rejected"),
+        ],
+    )
+    document = models.FileField(upload_to='certifications/%Y/%m/', null=True, blank=True)
+    renewal_reminder_enabled = models.BooleanField(default=False)
+    reminder_days_before = models.PositiveSmallIntegerField(default=30)
     
     class Meta:
         ordering = ['-issue_date']
@@ -239,6 +254,27 @@ class Certification(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.issuing_organization}"
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone
+        if self.never_expires or not self.expiry_date:
+            return False
+        return self.expiry_date < timezone.localdate()
+
+    @property
+    def days_until_expiration(self):
+        from django.utils import timezone
+        if self.never_expires or not self.expiry_date:
+            return None
+        return (self.expiry_date - timezone.localdate()).days
+
+    @property
+    def reminder_date(self):
+        if not self.renewal_reminder_enabled or not self.expiry_date:
+            return None
+        from datetime import timedelta
+        return self.expiry_date - timedelta(days=int(self.reminder_days_before or 0))
 
 
 class Achievement(models.Model):
