@@ -139,6 +139,21 @@
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
+/* Google button variant (uses same sizing as primary button but with different colors) */
+.google-button {
+  background: #fff;
+  color: #111827;
+  border: 1px solid #e5e7eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.google-button img {
+  height: 18px;
+  margin-right: 8px;
+}
+
 .auth-button:active:not(:disabled) {
   transform: translateY(0);
 }

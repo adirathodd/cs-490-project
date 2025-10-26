@@ -28,6 +28,10 @@ from core.storage_utils import (
     process_profile_picture,
     delete_old_picture,
 )
+from django.core.files.base import ContentFile
+import imghdr
+import logging
+import traceback
 from django.db.models import Case, When, Value, IntegerField, F
 from django.db.models.functions import Coalesce
 import firebase_admin
@@ -683,9 +687,18 @@ def delete_profile_picture(request):
         logger.info(f"Deleting profile picture for user: {user.email}")
         delete_old_picture(profile.profile_picture.name)
 
-        # Clear profile picture field
+        # Clear profile picture field and clear any linked external portfolio_url
         profile.profile_picture = None
         profile.profile_picture_uploaded_at = None
+        # If the portfolio_url is present and likely points to an external provider (e.g., Google),
+        # remove it as well so we don't automatically re-download the same image.
+        try:
+            if profile.portfolio_url:
+                profile.portfolio_url = None
+        except Exception:
+            # If the model doesn't have the field for some reason, ignore silently
+            pass
+
         profile.save()
 
         logger.info(f"Profile picture deleted successfully for user: {user.email}")
@@ -715,6 +728,78 @@ def get_profile_picture(request):
             profile = CandidateProfile.objects.get(user=user)
         except CandidateProfile.DoesNotExist:
             profile = CandidateProfile.objects.create(user=user)
+
+        # If no uploaded profile picture exists but we have a portfolio_url (Google photo),
+        # attempt an on-demand download/save so we can serve the image from our domain
+        if not profile.profile_picture and profile.portfolio_url:
+            photo_url = profile.portfolio_url
+            try:
+                # Try higher-resolution variants for Google profile URLs, then requests -> urllib
+                def candidate_urls(url):
+                    urls = [url]
+                    try:
+                        m = __import__('re').search(r"/s(\d+)(-c)?/", url)
+                        if m:
+                            urls.insert(0, __import__('re').sub(r"/s(\d+)(-c)?/", "/s400-c/", url))
+                        if 'sz=' in url:
+                            urls.insert(0, __import__('re').sub(r"(sz=)\d+", r"\1400", url))
+                        else:
+                            if '?' in url:
+                                urls.append(url + '&sz=400')
+                            else:
+                                urls.append(url + '?sz=400')
+                    except Exception:
+                        pass
+                    seen = set(); out = []
+                    for u in urls:
+                        if u not in seen:
+                            out.append(u); seen.add(u)
+                    return out
+
+                urls_to_try = candidate_urls(photo_url)
+                content = None
+                content_type = ''
+                for u in urls_to_try:
+                    try:
+                        import requests
+                        resp = requests.get(u, timeout=6)
+                        if resp.status_code == 200:
+                            content = resp.content
+                            content_type = resp.headers.get('Content-Type', '')
+                            break
+                    except Exception:
+                        try:
+                            from urllib.request import urlopen
+                            uresp = urlopen(u, timeout=6)
+                            content = uresp.read()
+                            content_type = uresp.headers.get_content_type() if hasattr(uresp, 'headers') else ''
+                            break
+                        except Exception:
+                            continue
+
+                if content:
+                    ext = ''
+                    if content_type:
+                        if 'jpeg' in content_type:
+                            ext = 'jpg'
+                        elif 'png' in content_type:
+                            ext = 'png'
+                        elif 'gif' in content_type:
+                            ext = 'gif'
+                    if not ext:
+                        guessed = imghdr.what(None, h=content)
+                        ext = guessed if guessed else 'jpg'
+
+                    filename = f"profile_{profile.user.username}.{ext}"
+                    try:
+                        profile.profile_picture.save(filename, ContentFile(content), save=True)
+                        profile.profile_picture_uploaded_at = timezone.now()
+                        profile.save()
+                        logger.info(f"Saved downloaded profile picture for user {profile.user.username}")
+                    except Exception as e:
+                        logger.warning(f"Failed to save downloaded profile picture for {profile.user.username}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to download portfolio_url for user {profile.user.username}: {e}\n{traceback.format_exc()}")
 
         serializer = ProfilePictureSerializer(profile, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)

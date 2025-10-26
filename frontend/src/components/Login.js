@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../services/firebase';
+import { signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
+import { auth, googleProvider } from '../services/firebase';
 import './Auth.css';
 
 const Login = () => {
@@ -93,6 +93,29 @@ const Login = () => {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setApiError('');
+    setLoading(true);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      // Get and store Firebase ID token
+      const token = await result.user.getIdToken();
+      localStorage.setItem('firebaseToken', token);
+
+      // Redirect to dashboard
+      navigate('/dashboard');
+    } catch (error) {
+      console.error('Google sign-in error:', error);
+      if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+        setApiError('Google sign-in was cancelled.');
+      } else {
+        setApiError('Google sign-in failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="auth-container">
       <div className="auth-card">
@@ -154,6 +177,18 @@ const Login = () => {
             {loading ? 'Signing In...' : 'Sign In'}
           </button>
         </form>
+
+        <div style={{textAlign: 'center', marginTop: 12}}>
+          <div style={{margin: '12px 0', color: '#94a3b8'}}>or</div>
+          <button
+            className="auth-button"
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+            aria-label="Sign in with Google"
+          >
+            {loading ? 'Processing...' : 'Sign in with Google'}
+          </button>
+        </div>
 
         <div className="auth-footer">
           <p>

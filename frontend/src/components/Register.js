@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../services/firebase';
+import { signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
+import { auth, googleProvider } from '../services/firebase';
 import { authAPI } from '../services/api';
 import './Auth.css';
 
@@ -157,6 +157,32 @@ const Register = () => {
     }
   };
 
+  const handleGoogleSignUp = async () => {
+    setApiError('');
+    setLoading(true);
+    try {
+      // Use Firebase Google popup to create or sign in user
+      const result = await signInWithPopup(auth, googleProvider);
+      // Get and store Firebase ID token
+      const token = await result.user.getIdToken();
+      localStorage.setItem('firebaseToken', token);
+
+      // Redirect to dashboard
+      navigate('/dashboard');
+    } catch (error) {
+      console.error('Google sign-up error:', error);
+      if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+        setApiError('Google sign-up was cancelled.');
+      } else if (error.code === 'auth/account-exists-with-different-credential') {
+        setApiError('An account with this email exists. Try signing in with email or the provider used previously.');
+      } else {
+        setApiError('Google sign-up failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="auth-container">
       <div className="auth-card">
@@ -268,6 +294,18 @@ const Register = () => {
             {loading ? 'Creating Account...' : 'Sign Up'}
           </button>
         </form>
+
+        <div style={{textAlign: 'center', marginTop: 12}}>
+          <div style={{margin: '12px 0', color: '#94a3b8'}}>or</div>
+          <button
+            className="auth-button"
+            onClick={handleGoogleSignUp}
+            disabled={loading}
+            aria-label="Sign up with Google"
+          >
+            {loading ? 'Processing...' : 'Sign up with Google'}
+          </button>
+        </div>
 
         <div className="auth-footer">
           <p>
