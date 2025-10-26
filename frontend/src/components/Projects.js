@@ -301,6 +301,8 @@ const Projects = () => {
                   <span>🗓️ {item.start_date || '—'} to {item.end_date || '—'}</span>
                 )}
                 {item.team_size != null && <span>👥 Team size: {item.team_size}</span>}
+                {item.industry && <span>🏷️ Industry: {item.industry}</span>}
+                {item.category && <span>📂 Type: {item.category}</span>}
                 {item.project_url && <a href={item.project_url} target="_blank" rel="noreferrer">🔗 View</a>}
               </div>
               {(item.technologies && item.technologies.length > 0) && (
