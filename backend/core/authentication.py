@@ -7,6 +7,11 @@ from django.contrib.auth import get_user_model
 from core.firebase_utils import verify_firebase_token, initialize_firebase
 from firebase_admin import auth as firebase_auth
 import logging
+import os
+from django.utils import timezone
+from django.core.files.base import ContentFile
+import imghdr
+import re
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -88,8 +93,85 @@ class FirebaseAuthentication(authentication.BaseAuthentication):
                     profile = CandidateProfile.objects.create(user=user)
                     # Store profile picture URL in portfolio_url to make it accessible via existing serializers
                     if photo_url:
-                        profile.portfolio_url = photo_url
-                        profile.save()
+                                profile.portfolio_url = photo_url
+                                profile.save()
+                                # Try to download the remote photo once and save to ImageField to avoid hotlink/rate-limit issues
+                                try:
+                                    # Build candidate URLs (try to request a larger size if Google-style URL)
+                                    def candidate_urls(url):
+                                        urls = [url]
+                                        try:
+                                            # handle Google user content URLs e.g. '.../s96-c/photo.jpg' or '?sz=50'
+                                            # replace '/sNN-c/' with '/s400-c/'
+                                            m = re.search(r"/s(\d+)(-c)?/", url)
+                                            if m:
+                                                urls.insert(0, re.sub(r"/s(\d+)(-c)?/", "/s400-c/", url))
+                                            # replace or add 'sz' param
+                                            if 'sz=' in url:
+                                                urls.insert(0, re.sub(r"(sz=)\d+", r"\1400", url))
+                                            else:
+                                                if '?' in url:
+                                                    urls.append(url + '&sz=400')
+                                                else:
+                                                    urls.append(url + '?sz=400')
+                                        except Exception:
+                                            pass
+                                        # dedupe preserving order
+                                        seen = set()
+                                        out = []
+                                        for u in urls:
+                                            if u not in seen:
+                                                out.append(u); seen.add(u)
+                                        return out
+
+                                    urls_to_try = candidate_urls(photo_url)
+                                    content = None
+                                    content_type = ''
+                                    status_code = None
+                                    for u in urls_to_try:
+                                        try:
+                                            import requests
+                                            resp = requests.get(u, timeout=6)
+                                            status_code = resp.status_code
+                                            if status_code == 200:
+                                                content = resp.content
+                                                content_type = resp.headers.get('Content-Type', '')
+                                                break
+                                        except Exception:
+                                            try:
+                                                from urllib.request import urlopen
+                                                uresp = urlopen(u, timeout=6)
+                                                s = getattr(uresp, 'getcode', lambda: None)()
+                                                if s == 200 or s is None:
+                                                    content = uresp.read()
+                                                    content_type = uresp.headers.get_content_type() if hasattr(uresp, 'headers') else ''
+                                                    break
+                                            except Exception:
+                                                continue
+
+                                    if content:
+                                        # Determine file extension
+                                        ext = ''
+                                        if content_type:
+                                            if 'jpeg' in content_type:
+                                                ext = 'jpg'
+                                            elif 'png' in content_type:
+                                                ext = 'png'
+                                            elif 'gif' in content_type:
+                                                ext = 'gif'
+                                        if not ext:
+                                            # Fallback: try to guess from bytes
+                                            guessed = imghdr.what(None, h=content)
+                                            ext = guessed if guessed else 'jpg'
+
+                                        filename = f"profile_{user.username}.{ext}"
+                                        # Save to profile.profile_picture (ImageField)
+                                        profile.profile_picture.save(filename, ContentFile(content), save=True)
+                                        profile.profile_picture_uploaded_at = timezone.now()
+                                        profile.save()
+                                except Exception as e:
+                                    # Non-fatal: log and continue using portfolio_url fallback
+                                    logger.warning(f"Failed to download/save Google photo for {uid}: {e}")
                 except Exception as e:
                     logger.warning(f"Could not fetch extra Firebase user info for {uid}: {e}")
                     CandidateProfile.objects.create(user=user)

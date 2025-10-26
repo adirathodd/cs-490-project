@@ -34,7 +34,19 @@ export const AuthProvider = ({ children }) => {
           
           // Fetch user profile from backend
           const profileData = await authAPI.getCurrentUser();
-          setUserProfile(profileData.profile);
+
+          // If backend doesn't yet have a stored Google photo, prefer the Firebase user's photoURL
+          // This helps show the Google profile picture immediately while the backend sync completes.
+          if (user.photoURL) {
+            // Merge backend profile with photoURL fallback
+            const backendProfile = profileData?.profile || {};
+            if (!backendProfile.portfolio_url) {
+              backendProfile.portfolio_url = user.photoURL;
+            }
+            setUserProfile(backendProfile);
+          } else {
+            setUserProfile(profileData.profile);
+          }
         } catch (error) {
           console.error('Error fetching user profile:', error);
           setError(error.message);
