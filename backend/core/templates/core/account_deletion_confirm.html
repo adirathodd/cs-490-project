@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Confirm Account Deletion</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; padding: 2rem; color:#111; }
+    .box { max-width: 540px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1.5rem; }
+    h1 { font-size: 1.5rem; margin-bottom: .75rem; }
+    p { line-height: 1.6; }
+    .danger { color: #b00020; font-weight: 600; }
+    .actions { margin-top: 1.25rem; }
+    button { background: #b00020; color: #fff; border: none; padding: .625rem 1rem; border-radius: 6px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Delete your account?</h1>
+    <p class="danger">This is immediate and permanent.</p>
+    <p>
+      You're about to permanently delete the ATS account for <strong>{{ email }}</strong>, including all associated data.
+      This action cannot be undone.
+    </p>
+    <form method="post">
+      {% csrf_token %}
+      <div class="actions">
+        <button type="submit">Yes, delete my account</button>
+      </div>
+    </form>
+  </div>
+</body>
+</html>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Confirm account deletion</title>
+    <style>
+      body { margin:0; background:#f7fafc; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color:#111827; }
+  .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px; text-align:center; color:#fff; }
+      .brand { font-size: 20px; font-weight: 700; }
+      .container { max-width: 560px; margin: 24px auto; background:#fff; border-radius:12px; box-shadow: 0 6px 24px rgba(0,0,0,0.06); overflow:hidden; }
+      .content { padding: 24px; }
+      h1 { font-size: 20px; margin: 0 0 8px; color:#111827; }
+      p { margin: 8px 0; line-height: 1.55; color:#374151; }
+      .actions { margin: 24px 0 8px; }
+  .btn { display:inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:#fff !important; text-decoration:none; padding: 12px 18px; border-radius:10px; font-weight:600; }
+      .note { font-size: 12px; color:#6b7280; margin-top: 16px; }
+      .footer { text-align:center; color:#6b7280; font-size:12px; padding: 0 0 24px; }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="brand">{{ brand }}</div>
+    </div>
+    <div class="container">
+      <div class="content">
+        <h1>Confirm your account deletion</h1>
+        <p>
+          You requested to delete your account. This action is permanent and will remove all your data.
+        </p>
+        <div class="actions">
+          <a class="btn" href="{{ confirm_url }}">Yes, delete my account</a>
+        </div>
+        <p class="note">
+          If you did not request this, please ignore this email. This link expires in 24 hours.
+        </p>
+      </div>
+      <div class="footer">
+        © {{ brand }}
+      </div>
+    </div>
+  </body>
+</html>

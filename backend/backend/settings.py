@@ -205,3 +205,30 @@ LOGGING = {
         },
     },
 }
+
+# Email configuration
+# Priority: Explicit DJANGO_EMAIL_BACKEND overrides DEBUG logic.
+EMAIL_BACKEND = os.environ.get('DJANGO_EMAIL_BACKEND')
+if EMAIL_BACKEND:
+    # Use provided backend regardless of DEBUG and load SMTP-related settings from env
+    EMAIL_HOST = os.environ.get('EMAIL_HOST', '')
+    EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587')) if os.environ.get('EMAIL_PORT') else None
+    EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+    EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+    EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
+    EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'False') == 'True'
+else:
+    # In development by default, print emails to console to simplify testing
+    if DEBUG:
+        EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    else:
+        # Production default: SMTP backend with env configuration
+        EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+        EMAIL_HOST = os.environ.get('EMAIL_HOST', '')
+        EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587')) if os.environ.get('EMAIL_PORT') else None
+        EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+        EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+        EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
+        EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'False') == 'True'
+
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@example.com')

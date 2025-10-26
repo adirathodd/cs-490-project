@@ -2,6 +2,8 @@
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+from django.contrib.auth import get_user_model
+import secrets
 
 class CandidateProfile(models.Model):
     EXPERIENCE_LEVELS = [
@@ -68,6 +70,27 @@ class CandidateSkill(models.Model):
             models.Index(fields=["candidate", "order"])
         ]
         ordering = ['order', 'id']
+
+class AccountDeletionRequest(models.Model):
+    """One-time token to confirm irreversible account deletion via email."""
+    user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='account_deletion_requests')
+    token = models.CharField(max_length=128, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    consumed = models.BooleanField(default=False)
+
+    @staticmethod
+    def create_for_user(user, ttl_hours: int = 24):
+        token = secrets.token_urlsafe(48)
+        expires_at = timezone.now() + timezone.timedelta(hours=ttl_hours)
+        return AccountDeletionRequest.objects.create(user=user, token=token, expires_at=expires_at)
+
+    def is_valid(self) -> bool:
+        return (not self.consumed) and timezone.now() <= self.expires_at
+
+    def mark_consumed(self):
+        self.consumed = True
+        self.save(update_fields=['consumed'])
 
 class Company(models.Model):
     name = models.CharField(max_length=180)

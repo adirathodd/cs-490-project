@@ -6,6 +6,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from core.serializers import (
@@ -22,7 +24,7 @@ from core.serializers import (
     EducationSerializer,
     CertificationSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (
@@ -34,6 +36,7 @@ from django.db.models.functions import Coalesce
 import firebase_admin
 from firebase_admin import auth as firebase_auth
 import logging
+from django.conf import settings
 
 
 # ------------------------------
@@ -74,6 +77,59 @@ def _validation_messages(errors) -> list[str]:
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+
+def _delete_user_and_data(user):
+    """Permanently delete user and associated data across Django and Firebase."""
+    uid = getattr(user, 'username', None)
+    email = getattr(user, 'email', None)
+
+    # Delete candidate profile and related data
+    try:
+        profile = CandidateProfile.objects.get(user=user)
+        # Delete profile picture file if present
+        if profile.profile_picture:
+            try:
+                delete_old_picture(profile.profile_picture.name)
+            except Exception as e:
+                logger.warning(f"Failed to delete profile picture file for {email}: {e}")
+        # Delete related CandidateSkill entries
+        CandidateSkill.objects.filter(candidate=profile).delete()
+        profile.delete()
+    except CandidateProfile.DoesNotExist:
+        logger.info(f"No profile found when deleting user {email}")
+
+    # Delete Django user
+    try:
+        user.delete()
+    except Exception as e:
+        logger.warning(f"Failed to delete Django user {email}: {e}")
+
+    # Delete Firebase user
+    if uid:
+        try:
+            firebase_auth.delete_user(uid)
+        except Exception as e:
+            logger.warning(f"Failed to delete Firebase user {uid}: {e}")
+
+    # Send confirmation email (HTML + text alternative)
+    try:
+        from django.core.mail import EmailMultiAlternatives
+        subject = 'Your account has been deleted'
+        context = {
+            'brand': 'ATS Candidate System',
+            'primary_start': '#667eea',
+            'primary_end': '#764ba2',
+        }
+        html_content = render_to_string('emails/account_deletion_done.html', context)
+        text_content = strip_tags(html_content)
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'noreply@example.com'
+        if email:
+            msg = EmailMultiAlternatives(subject, text_content, from_email, [email])
+            msg.attach_alternative(html_content, "text/html")
+            msg.send(fail_silently=True)
+    except Exception as e:
+        logger.warning(f"Failed to send account deletion email to {email}: {e}")
 
 
 @api_view(['POST'])
@@ -336,58 +392,17 @@ def get_current_user(request):
     try:
         user = request.user
 
-        # Handle account deletion
+        # Handle account deletion - disabled in favor of email confirmation flow
         if request.method == 'DELETE':
-            try:
-                uid = user.username
-                email = user.email
-
-                # Delete candidate profile and related data
-                try:
-                    profile = CandidateProfile.objects.get(user=user)
-                    # Delete profile picture file if present
-                    if profile.profile_picture:
-                        try:
-                            delete_old_picture(profile.profile_picture.name)
-                        except Exception as e:
-                            logger.warning(f"Failed to delete profile picture file for {email}: {e}")
-                    # Delete related CandidateSkill entries
-                    CandidateSkill.objects.filter(candidate=profile).delete()
-                    profile.delete()
-                except CandidateProfile.DoesNotExist:
-                    logger.info(f"No profile found when deleting user {email}")
-
-                # Delete Django user
-                user.delete()
-
-                # Delete Firebase user
-                try:
-                    firebase_auth.delete_user(uid)
-                except Exception as e:
-                    logger.warning(f"Failed to delete Firebase user {uid}: {e}")
-
-                # Send confirmation email
-                try:
-                    from django.core.mail import send_mail
-                    from django.conf import settings
-
-                    subject = 'Your account has been deleted'
-                    message = (
-                        'This is a confirmation that your account and all associated data have been permanently deleted from ATS.'
-                    )
-                    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'noreply@example.com'
-                    if email:
-                        send_mail(subject, message, from_email, [email], fail_silently=True)
-                except Exception as e:
-                    logger.warning(f"Failed to send account deletion email to {email}: {e}")
-
-                return Response({'message': 'Account deleted successfully.'}, status=status.HTTP_200_OK)
-            except Exception as e:
-                logger.error(f"Error deleting account for user {getattr(request.user, 'email', 'unknown')}: {e}")
-                return Response(
-                    {'error': {'code': 'deletion_failed', 'message': 'Failed to delete account.'}},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+            return Response(
+                {
+                    'error': {
+                        'code': 'deletion_flow_updated',
+                        'message': 'Confirmation email sent. Please check your email to confirm deletion.'
+                    }
+                },
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
 
         # For GET, return profile as before
         profile = CandidateProfile.objects.get(user=user)
@@ -417,6 +432,85 @@ def get_current_user(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def request_account_deletion(request):
+    """Initiate account deletion by sending an email with a confirmation link."""
+    try:
+        user = request.user
+        # Create a new deletion request token (invalidate older by allowing overwrite behavior on retrieve)
+        deletion = AccountDeletionRequest.create_for_user(user)
+
+        # Build confirmation URL
+        confirm_path = f"/api/auth/delete/confirm/{deletion.token}"
+        confirm_url = request.build_absolute_uri(confirm_path)
+
+        # Send email with confirmation link (HTML + text alternative)
+        try:
+            from django.core.mail import EmailMultiAlternatives
+
+            subject = 'Confirm your account deletion request'
+            context = {
+                'brand': 'ATS Candidate System',
+                'confirm_url': confirm_url,
+                'primary_start': '#667eea',
+                'primary_end': '#764ba2',
+            }
+            html_content = render_to_string('emails/account_deletion_request.html', context)
+            text_content = render_to_string('emails/account_deletion_request.txt', context)
+            from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'noreply@example.com'
+            if user.email:
+                msg = EmailMultiAlternatives(subject, text_content, from_email, [user.email])
+                msg.attach_alternative(html_content, "text/html")
+                msg.send(fail_silently=True)
+        except Exception as e:
+            logger.warning(f"Failed to send deletion confirmation email to {user.email}: {e}")
+
+        payload = {
+            'message': "We've emailed you a confirmation link. Please check your inbox to permanently delete your account."
+        }
+        # In development, return the confirm URL for easier testing
+        if settings.DEBUG:
+            payload['confirm_url'] = confirm_url
+
+        return Response(payload, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error initiating account deletion for {getattr(request.user, 'email', 'unknown')}: {e}")
+        return Response(
+            {'error': {'code': 'deletion_init_failed', 'message': 'Failed to initiate account deletion.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+from django.shortcuts import render
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def confirm_account_deletion(request, token: str):
+    """Render confirmation page and on POST permanently delete the associated account."""
+    try:
+        try:
+            deletion = AccountDeletionRequest.objects.select_related('user').get(token=token)
+        except AccountDeletionRequest.DoesNotExist:
+            return render(request._request, 'core/account_deletion_invalid.html', status=404)
+
+        if not deletion.is_valid():
+            return render(request._request, 'core/account_deletion_expired.html', status=400)
+
+        if request.method == 'GET':
+            return render(request._request, 'core/account_deletion_confirm.html', context={'email': deletion.user.email})
+
+        # POST: proceed with permanent deletion
+        # Mark token consumed BEFORE deleting the user (CASCADE would remove this row)
+        deletion.mark_consumed()
+        user = deletion.user
+        _delete_user_and_data(user)
+        return render(request._request, 'core/account_deletion_done.html')
+    except Exception as e:
+        logger.error(f"Error confirming account deletion for token {token}: {e}")
+        return render(request._request, 'core/account_deletion_error.html', status=500)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
