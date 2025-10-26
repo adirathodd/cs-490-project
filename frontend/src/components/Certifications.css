@@ -1,0 +1,35 @@
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  margin-left: 6px;
+}
+.badge.verified { background: #e6ffed; color: #0a7f2e; border: 1px solid #b5f2c6; }
+.badge.pending { background: #fff6e5; color: #8a5a00; border: 1px solid #ffe0a6; }
+.badge.rejected { background: #ffe6e6; color: #a30000; border: 1px solid #ffb3b3; }
+.badge.unverified { background: #eef2f7; color: #475569; border: 1px solid #cbd5e1; }
+.badge.category { background: #eef2ff; color: #1e40af; border: 1px solid #c7d2fe; margin-left: 10px; }
+
+.education-item.expired .education-item-title { color: #991b1b; }
+.status.expired { background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 6px; }
+.status.soon { background: #fef9c3; color: #854d0e; padding: 2px 6px; border-radius: 6px; }
+
+.org-group { position: relative; }
+.suggestions { position: absolute; top: 70px; left: 0; right: 0; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; box-shadow: 0 6px 24px rgba(0,0,0,0.08); z-index: 10; max-height: 220px; overflow-y: auto; }
+.suggestion { padding: 8px 12px; cursor: pointer; }
+.suggestion:hover { background: #f1f5f9; }
+.suggestion.disabled { color: #94a3b8; cursor: default; }
+.suggestion.active { background: #e0e7ff; }
+
+/* Modal styles */
+.modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal-card { background: #fff; width: 90%; max-width: 480px; border-radius: 12px; box-shadow: 0 20px 40px rgba(15,23,42,0.25); padding: 20px; }
+.modal-card h3 { margin: 0 0 8px 0; color: #1f2937; }
+.modal-card p { margin: 0 0 16px 0; color: #374151; }
+.modal-actions { display: flex; gap: 12px; justify-content: flex-end; }
+.modal-actions .cancel-button { background: #e5e7eb; color: #111827; border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+.modal-actions .cancel-button:hover { background: #d1d5db; }
+.modal-actions .delete-button { background: #ef4444; color: #fff; border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+.modal-actions .delete-button:hover { background: #dc2626; }
+.modal-actions button:disabled { opacity: 0.6; cursor: not-allowed; }

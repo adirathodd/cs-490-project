@@ -318,12 +318,17 @@ const ProfileForm = () => {
       const token = await currentUser.getIdToken(true);
       localStorage.setItem('firebaseToken', token);
 
-      // Call backend to delete account
-      await authAPI.deleteAccount();
+      // Initiate deletion request (email confirmation flow)
+      const resp = await authAPI.requestAccountDeletion();
+      if (resp && resp.confirm_url) {
+        // Helpful during development when emails are printed to console backend
+        // Copy/paste this URL in the browser to complete deletion
+        // eslint-disable-next-line no-console
+        console.log('Account deletion confirm URL (dev):', resp.confirm_url);
+      }
 
-      // Sign out locally and redirect to login
-      await signOut();
-      navigate('/login');
+      setSuccessMessage("We've sent a confirmation link to your email. Please check your inbox to permanently delete your account.");
+      closeDeleteDialog();
     } catch (error) {
       console.error('Account deletion error:', error);
       if (error?.code === 'auth/wrong-password' || error?.response?.status === 401) {
@@ -331,7 +336,7 @@ const ProfileForm = () => {
       } else if (error?.response?.data?.error?.message) {
         setDeleteError(error.response.data.error.message);
       } else {
-        setDeleteError('Failed to delete account. Please try again later.');
+        setDeleteError('Failed to initiate deletion. Please try again later.');
       }
     } finally {
       setDeleting(false);
@@ -665,9 +670,9 @@ const ProfileForm = () => {
         {showDeleteDialog && (
           <div className="modal-overlay">
             <div className="modal-dialog">
-              <h3 style={{ color: '#b00020' }}>Delete Account — Permanent</h3>
+              <h3 style={{ color: '#b00020' }}>Delete Account — Confirmation Required</h3>
               <p>
-                This will permanently delete your account and all associated data immediately. This action cannot be undone.
+                We will send an email with a confirmation link. Your account and all associated data will be deleted immediately and permanently only after you confirm via that link.
               </p>
               <p>Please confirm by entering your password:</p>
               <input
@@ -683,7 +688,7 @@ const ProfileForm = () => {
                   Cancel
                 </button>
                 <button className="modal-confirm-button" onClick={handleDeleteConfirm} disabled={deleting}>
-                  {deleting ? 'Deleting...' : 'Delete Account'}
+                  {deleting ? 'Sending...' : 'Send confirmation email'}
                 </button>
               </div>
             </div>

@@ -289,6 +289,37 @@ docker compose logs -f frontend
 
 Press `Ctrl+C` to stop viewing logs.
 
+## Email setup (UC-009: account deletion confirmations)
+
+By default in development, the backend uses the console email backend so you can see emails in logs. To enable real delivery (e.g., Gmail SMTP), add the SMTP variables to `backend/.env`.
+
+Quick options
+- Default (recommended for local dev): do nothing; emails print to backend logs. The deletion request endpoint also returns a `confirm_url` in development for quick testing.
+- Real SMTP (e.g., Gmail App Password):
+  1. Ensure these are set in `backend/.env` (see `backend/.env.example`):
+     - `DJANGO_EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`
+     - `EMAIL_HOST=smtp.gmail.com`
+     - `EMAIL_PORT=587`
+     - `EMAIL_USE_TLS=True`
+     - `EMAIL_HOST_USER=your@gmail.com`
+     - `EMAIL_HOST_PASSWORD=your-16-char-app-password`
+     - `DEFAULT_FROM_EMAIL=Your App <your@gmail.com>`
+  2. Restart the backend: `docker compose restart backend` (or rebuild if first time)
+
+Gmail App Password steps
+1. Enable 2‑Step Verification in your Google account
+2. Create an App Password (Google Account → Security → App passwords)
+3. Choose Mail → Other (name it), copy the 16‑character password
+
+Verify end-to-end
+1. In the app, go to Profile → Delete Account and submit
+2. You should see “Confirmation email sent. Please check your email to confirm deletion.”
+3. Check your email (Spam/Promotions too), click the link, and confirm
+
+More details and troubleshooting
+- See README: Operational guide → Account Deletion Email Flow (UC‑009):
+  - ./README.md#operational-guide-account-deletion-email-flow-uc-009
+
 ## Accessing the Application
 
 Once all services are running:

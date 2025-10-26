@@ -1,0 +1,470 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { certificationsAPI } from '../services/api';
+import './Education.css';
+import './Skills.css';
+import './ProfileForm.css';
+import './SkillsOrganized.css';
+import './Certifications.css';
+
+const defaultForm = {
+  name: '',
+  issuing_organization: '',
+  issue_date: '',
+  expiry_date: '',
+  does_not_expire: false,
+  credential_id: '',
+  credential_url: '',
+  category: '',
+  verification_status: 'unverified',
+  renewal_reminder_enabled: false,
+  reminder_days_before: 30,
+  document: null,
+};
+
+const statusBadge = (status) => {
+  switch (status) {
+    case 'verified':
+      return <span className="badge verified">Verified</span>;
+    case 'pending':
+      return <span className="badge pending">Pending</span>;
+    case 'rejected':
+      return <span className="badge rejected">Rejected</span>;
+    default:
+      return <span className="badge unverified">Unverified</span>;
+  }
+};
+
+const Certifications = () => {
+  const [categories, setCategories] = useState([]);
+  const [items, setItems] = useState([]);
+  const [form, setForm] = useState(defaultForm);
+  const [editingId, setEditingId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [orgQuery, setOrgQuery] = useState('');
+  const [orgSuggestions, setOrgSuggestions] = useState([]);
+  const [showOrgSuggestions, setShowOrgSuggestions] = useState(false);
+  const [orgActiveIndex, setOrgActiveIndex] = useState(-1);
+  const orgBoxRef = useRef(null);
+  const orgInputRef = useRef(null);
+  const [confirmDeleteItem, setConfirmDeleteItem] = useState(null);
+  const [confirmDeleting, setConfirmDeleting] = useState(false);
+
+  useEffect(() => {
+    const init = async () => {
+      setLoading(true);
+      try {
+        const [cats, certs] = await Promise.all([
+          certificationsAPI.getCategories(),
+          certificationsAPI.getCertifications(),
+        ]);
+        setCategories(cats || []);
+        setItems(sortCerts(certs || []));
+      } catch (e) {
+        setError(e?.message || 'Failed to load certifications');
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
+  }, []);
+
+  useEffect(() => {
+    const q = form.issuing_organization.trim();
+    setOrgQuery(q);
+  }, [form.issuing_organization]);
+
+  useEffect(() => {
+    let active = true;
+    const fetch = async () => {
+      if (orgQuery.length < 2) { setOrgSuggestions([]); return; }
+      try {
+        const res = await certificationsAPI.searchOrganizations(orgQuery, 8);
+        if (active) setOrgSuggestions(res || []);
+      } catch (_) {
+        if (active) setOrgSuggestions([]);
+      }
+    };
+    fetch();
+    return () => { active = false; };
+  }, [orgQuery]);
+
+  // Reset active index when suggestions change
+  useEffect(() => {
+    setOrgActiveIndex(-1);
+  }, [orgSuggestions]);
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (orgBoxRef.current && !orgBoxRef.current.contains(e.target)) {
+        setShowOrgSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  const sortCerts = (arr) => {
+    const toNum = (d) => (d ? Date.parse(d) : 0);
+    return [...(arr || [])].sort((a, b) => {
+      // sort by expiry proximity: expired first? We'll sort by days until expiration ascending; never expires last
+      const aNever = !!a.does_not_expire;
+      const bNever = !!b.does_not_expire;
+      if (aNever !== bNever) return aNever ? 1 : -1;
+      const aDays = a.days_until_expiration ?? 999999;
+      const bDays = b.days_until_expiration ?? 999999;
+      if (aDays !== bDays) return aDays - bDays;
+      // fallback to issue_date desc
+      return toNum(b.issue_date) - toNum(a.issue_date);
+    });
+  };
+
+  const resetForm = () => {
+    setForm(defaultForm);
+    setFieldErrors({});
+    setEditingId(null);
+    setOrgSuggestions([]);
+    setShowOrgSuggestions(false);
+  };
+
+  const onChange = (e) => {
+    const { name, value, type, checked, files } = e.target;
+    if (type === 'file') {
+      setForm((prev) => ({ ...prev, [name]: files && files.length ? files[0] : null }));
+    } else {
+      setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+      if (fieldErrors[name]) {
+        setFieldErrors((prev) => { const n = { ...prev }; delete n[name]; return n; });
+      }
+    }
+  };
+
+  const validate = () => {
+    const errs = {};
+    if (!form.name.trim()) errs.name = 'Certification name is required';
+    if (!form.issuing_organization.trim()) errs.issuing_organization = 'Issuing organization is required';
+    if (!form.issue_date) errs.issue_date = 'Date earned is required';
+    if (!form.does_not_expire && !form.expiry_date) {
+      errs.expiry_date = 'Expiration date required unless does not expire';
+    }
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const toPayload = (data) => {
+    const payload = { ...data };
+    if (payload.does_not_expire) payload.expiry_date = null;
+    if (!payload.category) delete payload.category;
+    if (!payload.credential_id) delete payload.credential_id;
+    if (!payload.credential_url) delete payload.credential_url;
+    // Don't send document if none
+    if (!payload.document) delete payload.document;
+    return payload;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!validate()) return;
+    setSaving(true);
+    try {
+      if (editingId) {
+        const updated = await certificationsAPI.updateCertification(editingId, toPayload(form));
+        setItems((prev) => sortCerts((prev || []).map((i) => (i.id === editingId ? updated : i))));
+      } else {
+        const created = await certificationsAPI.addCertification(toPayload(form));
+        setItems((prev) => sortCerts([...(prev || []), created]));
+      }
+      resetForm();
+    } catch (e2) {
+      if (e2?.details) setFieldErrors(e2.details);
+      setError(e2?.message || 'Failed to save certification');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startEdit = (item) => {
+    setEditingId(item.id);
+    setForm({
+      name: item.name || '',
+      issuing_organization: item.issuing_organization || '',
+      issue_date: item.issue_date || '',
+      expiry_date: item.expiry_date || '',
+      does_not_expire: !!item.does_not_expire,
+      credential_id: item.credential_id || '',
+      credential_url: item.credential_url || '',
+      category: item.category || '',
+      verification_status: item.verification_status || 'unverified',
+      renewal_reminder_enabled: !!item.renewal_reminder_enabled,
+      reminder_days_before: item.reminder_days_before ?? 30,
+      document: null,
+    });
+    setFieldErrors({});
+  };
+
+  const requestDelete = (item) => {
+    setConfirmDeleteItem(item);
+  };
+
+  const cancelDelete = () => {
+    setConfirmDeleteItem(null);
+    setConfirmDeleting(false);
+  };
+
+  const confirmDelete = async () => {
+    if (!confirmDeleteItem) return;
+    setConfirmDeleting(true);
+    try {
+      await certificationsAPI.deleteCertification(confirmDeleteItem.id);
+      setItems((prev) => (prev || []).filter((i) => i.id !== confirmDeleteItem.id));
+      if (editingId === confirmDeleteItem.id) resetForm();
+      cancelDelete();
+    } catch (e) {
+      setError(e?.message || 'Failed to delete');
+      setConfirmDeleting(false);
+    }
+  };
+
+  const pickSuggestion = (value) => {
+    setForm((prev) => ({ ...prev, issuing_organization: value }));
+    setShowOrgSuggestions(false);
+  };
+
+  const handleOrgKeyDown = (e) => {
+    if (!showOrgSuggestions && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      setShowOrgSuggestions(true);
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setOrgActiveIndex((idx) => Math.min(idx + 1, (orgSuggestions?.length || 1) - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setOrgActiveIndex((idx) => Math.max(idx - 1, 0));
+    } else if (e.key === 'Enter') {
+      if (showOrgSuggestions && orgActiveIndex >= 0 && orgSuggestions[orgActiveIndex]) {
+        e.preventDefault();
+        pickSuggestion(orgSuggestions[orgActiveIndex]);
+      }
+    } else if (e.key === 'Escape' || e.key === 'Tab') {
+      setShowOrgSuggestions(false);
+    }
+  };
+
+  if (loading) return <div className="education-container">Loading certifications...</div>;
+
+  return (
+    <div className="education-container">
+      <div className="page-backbar">
+        <a className="btn-back" href="/dashboard" aria-label="Back to dashboard" title="Back to dashboard">← Back to Dashboard</a>
+      </div>
+      <h2>Certifications</h2>
+      {error && <div className="error-banner">{error}</div>}
+
+      <form className="education-form" onSubmit={handleSubmit}>
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="name">Certification Name <span className="required">*</span></label>
+            <input id="name" name="name" value={form.name} onChange={onChange} className={fieldErrors.name ? 'error' : ''} />
+            {fieldErrors.name && <div className="error-message">{fieldErrors.name}</div>}
+          </div>
+          <div className="form-group org-group" ref={orgBoxRef}>
+            <label htmlFor="issuing_organization">Issuing Organization <span className="required">*</span></label>
+            <input
+              id="issuing_organization"
+              name="issuing_organization"
+              value={form.issuing_organization}
+              onChange={(e) => { onChange(e); setShowOrgSuggestions(true); }}
+              autoComplete="off"
+              className={fieldErrors.issuing_organization ? 'error' : ''}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={showOrgSuggestions}
+              aria-controls="org-listbox"
+              aria-activedescendant={orgActiveIndex >= 0 ? `org-option-${orgActiveIndex}` : undefined}
+              onKeyDown={handleOrgKeyDown}
+              onFocus={() => setShowOrgSuggestions(true)}
+              ref={orgInputRef}
+            />
+            {showOrgSuggestions && (
+              <div className="suggestions" role="listbox" id="org-listbox">
+                {orgQuery.length < 2 && (
+                  <div className="suggestion disabled" aria-disabled="true">Type at least 2 characters…</div>
+                )}
+                {orgQuery.length >= 2 && orgSuggestions.length === 0 && (
+                  <div className="suggestion disabled" aria-disabled="true">No organizations found</div>
+                )}
+                {orgSuggestions.map((s, idx) => (
+                  <div
+                    key={`${s}-${idx}`}
+                    id={`org-option-${idx}`}
+                    role="option"
+                    aria-selected={idx === orgActiveIndex}
+                    className={`suggestion ${idx === orgActiveIndex ? 'active' : ''}`}
+                    onMouseEnter={() => setOrgActiveIndex(idx)}
+                    onMouseDown={(e) => { e.preventDefault(); pickSuggestion(s); }}
+                  >
+                    {s}
+                  </div>
+                ))}
+              </div>
+            )}
+            {fieldErrors.issuing_organization && <div className="error-message">{fieldErrors.issuing_organization}</div>}
+          </div>
+        </div>
+
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="issue_date">Date Earned <span className="required">*</span></label>
+            <input id="issue_date" type="date" name="issue_date" value={form.issue_date} onChange={onChange} className={fieldErrors.issue_date ? 'error' : ''} />
+            {fieldErrors.issue_date && <div className="error-message">{fieldErrors.issue_date}</div>}
+          </div>
+          <div className="form-group">
+            <label htmlFor="expiry_date">Expiration Date {form.does_not_expire ? '' : <span className="required">*</span>}</label>
+            <input id="expiry_date" type="date" name="expiry_date" value={form.expiry_date || ''} onChange={onChange} disabled={form.does_not_expire} className={fieldErrors.expiry_date ? 'error' : ''} />
+            {fieldErrors.expiry_date && <div className="error-message">{fieldErrors.expiry_date}</div>}
+            <label className="inline-checkbox" htmlFor="does_not_expire">
+              <input id="does_not_expire" type="checkbox" name="does_not_expire" checked={form.does_not_expire} onChange={onChange} />
+              <span className="checkbox-label-text">Does not expire</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="credential_id">Certification ID/Number</label>
+            <input id="credential_id" name="credential_id" value={form.credential_id} onChange={onChange} />
+          </div>
+          <div className="form-group">
+            <label htmlFor="credential_url">Credential URL</label>
+            <input id="credential_url" name="credential_url" value={form.credential_url} onChange={onChange} />
+          </div>
+        </div>
+
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="category">Category</label>
+            <select id="category" name="category" value={form.category} onChange={onChange}>
+              <option value="">Select category</option>
+              {(categories || []).map((c) => (<option key={c} value={c}>{c}</option>))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label htmlFor="document">Upload Document</label>
+            <input id="document" name="document" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={onChange} />
+          </div>
+        </div>
+
+        <div className="form-row">
+          <div className="form-group">
+            <label>Verification Status</label>
+            <div>
+              {statusBadge(form.verification_status)}
+            </div>
+          </div>
+          <div className="form-group">
+            <label htmlFor="renewal_reminder_enabled">Renewal Reminder</label>
+            <label className="inline-checkbox" htmlFor="renewal_reminder_enabled">
+              <input id="renewal_reminder_enabled" type="checkbox" name="renewal_reminder_enabled" checked={form.renewal_reminder_enabled} onChange={onChange} />
+              <span className="checkbox-label-text">Enable reminder</span>
+            </label>
+            {form.renewal_reminder_enabled && (
+              <div className="inline-input">
+                <label htmlFor="reminder_days_before">Days before expiration</label>
+                <input id="reminder_days_before" type="number" min="1" max="365" name="reminder_days_before" value={form.reminder_days_before} onChange={onChange} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="form-actions">
+          {editingId && (
+            <button type="button" className="cancel-button" onClick={resetForm} disabled={saving}>Cancel</button>
+          )}
+          <button type="submit" className="save-button" disabled={saving}>
+            {saving ? 'Saving...' : editingId ? 'Update Certification' : 'Add Certification'}
+          </button>
+        </div>
+      </form>
+
+      <div className="education-list timeline">
+        {(items || []).length === 0 ? (
+          <div className="empty-state">No certifications yet. Add your first one above.</div>
+        ) : (
+          (items || []).map((item) => (
+            <div key={item.id} className={`education-item ${item.is_expired ? 'expired' : ''}`}>
+              <div className="education-item-main">
+                <div className="education-item-title">
+                  {item.name}
+                  <span className="org"> • {item.issuing_organization}</span>
+                </div>
+                <div className="education-item-sub">
+                  <span>Earned {item.issue_date}</span>
+                  {item.does_not_expire ? (
+                    <span> • Does not expire</span>
+                  ) : item.expiry_date ? (
+                    <span> • Expires {item.expiry_date}</span>
+                  ) : null}
+                  {item.category && <span className="badge category">{item.category}</span>}
+                  <span className="badge status">{statusBadge(item.verification_status)}</span>
+                </div>
+                <div className="education-item-dates">
+                  {item.is_expired ? (
+                    <span className="status expired">Expired</span>
+                  ) : (
+                    item.days_until_expiration != null && (
+                      <span className="status soon">{item.days_until_expiration} days left</span>
+                    )
+                  )}
+                </div>
+              </div>
+              {(item.credential_id || item.credential_url || item.document_url) && (
+                <div className="education-item-details">
+                  {item.credential_id && (
+                    <div><strong>Credential ID:</strong> {item.credential_id}</div>
+                  )}
+                  {item.credential_url && (
+                    <div><a href={item.credential_url} target="_blank" rel="noreferrer">View Credential</a></div>
+                  )}
+                  {item.document_url && (
+                    <div><a href={item.document_url} target="_blank" rel="noreferrer">Download Document</a></div>
+                  )}
+                </div>
+              )}
+              <div className="education-item-actions">
+                <button className="edit-button" onClick={() => startEdit(item)}>Edit</button>
+                <button className="delete-button" onClick={() => requestDelete(item)}>Delete</button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {confirmDeleteItem && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-delete-title">
+          <div className="modal-card">
+            <h3 id="confirm-delete-title">Delete certification?</h3>
+            <p>
+              Are you sure you want to delete
+              {' '}<strong>{confirmDeleteItem.name}</strong>{' '}
+              from <em>{confirmDeleteItem.issuing_organization}</em>? This action cannot be undone.
+            </p>
+            <div className="modal-actions">
+              <button className="cancel-button" onClick={cancelDelete} disabled={confirmDeleting} autoFocus>
+                Cancel
+              </button>
+              <button className="delete-button" onClick={confirmDelete} disabled={confirmDeleting}>
+                {confirmDeleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Certifications;

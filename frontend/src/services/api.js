@@ -146,6 +146,15 @@ export const authAPI = {
       throw error;
     }
   },
+
+  requestAccountDeletion: async () => {
+    try {
+      const response = await api.post('/users/me/delete-request');
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
 };
 
 // UC-026: Skills API calls
@@ -305,6 +314,85 @@ export const educationAPI = {
       throw error.response?.data?.error || { message: 'Failed to delete education' };
     }
   }
+};
+
+// UC-030: Certifications API calls
+export const certificationsAPI = {
+  getCategories: async () => {
+    try {
+      const response = await api.get('/certifications/categories');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch certification categories' };
+    }
+  },
+
+  searchOrganizations: async (query, limit = 10) => {
+    try {
+      const params = new URLSearchParams({ q: query, limit });
+      const response = await api.get(`/certifications/orgs?${params.toString()}`);
+      return response.data; // array of strings
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to search organizations' };
+    }
+  },
+
+  getCertifications: async () => {
+    try {
+      const response = await api.get('/certifications');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch certifications' };
+    }
+  },
+
+  addCertification: async (data) => {
+    try {
+      // If document file is included, send multipart
+      if (data.document instanceof File) {
+        const form = new FormData();
+        Object.entries(data).forEach(([k, v]) => {
+          if (v !== undefined && v !== null) form.append(k, v);
+        });
+        const response = await api.post('/certifications', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+        return response.data;
+      }
+      const response = await api.post('/certifications', data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to add certification' };
+    }
+  },
+
+  updateCertification: async (id, data) => {
+    try {
+      if (data.document instanceof File || data.document === null) {
+        const form = new FormData();
+        Object.entries(data).forEach(([k, v]) => {
+          if (v === null) {
+            form.append(k, ''); // allow clearing fields
+          } else if (v !== undefined) {
+            form.append(k, v);
+          }
+        });
+        const response = await api.patch(`/certifications/${id}`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+        return response.data;
+      }
+      const response = await api.patch(`/certifications/${id}`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to update certification' };
+    }
+  },
+
+  deleteCertification: async (id) => {
+    try {
+      const response = await api.delete(`/certifications/${id}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete certification' };
+    }
+  },
 };
 
 export default authAPI;

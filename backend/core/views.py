@@ -6,6 +6,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from core.serializers import (
@@ -20,8 +22,9 @@ from core.serializers import (
     CandidateSkillSerializer,
     SkillAutocompleteSerializer,
     EducationSerializer,
+    CertificationSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (
@@ -37,9 +40,100 @@ from django.db.models.functions import Coalesce
 import firebase_admin
 from firebase_admin import auth as firebase_auth
 import logging
+from django.conf import settings
+
+
+# ------------------------------
+# Validation error message helpers
+# ------------------------------
+def _validation_messages(errors) -> list[str]:
+    """Return a list of human-readable validation error messages.
+
+    Example input:
+      {"credential_url": ["Enter a valid URL."], "issue_date": ["This field is required."]}
+    Output list:
+      ["Credential url: Enter a valid URL.", "Issue date: This field is required."]
+    """
+    messages = []
+    try:
+        if isinstance(errors, dict):
+            for field, err in errors.items():
+                # Normalize to first meaningful message per field
+                if isinstance(err, (list, tuple)) and err:
+                    msg = str(err[0])
+                else:
+                    msg = str(err)
+                if field == 'non_field_errors':
+                    messages.append(msg)
+                else:
+                    field_label = str(field).replace('_', ' ').capitalize()
+                    messages.append(f"{field_label}: {msg}")
+        elif isinstance(errors, (list, tuple)):
+            for e in errors:
+                if e:
+                    messages.append(str(e))
+        elif errors:
+            messages.append(str(errors))
+    except Exception:
+        # Fallback to a generic message if formatting fails
+        messages.append("Validation error")
+    return messages
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+
+def _delete_user_and_data(user):
+    """Permanently delete user and associated data across Django and Firebase."""
+    uid = getattr(user, 'username', None)
+    email = getattr(user, 'email', None)
+
+    # Delete candidate profile and related data
+    try:
+        profile = CandidateProfile.objects.get(user=user)
+        # Delete profile picture file if present
+        if profile.profile_picture:
+            try:
+                delete_old_picture(profile.profile_picture.name)
+            except Exception as e:
+                logger.warning(f"Failed to delete profile picture file for {email}: {e}")
+        # Delete related CandidateSkill entries
+        CandidateSkill.objects.filter(candidate=profile).delete()
+        profile.delete()
+    except CandidateProfile.DoesNotExist:
+        logger.info(f"No profile found when deleting user {email}")
+
+    # Delete Django user
+    try:
+        user.delete()
+    except Exception as e:
+        logger.warning(f"Failed to delete Django user {email}: {e}")
+
+    # Delete Firebase user
+    if uid:
+        try:
+            firebase_auth.delete_user(uid)
+        except Exception as e:
+            logger.warning(f"Failed to delete Firebase user {uid}: {e}")
+
+    # Send confirmation email (HTML + text alternative)
+    try:
+        from django.core.mail import EmailMultiAlternatives
+        subject = 'Your account has been deleted'
+        context = {
+            'brand': 'ATS Candidate System',
+            'primary_start': '#667eea',
+            'primary_end': '#764ba2',
+        }
+        html_content = render_to_string('emails/account_deletion_done.html', context)
+        text_content = strip_tags(html_content)
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'noreply@example.com'
+        if email:
+            msg = EmailMultiAlternatives(subject, text_content, from_email, [email])
+            msg.attach_alternative(html_content, "text/html")
+            msg.send(fail_silently=True)
+    except Exception as e:
+        logger.warning(f"Failed to send account deletion email to {email}: {e}")
 
 
 @api_view(['POST'])
@@ -70,8 +164,16 @@ def register_user(request):
     serializer = UserRegistrationSerializer(data=request.data)
     
     if not serializer.is_valid():
+        msgs = _validation_messages(serializer.errors)
         return Response(
-            {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+            {
+                'error': {
+                    'code': 'validation_error',
+                    'message': (msgs[0] if msgs else 'Validation error'),
+                    'messages': msgs,
+                    'details': serializer.errors
+                }
+            },
             status=status.HTTP_400_BAD_REQUEST
         )
     
@@ -192,8 +294,16 @@ def login_user(request):
     serializer = UserLoginSerializer(data=request.data)
     
     if not serializer.is_valid():
+        msgs = _validation_messages(serializer.errors)
         return Response(
-            {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+            {
+                'error': {
+                    'code': 'validation_error',
+                    'message': (msgs[0] if msgs else 'Validation error'),
+                    'messages': msgs,
+                    'details': serializer.errors
+                }
+            },
             status=status.HTTP_400_BAD_REQUEST
         )
     
@@ -286,58 +396,17 @@ def get_current_user(request):
     try:
         user = request.user
 
-        # Handle account deletion
+        # Handle account deletion - disabled in favor of email confirmation flow
         if request.method == 'DELETE':
-            try:
-                uid = user.username
-                email = user.email
-
-                # Delete candidate profile and related data
-                try:
-                    profile = CandidateProfile.objects.get(user=user)
-                    # Delete profile picture file if present
-                    if profile.profile_picture:
-                        try:
-                            delete_old_picture(profile.profile_picture.name)
-                        except Exception as e:
-                            logger.warning(f"Failed to delete profile picture file for {email}: {e}")
-                    # Delete related CandidateSkill entries
-                    CandidateSkill.objects.filter(candidate=profile).delete()
-                    profile.delete()
-                except CandidateProfile.DoesNotExist:
-                    logger.info(f"No profile found when deleting user {email}")
-
-                # Delete Django user
-                user.delete()
-
-                # Delete Firebase user
-                try:
-                    firebase_auth.delete_user(uid)
-                except Exception as e:
-                    logger.warning(f"Failed to delete Firebase user {uid}: {e}")
-
-                # Send confirmation email
-                try:
-                    from django.core.mail import send_mail
-                    from django.conf import settings
-
-                    subject = 'Your account has been deleted'
-                    message = (
-                        'This is a confirmation that your account and all associated data have been permanently deleted from ATS.'
-                    )
-                    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'noreply@example.com'
-                    if email:
-                        send_mail(subject, message, from_email, [email], fail_silently=True)
-                except Exception as e:
-                    logger.warning(f"Failed to send account deletion email to {email}: {e}")
-
-                return Response({'message': 'Account deleted successfully.'}, status=status.HTTP_200_OK)
-            except Exception as e:
-                logger.error(f"Error deleting account for user {getattr(request.user, 'email', 'unknown')}: {e}")
-                return Response(
-                    {'error': {'code': 'deletion_failed', 'message': 'Failed to delete account.'}},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+            return Response(
+                {
+                    'error': {
+                        'code': 'deletion_flow_updated',
+                        'message': 'Confirmation email sent. Please check your email to confirm deletion.'
+                    }
+                },
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
 
         # For GET, return profile as before
         profile = CandidateProfile.objects.get(user=user)
@@ -367,6 +436,85 @@ def get_current_user(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def request_account_deletion(request):
+    """Initiate account deletion by sending an email with a confirmation link."""
+    try:
+        user = request.user
+        # Create a new deletion request token (invalidate older by allowing overwrite behavior on retrieve)
+        deletion = AccountDeletionRequest.create_for_user(user)
+
+        # Build confirmation URL
+        confirm_path = f"/api/auth/delete/confirm/{deletion.token}"
+        confirm_url = request.build_absolute_uri(confirm_path)
+
+        # Send email with confirmation link (HTML + text alternative)
+        try:
+            from django.core.mail import EmailMultiAlternatives
+
+            subject = 'Confirm your account deletion request'
+            context = {
+                'brand': 'ATS Candidate System',
+                'confirm_url': confirm_url,
+                'primary_start': '#667eea',
+                'primary_end': '#764ba2',
+            }
+            html_content = render_to_string('emails/account_deletion_request.html', context)
+            text_content = render_to_string('emails/account_deletion_request.txt', context)
+            from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'noreply@example.com'
+            if user.email:
+                msg = EmailMultiAlternatives(subject, text_content, from_email, [user.email])
+                msg.attach_alternative(html_content, "text/html")
+                msg.send(fail_silently=True)
+        except Exception as e:
+            logger.warning(f"Failed to send deletion confirmation email to {user.email}: {e}")
+
+        payload = {
+            'message': "We've emailed you a confirmation link. Please check your inbox to permanently delete your account."
+        }
+        # In development, return the confirm URL for easier testing
+        if settings.DEBUG:
+            payload['confirm_url'] = confirm_url
+
+        return Response(payload, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error initiating account deletion for {getattr(request.user, 'email', 'unknown')}: {e}")
+        return Response(
+            {'error': {'code': 'deletion_init_failed', 'message': 'Failed to initiate account deletion.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+from django.shortcuts import render
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def confirm_account_deletion(request, token: str):
+    """Render confirmation page and on POST permanently delete the associated account."""
+    try:
+        try:
+            deletion = AccountDeletionRequest.objects.select_related('user').get(token=token)
+        except AccountDeletionRequest.DoesNotExist:
+            return render(request._request, 'core/account_deletion_invalid.html', status=404)
+
+        if not deletion.is_valid():
+            return render(request._request, 'core/account_deletion_expired.html', status=400)
+
+        if request.method == 'GET':
+            return render(request._request, 'core/account_deletion_confirm.html', context={'email': deletion.user.email})
+
+        # POST: proceed with permanent deletion
+        # Mark token consumed BEFORE deleting the user (CASCADE would remove this row)
+        deletion.mark_consumed()
+        user = deletion.user
+        _delete_user_and_data(user)
+        return render(request._request, 'core/account_deletion_done.html')
+    except Exception as e:
+        logger.error(f"Error confirming account deletion for token {token}: {e}")
+        return render(request._request, 'core/account_deletion_error.html', status=500)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -507,7 +655,13 @@ def user_profile(request, user_id=None):
                 request.user == target_user
             )
             return Response(
-                {'error': 'You do not have permission to access this profile'},
+                {
+                    'error': {
+                        'code': 'forbidden',
+                        'message': 'You do not have permission to access this profile',
+                        'messages': ['You do not have permission to access this profile']
+                    }
+                },
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -523,7 +677,13 @@ def user_profile(request, user_id=None):
         # PUT
         if not request.user.is_staff and request.user != target_user:
             return Response(
-                {'error': 'You do not have permission to edit this profile'},
+                {
+                    'error': {
+                        'code': 'forbidden',
+                        'message': 'You do not have permission to edit this profile',
+                        'messages': ['You do not have permission to edit this profile']
+                    }
+                },
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -571,8 +731,16 @@ def update_basic_profile(request):
         serializer = BasicProfileSerializer(profile, data=request.data, partial=partial)
 
         if not serializer.is_valid():
+            msgs = _validation_messages(serializer.errors)
             return Response(
-                {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                {
+                    'error': {
+                        'code': 'validation_error',
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': serializer.errors
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -614,8 +782,16 @@ def upload_profile_picture(request):
         # Validate request data
         serializer = ProfilePictureUploadSerializer(data=request.data)
         if not serializer.is_valid():
+            msgs = _validation_messages(serializer.errors)
             return Response(
-                {'error': {'code': 'validation_error', 'message': 'Invalid file upload.', 'details': serializer.errors}},
+                {
+                    'error': {
+                        'code': 'validation_error',
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': serializer.errors
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -855,8 +1031,16 @@ def skills_list_create(request):
             serializer = CandidateSkillSerializer(data=request.data)
             
             if not serializer.is_valid():
+                msgs = _validation_messages(serializer.errors)
                 return Response(
-                    {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                    {
+                        'error': {
+                            'code': 'validation_error',
+                            'message': (msgs[0] if msgs else 'Validation error'),
+                            'messages': msgs,
+                            'details': serializer.errors
+                        }
+                    },
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
@@ -1351,8 +1535,16 @@ def education_list_create(request):
         # POST
         serializer = EducationSerializer(data=request.data)
         if not serializer.is_valid():
+            msgs = _validation_messages(serializer.errors)
             return Response(
-                {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                {
+                    'error': {
+                        'code': 'validation_error',
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': serializer.errors
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
         instance = serializer.save(candidate=profile)
@@ -1397,8 +1589,16 @@ def education_detail(request, education_id):
             partial = request.method == 'PATCH'
             serializer = EducationSerializer(edu, data=request.data, partial=partial)
             if not serializer.is_valid():
+                msgs = _validation_messages(serializer.errors)
                 return Response(
-                    {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                    {
+                        'error': {
+                            'code': 'validation_error',
+                            'message': (msgs[0] if msgs else 'Validation error'),
+                            'messages': msgs,
+                            'details': serializer.errors
+                        }
+                    },
                     status=status.HTTP_400_BAD_REQUEST
                 )
             serializer.save()
@@ -1410,6 +1610,226 @@ def education_detail(request, education_id):
 
     except Exception as e:
         logger.error(f"Error in education_detail: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# ======================
+# UC-030: CERTIFICATIONS VIEWS
+# ======================
+
+# Predefined categories (can be expanded later or driven from data)
+CERTIFICATION_CATEGORIES = [
+    "Cloud",
+    "Security",
+    "Project Management",
+    "Data & Analytics",
+    "Networking",
+    "Software Development",
+    "DevOps",
+    "Design / UX",
+    "Healthcare",
+    "Finance",
+    "Other",
+]
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def certification_categories(request):
+    return Response(CERTIFICATION_CATEGORIES, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def certification_org_search(request):
+    """Autocomplete search for issuing organizations"""
+    query = request.GET.get('q', '').strip()
+    limit = int(request.GET.get('limit', 10))
+    if len(query) < 2:
+        return Response(
+            {'error': {'code': 'invalid_query', 'message': 'Search query must be at least 2 characters.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    # Search distinct orgs in DB
+    orgs = (
+        Certification.objects
+        .filter(issuing_organization__icontains=query)
+        .values_list('issuing_organization', flat=True)
+        .distinct()[:limit]
+    )
+    # Seed common orgs if DB is empty
+    if not orgs:
+        seed = [
+            # Cloud & Platform
+            'Amazon Web Services (AWS)',
+            'Microsoft',
+            'Google Cloud',
+            'Oracle',
+            'IBM',
+            'Red Hat',
+            'VMware',
+            'Salesforce',
+            'ServiceNow',
+            'SAP',
+            'Linux Foundation',
+            'Cloud Native Computing Foundation (CNCF)',
+
+            # Networking & Security Vendors
+            'Cisco',
+            'Palo Alto Networks',
+            'Fortinet',
+            'Juniper Networks',
+
+            # Security & Governance Bodies
+            '(ISC)²',
+            'ISACA',
+            'GIAC',
+            'EC-Council',
+            'Offensive Security',
+
+            # IT Generalist / Ops
+            'CompTIA',
+            'Atlassian',
+            'HashiCorp',
+
+            # Data & Analytics
+            'Snowflake',
+            'Databricks',
+            'Tableau',
+            'MongoDB',
+            'Elastic',
+
+            # Agile / Project / ITSM
+            'PMI',
+            'Scrum Alliance',
+            'Scrum.org',
+            'Scaled Agile (SAFe)',
+            'AXELOS / PeopleCert (ITIL)',
+
+            # Other notable issuers
+            'Adobe',
+            'NVIDIA',
+        ]
+        orgs = [o for o in seed if query.lower() in o.lower()][:limit]
+    return Response(list(orgs), status=status.HTTP_200_OK)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def certifications_list_create(request):
+    """
+    List and create certifications for the authenticated user.
+
+    GET: list all
+    POST: create (supports multipart for document upload)
+    """
+    try:
+        user = request.user
+        profile, _ = CandidateProfile.objects.get_or_create(user=user)
+
+        if request.method == 'GET':
+            qs = Certification.objects.filter(candidate=profile).order_by('-issue_date', '-id')
+            return Response(CertificationSerializer(qs, many=True, context={'request': request}).data, status=status.HTTP_200_OK)
+
+        # POST create
+        data = request.data.copy()
+        serializer = CertificationSerializer(data=data, context={'request': request})
+        if not serializer.is_valid():
+            msgs = _validation_messages(serializer.errors)
+            return Response(
+                {
+                    'error': {
+                        'code': 'validation_error',
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': serializer.errors
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        instance = serializer.save(candidate=profile)
+
+        # Handle file upload if present
+        document = request.FILES.get('document')
+        if document:
+            instance.document = document
+            instance.save()
+
+        return Response(CertificationSerializer(instance, context={'request': request}).data, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        logger.error(f"Error in certifications_list_create: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def certification_detail(request, certification_id):
+    """Retrieve/Update/Delete a certification"""
+    try:
+        user = request.user
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            return Response(
+                {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            cert = Certification.objects.get(id=certification_id, candidate=profile)
+        except Certification.DoesNotExist:
+            return Response(
+                {'error': {'code': 'certification_not_found', 'message': 'Certification not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if request.method == 'GET':
+            return Response(CertificationSerializer(cert, context={'request': request}).data, status=status.HTTP_200_OK)
+
+        if request.method in ['PUT', 'PATCH']:
+            partial = request.method == 'PATCH'
+            data = request.data.copy()
+            serializer = CertificationSerializer(cert, data=data, partial=partial, context={'request': request})
+            if not serializer.is_valid():
+                msgs = _validation_messages(serializer.errors)
+                return Response(
+                    {
+                        'error': {
+                            'code': 'validation_error',
+                            'message': (msgs[0] if msgs else 'Validation error'),
+                            'messages': msgs,
+                            'details': serializer.errors
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            instance = serializer.save()
+
+            # Update document if provided
+            document = request.FILES.get('document')
+            if document is not None:
+                instance.document = document
+                instance.save()
+            # Allow clearing document by sending empty value
+            elif 'document' in request.data and (request.data.get('document') in ['', None]):
+                instance.document = None
+                instance.save()
+
+            return Response(CertificationSerializer(instance, context={'request': request}).data, status=status.HTTP_200_OK)
+
+        # DELETE
+        cert.delete()
+        return Response({'message': 'Certification deleted successfully.'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error in certification_detail: {e}")
         return Response(
             {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

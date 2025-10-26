@@ -6,7 +6,7 @@ import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from core.models import CandidateProfile, Skill, CandidateSkill, Education
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification
 
 User = get_user_model()
 
@@ -100,8 +100,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
         ]
     
     def get_full_name(self, obj):
-        """Get user's full name."""
-        return f"{obj.user.first_name} {obj.user.last_name}".strip()
+        """Get user's full name with sensible fallback to email/username."""
+        name = f"{obj.user.first_name} {obj.user.last_name}".strip()
+        if not name:
+            return obj.user.email or obj.user.username or ""
+        return name
     
     def get_full_location(self, obj):
         """Get formatted location."""
@@ -222,12 +225,18 @@ class UserSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ['id', 'email', 'first_name', 'last_name', 'full_name', 'date_joined']
-        read_only_fields = ['id', 'email', 'date_joined']
+        fields = [
+            'id', 'email', 'first_name', 'last_name', 'full_name', 'date_joined',
+            'is_staff', 'is_superuser'
+        ]
+        read_only_fields = ['id', 'email', 'date_joined', 'is_staff', 'is_superuser']
     
     def get_full_name(self, obj):
-        """Get user's full name."""
-        return f"{obj.first_name} {obj.last_name}".strip()
+        """Get user's full name with sensible fallback to email/username."""
+        name = f"{obj.first_name} {obj.last_name}".strip()
+        if not name:
+            return obj.email or obj.username or ""
+        return name
 
 
 class FirebaseTokenSerializer(serializers.Serializer):
@@ -503,6 +512,54 @@ class EducationSerializer(serializers.ModelSerializer):
         if errors:
             raise serializers.ValidationError(errors)
 
+        return data
+
+
+# ======================
+# UC-030: CERTIFICATIONS SERIALIZERS
+# ======================
+
+class CertificationSerializer(serializers.ModelSerializer):
+    """Serializer for professional certifications"""
+    does_not_expire = serializers.BooleanField(source='never_expires', required=False)
+    document_url = serializers.SerializerMethodField(read_only=True)
+    is_expired = serializers.SerializerMethodField(read_only=True)
+    days_until_expiration = serializers.SerializerMethodField(read_only=True)
+    reminder_date = serializers.DateField(read_only=True)
+
+    class Meta:
+        model = Certification
+        fields = [
+            'id', 'name', 'issuing_organization', 'issue_date', 'expiry_date',
+            'does_not_expire', 'credential_id', 'credential_url', 'category',
+            'verification_status', 'document_url', 'is_expired', 'days_until_expiration',
+            'renewal_reminder_enabled', 'reminder_days_before', 'reminder_date',
+        ]
+        read_only_fields = ['id', 'document_url', 'is_expired', 'days_until_expiration', 'reminder_date']
+
+    def get_document_url(self, obj):
+        request = self.context.get('request')
+        if obj.document:
+            url = obj.document.url
+            return request.build_absolute_uri(url) if request else url
+        return None
+
+    def get_is_expired(self, obj):
+        return obj.is_expired
+
+    def get_days_until_expiration(self, obj):
+        return obj.days_until_expiration
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        never_expires = data.get('never_expires')
+        expiry_date = data.get('expiry_date')
+        if never_expires and expiry_date:
+            # If does not expire, ignore provided expiry_date
+            data['expiry_date'] = None
+        if not never_expires:
+            # When it expires, expiry_date can be optional, but we'll allow null (user may add later)
+            pass
         return data
 
 

@@ -9,6 +9,34 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _collect_messages_from_response_data(response_data):
+    """Build a list of human-readable messages from DRF error response data."""
+    messages = []
+    try:
+        if isinstance(response_data, dict):
+            # DRF often returns {'field': ['msg']} or {'detail': 'msg'}
+            if 'detail' in response_data and not isinstance(response_data.get('detail'), (dict, list)):
+                messages.append(str(response_data['detail']))
+            for field, value in response_data.items():
+                if field == 'detail':
+                    continue
+                if isinstance(value, (list, tuple)) and value:
+                    msg = str(value[0])
+                else:
+                    msg = str(value)
+                field_label = str(field).replace('_', ' ').capitalize()
+                messages.append(f"{field_label}: {msg}")
+        elif isinstance(response_data, (list, tuple)):
+            for v in response_data:
+                if v:
+                    messages.append(str(v))
+        elif response_data:
+            messages.append(str(response_data))
+    except Exception:
+        pass
+    return messages
+
+
 def custom_exception_handler(exc, context):
     """
     Custom exception handler that provides consistent error response format.
@@ -28,12 +56,15 @@ def custom_exception_handler(exc, context):
     
     if response is not None:
         # Customize the response format
+        messages = _collect_messages_from_response_data(response.data)
         custom_response_data = {
             'error': {
                 'code': get_error_code(exc, response.status_code),
-                'message': get_error_message(exc, response.data),
+                'message': (messages[0] if messages else get_error_message(exc, response.data)),
             }
         }
+        if messages:
+            custom_response_data['error']['messages'] = messages
         
         # Add field-specific errors if available
         if isinstance(response.data, dict):

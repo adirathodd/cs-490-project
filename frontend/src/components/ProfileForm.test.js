@@ -3,10 +3,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ProfileForm from './ProfileForm';
 import { AuthProvider } from '../context/AuthContext';
 
-// Mock authAPI.deleteAccount and signOut
+// Mock authAPI.requestAccountDeletion and signOut
 jest.mock('../services/api', () => ({
   authAPI: {
-    deleteAccount: jest.fn().mockResolvedValue({ message: 'Account deleted successfully.' })
+    requestAccountDeletion: jest.fn().mockResolvedValue({ message: "We've emailed you a confirmation link." })
   }
 }));
 jest.mock('../services/firebase', () => ({
@@ -33,8 +33,8 @@ const mockAuthContext = {
   signOut: mockSignOut,
 };
 
-describe('ProfileForm Account Deletion', () => {
-  it('shows delete modal and deletes account on confirm', async () => {
+describe('ProfileForm Account Deletion (email confirmation flow)', () => {
+  it('shows modal and initiates email confirmation on confirm', async () => {
     render(
       <AuthProvider value={mockAuthContext}>
         <ProfileForm />
@@ -42,11 +42,12 @@ describe('ProfileForm Account Deletion', () => {
     );
     // Open delete dialog
     fireEvent.click(screen.getByRole('button', { name: /delete account/i }));
-    expect(screen.getByText(/permanently delete your account/i)).toBeInTheDocument();
+    expect(screen.getByText(/confirmation required/i)).toBeInTheDocument();
     // Enter password and confirm
     fireEvent.change(screen.getByPlaceholderText(/your password/i), { target: { value: 'testpass123' } });
-    fireEvent.click(screen.getByRole('button', { name: /delete account/i }));
-    await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
-    expect(mockNavigate).toHaveBeenCalledWith('/login');
+    fireEvent.click(screen.getByRole('button', { name: /send confirmation email/i }));
+    await waitFor(() => expect(screen.queryByText(/we've sent a confirmation link/i)).toBeInTheDocument());
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });

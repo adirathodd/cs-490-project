@@ -2,6 +2,8 @@
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+from django.contrib.auth import get_user_model
+import secrets
 
 class CandidateProfile(models.Model):
     EXPERIENCE_LEVELS = [
@@ -68,6 +70,27 @@ class CandidateSkill(models.Model):
             models.Index(fields=["candidate", "order"])
         ]
         ordering = ['order', 'id']
+
+class AccountDeletionRequest(models.Model):
+    """One-time token to confirm irreversible account deletion via email."""
+    user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='account_deletion_requests')
+    token = models.CharField(max_length=128, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    consumed = models.BooleanField(default=False)
+
+    @staticmethod
+    def create_for_user(user, ttl_hours: int = 24):
+        token = secrets.token_urlsafe(48)
+        expires_at = timezone.now() + timezone.timedelta(hours=ttl_hours)
+        return AccountDeletionRequest.objects.create(user=user, token=token, expires_at=expires_at)
+
+    def is_valid(self) -> bool:
+        return (not self.consumed) and timezone.now() <= self.expires_at
+
+    def mark_consumed(self):
+        self.consumed = True
+        self.save(update_fields=['consumed'])
 
 class Company(models.Model):
     name = models.CharField(max_length=180)
@@ -232,6 +255,21 @@ class Certification(models.Model):
     credential_id = models.CharField(max_length=100, blank=True)
     credential_url = models.URLField(blank=True)
     never_expires = models.BooleanField(default=False)
+    # UC-030 extensions
+    category = models.CharField(max_length=100, blank=True)
+    verification_status = models.CharField(
+        max_length=20,
+        default="unverified",
+        choices=[
+            ("unverified", "Unverified"),
+            ("pending", "Pending"),
+            ("verified", "Verified"),
+            ("rejected", "Rejected"),
+        ],
+    )
+    document = models.FileField(upload_to='certifications/%Y/%m/', null=True, blank=True)
+    renewal_reminder_enabled = models.BooleanField(default=False)
+    reminder_days_before = models.PositiveSmallIntegerField(default=30)
     
     class Meta:
         ordering = ['-issue_date']
@@ -239,6 +277,27 @@ class Certification(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.issuing_organization}"
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone
+        if self.never_expires or not self.expiry_date:
+            return False
+        return self.expiry_date < timezone.localdate()
+
+    @property
+    def days_until_expiration(self):
+        from django.utils import timezone
+        if self.never_expires or not self.expiry_date:
+            return None
+        return (self.expiry_date - timezone.localdate()).days
+
+    @property
+    def reminder_date(self):
+        if not self.renewal_reminder_enabled or not self.expiry_date:
+            return None
+        from datetime import timedelta
+        return self.expiry_date - timedelta(days=int(self.reminder_days_before or 0))
 
 
 class Achievement(models.Model):

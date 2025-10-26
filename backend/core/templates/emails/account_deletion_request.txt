@@ -1,0 +1,8 @@
+Confirm your account deletion
+
+You requested to delete your account from {{ brand }}. This action is permanent and will remove all your data.
+
+Confirm here:
+{{ confirm_url }}
+
+If you did not request this, please ignore this email. This link expires in 24 hours.
