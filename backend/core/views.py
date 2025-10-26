@@ -448,7 +448,8 @@ def request_account_deletion(request):
     try:
         user = request.user
         # Create a new deletion request token (invalidate older by allowing overwrite behavior on retrieve)
-        deletion = AccountDeletionRequest.create_for_user(user)
+        # Token valid for 1 hour
+        deletion = AccountDeletionRequest.create_for_user(user, ttl_hours=1)
 
         # Build confirmation URL
         confirm_path = f"/api/auth/delete/confirm/{deletion.token}"
@@ -464,6 +465,7 @@ def request_account_deletion(request):
                 'confirm_url': confirm_url,
                 'primary_start': '#667eea',
                 'primary_end': '#764ba2',
+                'ttl_hours': 1,
             }
             html_content = render_to_string('emails/account_deletion_request.html', context)
             text_content = render_to_string('emails/account_deletion_request.txt', context)
