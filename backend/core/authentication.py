@@ -5,6 +5,7 @@ from rest_framework import authentication
 from rest_framework import exceptions
 from django.contrib.auth import get_user_model
 from core.firebase_utils import verify_firebase_token, initialize_firebase
+from firebase_admin import auth as firebase_auth
 import logging
 
 logger = logging.getLogger(__name__)
@@ -71,12 +72,58 @@ class FirebaseAuthentication(authentication.BaseAuthentication):
                 logger.info(f"Created new user from Firebase token: {email}")
                 # Create candidate profile automatically
                 from core.models import CandidateProfile
-                CandidateProfile.objects.create(user=user)
+                # Try to fetch additional info from Firebase user record (e.g., photo URL)
+                try:
+                    firebase_user = firebase_auth.get_user(uid)
+                    display_name = firebase_user.display_name or decoded_token.get('name', '')
+                    photo_url = getattr(firebase_user, 'photo_url', None)
+
+                    # Update user fields if available
+                    if display_name:
+                        parts = display_name.split()
+                        user.first_name = parts[0]
+                        user.last_name = ' '.join(parts[1:]) if len(parts) > 1 else ''
+                        user.save()
+
+                    profile = CandidateProfile.objects.create(user=user)
+                    # Store profile picture URL in portfolio_url to make it accessible via existing serializers
+                    if photo_url:
+                        profile.portfolio_url = photo_url
+                        profile.save()
+                except Exception as e:
+                    logger.warning(f"Could not fetch extra Firebase user info for {uid}: {e}")
+                    CandidateProfile.objects.create(user=user)
             
             # Update email if it changed
             if user.email != email:
                 user.email = email
                 user.save()
+
+            # Try to update user/profile fields from Firebase record on each auth
+            try:
+                firebase_user = firebase_auth.get_user(uid)
+                display_name = firebase_user.display_name or decoded_token.get('name', '')
+                photo_url = getattr(firebase_user, 'photo_url', None)
+
+                # Update user's name if different
+                if display_name:
+                    parts = display_name.split()
+                    first = parts[0]
+                    last = ' '.join(parts[1:]) if len(parts) > 1 else ''
+                    if user.first_name != first or user.last_name != last:
+                        user.first_name = first
+                        user.last_name = last
+                        user.save()
+
+                # Ensure CandidateProfile exists and update portfolio_url with photo if available
+                from core.models import CandidateProfile
+                profile, _ = CandidateProfile.objects.get_or_create(user=user)
+                if photo_url and profile.portfolio_url != photo_url:
+                    profile.portfolio_url = photo_url
+                    profile.save()
+            except Exception:
+                # Non-fatal: if we can't fetch Firebase user info, continue
+                pass
             
             return (user, decoded_token)
             

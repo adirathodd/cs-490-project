@@ -20,7 +20,7 @@ const Dashboard = () => {
         try {
           const response = await authAPI.getProfilePicture();
           console.log('Profile picture response:', response);
-          
+
           // The response from authAPI.getProfilePicture is already response.data
           if (response.profile_picture_url) {
             // Build full URL - the backend returns relative path like /media/profile_pictures/...
@@ -29,12 +29,31 @@ const Dashboard = () => {
               ? response.profile_picture_url 
               : `${apiBaseUrl}${response.profile_picture_url}`;
             setProfilePictureUrl(fullUrl);
+            return;
           }
+
+          // Fallback: if backend has no uploaded profile picture, use portfolio_url (we store Google photo there)
+          if (userProfile && userProfile.portfolio_url) {
+            const photo = userProfile.portfolio_url;
+            const fullPhoto = photo.startsWith('http') ? photo : `${process.env.REACT_APP_API_URL || 'http://localhost:8000'}${photo}`;
+            setProfilePictureUrl(fullPhoto);
+            return;
+          }
+
+          // No picture available
+          setProfilePictureUrl(null);
         } catch (error) {
           console.log('Profile picture fetch error:', error);
           // Silently handle 404 or 400 - no profile picture exists
           if (error.response && (error.response.status === 404 || error.response.status === 400)) {
-            setProfilePictureUrl(null);
+            // Fallback to portfolio_url if available
+            if (userProfile && userProfile.portfolio_url) {
+              const photo = userProfile.portfolio_url;
+              const fullPhoto = photo.startsWith('http') ? photo : `${process.env.REACT_APP_API_URL || 'http://localhost:8000'}${photo}`;
+              setProfilePictureUrl(fullPhoto);
+            } else {
+              setProfilePictureUrl(null);
+            }
           }
         }
       }
