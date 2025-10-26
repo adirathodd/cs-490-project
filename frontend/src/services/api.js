@@ -395,4 +395,85 @@ export const certificationsAPI = {
   },
 };
 
+// UC-031: Projects API calls
+export const projectsAPI = {
+  getProjects: async () => {
+    try {
+      const response = await api.get('/projects');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch projects' };
+    }
+  },
+
+  addProject: async (data) => {
+    try {
+      // If files present, use multipart
+      if (data.media && Array.isArray(data.media) && data.media.length > 0) {
+        const form = new FormData();
+        Object.entries(data).forEach(([k, v]) => {
+          if (k === 'media') return; // handle separately
+          if (k === 'technologies' && Array.isArray(v)) {
+            form.append('technologies', JSON.stringify(v));
+          } else if (v !== undefined && v !== null) {
+            form.append(k, v);
+          }
+        });
+        data.media.forEach((file) => form.append('media', file));
+        const response = await api.post('/projects', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+        return response.data;
+      }
+      const payload = { ...data };
+      if (Array.isArray(payload.technologies)) {
+        payload.technologies = payload.technologies; // send as JSON by axios
+      }
+      const response = await api.post('/projects', payload);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to add project' };
+    }
+  },
+
+  updateProject: async (id, data) => {
+    try {
+      if (data.media && Array.isArray(data.media) && data.media.length > 0) {
+        const form = new FormData();
+        Object.entries(data).forEach(([k, v]) => {
+          if (k === 'media') return;
+          if (k === 'technologies' && Array.isArray(v)) {
+            form.append('technologies', JSON.stringify(v));
+          } else if (v !== undefined) {
+            form.append(k, v === null ? '' : v);
+          }
+        });
+        data.media.forEach((file) => form.append('media', file));
+        const response = await api.patch(`/projects/${id}`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+        return response.data;
+      }
+      const response = await api.patch(`/projects/${id}`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to update project' };
+    }
+  },
+
+  deleteProject: async (id) => {
+    try {
+      const response = await api.delete(`/projects/${id}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete project' };
+    }
+  },
+
+  deleteProjectMedia: async (projectId, mediaId) => {
+    try {
+      const response = await api.delete(`/projects/${projectId}/media/${mediaId}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete media' };
+    }
+  },
+};
+
 export default authAPI;

@@ -207,6 +207,57 @@ class WorkExperience(models.Model):
         return f"{self.job_title} at {self.company_name}"
 
 
+class Project(models.Model):
+    """Projects to showcase significant work beyond regular employment (UC-031)."""
+    STATUS_CHOICES = [
+        ("completed", "Completed"),
+        ("ongoing", "Ongoing"),
+        ("planned", "Planned"),
+    ]
+
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="projects")
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    role = models.CharField(max_length=160, blank=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    project_url = models.URLField(blank=True)
+    team_size = models.PositiveSmallIntegerField(null=True, blank=True)
+    collaboration_details = models.TextField(blank=True)
+    outcomes = models.TextField(blank=True)
+    industry = models.CharField(max_length=120, blank=True)
+    category = models.CharField(max_length=120, blank=True, help_text="Project type categorization")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="completed")
+    skills_used = models.ManyToManyField(Skill, blank=True, related_name="used_in_projects")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-start_date', '-created_at']
+        indexes = [
+            models.Index(fields=["candidate", "-start_date"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class ProjectMedia(models.Model):
+    """Media (screenshots) associated with a project."""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="media")
+    image = models.ImageField(upload_to='projects/%Y/%m/')
+    caption = models.CharField(max_length=200, blank=True)
+    order = models.IntegerField(default=0)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order', 'id']
+        indexes = [models.Index(fields=["project", "order"])]
+
+    def __str__(self):
+        return f"Media for {self.project_id} #{self.id}"
+
 class Education(models.Model):
     """Educational background for candidates"""
     DEGREE_CHOICES = [

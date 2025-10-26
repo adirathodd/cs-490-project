@@ -11,6 +11,7 @@ import Skills from './components/Skills';
 import SkillsOrganized from './components/SkillsOrganized';
 import Education from './components/Education';
 import Certifications from './components/Certifications';
+import Projects from './components/Projects';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
 import './App.css';
@@ -97,6 +98,14 @@ function App() {
             element={
               <PrivateRoute>
                 <Certifications />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/projects"
+            element={
+              <PrivateRoute>
+                <Projects />
               </PrivateRoute>
             }
           />
