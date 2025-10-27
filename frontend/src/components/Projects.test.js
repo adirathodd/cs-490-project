@@ -31,16 +31,17 @@ import Projects from './Projects';
 describe('Projects component', () => {
   it('renders heading and shows empty state', async () => {
     render(<Projects />);
-    expect(await screen.findByRole('heading', { name: /Projects/i })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: /Projects/i, level: 1 })).toBeInTheDocument();
     expect(await screen.findByText(/No projects yet/i)).toBeInTheDocument();
   });
 
   it('validates required fields before submit', async () => {
     render(<Projects />);
-    await screen.findByRole('heading', { name: /Projects/i });
+  await screen.findByRole('heading', { name: /Projects/i, level: 1 });
 
-    // Submit without project name
-    fireEvent.click(screen.getByRole('button', { name: /add project/i }));
+    // Open form then submit without project name
+    fireEvent.click(screen.getByRole('button', { name: /\+ Add Project/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Add Project$/i }));
     expect(await screen.findByText(/Project name is required/i)).toBeInTheDocument();
   });
 
@@ -66,7 +67,8 @@ describe('Projects component', () => {
     });
 
     render(<Projects />);
-    await screen.findByRole('heading', { name: /Projects/i });
+  await screen.findByRole('heading', { name: /Projects/i, level: 1 });
+    fireEvent.click(screen.getByRole('button', { name: /\+ Add Project/i }));
 
     fireEvent.change(screen.getByLabelText(/Project Name/i), { target: { value: 'Portfolio Site' } });
     fireEvent.change(screen.getByLabelText(/Status/i), { target: { value: 'completed' } });
@@ -86,7 +88,8 @@ describe('Projects component', () => {
     projectsAPI.getProjects.mockResolvedValueOnce([]);
 
     render(<Projects />);
-    await screen.findByRole('heading', { name: /Projects/i });
+  await screen.findByRole('heading', { name: /Projects/i, level: 1 });
+    fireEvent.click(screen.getByRole('button', { name: /\+ Add Project/i }));
 
     const startInput = screen.getByLabelText(/Start Date/i);
     const endInput = screen.getByLabelText(/End Date/i);
@@ -129,8 +132,9 @@ describe('Projects component', () => {
     };
     projectsAPI.addProject.mockResolvedValueOnce(created);
 
-    render(<Projects />);
-    await screen.findByRole('heading', { name: /Projects/i });
+  render(<Projects />);
+  await screen.findByRole('heading', { name: /Projects/i, level: 1 });
+  fireEvent.click(screen.getByRole('button', { name: /\+ Add Project/i }));
 
     // Fill form fields
     fireEvent.change(screen.getByLabelText(/Project Name/i), { target: { value: created.name } });
@@ -174,10 +178,10 @@ describe('Projects component', () => {
   expect(link).toHaveAttribute('href', created.project_url);
     // Technologies tags
     created.technologies.forEach((t) => expect(screen.getByText(t)).toBeInTheDocument());
-    // Sections
-    expect(screen.getByText(/Description:/)).toBeInTheDocument();
-    expect(screen.getByText(/Collaboration:/)).toBeInTheDocument();
-    expect(screen.getByText(/Outcomes:/)).toBeInTheDocument();
+  // Sections
+  expect(screen.getByText(/Description\b/)).toBeInTheDocument();
+  expect(screen.getByText(/Team \& Collaboration/)).toBeInTheDocument();
+  expect(screen.getByText(/Outcomes \& Achievements/)).toBeInTheDocument();
     // Media image rendered
     const img = screen.getByRole('img');
     expect(img).toHaveAttribute('src', created.media[0].image_url);

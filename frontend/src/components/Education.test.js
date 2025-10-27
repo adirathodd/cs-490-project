@@ -34,7 +34,7 @@ describe('Education component', () => {
   it('renders and shows empty state', async () => {
     render(<Education />);
     // Wait for the real heading (not the loading text)
-    expect(await screen.findByRole('heading', { name: /Education/i })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: /^Education$/i })).toBeInTheDocument();
     expect(await screen.findByText(/No education entries yet/i)).toBeInTheDocument();
   });
 
@@ -42,10 +42,10 @@ describe('Education component', () => {
     render(<Education />);
 
   // Ensure levels loaded (wait for heading instead of matching loading text)
-  await screen.findByRole('heading', { name: /Education/i });
-
-    // Submit without required fields
-    fireEvent.click(screen.getByRole('button', { name: /add education/i }));
+  await screen.findByRole('heading', { name: /^Education$/i });
+  // Open form and submit to trigger validation
+  fireEvent.click(screen.getByRole('button', { name: /\+ Add Education/i }));
+  fireEvent.click(screen.getByRole('button', { name: /^Add Education$/i }));
 
     expect(await screen.findByText(/Institution is required/i)).toBeInTheDocument();
     expect(await screen.findByText(/Education level is required/i)).toBeInTheDocument();
@@ -53,7 +53,8 @@ describe('Education component', () => {
 
   it('allows currently enrolled without graduation date', async () => {
     render(<Education />);
-    await screen.findByRole('heading', { name: /Education/i });
+    await screen.findByRole('heading', { name: /^Education$/i });
+    fireEvent.click(screen.getByRole('button', { name: /\+ Add Education/i }));
 
     fireEvent.change(screen.getByLabelText(/Institution/i), { target: { value: 'My College' } });
     fireEvent.change(screen.getByLabelText(/Education Level/i), { target: { value: 'ba' } });
@@ -61,8 +62,8 @@ describe('Education component', () => {
     // Enable currently enrolled
     fireEvent.click(screen.getByLabelText(/Currently enrolled/i));
 
-    // Submit
-    fireEvent.click(screen.getByRole('button', { name: /add education/i }));
+  // Submit
+  fireEvent.click(screen.getByRole('button', { name: /^Add Education$/i }));
 
     // No graduation date error should appear
     await waitFor(() => {
@@ -92,9 +93,10 @@ describe('Education component', () => {
       achievements: '',
       description: ''
     });
-    render(<Education />);
+  render(<Education />);
 
-    await screen.findByRole('heading', { name: /Education/i });
+  await screen.findByRole('heading', { name: /^Education$/i });
+  fireEvent.click(screen.getByRole('button', { name: /\+ Add Education/i }));
 
     fireEvent.change(screen.getByLabelText(/Institution/i), { target: { value: 'Test U' } });
   fireEvent.change(screen.getByLabelText(/Education Level/i), { target: { value: 'ba' } });
@@ -102,7 +104,7 @@ describe('Education component', () => {
     // Provide graduation date since not enrolled
     fireEvent.change(screen.getByLabelText(/Graduation Date/i), { target: { value: '2024-05-15' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /add education/i }));
+  fireEvent.click(screen.getByRole('button', { name: /^Add Education$/i }));
 
     // New item should appear after successful add
     expect(await screen.findByText('Test U')).toBeInTheDocument();
