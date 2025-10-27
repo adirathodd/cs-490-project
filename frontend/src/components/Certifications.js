@@ -1,9 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { certificationsAPI } from '../services/api';
-import './Education.css';
-import './Skills.css';
-import './ProfileForm.css';
-import './SkillsOrganized.css';
 import './Certifications.css';
 
 const defaultForm = {
@@ -43,14 +39,14 @@ const Certifications = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
+  const [showForm, setShowForm] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [orgQuery, setOrgQuery] = useState('');
   const [orgSuggestions, setOrgSuggestions] = useState([]);
   const [showOrgSuggestions, setShowOrgSuggestions] = useState(false);
   const [orgActiveIndex, setOrgActiveIndex] = useState(-1);
   const orgBoxRef = useRef(null);
   const orgInputRef = useRef(null);
-  const [confirmDeleteItem, setConfirmDeleteItem] = useState(null);
-  const [confirmDeleting, setConfirmDeleting] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -126,6 +122,7 @@ const Certifications = () => {
     setForm(defaultForm);
     setFieldErrors({});
     setEditingId(null);
+    setShowForm(false);
     setOrgSuggestions([]);
     setShowOrgSuggestions(false);
   };
@@ -204,28 +201,17 @@ const Certifications = () => {
       document: null,
     });
     setFieldErrors({});
+    setShowForm(true);
   };
 
-  const requestDelete = (item) => {
-    setConfirmDeleteItem(item);
-  };
-
-  const cancelDelete = () => {
-    setConfirmDeleteItem(null);
-    setConfirmDeleting(false);
-  };
-
-  const confirmDelete = async () => {
-    if (!confirmDeleteItem) return;
-    setConfirmDeleting(true);
+  const handleDelete = async (id) => {
     try {
-      await certificationsAPI.deleteCertification(confirmDeleteItem.id);
-      setItems((prev) => (prev || []).filter((i) => i.id !== confirmDeleteItem.id));
-      if (editingId === confirmDeleteItem.id) resetForm();
-      cancelDelete();
+      await certificationsAPI.deleteCertification(id);
+      setItems((prev) => (prev || []).filter((i) => i.id !== id));
+      if (editingId === id) resetForm();
+      setDeleteConfirm(null);
     } catch (e) {
       setError(e?.message || 'Failed to delete');
-      setConfirmDeleting(false);
     }
   };
 
@@ -254,17 +240,42 @@ const Certifications = () => {
     }
   };
 
-  if (loading) return <div className="education-container">Loading certifications...</div>;
+  if (loading) return <div className="certifications-container">Loading certifications...</div>;
 
   return (
-    <div className="education-container">
-      <div className="page-backbar">
-        <a className="btn-back" href="/dashboard" aria-label="Back to dashboard" title="Back to dashboard">← Back to Dashboard</a>
+    <div className="certifications-container">
+      <div className="certifications-page-header">
+        <a className="back-button" href="/dashboard" aria-label="Back to dashboard" title="Back to dashboard">
+          ← Back to Dashboard
+        </a>
+        <h1 className="certifications-page-title">Certifications</h1>
       </div>
-      <h2>Certifications</h2>
+
+      <div className="certifications-header">
+        <h2>🏆 Your Professional Certifications</h2>
+        <button 
+          className="add-certification-button"
+          onClick={() => {
+            setForm(defaultForm);
+            setEditingId(null);
+            setFieldErrors({});
+            setShowForm(true);
+          }}
+        >
+          + Add Certification
+        </button>
+      </div>
+
       {error && <div className="error-banner">{error}</div>}
 
-      <form className="education-form" onSubmit={handleSubmit}>
+      {showForm && (
+        <div className="certification-form-card">
+          <div className="form-header">
+            <h3>{editingId ? 'Edit Certification' : 'Add Certification'}</h3>
+            <button className="close-button" onClick={resetForm}>✕</button>
+          </div>
+
+          <form className="certification-form" onSubmit={handleSubmit}>
         <div className="form-row">
           <div className="form-group">
             <label htmlFor="name">Certification Name <span className="required">*</span></label>
@@ -381,86 +392,113 @@ const Certifications = () => {
         </div>
 
         <div className="form-actions">
-          {editingId && (
-            <button type="button" className="cancel-button" onClick={resetForm} disabled={saving}>Cancel</button>
-          )}
+          <button type="button" className="cancel-button" onClick={resetForm} disabled={saving}>
+            Cancel
+          </button>
           <button type="submit" className="save-button" disabled={saving}>
             {saving ? 'Saving...' : editingId ? 'Update Certification' : 'Add Certification'}
           </button>
         </div>
       </form>
+        </div>
+      )}
 
-      <div className="education-list timeline">
-        {(items || []).length === 0 ? (
-          <div className="empty-state">No certifications yet. Add your first one above.</div>
-        ) : (
-          (items || []).map((item) => (
-            <div key={item.id} className={`education-item ${item.is_expired ? 'expired' : ''}`}>
-              <div className="education-item-main">
-                <div className="education-item-title">
-                  {item.name}
-                  <span className="org"> • {item.issuing_organization}</span>
+      {(items || []).length === 0 && !showForm ? (
+        <div className="empty-state">
+          <div className="empty-icon">🏆</div>
+          <h3>No Certifications Yet</h3>
+          <p>Add your professional certifications to showcase your expertise.</p>
+          <button className="add-certification-button" onClick={() => {
+            setForm(defaultForm);
+            setEditingId(null);
+            setFieldErrors({});
+            setShowForm(true);
+          }}>
+            + Add Your First Certification
+          </button>
+        </div>
+      ) : (
+        <div className="certifications-list">
+          {(items || []).map((item) => (
+            <div key={item.id} className={`certification-item ${item.is_expired ? 'expired' : ''}`}>
+              <div className="certification-item-header">
+                <div className="certification-item-main">
+                  <div className="certification-item-title">
+                    {item.name}
+                  </div>
+                  <div className="certification-item-sub">
+                    <span className="organization">🏢 {item.issuing_organization}</span>
+                    {item.category && <span className="cert-category-badge">{item.category}</span>}
+                    {statusBadge(item.verification_status)}
+                  </div>
+                  <div className="certification-item-dates">
+                    <span className="dates">Earned {item.issue_date}</span>
+                    {item.does_not_expire ? (
+                      <span className="no-expiry"> • Does not expire</span>
+                    ) : item.expiry_date ? (
+                      <>
+                        <span> • Expires {item.expiry_date}</span>
+                        {item.is_expired ? (
+                          <span className="status-badge expired">Expired</span>
+                        ) : item.days_until_expiration != null && (
+                          <span className="status-badge expiring-soon">{item.days_until_expiration} days left</span>
+                        )}
+                      </>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="education-item-sub">
-                  <span>Earned {item.issue_date}</span>
-                  {item.does_not_expire ? (
-                    <span> • Does not expire</span>
-                  ) : item.expiry_date ? (
-                    <span> • Expires {item.expiry_date}</span>
-                  ) : null}
-                  {item.category && <span className="badge category">{item.category}</span>}
-                  <span className="badge status">{statusBadge(item.verification_status)}</span>
-                </div>
-                <div className="education-item-dates">
-                  {item.is_expired ? (
-                    <span className="status expired">Expired</span>
-                  ) : (
-                    item.days_until_expiration != null && (
-                      <span className="status soon">{item.days_until_expiration} days left</span>
-                    )
-                  )}
+                <div className="certification-item-actions">
+                  <button 
+                    className="edit-button"
+                    onClick={() => startEdit(item)}
+                    title="Edit"
+                  >
+                    ✏️
+                  </button>
+                  <button 
+                    className="delete-button"
+                    onClick={() => setDeleteConfirm(item.id)}
+                    title="Delete"
+                  >
+                    🗑️
+                  </button>
                 </div>
               </div>
               {(item.credential_id || item.credential_url || item.document_url) && (
-                <div className="education-item-details">
+                <div className="certification-item-details">
                   {item.credential_id && (
                     <div><strong>Credential ID:</strong> {item.credential_id}</div>
                   )}
                   {item.credential_url && (
-                    <div><a href={item.credential_url} target="_blank" rel="noreferrer">View Credential</a></div>
+                    <div><a href={item.credential_url} target="_blank" rel="noreferrer">🔗 View Credential</a></div>
                   )}
                   {item.document_url && (
-                    <div><a href={item.document_url} target="_blank" rel="noreferrer">Download Document</a></div>
+                    <div><a href={item.document_url} target="_blank" rel="noreferrer">📄 Download Document</a></div>
                   )}
                 </div>
               )}
-              <div className="education-item-actions">
-                <button className="edit-button" onClick={() => startEdit(item)}>Edit</button>
-                <button className="delete-button" onClick={() => requestDelete(item)}>Delete</button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
 
-      {confirmDeleteItem && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-delete-title">
-          <div className="modal-card">
-            <h3 id="confirm-delete-title">Delete certification?</h3>
-            <p>
-              Are you sure you want to delete
-              {' '}<strong>{confirmDeleteItem.name}</strong>{' '}
-              from <em>{confirmDeleteItem.issuing_organization}</em>? This action cannot be undone.
-            </p>
-            <div className="modal-actions">
-              <button className="cancel-button" onClick={cancelDelete} disabled={confirmDeleting} autoFocus>
-                Cancel
-              </button>
-              <button className="delete-button" onClick={confirmDelete} disabled={confirmDeleting}>
-                {confirmDeleting ? 'Deleting…' : 'Delete'}
-              </button>
+              {deleteConfirm === item.id && (
+                <div className="delete-confirm">
+                  <p>Are you sure you want to delete this certification?</p>
+                  <div className="confirm-actions">
+                    <button 
+                      className="confirm-yes"
+                      onClick={() => handleDelete(item.id)}
+                    >
+                      Yes, Delete
+                    </button>
+                    <button 
+                      className="confirm-no"
+                      onClick={() => setDeleteConfirm(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          ))}
         </div>
       )}
     </div>

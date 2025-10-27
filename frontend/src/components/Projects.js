@@ -30,10 +30,12 @@ const Projects = () => {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
+  const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   useEffect(() => {
     const init = async () => {
@@ -64,6 +66,7 @@ const Projects = () => {
     setForm({ ...emptyForm });
     setFieldErrors({});
     setEditingId(null);
+    setShowForm(false);
   };
 
   const onChange = (e) => {
@@ -158,6 +161,7 @@ const Projects = () => {
 
   const startEdit = (item) => {
     setEditingId(item.id);
+    setShowForm(true);
     setForm({
       ...emptyForm,
       name: item.name || '',
@@ -179,12 +183,12 @@ const Projects = () => {
     setFieldErrors({});
   };
 
-  const remove = async (id) => {
-    if (!window.confirm('Delete this project?')) return;
+  const handleDelete = async (id) => {
     try {
       await projectsAPI.deleteProject(id);
       setItems((prev) => (prev || []).filter((i) => i.id !== id));
       if (editingId === id) resetForm();
+      setDeleteConfirm(null);
     } catch (e) {
       setError(e?.message || 'Failed to delete project');
     }
@@ -196,17 +200,52 @@ const Projects = () => {
 
   return (
     <div className="projects-container">
-      <div className="page-backbar">
-        <a className="btn-back" href="/dashboard" aria-label="Back to dashboard" title="Back to dashboard">← Back to Dashboard</a>
+      <div className="projects-page-header">
+        <button 
+          className="back-button"
+          onClick={() => window.location.href = '/dashboard'}
+          aria-label="Back to dashboard"
+        >
+          ← Back to Dashboard
+        </button>
+        <h1 className="projects-page-title">Projects</h1>
         <div style={{ marginLeft: 'auto' }}>
           <a className="btn-back" href="/projects/portfolio" title="View Portfolio">View Portfolio →</a>
         </div>
       </div>
 
-  <h2>Projects</h2>
       {error && <div className="error-banner">{error}</div>}
 
-      <form className="projects-form" onSubmit={handleSubmit}>
+      {!showForm && (
+        <div className="projects-header">
+          <h2>📁 Your Projects</h2>
+          <button
+            className="add-button"
+            onClick={() => {
+              resetForm();
+              setShowForm(true);
+            }}
+          >
+            + Add Project
+          </button>
+        </div>
+      )}
+
+      {showForm && (
+        <div className="projects-form-card">
+          <div className="form-header">
+            <h3>{editingId ? 'Edit Project' : 'Add New Project'}</h3>
+            <button
+              type="button"
+              className="close-button"
+              onClick={resetForm}
+              aria-label="Close form"
+            >
+              ×
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit}>
         <div className="form-row">
           <div className="form-group">
             <label htmlFor="name">Project Name <span className="required">*</span></label>
@@ -309,58 +348,138 @@ const Projects = () => {
         </div>
 
         <div className="form-actions">
-          {editingId && (
-            <button type="button" className="cancel-button" onClick={resetForm} disabled={saving}>
-              Cancel
-            </button>
-          )}
+          <button type="button" className="cancel-button" onClick={resetForm} disabled={saving}>
+            Cancel
+          </button>
           <button type="submit" className="save-button" disabled={saving}>
             {saving ? 'Saving...' : editingId ? 'Update Project' : 'Add Project'}
           </button>
         </div>
-      </form>
+          </form>
+        </div>
+      )}
 
       <div className="projects-list">
-        {(items || []).length === 0 ? (
-          <div className="empty-state">No projects yet. Add your first one above.</div>
-        ) : (
+        {(items || []).length === 0 && !showForm ? (
+          <div className="empty-state">
+            <div className="empty-icon">📁</div>
+            <h3>No Projects Yet</h3>
+            <p>Start building your portfolio by adding your first project.</p>
+            <button
+              className="add-button"
+              onClick={() => {
+                resetForm();
+                setShowForm(true);
+              }}
+            >
+              + Add Your First Project
+            </button>
+          </div>
+        ) : (items || []).length === 0 ? null : (
           (items || []).map((item) => (
             <div key={item.id} className={`project-item status-${item.status}`}>
               <div className="project-header">
                 <div className="project-title">
-                  <h3>{item.name}</h3>
-                  {item.status && <span className={`badge ${item.status}`}>{statusOptions.find(s => s.value === item.status)?.label || item.status}</span>}
+                  <div className="project-main">
+                    <h3>{item.name}</h3>
+                    <div className="project-meta">
+                      {item.role && <span>👤 {item.role}</span>}
+                      {(item.start_date || item.end_date) && (
+                        <span className="dates">🗓️ {item.start_date || '—'} to {item.end_date || '—'}</span>
+                      )}
+                      {item.status && <span className={`badge ${item.status}`}>{statusOptions.find(s => s.value === item.status)?.label || item.status}</span>}
+                    </div>
+                  </div>
                 </div>
                 <div className="project-actions">
-                  <button className="edit-button" onClick={() => startEdit(item)}>Edit</button>
-                  <button className="delete-button" onClick={() => remove(item.id)}>Delete</button>
+                  <button 
+                    className="action-button edit" 
+                    onClick={() => startEdit(item)}
+                    aria-label="Edit project"
+                    title="Edit project"
+                  >
+                    ✏️
+                  </button>
+                  <button 
+                    className="action-button delete" 
+                    onClick={() => setDeleteConfirm(item.id)}
+                    aria-label="Delete project"
+                    title="Delete project"
+                  >
+                    🗑️
+                  </button>
                 </div>
               </div>
-              <div className="project-meta">
-                {item.role && <span>👤 {item.role}</span>}
-                {(item.start_date || item.end_date) && (
-                  <span>🗓️ {item.start_date || '—'} to {item.end_date || '—'}</span>
-                )}
-                {item.team_size != null && <span>👥 Team size: {item.team_size}</span>}
-                {item.industry && <span>🏷️ Industry: {item.industry}</span>}
-                {item.category && <span>📂 Type: {item.category}</span>}
-                {item.project_url && <a href={item.project_url} target="_blank" rel="noreferrer">🔗 View</a>}
-              </div>
-              {(item.technologies && item.technologies.length > 0) && (
-                <div className="project-tech">
-                  {item.technologies.map((t, i) => <span className="tag" key={`${t}-${i}`}>{t}</span>)}
+
+              {(item.team_size != null || item.industry || item.category || item.project_url) && (
+                <div className="project-details">
+                  {item.team_size != null && <span>👥 Team size: {item.team_size}</span>}
+                  {item.industry && <span>🏷️ Industry: {item.industry}</span>}
+                  {item.category && <span>📂 Type: {item.category}</span>}
+                  {item.project_url && <a href={item.project_url} target="_blank" rel="noreferrer">🔗 View Project</a>}
                 </div>
               )}
-              {item.description && <div className="project-section"><strong>Description:</strong> {item.description}</div>}
-              {item.collaboration_details && <div className="project-section"><strong>Collaboration:</strong> {item.collaboration_details}</div>}
-              {item.outcomes && <div className="project-section"><strong>Outcomes:</strong> {item.outcomes}</div>}
+
+              {(item.technologies && item.technologies.length > 0) && (
+                <div className="project-section">
+                  <strong>Technologies</strong>
+                  <div className="project-tech">
+                    {item.technologies.map((t, i) => <span className="tag" key={`${t}-${i}`}>{t}</span>)}
+                  </div>
+                </div>
+              )}
+
+              {item.description && (
+                <div className="project-section">
+                  <strong>Description</strong>
+                  <p>{item.description}</p>
+                </div>
+              )}
+
+              {item.collaboration_details && (
+                <div className="project-section">
+                  <strong>Team & Collaboration</strong>
+                  <p>{item.collaboration_details}</p>
+                </div>
+              )}
+
+              {item.outcomes && (
+                <div className="project-section">
+                  <strong>Outcomes & Achievements</strong>
+                  <p>{item.outcomes}</p>
+                </div>
+              )}
+
               {(item.media && item.media.length > 0) && (
-                <div className="project-media-grid">
-                  {item.media.map((m) => (
-                    <div key={m.id} className="media-item">
-                      <img src={m.image_url} alt={m.caption || 'screenshot'} />
-                    </div>
-                  ))}
+                <div className="project-section">
+                  <strong>Screenshots</strong>
+                  <div className="project-media-grid">
+                    {item.media.map((m) => (
+                      <div key={m.id} className="media-item">
+                        <img src={m.image_url} alt={m.caption || 'screenshot'} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {deleteConfirm === item.id && (
+                <div className="delete-confirm">
+                  <p>Are you sure you want to delete this project?</p>
+                  <div className="confirm-actions">
+                    <button 
+                      className="confirm-yes"
+                      onClick={() => handleDelete(item.id)}
+                    >
+                      Yes, Delete
+                    </button>
+                    <button 
+                      className="confirm-no"
+                      onClick={() => setDeleteConfirm(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

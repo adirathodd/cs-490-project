@@ -6,7 +6,7 @@ import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia, WorkExperience
 
 User = get_user_model()
 
@@ -667,5 +667,223 @@ class ProjectSerializer(serializers.ModelSerializer):
         if technologies is not None:
             self._sync_technologies(instance, technologies)
         return instance
+
+
+# ======================
+# UC-023, UC-024, UC-025: EMPLOYMENT HISTORY SERIALIZERS
+# ======================
+
+class WorkExperienceSerializer(serializers.ModelSerializer):
+    """
+    Serializer for UC-023: Employment History - Add Entry
+    UC-024: Employment History - View and Edit
+    UC-025: Employment History - Delete Entry
+    
+    Handles adding, viewing, editing, and deleting work experience entries.
+    """
+    # Accept skills_used as list of skill names
+    skills_used_names = serializers.ListField(
+        child=serializers.CharField(),
+        write_only=True,
+        required=False,
+        help_text="List of skill names used in this role"
+    )
+    skills_used = SkillSerializer(many=True, read_only=True)
+    
+    # Computed fields
+    duration = serializers.SerializerMethodField(read_only=True)
+    formatted_dates = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = WorkExperience
+        fields = [
+            'id',
+            'company_name',
+            'job_title',
+            'location',
+            'start_date',
+            'end_date',
+            'is_current',
+            'description',
+            'achievements',
+            'skills_used',
+            'skills_used_names',
+            'duration',
+            'formatted_dates',
+        ]
+        read_only_fields = ['id', 'duration', 'formatted_dates']
+    
+    def get_duration(self, obj):
+        """Calculate duration of employment."""
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        
+        start = obj.start_date
+        end = obj.end_date if obj.end_date else date.today()
+        
+        delta = relativedelta(end, start)
+        years = delta.years
+        months = delta.months
+        
+        if years > 0 and months > 0:
+            return f"{years} year{'s' if years > 1 else ''}, {months} month{'s' if months > 1 else ''}"
+        elif years > 0:
+            return f"{years} year{'s' if years > 1 else ''}"
+        elif months > 0:
+            return f"{months} month{'s' if months > 1 else ''}"
+        else:
+            return "Less than a month"
+    
+    def get_formatted_dates(self, obj):
+        """Get formatted date range string."""
+        start_str = obj.start_date.strftime('%b %Y')
+        end_str = 'Present' if obj.is_current else obj.end_date.strftime('%b %Y')
+        return f"{start_str} - {end_str}"
+    
+    def validate(self, attrs):
+        """Validate employment history data."""
+        data = super().validate(attrs)
+        
+        # Get values from data or instance
+        company_name = data.get('company_name') or getattr(self.instance, 'company_name', None)
+        job_title = data.get('job_title') or getattr(self.instance, 'job_title', None)
+        start_date = data.get('start_date') or getattr(self.instance, 'start_date', None)
+        end_date = data.get('end_date') or getattr(self.instance, 'end_date', None)
+        is_current = data.get('is_current')
+        if is_current is None and self.instance:
+            is_current = self.instance.is_current
+        description = data.get('description', '')
+        
+        errors = {}
+        
+        # Required fields validation (UC-023)
+        if not job_title:
+            errors['job_title'] = 'Job title is required.'
+        if not company_name:
+            errors['company_name'] = 'Company name is required.'
+        if not start_date:
+            errors['start_date'] = 'Start date is required.'
+        
+        # Current position logic (UC-023)
+        if is_current:
+            # If current position, end_date should be null
+            data['end_date'] = None
+        else:
+            # If not current, end_date is required
+            if not end_date:
+                errors['end_date'] = 'End date is required for past positions.'
+        
+        # Date validation (UC-023): start date must be before end date
+        if start_date and end_date and start_date > end_date:
+            errors['start_date'] = 'Start date must be before end date.'
+        
+        # Description character limit (UC-023: 1000 character limit)
+        if description and len(description) > 1000:
+            errors['description'] = 'Job description must not exceed 1000 characters.'
+        
+        if errors:
+            raise serializers.ValidationError(errors)
+        
+        return data
+    
+    def _sync_skills(self, work_experience, skills_names):
+        """Sync skills for work experience."""
+        if skills_names is None:
+            return
+        
+        skills = []
+        for name in skills_names:
+            name = str(name).strip()
+            if not name:
+                continue
+            
+            # Get or create skill (case-insensitive)
+            skill = Skill.objects.filter(name__iexact=name).first()
+            if not skill:
+                skill = Skill.objects.create(name=name, category='')
+            skills.append(skill)
+        
+        work_experience.skills_used.set(skills)
+    
+    def create(self, validated_data):
+        """Create work experience entry."""
+        skills_names = validated_data.pop('skills_used_names', None)
+        achievements = validated_data.get('achievements', [])
+        
+        # Ensure achievements is a list
+        if not isinstance(achievements, list):
+            validated_data['achievements'] = []
+        
+        work_experience = WorkExperience.objects.create(**validated_data)
+        self._sync_skills(work_experience, skills_names)
+        
+        return work_experience
+    
+    def update(self, instance, validated_data):
+        """Update work experience entry (UC-024)."""
+        skills_names = validated_data.pop('skills_used_names', None)
+        
+        # Update fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Update skills if provided
+        if skills_names is not None:
+            self._sync_skills(instance, skills_names)
+        
+        return instance
+
+
+class WorkExperienceSummarySerializer(serializers.ModelSerializer):
+    """
+    Simplified serializer for work experience listing.
+    Used for timeline views and career progression displays.
+    """
+    duration = serializers.SerializerMethodField(read_only=True)
+    formatted_dates = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = WorkExperience
+        fields = [
+            'id',
+            'company_name',
+            'job_title',
+            'location',
+            'start_date',
+            'end_date',
+            'is_current',
+            'duration',
+            'formatted_dates',
+        ]
+        read_only_fields = fields
+    
+    def get_duration(self, obj):
+        """Calculate duration of employment."""
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        
+        start = obj.start_date
+        end = obj.end_date if obj.end_date else date.today()
+        
+        delta = relativedelta(end, start)
+        years = delta.years
+        months = delta.months
+        
+        if years > 0 and months > 0:
+            return f"{years}y {months}m"
+        elif years > 0:
+            return f"{years}y"
+        elif months > 0:
+            return f"{months}m"
+        else:
+            return "<1m"
+    
+    def get_formatted_dates(self, obj):
+        """Get formatted date range string."""
+        start_str = obj.start_date.strftime('%b %Y')
+        end_str = 'Present' if obj.is_current else obj.end_date.strftime('%b %Y')
+        return f"{start_str} - {end_str}"
+
 
 

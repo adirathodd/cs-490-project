@@ -53,6 +53,11 @@ urlpatterns = [
     path('projects/<int:project_id>/media', views.project_media_upload, name='project-media-upload'),
     path('projects/<int:project_id>/media/<int:media_id>', views.project_media_delete, name='project-media-delete'),
 
+    # Employment History endpoints (UC-023, UC-024, UC-025)
+    path('employment', views.employment_list_create, name='employment-list-create'),
+    path('employment/<int:employment_id>', views.employment_detail, name='employment-detail'),
+    path('employment/timeline', views.employment_timeline, name='employment-timeline'),
+
     # Account Deletion confirmation (email link landing)
     path('auth/delete/confirm/<str:token>', views.confirm_account_deletion, name='confirm-account-deletion'),
 ]
