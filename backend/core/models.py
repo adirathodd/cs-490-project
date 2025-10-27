@@ -231,12 +231,14 @@ class Project(models.Model):
     skills_used = models.ManyToManyField(Skill, blank=True, related_name="used_in_projects")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    display_order = models.IntegerField(default=0, help_text="Custom display order for portfolio")
 
     class Meta:
-        ordering = ['-start_date', '-created_at']
+        ordering = ['display_order', '-start_date', '-created_at']
         indexes = [
             models.Index(fields=["candidate", "-start_date"]),
             models.Index(fields=["status"]),
+            models.Index(fields=["candidate", "display_order"]) 
         ]
 
     def __str__(self):

@@ -101,3 +101,64 @@ class TestProjectsAPI:
         resp = self.client.delete(detail_url)
         assert resp.status_code == 200
         assert Project.objects.filter(id=proj_id).count() == 0
+
+    def test_filter_sort_search_portfolio(self):
+        list_url = reverse('core:projects-list-create')
+        # Create sample skills
+        react = Skill.objects.create(name='React')
+        django = Skill.objects.create(name='Django')
+        airflow = Skill.objects.create(name='Airflow')
+
+        # Helper to create project
+        def mk(name, industry, status, start, techs, display_order=0):
+            p = Project.objects.create(
+                candidate=self.profile,
+                name=name,
+                description='Desc for ' + name,
+                industry=industry,
+                status=status,
+                start_date=start,
+                display_order=display_order,
+            )
+            p.skills_used.set(techs)
+            return p
+
+        p1 = mk('Portfolio Site', 'Software', 'completed', '2025-01-01', [react, django], 2)
+        p2 = mk('Data Pipeline', 'Finance', 'ongoing', '2025-06-01', [airflow, django], 1)
+        p3 = mk('Clinic App', 'Healthcare', 'planned', '2024-09-15', [react], 3)
+
+        # No filters returns all
+        resp = self.client.get(list_url)
+        assert resp.status_code == 200
+        assert len(resp.json()) == 3
+
+        # Filter by industry
+        resp = self.client.get(list_url + '?industry=Finance')
+        data = resp.json()
+        assert len(data) == 1 and data[0]['name'] == 'Data Pipeline'
+
+        # Filter by technology any
+        resp = self.client.get(list_url + '?tech=React')
+        names = [r['name'] for r in resp.json()]
+        assert set(names) == {'Portfolio Site', 'Clinic App'}
+
+        # Filter by technology all
+        resp = self.client.get(list_url + '?tech=React,Django&match=all')
+        names = [r['name'] for r in resp.json()]
+        assert names == ['Portfolio Site']
+
+        # Search by keyword (name/desc/tech)
+        resp = self.client.get(list_url + '?q=pipeline&sort=relevance')
+        names = [r['name'] for r in resp.json()]
+        assert names[0] == 'Data Pipeline'
+
+        # Date range
+        resp = self.client.get(list_url + '?date_from=2025-01-01&date_to=2025-12-31')
+        names = {r['name'] for r in resp.json()}
+        assert names == {'Portfolio Site', 'Data Pipeline'}
+
+        # Custom sort by display_order
+        resp = self.client.get(list_url + '?sort=custom')
+        names = [r['name'] for r in resp.json()]
+        # display_order: 1 -> p2, 2 -> p1, 3 -> p3
+        assert names[:3] == ['Data Pipeline', 'Portfolio Site', 'Clinic App']

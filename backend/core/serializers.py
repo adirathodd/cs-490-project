@@ -633,6 +633,7 @@ class ProjectSerializer(serializers.ModelSerializer):
     technologies = serializers.ListField(child=serializers.CharField(), required=False)
     status = serializers.ChoiceField(choices=[('completed','Completed'),('ongoing','Ongoing'),('planned','Planned')])
     media = ProjectMediaSerializer(many=True, read_only=True)
+    thumbnail_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Project
@@ -640,8 +641,9 @@ class ProjectSerializer(serializers.ModelSerializer):
             'id', 'name', 'description', 'role', 'start_date', 'end_date',
             'project_url', 'team_size', 'collaboration_details', 'outcomes',
             'industry', 'category', 'status', 'technologies', 'media',
+            'thumbnail_url', 'display_order',
         ]
-        read_only_fields = ['id', 'media']
+        read_only_fields = ['id', 'media', 'thumbnail_url']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -668,6 +670,14 @@ class ProjectSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(errors)
 
         return data
+
+    def get_thumbnail_url(self, obj):
+        request = self.context.get('request')
+        first = obj.media.first()
+        if first and first.image:
+            url = first.image.url
+            return request.build_absolute_uri(url) if request else url
+        return None
 
     def _sync_technologies(self, project: Project, technologies):
         if technologies is None:

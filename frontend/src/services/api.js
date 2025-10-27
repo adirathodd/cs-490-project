@@ -397,12 +397,28 @@ export const certificationsAPI = {
 
 // UC-031: Projects API calls
 export const projectsAPI = {
-  getProjects: async () => {
+  getProjects: async (params = {}) => {
     try {
-      const response = await api.get('/projects');
+      // Support filters/sort/search via query params
+      const usp = new URLSearchParams();
+      Object.entries(params || {}).forEach(([k, v]) => {
+        if (v === undefined || v === null || v === '') return;
+        usp.append(k, Array.isArray(v) ? v.join(',') : v);
+      });
+      const path = usp.toString() ? `/projects?${usp.toString()}` : '/projects';
+      const response = await api.get(path);
       return response.data;
     } catch (error) {
       throw error.response?.data?.error || { message: 'Failed to fetch projects' };
+    }
+  },
+
+  getProject: async (id) => {
+    try {
+      const response = await api.get(`/projects/${id}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch project' };
     }
   },
 
