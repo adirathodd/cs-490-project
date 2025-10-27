@@ -1,13 +1,11 @@
 """
 Authentication views for Firebase-based user registration and login.
 """
-from rest_framework import status
+from rest_framework import status, serializers
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
-from django.template.loader import render_to_string
-from django.utils.html import strip_tags
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from core.serializers import (
@@ -25,8 +23,9 @@ from core.serializers import (
     CertificationSerializer,
     ProjectSerializer,
     ProjectMediaSerializer,
+    WorkExperienceSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (
@@ -34,6 +33,8 @@ from core.storage_utils import (
     delete_old_picture,
 )
 from django.core.files.base import ContentFile
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
 from PIL import Image
 import io
 import logging
@@ -383,7 +384,41 @@ def login_user(request):
         )
 
 
-@api_view(['GET', 'DELETE'])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_user(request):
+    """
+    POST /api/auth/logout
+
+    For Firebase-based auth, revoke the user's refresh tokens so that any
+    subsequent ID tokens minted with the old refresh token are invalid.
+    Frontend should also clear its cached token.
+    """
+    try:
+        user = request.user
+        try:
+            if initialize_firebase():
+                firebase_auth.revoke_refresh_tokens(user.username)
+        except Exception:
+            # Non-fatal; proceed with response even if revoke fails
+            pass
+
+        if hasattr(request, 'session'):
+            request.session.flush()
+
+        return Response({
+            'success': True,
+            'message': 'Logout successful. Tokens revoked where applicable.'
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Logout error: {e}")
+        return Response(
+            {'error': {'code': 'logout_failed', 'message': 'Failed to logout.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
 def get_current_user(request):
     """
@@ -400,28 +435,22 @@ def get_current_user(request):
     try:
         user = request.user
 
-        # Handle account deletion - disabled in favor of email confirmation flow
-        if request.method == 'DELETE':
-            return Response(
-                {
-                    'error': {
-                        'code': 'deletion_flow_updated',
-                        'message': 'Confirmation email sent. Please check your email to confirm deletion.'
-                    }
-                },
-                status=status.HTTP_405_METHOD_NOT_ALLOWED
-            )
-
-        # For GET, return profile as before
         profile = CandidateProfile.objects.get(user=user)
 
-        user_serializer = UserSerializer(user)
-        profile_serializer = UserProfileSerializer(profile)
+        if request.method == 'GET':
+            user_serializer = UserSerializer(user)
+            profile_serializer = UserProfileSerializer(profile)
+            return Response({'user': user_serializer.data, 'profile': profile_serializer.data}, status=status.HTTP_200_OK)
 
-        return Response({
-            'user': user_serializer.data,
-            'profile': profile_serializer.data,
-        }, status=status.HTTP_200_OK)
+        # PUT: update
+        serializer = BasicProfileSerializer(profile, data=request.data, partial=False)
+        if not serializer.is_valid():
+            return Response(
+                {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        serializer.save()
+        return Response({'profile': serializer.data, 'message': 'Profile updated successfully.'}, status=status.HTTP_200_OK)
     
     except CandidateProfile.DoesNotExist:
         # Create profile if it doesn't exist
@@ -709,6 +738,57 @@ def user_profile(request, user_id=None):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+
+# ------------------------------
+# Employment (Work Experience)
+# ------------------------------
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def employment_list_create(request):
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        experiences = WorkExperience.objects.filter(candidate=profile).order_by('-start_date')
+        serializer = WorkExperienceSerializer(experiences, many=True)
+        return Response({'results': serializer.data}, status=status.HTTP_200_OK)
+
+    data = request.data.copy()
+    data['candidate'] = profile.id
+    serializer = WorkExperienceSerializer(data=data)
+    if serializer.is_valid():
+        serializer.save(candidate=profile)
+        return Response({'work_experience': serializer.data, 'message': 'Employment record created.'}, status=status.HTTP_201_CREATED)
+    return Response({'error': {'code': 'validation_error', 'message': 'Invalid input.', 'details': serializer.errors}}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def employment_detail(request, pk: int):
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        experience = WorkExperience.objects.get(pk=pk, candidate=profile)
+    except WorkExperience.DoesNotExist:
+        return Response({'error': {'code': 'not_found', 'message': 'Employment record not found.'}}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({'work_experience': WorkExperienceSerializer(experience).data}, status=status.HTTP_200_OK)
+    if request.method in ['PUT', 'PATCH']:
+        partial = request.method == 'PATCH'
+        serializer = WorkExperienceSerializer(experience, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'work_experience': serializer.data, 'message': 'Employment record updated.'}, status=status.HTTP_200_OK)
+        return Response({'error': {'code': 'validation_error', 'message': 'Invalid input.', 'details': serializer.errors}}, status=status.HTTP_400_BAD_REQUEST)
+    experience.delete()
+    return Response({'message': 'Employment record deleted.'}, status=status.HTTP_204_NO_CONTENT)
 
 # --- UC-021: Basic Profile Information Form ---
 @api_view(['GET', 'PUT', 'PATCH'])
@@ -1028,46 +1108,54 @@ def skills_list_create(request):
     """
     try:
         user = request.user
-        
         # Get or create profile
         try:
             profile = CandidateProfile.objects.get(user=user)
         except CandidateProfile.DoesNotExist:
             profile = CandidateProfile.objects.create(user=user)
-        
+
         if request.method == 'GET':
-            # List all user skills
             candidate_skills = CandidateSkill.objects.filter(candidate=profile).select_related('skill')
-            serializer = CandidateSkillSerializer(candidate_skills, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        
-        elif request.method == 'POST':
-            # Add new skill
-            serializer = CandidateSkillSerializer(data=request.data)
-            
-            if not serializer.is_valid():
-                msgs = _validation_messages(serializer.errors)
-                return Response(
-                    {
-                        'error': {
-                            'code': 'validation_error',
-                            'message': (msgs[0] if msgs else 'Validation error'),
-                            'messages': msgs,
-                            'details': serializer.errors
-                        }
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            serializer.save(candidate=profile)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-    
+            data = CandidateSkillSerializer(candidate_skills, many=True).data
+            return Response(data, status=status.HTTP_200_OK)
+
+        # POST: add new skill
+        serializer = CandidateSkillSerializer(data=request.data, context={'candidate': profile})
+        if not serializer.is_valid():
+            msgs = _validation_messages(serializer.errors)
+            return Response(
+                {
+                    'error': {
+                        'code': 'validation_error',
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': serializer.errors
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            saved = serializer.save()
+            return Response(CandidateSkillSerializer(saved).data, status=status.HTTP_201_CREATED)
+        except serializers.ValidationError as ve:
+            # Duplicate or semantic validation at create time
+            detail = getattr(ve, 'detail', ve.args)
+            msgs = _validation_messages(detail)
+            code = 'conflict' if ('already' in ' '.join(msgs).lower() or 'exists' in ' '.join(msgs).lower()) else 'validation_error'
+            return Response(
+                {
+                    'error': {
+                        'code': code,
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': detail
+                    }
+                },
+                status=status.HTTP_409_CONFLICT if code == 'conflict' else status.HTTP_400_BAD_REQUEST
+            )
     except Exception as e:
-        logger.error(f"Error in skills_list_create: {e}")
-        return Response(
-            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        logger.error(f"Error in skills_list_create: {e}\n{traceback.format_exc()}")
+        return Response({'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
@@ -1148,6 +1236,15 @@ def skill_detail(request, skill_id):
             {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# Back-compat wrapper for routes expecting `skills_detail` with `<int:pk>`
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def skills_detail(request, pk: int):
+    # Pass the underlying Django HttpRequest to the DRF-decorated view
+    django_request = getattr(request, '_request', request)
+    return skill_detail(django_request, skill_id=pk)
 
 
 @api_view(['GET'])
@@ -2018,6 +2115,14 @@ def project_media_upload(request, project_id):
     except Exception as e:
         logger.error(f"Error in project_media_upload: {e}\n{traceback.format_exc()}")
         return Response({'error': {'code': 'internal_error', 'message': 'Failed to upload media.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Wrapper for profile/projects/<int:pk> -> projects_detail
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def projects_detail(request, pk: int):
+    django_request = getattr(request, '_request', request)
+    return project_detail(django_request, project_id=pk)
 
 
 @api_view(['DELETE'])

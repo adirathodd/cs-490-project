@@ -300,6 +300,42 @@ class ProfilePictureUploadSerializer(serializers.Serializer):
         return value
 
 
+class WorkExperienceSerializer(serializers.ModelSerializer):
+    """
+    Serializer for employment (work experience) entries.
+    """
+    id = serializers.IntegerField(read_only=True)
+    skills_used = serializers.PrimaryKeyRelatedField(many=True, required=False, queryset=Skill.objects.all())
+    class Meta:
+        model = WorkExperience
+        fields = [
+            'id', 'company_name', 'job_title', 'location', 'start_date', 'end_date',
+            'is_current', 'description', 'achievements', 'skills_used'
+        ]
+
+    def validate(self, data):
+        # Ensure end_date is after start_date if provided
+        start = data.get('start_date')
+        end = data.get('end_date')
+        if start and end and end < start:
+            raise serializers.ValidationError("End date cannot be before start date.")
+        return data
+
+    def create(self, validated_data):
+        skills = validated_data.pop('skills_used', [])
+        instance = WorkExperience.objects.create(**validated_data)
+        instance.skills_used.set(skills)
+        return instance
+
+    def update(self, instance, validated_data):
+        skills = validated_data.pop('skills_used', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if skills is not None:
+            instance.skills_used.set(skills)
+        return instance
+
 class ProfilePictureSerializer(serializers.ModelSerializer):
     """
     Serializer for profile picture information.
@@ -372,46 +408,54 @@ class CandidateSkillSerializer(serializers.ModelSerializer):
         return value.lower()
     
     def validate(self, data):
-        """Validate that either skill_id or name is provided."""
+        """Validate request data.
+
+        For creation, require either skill_id or name. For updates, allow
+        partial payloads that only include level/years.
+        """
+        # If updating an existing instance, don't require skill fields
+        if self.instance is not None:
+            return data
+
+        # Create: ensure a skill identifier is provided
         skill_id = data.get('skill_id')
         name = data.get('name')
-        
         if not skill_id and not name:
-            raise serializers.ValidationError(
-                "Either skill_id or name must be provided."
-            )
-        
+            raise serializers.ValidationError("Either skill_id or name must be provided.")
         return data
     
     def create(self, validated_data):
-        """Create or get skill, then create candidate skill."""
-        candidate = validated_data.get('candidate')
+        """Create or get skill, then create candidate skill.
+
+        Expects the current candidate profile in serializer context under 'candidate'.
+        """
+        candidate = self.context.get('candidate')
+        if candidate is None:
+            raise serializers.ValidationError({'candidate': 'Candidate context is required.'})
+
         skill_id = validated_data.pop('skill_id', None)
-        skill_name = validated_data.pop('name', None)
-        skill_category = validated_data.pop('category', '')
-        
-        # Get or create skill
-        if skill_id:
+        skill_name = (validated_data.pop('name', None) or '').strip()
+        skill_category = (validated_data.pop('category', '') or '').strip()
+
+        # Resolve skill
+        if skill_id is not None:
             try:
-                skill = Skill.objects.get(id=skill_id)
+                skill = Skill.objects.get(pk=skill_id)
             except Skill.DoesNotExist:
-                raise serializers.ValidationError({"skill_id": "Skill not found."})
+                raise serializers.ValidationError({'skill_id': 'Skill not found.'})
         else:
-            # Create or get skill by name
-            skill, created = Skill.objects.get_or_create(
-                name__iexact=skill_name,
-                defaults={'name': skill_name, 'category': skill_category}
-            )
-        
-        # Check for duplicates
+            if not skill_name:
+                raise serializers.ValidationError({'name': 'Skill name is required when skill_id is not provided.'})
+            skill = Skill.objects.filter(name__iexact=skill_name).first()
+            if skill is None:
+                skill = Skill.objects.create(name=skill_name, category=skill_category)
+
+        # Prevent duplicates per candidate
         if CandidateSkill.objects.filter(candidate=candidate, skill=skill).exists():
-            raise serializers.ValidationError(
-                {"skill": "You have already added this skill."}
-            )
-        
-        # Create candidate skill
-        validated_data['skill'] = skill
-        return super().create(validated_data)
+            raise serializers.ValidationError({'skill': 'You have already added this skill.'})
+
+        # Create mapping
+        return CandidateSkill.objects.create(candidate=candidate, skill=skill, **validated_data)
 
 
 class SkillAutocompleteSerializer(serializers.Serializer):
