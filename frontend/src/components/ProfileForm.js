@@ -427,13 +427,19 @@ const ProfileForm = () => {
         <form onSubmit={handleSubmit} className="profile-form">
           {/* Profile Picture Section (UC-022) */}
           <div className="form-section">
-            <h3>Profile Picture</h3>
+            <h3>
+              <span style={{fontSize: '1.5rem'}}>📷</span>
+              Profile Picture
+            </h3>
             <ProfilePictureUpload />
           </div>
 
           {/* Personal Information Section */}
           <div className="form-section">
-            <h3>Personal Information</h3>
+            <h3>
+              <span style={{fontSize: '1.5rem'}}>👤</span>
+              Personal Information
+            </h3>
             
             <div className="form-row">
               <div className="form-group">
@@ -546,7 +552,10 @@ const ProfileForm = () => {
 
           {/* Professional Information Section */}
           <div className="form-section">
-            <h3>Professional Information</h3>
+            <h3>
+              <span style={{fontSize: '1.5rem'}}>💼</span>
+              Professional Information
+            </h3>
 
             <div className="form-group">
               <label htmlFor="headline">
@@ -695,6 +704,7 @@ const ProfileForm = () => {
           </div>
         )}
       </div>
+
     </div>
   );
 };

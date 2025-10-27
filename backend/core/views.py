@@ -2040,3 +2040,318 @@ def project_media_delete(request, project_id, media_id):
     except Exception as e:
         logger.error(f"Error in project_media_delete: {e}\n{traceback.format_exc()}")
         return Response({'error': {'code': 'internal_error', 'message': 'Failed to delete media.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ======================
+# UC-023, UC-024, UC-025: EMPLOYMENT HISTORY VIEWS
+# ======================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def employment_list_create(request):
+    """
+    UC-023: Employment History - Add Entry
+    UC-024: Employment History - View (List)
+    
+    GET: List all employment history entries for the authenticated user
+    POST: Create a new employment history entry
+    
+    **GET Response**:
+    [
+        {
+            "id": 1,
+            "company_name": "Tech Corp",
+            "job_title": "Senior Software Engineer",
+            "location": "San Francisco, CA",
+            "start_date": "2020-01-15",
+            "end_date": "2023-06-30",
+            "is_current": false,
+            "description": "Led development of...",
+            "achievements": ["Increased performance by 40%", "Led team of 5 engineers"],
+            "skills_used": [{"id": 1, "name": "Python", "category": "Technical"}],
+            "duration": "3 years, 5 months",
+            "formatted_dates": "Jan 2020 - Jun 2023"
+        }
+    ]
+    
+    **POST Request Body**:
+    {
+        "company_name": "Tech Corp",
+        "job_title": "Senior Software Engineer",
+        "location": "San Francisco, CA",
+        "start_date": "2020-01-15",
+        "end_date": "2023-06-30",  // Optional if is_current = true
+        "is_current": false,
+        "description": "Led development of cloud infrastructure...",
+        "achievements": ["Increased performance by 40%"],
+        "skills_used_names": ["Python", "AWS", "Docker"]
+    }
+    """
+    try:
+        user = request.user
+        profile = CandidateProfile.objects.get(user=user)
+        
+        if request.method == 'GET':
+            # Get all employment entries ordered by start_date (most recent first)
+            from core.models import WorkExperience
+            from core.serializers import WorkExperienceSerializer
+            
+            work_experiences = WorkExperience.objects.filter(candidate=profile).order_by('-start_date')
+            serializer = WorkExperienceSerializer(work_experiences, many=True, context={'request': request})
+            
+            return Response({
+                'employment_history': serializer.data,
+                'total_entries': work_experiences.count()
+            }, status=status.HTTP_200_OK)
+        
+        elif request.method == 'POST':
+            # Create new employment entry
+            from core.models import WorkExperience
+            from core.serializers import WorkExperienceSerializer
+            
+            serializer = WorkExperienceSerializer(data=request.data, context={'request': request})
+            
+            if serializer.is_valid():
+                serializer.save(candidate=profile)
+                
+                logger.info(f"Employment entry created for user {user.email}: {serializer.data.get('job_title')} at {serializer.data.get('company_name')}")
+                
+                return Response({
+                    'message': 'Employment entry added successfully.',
+                    'employment': serializer.data
+                }, status=status.HTTP_201_CREATED)
+            
+            logger.warning(f"Invalid employment data from user {user.email}: {serializer.errors}")
+            return Response({
+                'error': {
+                    'code': 'validation_error',
+                    'message': 'Invalid employment data.',
+                    'details': serializer.errors
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    except CandidateProfile.DoesNotExist:
+        # Create profile if it doesn't exist
+        if request.method == 'GET':
+            return Response({'employment_history': [], 'total_entries': 0}, status=status.HTTP_200_OK)
+        else:
+            profile = CandidateProfile.objects.create(user=user)
+            return employment_list_create(request)  # Retry with created profile
+    
+    except Exception as e:
+        logger.error(f"Error in employment_list_create: {e}\n{traceback.format_exc()}")
+        return Response({
+            'error': {
+                'code': 'internal_error',
+                'message': 'Failed to process employment history request.'
+            }
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def employment_detail(request, employment_id):
+    """
+    UC-024: Employment History - View and Edit
+    UC-025: Employment History - Delete Entry
+    
+    GET: Retrieve a specific employment entry
+    PUT/PATCH: Update an employment entry
+    DELETE: Delete an employment entry (with confirmation)
+    
+    **GET Response**:
+    {
+        "id": 1,
+        "company_name": "Tech Corp",
+        "job_title": "Senior Software Engineer",
+        ...
+    }
+    
+    **PUT/PATCH Request Body** (UC-024):
+    {
+        "company_name": "Tech Corp Updated",
+        "job_title": "Lead Software Engineer",
+        "location": "Remote",
+        "start_date": "2020-01-15",
+        "end_date": null,
+        "is_current": true,
+        "description": "Updated description...",
+        "achievements": ["New achievement"],
+        "skills_used_names": ["Python", "Go", "Kubernetes"]
+    }
+    
+    **DELETE Response** (UC-025):
+    {
+        "message": "Employment entry deleted successfully."
+    }
+    """
+    try:
+        user = request.user
+        profile = CandidateProfile.objects.get(user=user)
+        
+        from core.models import WorkExperience
+        from core.serializers import WorkExperienceSerializer
+        
+        # Get the employment entry
+        try:
+            employment = WorkExperience.objects.get(id=employment_id, candidate=profile)
+        except WorkExperience.DoesNotExist:
+            return Response({
+                'error': {
+                    'code': 'employment_not_found',
+                    'message': 'Employment entry not found.'
+                }
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        if request.method == 'GET':
+            # Retrieve employment entry details
+            serializer = WorkExperienceSerializer(employment, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        elif request.method in ['PUT', 'PATCH']:
+            # Update employment entry (UC-024)
+            partial = request.method == 'PATCH'
+            serializer = WorkExperienceSerializer(
+                employment,
+                data=request.data,
+                partial=partial,
+                context={'request': request}
+            )
+            
+            if serializer.is_valid():
+                serializer.save()
+                
+                logger.info(f"Employment entry {employment_id} updated by user {user.email}")
+                
+                return Response({
+                    'message': 'Employment entry updated successfully.',
+                    'employment': serializer.data
+                }, status=status.HTTP_200_OK)
+            
+            logger.warning(f"Invalid employment update data from user {user.email}: {serializer.errors}")
+            return Response({
+                'error': {
+                    'code': 'validation_error',
+                    'message': 'Invalid employment data.',
+                    'details': serializer.errors
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        elif request.method == 'DELETE':
+            # Delete employment entry (UC-025)
+            company_name = employment.company_name
+            job_title = employment.job_title
+            
+            employment.delete()
+            
+            logger.info(f"Employment entry {employment_id} ({job_title} at {company_name}) deleted by user {user.email}")
+            
+            return Response({
+                'message': 'Employment entry deleted successfully.'
+            }, status=status.HTTP_200_OK)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response({
+            'error': {
+                'code': 'profile_not_found',
+                'message': 'Profile not found.'
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    except Exception as e:
+        logger.error(f"Error in employment_detail: {e}\n{traceback.format_exc()}")
+        return Response({
+            'error': {
+                'code': 'internal_error',
+                'message': 'Failed to process employment request.'
+            }
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def employment_timeline(request):
+    """
+    Get employment history in timeline format for career progression visualization.
+    
+    **Response**:
+    {
+        "timeline": [
+            {
+                "id": 1,
+                "company_name": "Tech Corp",
+                "job_title": "Senior Engineer",
+                "start_date": "2020-01-15",
+                "end_date": "2023-06-30",
+                "is_current": false,
+                "duration": "3y 5m",
+                "formatted_dates": "Jan 2020 - Jun 2023"
+            }
+        ],
+        "total_years_experience": 5.4,
+        "companies_count": 3,
+        "current_position": {
+            "company_name": "Current Corp",
+            "job_title": "Lead Engineer"
+        }
+    }
+    """
+    try:
+        user = request.user
+        profile = CandidateProfile.objects.get(user=user)
+        
+        from core.models import WorkExperience
+        from core.serializers import WorkExperienceSummarySerializer
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        
+        work_experiences = WorkExperience.objects.filter(candidate=profile).order_by('-start_date')
+        serializer = WorkExperienceSummarySerializer(work_experiences, many=True, context={'request': request})
+        
+        # Calculate total years of experience
+        total_months = 0
+        for exp in work_experiences:
+            start = exp.start_date
+            end = exp.end_date if exp.end_date else date.today()
+            delta = relativedelta(end, start)
+            total_months += delta.years * 12 + delta.months
+        
+        total_years = round(total_months / 12, 1)
+        
+        # Get current position
+        current_position = work_experiences.filter(is_current=True).first()
+        current_position_data = None
+        if current_position:
+            current_position_data = {
+                'company_name': current_position.company_name,
+                'job_title': current_position.job_title,
+                'location': current_position.location
+            }
+        
+        # Count unique companies
+        companies_count = work_experiences.values('company_name').distinct().count()
+        
+        return Response({
+            'timeline': serializer.data,
+            'total_years_experience': total_years,
+            'companies_count': companies_count,
+            'current_position': current_position_data
+        }, status=status.HTTP_200_OK)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response({
+            'timeline': [],
+            'total_years_experience': 0,
+            'companies_count': 0,
+            'current_position': None
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.error(f"Error in employment_timeline: {e}\n{traceback.format_exc()}")
+        return Response({
+            'error': {
+                'code': 'internal_error',
+                'message': 'Failed to generate employment timeline.'
+            }
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
