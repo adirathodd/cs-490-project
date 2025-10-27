@@ -38,7 +38,7 @@ from PIL import Image
 import io
 import logging
 import traceback
-from django.db.models import Case, When, Value, IntegerField, F
+from django.db.models import Case, When, Value, IntegerField, F, Q
 from django.db import models
 from django.db.models.functions import Coalesce
 import firebase_admin
@@ -1869,7 +1869,75 @@ def projects_list_create(request):
         profile, _ = CandidateProfile.objects.get_or_create(user=user)
 
         if request.method == 'GET':
-            qs = Project.objects.filter(candidate=profile).order_by('-start_date', '-created_at', '-id')
+            qs = Project.objects.filter(candidate=profile)
+
+            # Filtering
+            q = request.query_params.get('q') or request.query_params.get('search')
+            industry = request.query_params.get('industry')
+            status_param = request.query_params.get('status')
+            tech = request.query_params.get('tech') or request.query_params.get('technology')
+            date_from = request.query_params.get('date_from')
+            date_to = request.query_params.get('date_to')
+            match = (request.query_params.get('match') or 'any').lower()  # any|all for tech
+
+            if q:
+                # simple relevance via conditional scoring
+                name_hit = Case(When(name__icontains=q, then=Value(3)), default=Value(0), output_field=IntegerField())
+                desc_hit = Case(When(description__icontains=q, then=Value(2)), default=Value(0), output_field=IntegerField())
+                outc_hit = Case(When(outcomes__icontains=q, then=Value(1)), default=Value(0), output_field=IntegerField())
+                role_hit = Case(When(role__icontains=q, then=Value(1)), default=Value(0), output_field=IntegerField())
+                tech_hit = Case(When(skills_used__name__icontains=q, then=Value(2)), default=Value(0), output_field=IntegerField())
+                qs = qs.annotate(relevance=(name_hit + desc_hit + outc_hit + role_hit + tech_hit))
+                # Base text filter
+                qs = qs.filter(
+                    Q(name__icontains=q) | Q(description__icontains=q) | Q(outcomes__icontains=q) | Q(role__icontains=q) | Q(skills_used__name__icontains=q)
+                )
+
+            if industry:
+                qs = qs.filter(industry__icontains=industry)
+
+            if status_param:
+                qs = qs.filter(status=status_param)
+
+            if tech:
+                tech_list = [t.strip() for t in tech.split(',') if t.strip()]
+                if tech_list:
+                    if match == 'all':
+                        # Ensure project has all techs: chain filters
+                        for t in tech_list:
+                            qs = qs.filter(skills_used__name__iexact=t)
+                    else:
+                        qs = qs.filter(skills_used__name__in=tech_list)
+
+            # Date range: filter by start_date/end_date overlapping window
+            # If only date_from: projects ending after or starting after date_from
+            if date_from:
+                qs = qs.filter(Q(start_date__gte=date_from) | Q(end_date__gte=date_from))
+            if date_to:
+                qs = qs.filter(Q(end_date__lte=date_to) | Q(start_date__lte=date_to))
+
+            qs = qs.distinct()
+
+            # Sorting
+            sort = (request.query_params.get('sort') or 'date_desc').lower()
+            if sort == 'date_asc':
+                qs = qs.order_by('start_date', 'created_at', 'id')
+            elif sort == 'custom':
+                qs = qs.order_by('display_order', '-start_date', '-created_at', '-id')
+            elif sort == 'created_asc':
+                qs = qs.order_by('created_at')
+            elif sort == 'created_desc':
+                qs = qs.order_by('-created_at')
+            elif sort == 'updated_asc':
+                qs = qs.order_by('updated_at')
+            elif sort == 'updated_desc':
+                qs = qs.order_by('-updated_at')
+            elif sort == 'relevance' and q:
+                qs = qs.order_by('-relevance', 'display_order', '-start_date', '-created_at')
+            else:
+                # date_desc default
+                qs = qs.order_by('-start_date', '-created_at', '-id')
+
             data = ProjectSerializer(qs, many=True, context={'request': request}).data
             return Response(data, status=status.HTTP_200_OK)
 

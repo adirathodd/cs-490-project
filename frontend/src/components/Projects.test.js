@@ -81,6 +81,32 @@ describe('Projects component', () => {
     expect(screen.getByText(/Django/)).toBeInTheDocument();
   });
 
+  it('disables date fields according to status selection', async () => {
+    const { projectsAPI } = require('../services/api');
+    projectsAPI.getProjects.mockResolvedValueOnce([]);
+
+    render(<Projects />);
+    await screen.findByRole('heading', { name: /Projects/i });
+
+    const startInput = screen.getByLabelText(/Start Date/i);
+    const endInput = screen.getByLabelText(/End Date/i);
+    const statusSelect = screen.getByLabelText(/Status/i);
+
+    // Default status is completed: both enabled
+    expect(startInput).not.toHaveAttribute('disabled');
+    expect(endInput).not.toHaveAttribute('disabled');
+
+    // Ongoing: end date disabled, start enabled
+    fireEvent.change(statusSelect, { target: { value: 'ongoing' } });
+    expect(startInput).not.toHaveAttribute('disabled');
+    expect(endInput).toHaveAttribute('disabled');
+
+    // Planned: both disabled
+    fireEvent.change(statusSelect, { target: { value: 'planned' } });
+    expect(startInput).toHaveAttribute('disabled');
+    expect(endInput).toHaveAttribute('disabled');
+  });
+
   it('saves and displays all fields including media and categorization', async () => {
     const { projectsAPI } = require('../services/api');
     projectsAPI.getProjects.mockResolvedValueOnce([]);
@@ -142,8 +168,10 @@ describe('Projects component', () => {
     expect(screen.getByText(/Team size: 3/)).toBeInTheDocument();
     expect(screen.getByText(/Industry: Finance/)).toBeInTheDocument();
     expect(screen.getByText(/Type: Data Pipeline/)).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: /View/i });
-    expect(link).toHaveAttribute('href', created.project_url);
+  const links = screen.getAllByRole('link', { name: /View/i });
+  const link = links.find((el) => (el.getAttribute('href') || '').startsWith('http'));
+  expect(link).toBeTruthy();
+  expect(link).toHaveAttribute('href', created.project_url);
     // Technologies tags
     created.technologies.forEach((t) => expect(screen.getByText(t)).toBeInTheDocument());
     // Sections

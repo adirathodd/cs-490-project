@@ -72,6 +72,23 @@ const Projects = () => {
       setForm((prev) => ({ ...prev, media: Array.from(files || []) }));
       return;
     }
+    if (name === 'status') {
+      // Adjust dates based on selected status
+      setForm((prev) => {
+        const next = { ...prev, status: value };
+        if (value === 'planned') {
+          next.start_date = '';
+          next.end_date = '';
+        } else if (value === 'ongoing') {
+          next.end_date = '';
+        }
+        return next;
+      });
+      // Clear any date-related field errors when status changes
+      setFieldErrors((prev) => { const n = { ...prev }; delete n.start_date; delete n.end_date; return n; });
+      return;
+    }
+
     setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
     if (fieldErrors[name]) {
       setFieldErrors((prev) => { const n = { ...prev }; delete n[name]; return n; });
@@ -104,6 +121,13 @@ const Projects = () => {
     payload.technologies = parseTechnologies(payload.technologies_input);
     // Normalize numeric
     if (payload.team_size === '') delete payload.team_size;
+    // Remove dates if disabled by status
+    if (payload.status === 'planned') {
+      delete payload.start_date;
+      delete payload.end_date;
+    } else if (payload.status === 'ongoing') {
+      delete payload.end_date;
+    }
     // Remove local-only fields
     delete payload.technologies_input;
     return payload;
@@ -174,6 +198,9 @@ const Projects = () => {
     <div className="projects-container">
       <div className="page-backbar">
         <a className="btn-back" href="/dashboard" aria-label="Back to dashboard" title="Back to dashboard">← Back to Dashboard</a>
+        <div style={{ marginLeft: 'auto' }}>
+          <a className="btn-back" href="/projects/portfolio" title="View Portfolio">View Portfolio →</a>
+        </div>
       </div>
 
   <h2>Projects</h2>
@@ -195,11 +222,25 @@ const Projects = () => {
         <div className="form-row">
           <div className="form-group">
             <label htmlFor="start_date">Start Date</label>
-            <input id="start_date" type="date" name="start_date" value={form.start_date} onChange={onChange} />
+            <input
+              id="start_date"
+              type="date"
+              name="start_date"
+              value={form.start_date}
+              onChange={onChange}
+              disabled={form.status === 'planned'}
+            />
           </div>
           <div className="form-group">
             <label htmlFor="end_date">End Date</label>
-            <input id="end_date" type="date" name="end_date" value={form.end_date} onChange={onChange} />
+            <input
+              id="end_date"
+              type="date"
+              name="end_date"
+              value={form.end_date}
+              onChange={onChange}
+              disabled={form.status === 'planned' || form.status === 'ongoing'}
+            />
             {fieldErrors.start_date && <div className="error-message">{fieldErrors.start_date}</div>}
           </div>
         </div>
