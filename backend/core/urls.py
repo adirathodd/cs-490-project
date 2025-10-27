@@ -11,14 +11,32 @@ urlpatterns = [
     path('auth/register', views.register_user, name='register'),
     path('auth/login', views.login_user, name='login'),
     path('auth/verify-token', views.verify_token, name='verify-token'),
+    path('auth/logout', views.logout_user, name='logout'),
     path('users/me', views.get_current_user, name='current-user'),
     path('users/me/delete-request', views.request_account_deletion, name='request-account-deletion'),
     path('users/profile', views.user_profile, name='user-profile'),
     path('users/<str:user_id>/profile', views.user_profile, name='user-profile-detail'),
     
+
+    # Employment (Work Experience) endpoints
+    path('profile/employment', views.employment_list_create, name='employment-list-create'),
+    path('profile/employment/<int:pk>', views.employment_detail, name='employment-detail'),
+
+    # Skills endpoints
+    path('profile/skills', views.skills_list_create, name='skills-list-create'),
+    path('profile/skills/<int:pk>', views.skills_detail, name='skills-detail'),
+
     # Profile endpoints (UC-021)
     path('profile/basic', views.update_basic_profile, name='basic-profile'),
-    
+
+    # Education endpoints
+    path('profile/education', views.education_list_create, name='education-list-create'),
+    path('profile/education/<int:education_id>', views.education_detail, name='education-detail'),
+
+    # Projects endpoints
+    path('profile/projects', views.projects_list_create, name='projects-list-create'),
+    path('profile/projects/<int:pk>', views.projects_detail, name='projects-detail'),
+
     # Profile Picture endpoints (UC-022)
     path('profile/picture', views.get_profile_picture, name='get-profile-picture'),
     path('profile/picture/upload', views.upload_profile_picture, name='upload-profile-picture'),
