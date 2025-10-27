@@ -35,6 +35,7 @@ from django.core.files.base import ContentFile
 import imghdr
 import logging
 import traceback
+import requests
 from django.db.models import Case, When, Value, IntegerField, F
 from django.db.models.functions import Coalesce
 import firebase_admin
@@ -577,6 +578,85 @@ def verify_token(request):
             {'error': {'code': 'verification_failed', 'message': 'Token verification failed.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def oauth_link_via_provider(request):
+    """
+    Given a provider name and provider access token (e.g., GitHub), verify the
+    provider token with the provider API, extract the verified email, and
+    return a Firebase custom token for the existing Firebase user with that email.
+
+    Request body:
+    {
+        "provider": "github",
+        "access_token": "gho_..."
+    }
+
+    Response:
+    {
+        "custom_token": "...",
+        "email": "user@example.com"
+    }
+    """
+    provider = request.data.get('provider')
+    access_token = request.data.get('access_token')
+
+    if not provider or not access_token:
+        return Response({'error': {'code': 'missing_parameters', 'message': 'provider and access_token are required.'}}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        if provider.lower() == 'github':
+            # Query user's emails via GitHub API
+            headers = {
+                'Authorization': f'token {access_token}',
+                'Accept': 'application/vnd.github.v3+json'
+            }
+            resp = requests.get('https://api.github.com/user/emails', headers=headers, timeout=6)
+            if resp.status_code != 200:
+                logger.error(f"GitHub emails lookup failed: {resp.status_code} {resp.text}")
+                return Response({'error': {'code': 'provider_verification_failed', 'message': 'Failed to verify provider token.'}}, status=status.HTTP_400_BAD_REQUEST)
+
+            emails = resp.json()
+            # emails is a list of objects: { email, primary, verified, visibility }
+            chosen = None
+            for e in emails:
+                if e.get('primary') and e.get('verified'):
+                    chosen = e.get('email')
+                    break
+            if not chosen:
+                for e in emails:
+                    if e.get('verified'):
+                        chosen = e.get('email')
+                        break
+            if not chosen and emails:
+                chosen = emails[0].get('email')
+
+            if not chosen:
+                return Response({'error': {'code': 'no_email', 'message': 'Provider did not return an email.'}}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Find Firebase user by email
+            try:
+                fb_user = firebase_auth.get_user_by_email(chosen)
+            except firebase_admin.exceptions.UserNotFoundError:
+                return Response({'error': {'code': 'user_not_found', 'message': 'No account with that email in our system.'}}, status=status.HTTP_404_NOT_FOUND)
+
+            # Create custom token for that user
+            try:
+                custom_token = firebase_auth.create_custom_token(fb_user.uid)
+                token_str = custom_token.decode('utf-8') if isinstance(custom_token, bytes) else custom_token
+                return Response({'custom_token': token_str, 'email': chosen}, status=status.HTTP_200_OK)
+            except Exception as e:
+                logger.error(f"Failed to create custom token for {fb_user.uid}: {e}")
+                return Response({'error': {'code': 'token_error', 'message': 'Failed to create authentication token.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        else:
+            return Response({'error': {'code': 'unsupported_provider', 'message': 'Provider not supported.'}}, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        logger.error(f"oauth_link_via_provider error: {e}")
+        return Response({'error': {'code': 'internal_error', 'message': 'Failed to process provider token.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # --- UC-008: User Profile Access Control ---
 @api_view(['GET', 'PUT'])

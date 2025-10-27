@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
-import { auth, googleProvider } from '../services/firebase';
+import { signInWithEmailAndPassword, signInWithPopup, fetchSignInMethodsForEmail, linkWithCredential, GoogleAuthProvider, GithubAuthProvider, signInWithCustomToken } from 'firebase/auth';
+import { auth, googleProvider, githubProvider } from '../services/firebase';
+import { authAPI } from '../services/api';
 import './Auth.css';
 
 const Login = () => {
@@ -93,28 +94,130 @@ const Login = () => {
     }
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = async () => handleOAuthPopup(googleProvider, 'Google');
+
+  const handleOAuthPopup = async (provider, providerName) => {
     setApiError('');
     setLoading(true);
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      // Get and store Firebase ID token
+      const result = await signInWithPopup(auth, provider);
       const token = await result.user.getIdToken();
       localStorage.setItem('firebaseToken', token);
-
-      // Redirect to dashboard
       navigate('/dashboard');
     } catch (error) {
-      console.error('Google sign-in error:', error);
+      console.error(`${providerName} sign-in error:`, error);
       if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
-        setApiError('Google sign-in was cancelled.');
+        setApiError(`${providerName} sign-in was cancelled.`);
+      } else if (error.code === 'auth/account-exists-with-different-credential') {
+        // Try to resolve by linking the pending credential to the existing account
+        // Some errors may not include error.credential directly; attempt to extract
+        // the pending credential using provider helpers as a fallback.
+        let pendingCred = error.credential;
+        if (!pendingCred) {
+          try {
+            // Try both provider helpers; credentialFromError will return the credential when available
+            pendingCred = GoogleAuthProvider.credentialFromError ? GoogleAuthProvider.credentialFromError(error) : null;
+            if (!pendingCred) {
+              pendingCred = GithubAuthProvider.credentialFromError ? GithubAuthProvider.credentialFromError(error) : null;
+            }
+          } catch (e) {
+            // ignore - we'll handle missing credential below
+            pendingCred = pendingCred || null;
+          }
+        }
+
+        let email = error.customData?.email || error.email;
+
+        // Some providers (notably GitHub when email is private) don't return the email.
+        // Ask the user for their account email so we can look up sign-in methods and link.
+        if (!email) {
+          const supplied = window.prompt('We could not read your email from the provider. Please enter the email for the account you already have so we can link providers:');
+          if (supplied) {
+            email = supplied.trim();
+          }
+        }
+
+        if (!email) {
+          setApiError('An account with this email exists. Please sign in with the original provider or email/password to link accounts.');
+        } else {
+          // If GitHub provided an access token, try to exchange it on the server for a
+          // Firebase custom token for the existing account so we can sign in immediately.
+          try {
+            const accessToken = pendingCred?.accessToken || pendingCred?.oauthToken || pendingCred?.idToken;
+            if (providerName === 'GitHub' && accessToken) {
+              try {
+                const resp = await authAPI.linkProviderToken('github', accessToken);
+                const customToken = resp.custom_token || resp.customToken;
+                if (customToken) {
+                  // Sign in with custom token, then link the pending credential so future logins work
+                  const signed = await signInWithCustomToken(auth, customToken);
+                  if (pendingCred) {
+                    try { await linkWithCredential(auth.currentUser, pendingCred); } catch (linkErr) { console.warn('Link after custom token failed', linkErr); }
+                  }
+                  const token = await auth.currentUser.getIdToken();
+                  localStorage.setItem('firebaseToken', token);
+                  navigate('/dashboard');
+                  return;
+                }
+              } catch (err) {
+                console.warn('Server exchange for custom token failed', err);
+                // fallthrough to normal linking flow
+              }
+            }
+          } catch (e) {
+            console.warn('Automatic provider exchange failed', e);
+          }
+          try {
+            const methods = await fetchSignInMethodsForEmail(auth, email);
+
+            // Prefer OAuth->OAuth linking: if an OAuth provider exists, attempt it first (automatic popup)
+            const oauthProvider = methods.find(m => m === 'google.com' || m === 'github.com');
+
+            if (oauthProvider && pendingCred) {
+              // If there is a matching OAuth provider, prompt the user to sign in with it and then link
+              if (oauthProvider === 'google.com') {
+                const res = await signInWithPopup(auth, googleProvider);
+                await linkWithCredential(res.user, pendingCred);
+                const token = await res.user.getIdToken();
+                localStorage.setItem('firebaseToken', token);
+                navigate('/dashboard');
+              } else if (oauthProvider === 'github.com') {
+                const res = await signInWithPopup(auth, githubProvider);
+                await linkWithCredential(res.user, pendingCred);
+                const token = await res.user.getIdToken();
+                localStorage.setItem('firebaseToken', token);
+                navigate('/dashboard');
+              }
+            } else if (methods.includes('password')) {
+              // If the existing account uses email/password, prompt for password and link
+              const password = window.prompt('An account with this email already exists. Please enter your password to sign in and link the OAuth provider to your account:');
+              if (!password) {
+                setApiError('Linking cancelled. Please sign in with your existing method to link providers.');
+              } else {
+                const userCred = await signInWithEmailAndPassword(auth, email, password);
+                if (pendingCred) {
+                  await linkWithCredential(userCred.user, pendingCred);
+                }
+                const token = await userCred.user.getIdToken();
+                localStorage.setItem('firebaseToken', token);
+                navigate('/dashboard');
+              }
+            } else {
+              setApiError('An account with this email exists. Please sign in with the original provider to link accounts.');
+            }
+          } catch (linkError) {
+            console.error('Error while resolving account linking:', linkError);
+            setApiError('Could not automatically link accounts. Please sign in with your existing method and link providers from account settings.');
+          }
+        }
       } else {
-        setApiError('Google sign-in failed. Please try again.');
+        setApiError(`${providerName} sign-in failed. Please try again.`);
       }
     } finally {
       setLoading(false);
     }
   };
+  
 
   return (
     <div className="auth-container">
@@ -178,16 +281,27 @@ const Login = () => {
           </button>
         </form>
 
-        <div style={{textAlign: 'center', marginTop: 12}}>
-          <div style={{margin: '12px 0', color: '#94a3b8'}}>or</div>
-          <button
-            className="auth-button"
-            onClick={handleGoogleSignIn}
-            disabled={loading}
-            aria-label="Sign in with Google"
-          >
-            {loading ? 'Processing...' : 'Sign in with Google'}
-          </button>
+          <div style={{textAlign: 'center', marginTop: 12}}>
+            <div style={{margin: '12px 0', color: '#94a3b8'}}>or</div>
+            <div style={{display: 'flex', gap: 8, flexDirection: 'column'}}>
+              <button
+                className="auth-button"
+                onClick={handleGoogleSignIn}
+                disabled={loading}
+                aria-label="Sign in with Google"
+              >
+                {loading ? 'Processing...' : 'Sign in with Google'}
+              </button>
+
+              <button
+                className="auth-button"
+                onClick={() => handleOAuthPopup(githubProvider, 'GitHub')}
+                disabled={loading}
+                aria-label="Sign in with GitHub"
+              >
+                {loading ? 'Processing...' : 'Sign in with GitHub'}
+              </button>
+            </div>
         </div>
 
         <div className="auth-footer">

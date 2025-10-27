@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
-import { auth, googleProvider } from '../services/firebase';
+import { signInWithEmailAndPassword, signInWithPopup, fetchSignInMethodsForEmail, linkWithCredential, GoogleAuthProvider, GithubAuthProvider, signInWithCustomToken } from 'firebase/auth';
+import { auth, googleProvider, githubProvider } from '../services/firebase';
 import { authAPI } from '../services/api';
 import './Auth.css';
 
@@ -157,31 +157,122 @@ const Register = () => {
     }
   };
 
-  const handleGoogleSignUp = async () => {
+  const handleGoogleSignUp = async () => handleOAuthPopup(googleProvider, 'Google');
+
+  const handleOAuthPopup = async (provider, providerName) => {
     setApiError('');
     setLoading(true);
     try {
-      // Use Firebase Google popup to create or sign in user
-      const result = await signInWithPopup(auth, googleProvider);
-      // Get and store Firebase ID token
+      const result = await signInWithPopup(auth, provider);
       const token = await result.user.getIdToken();
       localStorage.setItem('firebaseToken', token);
-
-      // Redirect to dashboard
       navigate('/dashboard');
     } catch (error) {
-      console.error('Google sign-up error:', error);
+      console.error(`${providerName} sign-up error:`, error);
       if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
-        setApiError('Google sign-up was cancelled.');
+        setApiError(`${providerName} sign-up was cancelled.`);
       } else if (error.code === 'auth/account-exists-with-different-credential') {
-        setApiError('An account with this email exists. Try signing in with email or the provider used previously.');
+        // Attempt to resolve by linking the pending credential to the existing account
+        let pendingCred = error.credential;
+        if (!pendingCred) {
+          try {
+            pendingCred = GoogleAuthProvider.credentialFromError ? GoogleAuthProvider.credentialFromError(error) : null;
+            if (!pendingCred) {
+              pendingCred = GithubAuthProvider.credentialFromError ? GithubAuthProvider.credentialFromError(error) : null;
+            }
+          } catch (e) {
+            pendingCred = pendingCred || null;
+          }
+        }
+
+        let email = error.customData?.email || error.email;
+
+        // If provider didn't return an email (GitHub private email), ask the user for it
+        if (!email) {
+          const supplied = window.prompt('We could not read your email from the provider. Please enter the email for the account you already have so we can link providers:');
+          if (supplied) {
+            email = supplied.trim();
+          }
+        }
+
+        if (!email) {
+          setApiError('An account with this email exists. Try signing in with the provider used previously or email/password.');
+        } else {
+          // Try server-side exchange for GitHub to enable immediate sign-in if possible
+          try {
+            const accessToken = pendingCred?.accessToken || pendingCred?.oauthToken || pendingCred?.idToken;
+            if (providerName === 'GitHub' && accessToken) {
+              try {
+                const resp = await authAPI.linkProviderToken('github', accessToken);
+                const customToken = resp.custom_token || resp.customToken;
+                if (customToken) {
+                  await signInWithCustomToken(auth, customToken);
+                  if (pendingCred) {
+                    try { await linkWithCredential(auth.currentUser, pendingCred); } catch (linkErr) { console.warn('Link after custom token failed', linkErr); }
+                  }
+                  const token = await auth.currentUser.getIdToken();
+                  localStorage.setItem('firebaseToken', token);
+                  navigate('/dashboard');
+                  return;
+                }
+              } catch (err) {
+                console.warn('Server exchange for custom token failed', err);
+                // fallthrough to existing linking flow
+              }
+            }
+          } catch (e) {
+            console.warn('Automatic provider exchange failed', e);
+          }
+          try {
+              const methods = await fetchSignInMethodsForEmail(auth, email);
+
+              // Prefer OAuth->OAuth linking: if an OAuth provider exists, attempt it first (automatic popup)
+              const oauthProvider = methods.find(m => m === 'google.com' || m === 'github.com');
+
+              if (oauthProvider && pendingCred) {
+                if (oauthProvider === 'google.com') {
+                  const res = await signInWithPopup(auth, googleProvider);
+                  await linkWithCredential(res.user, pendingCred);
+                  const token = await res.user.getIdToken();
+                  localStorage.setItem('firebaseToken', token);
+                  navigate('/dashboard');
+                } else if (oauthProvider === 'github.com') {
+                  const res = await signInWithPopup(auth, githubProvider);
+                  await linkWithCredential(res.user, pendingCred);
+                  const token = await res.user.getIdToken();
+                  localStorage.setItem('firebaseToken', token);
+                  navigate('/dashboard');
+                }
+              } else if (methods.includes('password')) {
+                const password = window.prompt('An account with this email already exists. Please enter your password to sign in and link the OAuth provider to your account:');
+                if (!password) {
+                  setApiError('Linking cancelled. Please sign in with your existing method to link providers.');
+                } else {
+                  const userCred = await signInWithEmailAndPassword(auth, email, password);
+                  if (pendingCred) {
+                    await linkWithCredential(userCred.user, pendingCred);
+                  }
+                  const token = await userCred.user.getIdToken();
+                  localStorage.setItem('firebaseToken', token);
+                  navigate('/dashboard');
+                }
+              } else {
+                setApiError('An account with this email exists. Please sign in with the original provider to link accounts.');
+              }
+          } catch (linkError) {
+            console.error('Error while resolving account linking:', linkError);
+            setApiError('Could not automatically link accounts. Please sign in with your existing method and link providers from account settings.');
+          }
+        }
       } else {
-        setApiError('Google sign-up failed. Please try again.');
+        setApiError(`${providerName} sign-up failed. Please try again.`);
       }
     } finally {
       setLoading(false);
     }
   };
+
+  // LinkedIn/back-end flows removed — only Google and GitHub handled client-side via Firebase
 
   return (
     <div className="auth-container">
@@ -297,14 +388,27 @@ const Register = () => {
 
         <div style={{textAlign: 'center', marginTop: 12}}>
           <div style={{margin: '12px 0', color: '#94a3b8'}}>or</div>
-          <button
-            className="auth-button"
-            onClick={handleGoogleSignUp}
-            disabled={loading}
-            aria-label="Sign up with Google"
-          >
-            {loading ? 'Processing...' : 'Sign up with Google'}
-          </button>
+          <div style={{display: 'flex', gap: 8, flexDirection: 'column'}}>
+            <button
+              className="auth-button"
+              onClick={handleGoogleSignUp}
+              disabled={loading}
+              aria-label="Sign up with Google"
+            >
+              {loading ? 'Processing...' : 'Sign up with Google'}
+            </button>
+
+            <button
+              className="auth-button"
+              onClick={() => handleOAuthPopup(githubProvider, 'GitHub')}
+              disabled={loading}
+              aria-label="Sign up with GitHub"
+            >
+              {loading ? 'Processing...' : 'Sign up with GitHub'}
+            </button>
+
+            {/* Only Google and GitHub sign-up provided */}
+          </div>
         </div>
 
         <div className="auth-footer">
