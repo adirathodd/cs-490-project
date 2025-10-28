@@ -104,7 +104,7 @@ const ResetPassword = () => {
             <h2>Password Reset Successful</h2>
             <p className="auth-subtitle">Your password has been reset. You may now return to the login page.</p>
             <div className="auth-footer">
-              <Link to="/login" className="auth-button" style={{ color: '#fff' }}>Return to Login</Link>
+              <Link to="/login" className="auth-button" style={{ color: 'var(--on-primary)' }}>Return to Login</Link>
             </div>
           </>
         ) : (

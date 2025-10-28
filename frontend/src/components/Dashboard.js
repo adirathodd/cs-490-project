@@ -13,12 +13,20 @@ const Dashboard = () => {
   const confirmRef = useRef(null);
   const userMenuRef = useRef(null);
 
-  // Prefer full_name from API; fallback to first/last; then email
+  // Prefer the Firebase provider displayName (e.g., GitHub username),
+  // then API full_name, then first/last name from profile, then email as a last resort.
   const displayName = (
+    (currentUser?.displayName && currentUser.displayName.trim()) ||
     (userProfile?.full_name && userProfile.full_name.trim()) ||
     (((userProfile?.first_name || userProfile?.last_name) && `${userProfile.first_name || ''} ${userProfile.last_name || ''}`.trim()) || '') ||
     currentUser?.email
   );
+
+  // Avoid showing the email twice: if the computed displayName is the same as the account email,
+  // don't show it as the 'name' — the email will still appear in the account-email row below.
+  const displayNameToShow = (displayName && currentUser?.email && displayName === currentUser.email)
+    ? ''
+    : displayName;
 
   useEffect(() => {
     // Fetch profile picture
@@ -139,7 +147,7 @@ const Dashboard = () => {
           <div className="user-menu-wrapper" ref={userMenuRef}>
             <button onClick={toggleUserMenu} className="user-menu-button">
               <span className="user-name">
-                {displayName}
+                {displayNameToShow || (currentUser?.email ? currentUser.email : 'User')}
               </span>
               <span className="dropdown-arrow">{showUserMenu ? '▲' : '▼'}</span>
             </button>
@@ -187,7 +195,7 @@ const Dashboard = () => {
               </div>
               <div className="account-details">
                 <h2 className="account-name">
-                  {displayName || 'Welcome'}
+                  {displayNameToShow || 'Welcome'}
                 </h2>
                 <p className="account-email">{currentUser?.email}</p>
                 {userProfile && (

@@ -7,7 +7,7 @@
   margin: 0 auto;
   padding: 32px 16px;
   min-height: 100vh;
-  background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+  background: linear-gradient(135deg, #f8f9ff 0%, var(--surface) 100%);
 }
 
 .projects-page-header {
@@ -18,9 +18,9 @@
   margin-bottom: 16px;
 }
 
-.btn-back,
-.back-button {
-  background: white;
+btn-back,
+back-button {
+  background: var(--surface);
   border: 1.5px solid #d1d5db;
   padding: 10px 20px;
   border-radius: 10px;
@@ -60,7 +60,7 @@
   align-items: center;
   margin-bottom: 32px;
   padding: 32px;
-  background: white;
+  background: var(--surface);
   border-radius: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
@@ -76,8 +76,8 @@
 }
 
 .add-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
   border: none;
   padding: 12px 28px;
   border-radius: 10px;
@@ -114,12 +114,18 @@
 }
 
 .error-banner,
+.error-message,
+.error-banner,
 .error-message {
-  background: #fee;
-  color: #c33;
-  border: 1px solid #fcc;
+  background: var(--error-bg);
+  color: var(--error-text);
+  border: 1px solid var(--error-border);
 }
-
+.success-message {
+  background: var(--success-bg);
+  color: var(--success-text);
+  border: 1px solid var(--success-border);
+}
 .success-message {
   background: #efe;
   color: #3a3;
@@ -135,7 +141,7 @@
 
 .empty-state,
 .projects-list .empty-state {
-  background: white;
+  background: var(--surface);
   border-radius: 24px;
   padding: 96px;
   text-align: center;
@@ -166,7 +172,7 @@
 /* Form Styles */
 .projects-form,
 .projects-form-card {
-  background: white;
+  background: var(--surface);
   border-radius: 24px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
   margin-bottom: 48px;
@@ -176,8 +182,8 @@
 }
 
 .form-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
   padding: 32px;
   display: flex;
   justify-content: space-between;
@@ -193,7 +199,7 @@
 .close-button {
   background: rgba(255, 255, 255, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
+  color: var(--on-primary);
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -257,7 +263,7 @@ form {
   font-size: 15px;
   transition: all 0.2s ease;
   font-family: inherit;
-  background: white;
+  background: var(--white);
 }
 
 .form-group input:focus,
@@ -294,7 +300,7 @@ form {
 }
 
 .projects-form-card .cancel-button {
-  background: white;
+  background: var(--white);
   border: 2px solid #d1d5db;
   color: #374151;
   padding: 12px 32px;
@@ -316,7 +322,7 @@ form {
 .projects-form-card .save-button {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border: none;
-  color: white;
+  color: var(--on-primary);
   padding: 12px 32px;
   border-radius: 10px;
   font-size: 15px;
@@ -369,7 +375,7 @@ form {
 
 .project-item {
   position: relative;
-  background: white;
+  background: var(--surface);
   border-radius: 24px;
   margin-bottom: 32px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
@@ -388,7 +394,7 @@ form {
   height: 16px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 50%;
-  box-shadow: 0 0 0 4px white, 0 0 0 6px #667eea;
+  box-shadow: 0 0 0 4px var(--white), 0 0 0 6px #667eea;
   z-index: 2;
 }
 
@@ -399,9 +405,9 @@ form {
 }
 
 .project-header {
-  background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+  background: linear-gradient(135deg, #f8f9ff 0%, var(--surface) 100%);
   padding: 32px;
-  border-bottom: 2px solid #f3f4f6;
+  border-bottom: 2px solid var(--surface-2);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -456,8 +462,8 @@ form {
 
 .project-details {
   padding: 24px 32px;
-  background: linear-gradient(135deg, #fafbff 0%, #ffffff 100%);
-  border-bottom: 1px solid #f3f4f6;
+  background: linear-gradient(135deg, #fafbff 0%, var(--surface) 100%);
+  border-bottom: 1px solid var(--surface-2);
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
@@ -483,13 +489,16 @@ form {
   flex-shrink: 0;
 }
 
-.action-button,
-.edit-button,
-.delete-button {
+action-button,
+edit-button,
+delete-button {
+action-button,
+edit-button,
+delete-button {
   width: 44px;
   height: 44px;
-  background: white;
-  border: 2px solid #d1d5db;
+  background: var(--surface);
+  border: 2px solid var(--muted-border);
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -510,19 +519,19 @@ form {
 .edit-button:hover {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-color: #667eea;
-  color: white;
+  color: var(--on-primary);
 }
 
 .action-button.delete:hover,
 .delete-button:hover {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   border-color: #ef4444;
-  color: white;
+  color: var(--on-primary);
 }
 
 .project-section {
   padding: 32px;
-  background: white;
+  background: var(--surface);
   color: #374151;
   line-height: 1.7;
   font-size: 15px;
@@ -569,7 +578,7 @@ form {
 
 .tag:hover {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  color: var(--on-primary);
   border-color: #667eea;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
@@ -610,19 +619,19 @@ form {
 
 .badge.completed {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
+  color: var(--on-primary);
   box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
 }
 
 .badge.ongoing {
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
+  color: var(--on-primary);
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
 }
 
 .badge.planned {
   background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  color: white;
+  color: var(--on-primary);
   box-shadow: 0 2px 8px rgba(245, 158, 11, 0.25);
 }
 
@@ -659,7 +668,7 @@ form {
 
 .confirm-yes {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  color: white;
+  color: var(--on-primary);
   border: none;
   padding: 10px 24px;
   border-radius: 10px;
@@ -674,17 +683,17 @@ form {
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
 }
 
-.confirm-no {
-  background: white;
-  border: 2px solid #d1d5db;
-  color: #374151;
+.confirm-yes {
+  background: linear-gradient(135deg, var(--error-gradient-start, #ef4444) 0%, var(--error-gradient-end, #dc2626) 100%);
+  color: var(--on-primary);
+  border: none;
   padding: 10px 24px;
   border-radius: 10px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
 }
-
 .confirm-no:hover {
   background: #f3f4f6;
   border-color: #9ca3af;
@@ -746,4 +755,5 @@ form {
   .project-media-grid {
     grid-template-columns: 1fr;
   }
+}
 }

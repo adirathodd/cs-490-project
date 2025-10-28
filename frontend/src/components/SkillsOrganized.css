@@ -7,7 +7,7 @@
 .skills-organized-header {
   margin-bottom: 30px;
   padding-bottom: 15px;
-  border-bottom: 2px solid #e5e7eb;
+  border-bottom: 2px solid var(--muted-border);
 }
 
 .header-top {
@@ -28,8 +28,8 @@
 .btn-back {
   padding: 8px 16px;
   background: transparent;
-  color: #667eea;
-  border: 2px solid #667eea;
+  color: var(--primary-color);
+  border: 2px solid var(--primary-color);
   border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
@@ -39,14 +39,14 @@
 }
 
 .btn-back:hover {
-  background: #667eea;
-  color: white;
+  background: var(--primary-color);
+  color: var(--on-primary);
   transform: translateX(-2px);
 }
 
 .skills-organized-header h2 {
   margin: 0;
-  color: #1f2937;
+  color: var(--gray-800);
   font-size: 28px;
   font-weight: 600;
 }
@@ -59,8 +59,8 @@
 
 .btn-manage {
   padding: 10px 18px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -77,8 +77,8 @@
 
 .btn-export {
   padding: 10px 18px;
-  background-color: #10b981;
-  color: white;
+  background-color: var(--accent-green);
+  color: var(--on-primary);
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -89,7 +89,7 @@
 }
 
 .btn-export:hover {
-  background-color: #059669;
+  background-color: var(--accent-green-dark);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
@@ -98,8 +98,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  border-left: 4px solid #3b82f6;
+  background: linear-gradient(135deg, var(--info-gradient-start) 0%, var(--info-gradient-end) 100%);
+  border-left: 4px solid var(--accent-blue);
   padding: 16px 20px;
   border-radius: 8px;
   margin-bottom: 25px;
@@ -111,13 +111,13 @@
 }
 
 .info-content {
-  color: #1e40af;
+  color: var(--primary-deep);
   font-size: 14px;
   line-height: 1.5;
 }
 
 .info-content strong {
-  color: #1e3a8a;
+  color: var(--primary-deeper);
   font-weight: 600;
 }
 
@@ -135,7 +135,7 @@
 .search-input {
   width: 100%;
   padding: 12px 16px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--muted-border);
   border-radius: 6px;
   font-size: 14px;
   transition: border-color 0.2s;
@@ -143,7 +143,7 @@
 
 .search-input:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--accent-blue);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
@@ -154,17 +154,17 @@
 .category-select {
   width: 100%;
   padding: 12px 16px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--muted-border);
   border-radius: 6px;
   font-size: 14px;
-  background-color: white;
+  background-color: var(--surface);
   cursor: pointer;
   transition: border-color 0.2s;
 }
 
 .category-select:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--accent-blue);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
@@ -176,11 +176,11 @@
 }
 
 .summary-card {
-  background: white;
+  background: var(--surface);
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border-top: 4px solid;
+  border-top: 4px solid var(--primary-color);
 }
 
 .summary-header {
@@ -192,13 +192,13 @@
 
 .summary-header h4 {
   margin: 0;
-  color: #1f2937;
+  color: var(--gray-800);
   font-size: 18px;
 }
 
 .summary-count {
-  background-color: #f3f4f6;
-  color: #6b7280;
+  background-color: var(--surface-2);
+  color: var(--gray-600);
   padding: 4px 12px;
   border-radius: 12px;
   font-size: 13px;
@@ -218,12 +218,12 @@
 }
 
 .stat-label {
-  color: #6b7280;
+  color: var(--gray-600);
   font-size: 14px;
 }
 
 .stat-value {
-  color: #1f2937;
+  color: var(--gray-800);
   font-weight: 600;
   font-size: 14px;
 }
@@ -242,7 +242,7 @@
 
 .proficiency-label {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--gray-600);
   min-width: 80px;
   text-transform: capitalize;
 }
@@ -250,7 +250,7 @@
 .proficiency-bar {
   flex: 1;
   height: 6px;
-  background-color: #f3f4f6;
+  background-color: var(--surface-2);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -262,7 +262,7 @@
 
 .proficiency-count {
   font-size: 12px;
-  color: #1f2937;
+  color: var(--gray-800);
   font-weight: 600;
   min-width: 20px;
   text-align: right;
@@ -276,7 +276,7 @@
 }
 
 .category-section {
-  background: white;
+  background: var(--surface);
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   overflow: hidden;
@@ -284,7 +284,7 @@
 
 .category-header {
   padding: 15px 20px;
-  color: white;
+  color: var(--on-primary);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -312,15 +312,15 @@
 }
 
 .skills-drop-zone.dragging-over {
-  background-color: #eff6ff;
-  border: 2px dashed #3b82f6;
+  background-color: var(--info-gradient-start);
+  border: 2px dashed var(--accent-blue);
   margin: -2px;
   padding: 13px;
 }
 
 .empty-category {
   text-align: center;
-  color: #9ca3af;
+  color: var(--gray-500);
   padding: 30px 20px;
   font-size: 14px;
   font-style: italic;
@@ -328,14 +328,14 @@
 }
 
 .skills-drop-zone.dragging-over .empty-category {
-  color: #3b82f6;
+  color: var(--accent-blue);
   font-weight: 500;
   font-style: normal;
 }
 
 .skill-card {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  background: var(--gray-50);
+  border: 1px solid var(--muted-border);
   border-radius: 6px;
   padding: 12px;
   margin-bottom: 10px;
@@ -360,7 +360,7 @@
 }
 
 .skill-drag-handle {
-  color: #9ca3af;
+  color: var(--gray-500);
   font-size: 16px;
   cursor: grab;
   user-select: none;
@@ -376,7 +376,7 @@
 
 .skill-name {
   font-weight: 600;
-  color: #1f2937;
+  color: var(--gray-800);
   margin-bottom: 6px;
   font-size: 15px;
 }
@@ -394,7 +394,7 @@
   border-radius: 12px;
   font-size: 11px;
   font-weight: 600;
-  color: white;
+  color: var(--on-primary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -405,19 +405,19 @@
   border-radius: 12px;
   font-size: 11px;
   font-weight: 500;
-  background-color: #e5e7eb;
-  color: #4b5563;
+  background-color: var(--muted-border);
+  color: var(--gray-700);
 }
 
 .organized-footer {
   margin-top: 30px;
   padding-top: 20px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--muted-border);
   text-align: center;
 }
 
 .hint-text {
-  color: #6b7280;
+  color: var(--gray-600);
   font-size: 14px;
   font-style: italic;
   margin: 0;
@@ -432,21 +432,21 @@
 }
 
 .alert-error {
-  background-color: #fee2e2;
-  color: #991b1b;
-  border: 1px solid #fca5a5;
+  background-color: var(--error-bg);
+  color: var(--error-text);
+  border: 1px solid var(--error-border);
 }
 
 .alert-success {
-  background-color: #d1fae5;
-  color: #065f46;
-  border: 1px solid #6ee7b7;
+  background-color: var(--success-bg);
+  color: var(--success-text);
+  border: 1px solid var(--success-border);
 }
 
 .loading {
   text-align: center;
   padding: 50px;
-  color: #6b7280;
+  color: var(--gray-600);
   font-size: 16px;
 }
 

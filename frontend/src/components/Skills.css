@@ -44,14 +44,14 @@
 
 .btn-back:hover {
   background: #667eea;
-  color: white;
+  color: var(--on-primary);
   transform: translateX(-2px);
 }
 
 .btn-secondary {
   padding: 10px 18px;
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
+  color: var(--on-primary);
   border: none;
   border-radius: 8px;
   font-size: 14px;
@@ -76,7 +76,7 @@
 .btn-add-skill {
   padding: 10px 20px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  color: var(--on-primary);
   border: none;
   border-radius: 8px;
   font-size: 14px;
@@ -113,7 +113,7 @@
 
 /* Skill Form */
 .skill-form {
-  background: white;
+  background: var(--white);
   padding: 24px;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -165,7 +165,7 @@
   top: 100%;
   left: 0;
   right: 0;
-  background: white;
+  background: var(--white);
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -205,7 +205,7 @@
 .btn-submit {
   padding: 10px 24px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  color: var(--on-primary);
   border: none;
   border-radius: 6px;
   font-size: 14px;
@@ -221,7 +221,7 @@
 
 /* Skills List */
 .skills-list {
-  background: white;
+  background: var(--white);
   padding: 24px;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -241,7 +241,7 @@
 
 /* Skill Badge */
 .skill-badge {
-  background: white;
+  background: var(--white);
   border: 1px solid #e2e8f0;
   border-left: 4px solid #667eea;
   border-radius: 8px;
@@ -287,7 +287,7 @@
   border-radius: 12px;
   font-size: 12px;
   font-weight: 500;
-  color: white;
+  color: var(--on-primary);
 }
 
 .years-badge {
@@ -361,7 +361,7 @@
 
 .btn-save {
   background: #10b981;
-  color: white;
+  color: var(--on-primary);
 }
 
 .btn-save:hover {
@@ -407,7 +407,7 @@
 
 .btn-confirm-yes {
   background: #ef4444;
-  color: white;
+  color: var(--on-primary);
 }
 
 .btn-confirm-yes:hover {

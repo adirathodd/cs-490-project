@@ -82,7 +82,7 @@
 .placeholder-initials {
   font-size: 4rem;
   font-weight: bold;
-  color: white;
+  color: var(--on-primary);
   text-transform: uppercase;
 }
 
@@ -105,7 +105,7 @@
   gap: 0.5rem;
   padding: 0.75rem 1.5rem;
   background-color: #667eea;
-  color: white;
+  color: var(--on-primary);
   border: none;
   border-radius: 6px;
   font-size: 0.95rem;
@@ -132,7 +132,7 @@
   gap: 0.5rem;
   padding: 0.75rem 1.5rem;
   background-color: #dc3545;
-  color: white;
+  color: var(--on-primary);
   border: none;
   border-radius: 6px;
   font-size: 0.95rem;
@@ -181,7 +181,7 @@
 }
 
 .preview-modal {
-  background: white;
+  background: var(--white);
   border-radius: 12px;
   padding: 2rem;
   max-width: 600px;
@@ -327,7 +327,7 @@
 
 .preview-upload-btn {
   background-color: #28a745;
-  color: white;
+  color: var(--on-primary);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -350,9 +350,8 @@
   width: 16px;
   height: 16px;
   border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
+  border-top-color: var(--white);
   border-radius: 50%;
-  animation: spin 0.6s linear infinite;
 }
 
 /* Animations */
@@ -387,11 +386,7 @@
   }
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+/* spinner animation removed to prefer static indicators; keep keyframes out to avoid accidental rotation */
 
 /* Responsive Design */
 @media (max-width: 768px) {

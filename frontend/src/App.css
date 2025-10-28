@@ -14,18 +14,18 @@
 }
 
 .App-header {
-  background-color: #282c34;
+  background-color: var(--gray-900);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   font-size: calc(10px + 2vmin);
-  color: white;
+  color: var(--on-primary);
 }
 
 .App-link {
-  color: #61dafb;
+  color: var(--primary-light);
 }
 
 @keyframes App-logo-spin {
@@ -45,8 +45,8 @@
 .btn-back {
   padding: 8px 16px;
   background: transparent;
-  color: #667eea;
-  border: 2px solid #667eea;
+  color: var(--primary-color);
+  border: 2px solid var(--primary-color);
   border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
@@ -57,7 +57,7 @@
   display: inline-block;
 }
 .btn-back:hover {
-  background: #667eea;
-  color: white;
+  background: var(--primary-color);
+  color: var(--on-primary);
   transform: translateX(-2px);
 }

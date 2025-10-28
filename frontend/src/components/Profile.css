@@ -318,7 +318,7 @@
   border: 5px solid var(--gray-300);
   border-top-color: var(--primary-color);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  /* animation removed per request; static indicator kept */
 }
 
 .profile-loading-text {

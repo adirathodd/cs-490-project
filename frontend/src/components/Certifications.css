@@ -7,7 +7,7 @@
   margin: 0 auto;
   padding: 32px 16px;
   min-height: 100vh;
-  background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+  background: linear-gradient(135deg, #f8f9ff 0%, var(--surface) 100%);
 }
 
 .certifications-page-header {
@@ -15,8 +15,8 @@
 }
 
 .back-button {
-  background: white;
-  border: 1.5px solid #d1d5db;
+  background: var(--surface);
+  border: 1.5px solid var(--muted-border);
   padding: 10px 20px;
   border-radius: 10px;
   color: #4b5563;
@@ -33,15 +33,15 @@
 }
 
 .back-button:hover {
-  background: #f9fafb;
-  border-color: #9ca3af;
+  background: var(--gray-50);
+  border-color: var(--gray-500);
   transform: translateX(-4px);
 }
 
 .certifications-page-title {
   font-size: 40px;
   font-weight: 700;
-  color: #111827;
+  color: var(--gray-900);
   margin: 0;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   -webkit-background-clip: text;
@@ -55,7 +55,7 @@
   align-items: center;
   margin-bottom: 32px;
   padding: 32px;
-  background: white;
+  background: var(--surface);
   border-radius: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
@@ -71,8 +71,8 @@
 }
 
 .add-certification-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
   border: none;
   padding: 12px 28px;
   border-radius: 10px;
@@ -112,17 +112,17 @@
 }
 
 .certification-form-card {
-  background: white;
+  background: var(--surface);
   border-radius: 24px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
   margin-bottom: 48px;
   overflow: hidden;
-  border: 2px solid #667eea;
+  border: 2px solid var(--primary-color);
 }
 
 .form-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
   padding: 32px;
   display: flex;
   justify-content: space-between;
@@ -138,7 +138,7 @@
 .close-button {
   background: rgba(255, 255, 255, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
+  color: var(--on-primary);
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -190,12 +190,12 @@
 .form-group select {
   width: 100%;
   padding: 12px 16px;
-  border: 2px solid #d1d5db;
+  border: 2px solid var(--muted-border);
   border-radius: 10px;
   font-size: 15px;
   transition: all 0.2s ease;
   font-family: inherit;
-  background: white;
+  background: var(--surface);
 }
 
 .form-group input:focus,
@@ -276,8 +276,8 @@
   top: 100%;
   left: 0;
   right: 0;
-  background: white;
-  border: 2px solid #667eea;
+  background: var(--surface);
+  border: 2px solid var(--primary-color);
   border-top: none;
   border-radius: 0 0 10px 10px;
   box-shadow: 0 8px 24px rgba(102, 126, 234, 0.15);
@@ -317,12 +317,12 @@
   gap: 16px;
   margin-top: 32px;
   padding-top: 32px;
-  border-top: 2px solid #e5e7eb;
+  border-top: 2px solid var(--muted-border);
 }
 
 .certification-form .cancel-button {
-  background: white;
-  border: 2px solid #d1d5db;
+  background: var(--surface);
+  border: 2px solid var(--muted-border);
   color: #374151;
   padding: 12px 32px;
   border-radius: 10px;
@@ -333,8 +333,8 @@
 }
 
 .certification-form .cancel-button:hover {
-  background: #f3f4f6;
-  border-color: #9ca3af;
+  background: var(--surface-2);
+  border-color: var(--gray-500);
 }
 
 .certification-form .cancel-button:disabled {
@@ -343,9 +343,9 @@
 }
 
 .certification-form .save-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
   border: none;
-  color: white;
+  color: var(--on-primary);
   padding: 12px 32px;
   border-radius: 10px;
   font-size: 15px;
@@ -368,7 +368,7 @@
 
 /* Empty State */
 .empty-state {
-  background: white;
+  background: var(--surface);
   border-radius: 24px;
   padding: 96px;
   text-align: center;
@@ -414,13 +414,13 @@
 
 .certification-item {
   position: relative;
-  background: white;
+  background: var(--surface);
   border-radius: 24px;
   margin-bottom: 32px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
   overflow: hidden;
   transition: all 0.3s ease;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--muted-border);
 }
 
 .certification-item::before {
@@ -432,29 +432,29 @@
   height: 16px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 50%;
-  box-shadow: 0 0 0 4px white, 0 0 0 6px #667eea;
+  box-shadow: 0 0 0 4px var(--surface), 0 0 0 6px var(--primary-color);
   z-index: 2;
 }
 
 .certification-item:hover {
   transform: translateX(8px);
   box-shadow: 0 8px 32px rgba(102, 126, 234, 0.15);
-  border-color: #667eea;
+  border-color: var(--primary-color);
 }
 
 .certification-item.expired {
-  border-color: #fca5a5;
+  border-color: var(--error-border);
 }
 
 .certification-item.expired::before {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  box-shadow: 0 0 0 4px white, 0 0 0 6px #ef4444;
+  box-shadow: 0 0 0 4px var(--white), 0 0 0 6px #ef4444;
 }
 
 .certification-item-header {
-  background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+  background: linear-gradient(135deg, #f8f9ff 0%, var(--surface) 100%);
   padding: 32px;
-  border-bottom: 2px solid #f3f4f6;
+  border-bottom: 2px solid var(--surface-2);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -469,7 +469,7 @@
 .certification-item-title {
   font-size: 24px;
   font-weight: 700;
-  color: #111827;
+  color: var(--gray-900);
   margin: 0 0 12px 0;
   line-height: 1.3;
 }
@@ -477,7 +477,7 @@
 .certification-item-sub {
   font-size: 16px;
   font-weight: 600;
-  color: #667eea;
+  color: var(--primary-color);
   margin: 0 0 16px 0;
   display: flex;
   flex-wrap: wrap;
@@ -586,7 +586,7 @@
 .certification-item-actions .delete-button {
   width: 44px;
   height: 44px;
-  background: white;
+  background: var(--white);
   border: 2px solid #d1d5db;
   border-radius: 10px;
   cursor: pointer;
@@ -614,11 +614,11 @@
 
 .certification-item-details {
   padding: 32px;
-  background: white;
-  color: #374151;
+  background: var(--surface);
+  color: var(--gray-700);
   line-height: 1.7;
   font-size: 15px;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--surface-2);
 }
 
 .certification-item-details > div {
@@ -644,14 +644,14 @@
 }
 
 .certification-item-details a:hover {
-  color: #764ba2;
+  color: var(--primary-deeper);
   text-decoration: underline;
 }
 
 /* Delete Confirmation */
 .delete-confirm {
-  background: #fee;
-  border-top: 2px solid #fcc;
+  background: var(--error-bg);
+  border-top: 2px solid var(--error-border);
   padding: 24px;
   animation: slideDown 0.3s ease;
 }
@@ -682,7 +682,7 @@
 
 .confirm-yes {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  color: white;
+  color: var(--on-primary);
   border: none;
   padding: 10px 24px;
   border-radius: 10px;
@@ -698,8 +698,8 @@
 }
 
 .confirm-no {
-  background: white;
-  border: 2px solid #d1d5db;
+  background: var(--surface);
+  border: 2px solid var(--muted-border);
   color: #374151;
   padding: 10px 24px;
   border-radius: 10px;
