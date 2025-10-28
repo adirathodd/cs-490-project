@@ -114,9 +114,14 @@ const Profile = () => {
   return (
     <div className="profile-container">
       <div className="page-backbar">
-        <button className="btn-back" onClick={() => navigate('/dashboard')}>
+        <a
+          className="btn-back"
+          href="/dashboard"
+          aria-label="Back to dashboard"
+          title="Back to dashboard"
+        >
           ← Back to Dashboard
-        </button>
+        </a>
       </div>
 
       {/* Profile Header */}

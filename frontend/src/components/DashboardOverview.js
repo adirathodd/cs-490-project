@@ -95,6 +95,79 @@ const DashboardOverview = () => {
     });
   }, [skills]);
 
+  // Section-specific completion and overall strength scoring
+  const completeness = useMemo(() => {
+    // Helpers
+    const present = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
+
+    // Profile fields
+    const profileReq = [
+      present(profile?.first_name),
+      present(profile?.last_name),
+      present(profile?.headline),
+      present(profile?.summary),
+    ];
+    const profileOpt = [
+      present(profile?.phone),
+      present(profile?.city) && present(profile?.state),
+      present(profile?.industry),
+      present(profile?.experience_level),
+    ];
+    const profileReqDone = profileReq.filter(Boolean).length;
+    const profileOptDone = profileOpt.filter(Boolean).length;
+    const profileReqPct = Math.round((profileReqDone / profileReq.length) * 100);
+    const profileOptPct = Math.round((profileOptDone / profileOpt.length) * 100);
+    const profilePct = Math.round((profileReqPct * 0.7) + (profileOptPct * 0.3));
+
+    // Employment
+    const employmentPct = Math.min(100, Math.round((employmentCount > 0 ? 100 : 0)));
+
+    // Skills (target 5 for full credit)
+    const skillTarget = 5;
+    const skillsPct = Math.min(100, Math.round(((skills?.length || 0) / skillTarget) * 100));
+
+    // Education (at least 1)
+    const educationPct = Math.min(100, Math.round(((education?.length || 0) >= 1 ? 100 : 0)));
+
+    // Projects (target 2)
+    const projectTarget = 2;
+    const projectsPct = Math.min(100, Math.round(((projects?.length || 0) / projectTarget) * 100));
+
+    // Overall strength score (weights sum to 100)
+    const weights = { profile: 25, employment: 25, skills: 20, education: 15, projects: 15 };
+    const score = Math.round(
+      (profilePct * weights.profile + employmentPct * weights.employment + skillsPct * weights.skills + educationPct * weights.education + projectsPct * weights.projects) / 100
+    );
+
+    // Band text
+    const band = score >= 95 ? 'Star' : score >= 80 ? 'Strong' : score >= 60 ? 'Developing' : 'Getting Started';
+
+    // Suggestions (augment existing ones)
+    const sug = [];
+    if (!present(profile?.headline)) sug.push('Add a concise headline that reflects your role.');
+    if (employmentCount === 0) sug.push('Add at least one employment entry.');
+    if ((skills?.length || 0) < 5) sug.push('Add at least 5 relevant skills.');
+    if ((education?.length || 0) < 1) sug.push('Add an education entry.');
+    if ((projects?.length || 0) < 2) sug.push('Add 1–2 projects to showcase impact.');
+
+    // Achievements
+    const badges = [];
+    if (score >= 60) badges.push('Milestone: 60%+');
+    if (score >= 80) badges.push('Profile Pro: 80%+');
+    if (score >= 95) badges.push('Star: 95%+');
+
+    // Section breakdown list
+    const sections = [
+      { name: 'Profile', pct: profilePct, required: profileReq.length - profileReqDone, optional: profileOpt.length - profileOptDone },
+      { name: 'Employment', pct: employmentPct, required: employmentCount > 0 ? 0 : 1, optional: 0 },
+      { name: 'Skills', pct: skillsPct, required: Math.max(0, 5 - (skills?.length || 0)), optional: 0 },
+      { name: 'Education', pct: educationPct, required: (education?.length || 0) > 0 ? 0 : 1, optional: 0 },
+      { name: 'Projects', pct: projectsPct, required: Math.max(0, 2 - (projects?.length || 0)), optional: 0 },
+    ];
+
+    return { score, band, sections, suggestions: sug, profilePct, employmentPct, skillsPct, educationPct, projectsPct };
+  }, [profile, employmentCount, skills, education, projects]);
+
   if (loading) return <div>Loading overview…</div>;
   if (error) return <div style={{ color: '#b91c1c' }}>{error}</div>;
 
@@ -109,7 +182,46 @@ const DashboardOverview = () => {
         <SummaryCard title="Projects" value={projects.length} hint="Total entries" action={<ExportProfile payload={exportPayload} />} />
       </div>
       <div style={section}>
-        <ProfileProgress percent={progress.percent} suggestions={progress.suggestions} />
+        {/* Overall completeness */}
+        <ProfileProgress percent={completeness.score} suggestions={completeness.suggestions} />
+        {/* Strength score & badges */}
+        <div className="dashboard-card" style={{ padding: 14, marginTop: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280' }}>Profile Strength</div>
+              <div style={{ fontSize: 28, fontWeight: 700 }}>{completeness.score}/100 <span style={{ fontSize: 14, color: '#6b7280' }}>({completeness.band})</span></div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {completeness.band === 'All‑Star' && <span className="badge">All‑Star</span>}
+              {completeness.score >= 80 && <span className="badge">Profile Pro</span>}
+              {completeness.score >= 60 && <span className="badge">Milestone 60%</span>}
+            </div>
+          </div>
+        </div>
+        {/* Sections breakdown */}
+        <div className="dashboard-card" style={{ padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Section Completion</div>
+          {completeness.sections.map((s) => (
+            <div key={s.name} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 140px', alignItems: 'center', gap: 8, margin: '8px 0' }}>
+              <div style={{ fontSize: 13, color: '#374151' }}>{s.name}</div>
+              <div style={{ height: 10, background: '#e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+                <div style={{ width: `${s.pct}%`, height: '100%', background: '#10b981' }} />
+              </div>
+              <div style={{ fontSize: 12, color: '#6b7280', textAlign: 'right' }}>
+                {s.pct}% {s.required > 0 && <span style={{ marginLeft: 6 }}>(Missing {s.required} required)</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Tips & best practices */}
+        {completeness.suggestions.length > 0 && (
+          <div className="dashboard-card" style={{ padding: 14, marginTop: 12 }}>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Suggestions & Best Practices</div>
+            <ul style={{ margin: 0, paddingLeft: 18, color: '#374151', fontSize: 13 }}>
+              {completeness.suggestions.map((s, i) => (<li key={i}>{s}</li>))}
+            </ul>
+          </div>
+        )}
       </div>
       <div style={{ ...twoCol, ...section }}>
         <SkillDistribution data={skillChartData} />
