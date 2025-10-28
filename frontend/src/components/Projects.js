@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { projectsAPI } from '../services/api';
 import './Projects.css';
 import Icon from './Icon';
@@ -37,6 +37,10 @@ const Projects = () => {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const fileInputRef = useRef(null);
+  const MAX_MEDIA_FILES = 12; // soft cap for previews
 
   useEffect(() => {
     const init = async () => {
@@ -73,7 +77,24 @@ const Projects = () => {
   const onChange = (e) => {
     const { name, value, type, checked, files } = e.target;
     if (type === 'file') {
-      setForm((prev) => ({ ...prev, media: Array.from(files || []) }));
+      // Append newly selected files (images only), dedupe, and cap
+      const addFiles = (incoming) => {
+        const next = [...(form.media || []), ...Array.from(incoming || [])].filter(
+          (f) => f && f.type && f.type.startsWith('image/')
+        );
+        // Dedupe by name+size+lastModified
+        const seen = new Set();
+        const deduped = [];
+        for (const f of next) {
+          const key = `${f.name}-${f.size}-${f.lastModified}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            deduped.push(f);
+          }
+        }
+        return deduped.slice(0, MAX_MEDIA_FILES);
+      };
+      setForm((prev) => ({ ...prev, media: addFiles(files) }));
       return;
     }
     if (name === 'status') {
@@ -98,6 +119,76 @@ const Projects = () => {
       setFieldErrors((prev) => { const n = { ...prev }; delete n[name]; return n; });
     }
   };
+
+  // Drag & drop handlers for media upload
+  const onDropFiles = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    setIsDragging(false);
+    const dt = ev.dataTransfer;
+    if (!dt) return;
+    const dropped = Array.from(dt.files || []).filter((f) => f.type?.startsWith('image/'));
+    if (dropped.length === 0) return;
+    setForm((prev) => {
+      const existing = prev.media || [];
+      const combined = [...existing, ...dropped];
+      const seen = new Set();
+      const deduped = [];
+      for (const f of combined) {
+        const key = `${f.name}-${f.size}-${f.lastModified}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          deduped.push(f);
+        }
+      }
+      return { ...prev, media: deduped.slice(0, MAX_MEDIA_FILES) };
+    });
+  };
+
+  const onDragOver = (ev) => {
+    ev.preventDefault();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const onDragLeave = (ev) => {
+    ev.preventDefault();
+    setIsDragging(false);
+  };
+
+  const openFileDialog = () => {
+    fileInputRef.current?.click();
+  };
+
+  const removeMediaAt = (idx) => {
+    setForm((prev) => ({ ...prev, media: (prev.media || []).filter((_, i) => i !== idx) }));
+  };
+
+  const clearAllMedia = () => {
+    setForm((prev) => ({ ...prev, media: [] }));
+  };
+
+  const formatBytes = (bytes) => {
+    if (!Number.isFinite(bytes)) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ['KB', 'MB', 'GB'];
+    let i = -1;
+    do {
+      bytes = bytes / 1024;
+      i++;
+    } while (bytes >= 1024 && i < units.length - 1);
+    return `${bytes.toFixed(bytes >= 100 ? 0 : bytes >= 10 ? 1 : 2)} ${units[i]}`;
+  };
+
+  // Generate preview URLs for selected images
+  const previews = useMemo(() => {
+    return (form.media || []).map((file) => ({ file, url: URL.createObjectURL(file) }));
+  }, [form.media]);
+
+  useEffect(() => {
+    return () => {
+      previews.forEach((p) => URL.revokeObjectURL(p.url));
+    };
+  }, [previews]);
 
   const parseTechnologies = (input) => {
     if (!input) return [];
@@ -338,11 +429,73 @@ const Projects = () => {
 
         <div className="form-group">
           <label htmlFor="media">Screenshots (images)</label>
-          <input id="media" type="file" name="media" multiple accept="image/*" onChange={onChange} />
-          {form.media?.length > 0 && (
-            <div className="preview-grid">
-              {form.media.map((file, idx) => (
-                <div key={idx} className="preview-item">{file.name}</div>
+          <input
+            id="media"
+            ref={fileInputRef}
+            type="file"
+            name="media"
+            multiple
+            accept="image/*"
+            onChange={onChange}
+            style={{ display: 'none' }}
+          />
+
+          <div
+            className={`upload-dropzone ${isDragging ? 'dragover' : ''}`}
+            onClick={openFileDialog}
+            onDragEnter={onDragOver}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDropFiles}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && openFileDialog()}
+            aria-label="Upload images by click or drag and drop"
+          >
+            <div className="upload-illustration" aria-hidden="true">
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                <path d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M7.5 10.5L12 6l4.5 4.5M12 6v12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div className="upload-copy">
+              <div className="upload-title">Drag & drop images here</div>
+              <div className="upload-subtitle">or click to browse</div>
+              <div className="upload-hint">PNG, JPG up to ~10MB each • {MAX_MEDIA_FILES} files max</div>
+            </div>
+            <div className="upload-actions">
+              <button type="button" className="upload-browse" onClick={openFileDialog} aria-label="Browse files">
+                Browse Files
+              </button>
+              {(form.media?.length || 0) > 0 && (
+                <button type="button" className="upload-clear" onClick={clearAllMedia} aria-label="Clear selected images">
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          {(previews.length > 0) && (
+            <div className="upload-previews">
+              {previews.map((p, idx) => (
+                <div key={`${p.file.name}-${p.file.size}-${p.file.lastModified}`} className="upload-preview-card">
+                  <div className="upload-thumb">
+                    <img src={p.url} alt={p.file.name} />
+                    <button
+                      type="button"
+                      className="thumb-remove"
+                      title="Remove image"
+                      aria-label={`Remove ${p.file.name}`}
+                      onClick={() => removeMediaAt(idx)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="thumb-meta">
+                    <div className="thumb-name" title={p.file.name}>{p.file.name}</div>
+                    <div className="thumb-size">{formatBytes(p.file.size)}</div>
+                  </div>
+                </div>
               ))}
             </div>
           )}
