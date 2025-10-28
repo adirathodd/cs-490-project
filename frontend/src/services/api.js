@@ -582,4 +582,20 @@ authAPI.deleteEmployment = async (id) => {
   }
 };
 
-export default authAPI;
+// Provide a forgiving default export that supports both
+// - `import authAPI from './services/api'` (legacy/default import)
+// - `import { authAPI } from './services/api'` (named import)
+// and also exposes other API groups as properties for callers that expect `api.authAPI`.
+const _defaultExport = {
+  // spread authAPI methods to the top-level for backwards compatibility
+  ...authAPI,
+  // include grouped namespaces as properties
+  authAPI,
+  profileAPI,
+  skillsAPI,
+  educationAPI,
+  certificationsAPI,
+  projectsAPI,
+};
+
+export default _defaultExport;
