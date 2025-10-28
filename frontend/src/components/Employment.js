@@ -189,13 +189,19 @@ const Employment = () => {
         return;
       }
 
+      // Normalize payload for API: ensure end_date is null when is_current, and empty strings become null
+      const payload = {
+        ...formData,
+        end_date: formData.is_current ? null : (formData.end_date || null)
+      };
+
       if (editingId) {
         // Update existing entry
-        await authAPI.updateEmployment(editingId, formData);
+        await authAPI.updateEmployment(editingId, payload);
         setSuccess('Employment entry updated successfully!');
       } else {
         // Create new entry
-        await authAPI.createEmployment(formData);
+        await authAPI.createEmployment(payload);
         setSuccess('Employment entry added successfully!');
       }
 

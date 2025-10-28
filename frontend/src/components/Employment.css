@@ -267,11 +267,11 @@ form {
 }
 
 .checkbox-group {
-  margin: 12px 0;
+  margin: 8px 0 0 0;
 }
 
 .checkbox-group label {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
