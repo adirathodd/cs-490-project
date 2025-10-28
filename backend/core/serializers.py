@@ -548,6 +548,10 @@ class EducationSerializer(serializers.ModelSerializer):
                 errors['gpa'] = 'Invalid GPA value.'
 
         # Date logic
+        if currently_enrolled:
+            # If currently enrolled, ignore any provided end_date
+            data['end_date'] = None
+            end_date = None
         if not currently_enrolled and not end_date:
             errors['graduation_date'] = 'Graduation date is required unless currently enrolled.'
         if start_date and end_date and start_date > end_date:
