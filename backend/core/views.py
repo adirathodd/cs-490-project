@@ -127,7 +127,7 @@ def _delete_user_and_data(user):
         from django.core.mail import EmailMultiAlternatives
         subject = 'Your account has been deleted'
         context = {
-            'brand': 'ATS Candidate System',
+            'brand': 'ResumeRocket',
             'primary_start': '#667eea',
             'primary_end': '#764ba2',
         }
@@ -271,7 +271,7 @@ def register_user(request):
             'user': user_serializer.data,
             'profile': profile_serializer.data,
             'token': token_str,
-            'message': 'Registration successful. Welcome to ATS!'
+            'message': 'Registration successful. Welcome to ResumeRocket!'
         }, status=status.HTTP_201_CREATED)
     
     except Exception as e:
@@ -513,7 +513,7 @@ def request_account_deletion(request):
 
             subject = 'Confirm your account deletion request'
             context = {
-                'brand': 'ATS Candidate System',
+                'brand': 'ResumeRocket',
                 'confirm_url': confirm_url,
                 'primary_start': '#667eea',
                 'primary_end': '#764ba2',

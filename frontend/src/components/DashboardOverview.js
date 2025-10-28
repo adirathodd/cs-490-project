@@ -5,6 +5,7 @@ import ProfileProgress from './dashboard/ProfileProgress';
 import SkillDistribution from './dashboard/SkillDistribution';
 import ActivityTimeline from './dashboard/ActivityTimeline';
 import ExportProfile from './dashboard/ExportProfile';
+import LoadingSpinner from './LoadingSpinner';
 
 const section = { maxWidth: 1120, margin: '0 auto', width: '100%' };
 const grid = {
@@ -168,7 +169,11 @@ const DashboardOverview = () => {
     return { score, band, sections, suggestions: sug, profilePct, employmentPct, skillsPct, educationPct, projectsPct };
   }, [profile, employmentCount, skills, education, projects]);
 
-  if (loading) return <div>Loading overview…</div>;
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '50vh', transform: 'translateY(5vh)' }}>
+      <LoadingSpinner size={48} />
+    </div>
+  );
   if (error) return <div style={{ color: '#b91c1c' }}>{error}</div>;
 
   const exportPayload = { profile, employmentCount, skills, education, projects, generatedAt: new Date().toISOString() };

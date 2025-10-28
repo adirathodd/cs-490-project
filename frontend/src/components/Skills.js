@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { skillsAPI } from '../services/api';
 import './Skills.css';
 import Icon from './Icon';
+import LoadingSpinner from './LoadingSpinner';
 
 const Skills = () => {
   const navigate = useNavigate();
@@ -235,7 +236,13 @@ const Skills = () => {
   };
 
   if (loading) {
-    return <div className="skills-container"><div className="loading">Loading skills...</div></div>;
+    return (
+      <div className="skills-container">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh', transform: 'translateY(4vh)' }}>
+          <LoadingSpinner size={48} />
+        </div>
+      </div>
+    );
   }
 
   return (

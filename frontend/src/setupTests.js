@@ -11,6 +11,19 @@ try {
 	if (typeof global.TextDecoder === 'undefined') global.TextDecoder = TextDecoder;
 } catch {}
 
+// jsdom doesn't implement URL.createObjectURL; mock for components that preview blobs
+if (typeof global.URL === 'undefined') {
+	// Ensure URL object exists
+	// eslint-disable-next-line no-global-assign
+	global.URL = {};
+}
+if (typeof global.URL.createObjectURL === 'undefined') {
+	global.URL.createObjectURL = jest.fn(() => 'blob:mock-url');
+}
+if (typeof global.URL.revokeObjectURL === 'undefined') {
+	global.URL.revokeObjectURL = jest.fn();
+}
+
 // Mock Firebase services to avoid initializing real SDK in tests
 jest.mock('./services/firebase', () => ({
 	__esModule: true,
@@ -28,6 +41,7 @@ jest.mock('./services/firebase', () => ({
 	EmailAuthProvider: { credential: jest.fn() },
 	googleProvider: {},
 	signInWithPopup: jest.fn(),
+	fetchSignInMethodsForEmail: jest.fn().mockResolvedValue([]),
 	sendPasswordResetEmail: jest.fn(),
 	verifyPasswordResetCode: jest.fn(),
 	confirmPasswordReset: jest.fn(),

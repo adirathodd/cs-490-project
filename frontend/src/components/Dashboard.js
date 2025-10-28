@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authAPI } from '../services/api';
 import './Dashboard.css';
+import LoadingSpinner from './LoadingSpinner';
 import Icon from './Icon';
 
 const Dashboard = () => {
@@ -131,8 +132,8 @@ const Dashboard = () => {
   if (authLoading) {
     return (
       <div className="dashboard-container">
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-          <div>Loading dashboard...</div>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', transform: 'translateY(5vh)' }}>
+          <LoadingSpinner size={48} />
         </div>
       </div>
     );

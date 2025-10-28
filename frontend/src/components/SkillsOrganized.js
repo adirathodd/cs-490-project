@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import LoadingSpinner from './LoadingSpinner';
 import { useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -356,7 +357,13 @@ const SkillsOrganized = () => {
   };
 
   if (loading) {
-    return <div className="skills-organized-container"><div className="loading">Loading skills...</div></div>;
+    return (
+      <div className="skills-organized-container">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh', transform: 'translateY(4vh)' }}>
+          <LoadingSpinner size={48} />
+        </div>
+      </div>
+    );
   }
 
   const filteredCategories = getFilteredCategories();

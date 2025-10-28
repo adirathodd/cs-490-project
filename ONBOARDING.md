@@ -1,6 +1,6 @@
-# ATS Candidate System - Team Onboarding Guide
+# ResumeRocket - Team Onboarding Guide
 
-Welcome to the ATS Candidate System project! This guide will help you get the project running on your local machine.
+Welcome to the ResumeRocket project! This guide will help you get the project running on your local machine.
 
 ## Table of Contents
 - [Prerequisites](#prerequisites)

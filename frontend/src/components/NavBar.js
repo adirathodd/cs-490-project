@@ -54,9 +54,14 @@ const NavBar = () => {
     divider: { height: 1, background: '#334155', margin: '4px 0' },
   };
 
+  // Use the combined logo-with-wordmark image from public/ and add a cache-busting query param
+  const logoUrl = (process.env.PUBLIC_URL || '') + '/LogoandWords.png?v=20251028';
+
   return (
     <nav className="nav">
-      <div className="nav-brand">ResumeRocket</div>
+      <div className="nav-brand" aria-label="ResumeRocket home">
+        <img src={logoUrl} alt="ResumeRocket" className="nav-brand-logo" />
+      </div>
       <button className="nav-toggle" onClick={() => setOpen(v => !v)} aria-label="Toggle navigation">☰</button>
       <div className={`nav-links ${open ? 'open' : ''}`} onClick={() => setOpen(false)}>
         <NavLink to="/dashboard" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Dashboard</NavLink>

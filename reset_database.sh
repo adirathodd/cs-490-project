@@ -1,11 +1,11 @@
 #!/bin/bash
-# Database Reset Script for ATS Candidate System
+# Database Reset Script for ResumeRocket
 # This script completely resets the database and applies all migrations
 
 set -e  # Exit on error
 
 echo "=========================================="
-echo "ATS Database Reset Script"
+echo "ResumeRocket Database Reset Script"
 echo "=========================================="
 echo ""
 echo "⚠️  WARNING: This will DELETE ALL DATA in your database!"

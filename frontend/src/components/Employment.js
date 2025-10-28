@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import authAPI from '../services/api';
 import './Employment.css';
 import Icon from './Icon';
+import LoadingSpinner from './LoadingSpinner';
 
 const Employment = () => {
   const navigate = useNavigate();
@@ -237,7 +238,9 @@ const Employment = () => {
   if (loading) {
     return (
       <div className="employment-container">
-        <div className="loading">Loading employment history...</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh', transform: 'translateY(4vh)' }}>
+          <LoadingSpinner size={48} />
+        </div>
       </div>
     );
   }

@@ -4,7 +4,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1rem;
-  background: #667eea; 
+  background: var(--primary-color);
   color: #fff;
   position: sticky;
   top: 0;
@@ -14,7 +14,12 @@
 .nav-brand {
   font-weight: 600;
   font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
 }
+
+.nav-brand-logo { height: 28px; width: auto; margin-right: 0; display: inline-block; }
+.nav-brand-text { display: none; }
 
 .nav-links {
   display: flex;

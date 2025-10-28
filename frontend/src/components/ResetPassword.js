@@ -8,6 +8,7 @@ import {
   signInWithEmailAndPassword,
 } from '../services/firebase';
 import './Auth.css';
+import LoadingSpinner from './LoadingSpinner';
 
 const useQuery = () => new URLSearchParams(useLocation().search);
 
@@ -89,6 +90,9 @@ const ResetPassword = () => {
       <div className="auth-card">
         {verifying ? (
           <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, transform: 'translateY(3vh)' }}>
+              <LoadingSpinner size={40} />
+            </div>
             <h2>Verifying link…</h2>
           </>
         ) : verifyError ? (

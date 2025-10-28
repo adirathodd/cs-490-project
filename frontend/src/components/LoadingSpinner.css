@@ -1,3 +1,7 @@
+.loading-spinner {
+  color: var(--primary-color);
+}
+
 .loading-spinner .spin {
   display: inline-block;
   animation: icon-spin 1s linear infinite;

@@ -1,4 +1,4 @@
-# Color Guidelines — ATS Candidate System
+# Color Guidelines — ResumeRocket
 
 This document records the project's color system (CSS custom properties), usage guidelines, and accessibility verification steps.
 
