@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import authAPI from '../services/api';
 import './Employment.css';
+import Icon from './Icon';
 
 const Employment = () => {
   const navigate = useNavigate();
@@ -251,7 +252,7 @@ const Employment = () => {
       </div>
 
       <div className="employment-header">
-        <h2>💼 Your Work Experience</h2>
+        <h2><Icon name="briefcase" size="md" /> Your Work Experience</h2>
         <button 
           className="add-button"
           onClick={() => {
@@ -292,7 +293,7 @@ const Employment = () => {
         <div className="employment-form-card">
           <div className="form-header">
             <h3>{editingId ? 'Edit Employment' : 'Add Employment'}</h3>
-            <button className="close-button" onClick={handleCancel}>✕</button>
+            <button className="close-button" onClick={handleCancel}><Icon name="trash" size="sm" ariaLabel="Close" /></button>
           </div>
 
           <form onSubmit={handleSubmit}>
@@ -416,7 +417,7 @@ const Employment = () => {
                         onClick={() => handleRemoveAchievement(index)}
                         className="remove-btn"
                       >
-                        ✕
+                        <Icon name="trash" size="sm" ariaLabel="Remove achievement" />
                       </button>
                     </li>
                   ))}
@@ -453,7 +454,7 @@ const Employment = () => {
                         onClick={() => handleRemoveSkill(skill)}
                         className="remove-skill"
                       >
-                        ✕
+                        <Icon name="trash" size="sm" ariaLabel="Remove skill" />
                       </button>
                     </span>
                   ))}
@@ -499,7 +500,7 @@ const Employment = () => {
 
       {employmentHistory.length === 0 && !showForm ? (
         <div className="empty-state">
-          <div className="empty-icon">💼</div>
+          <div className="empty-icon"><Icon name="briefcase" size="xl" ariaLabel="No employment" /></div>
           <h3>No Employment History Yet</h3>
           <p>Add your work experience to build your professional profile.</p>
           <button className="add-button" onClick={() => {
@@ -533,7 +534,7 @@ const Employment = () => {
                     <span className="dates">{employment.formatted_dates}</span>
                     <span className="duration">• {employment.duration}</span>
                     {employment.location && (
-                      <span className="location">• 📍 {employment.location}</span>
+                      <span className="location">• <Icon name="location" size="sm" /> {employment.location}</span>
                     )}
                     {employment.is_current && (
                       <span className="current-badge">Current</span>
@@ -546,14 +547,14 @@ const Employment = () => {
                     onClick={() => handleEdit(employment)}
                     title="Edit"
                   >
-                    ✏️
+                    <Icon name="edit" size="sm" ariaLabel="Edit" />
                   </button>
                   <button 
                     className="action-button delete"
                     onClick={() => setDeleteConfirm(employment.id)}
                     title="Delete"
                   >
-                    🗑️
+                    <Icon name="trash" size="sm" ariaLabel="Delete" />
                   </button>
                 </div>
               </div>

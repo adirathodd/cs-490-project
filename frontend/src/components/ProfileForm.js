@@ -5,6 +5,7 @@ import { reauthenticateWithCredential, EmailAuthProvider } from '../services/fir
 import { authAPI } from '../services/api';
 import ProfilePictureUpload from './ProfilePictureUpload';
 import './ProfileForm.css';
+import Icon from './Icon';
 
 const EXPERIENCE_LEVELS = [
   { value: '', label: 'Select Experience Level' },
@@ -462,7 +463,7 @@ const ProfileForm = () => {
         {/* Success Message Banner */}
         {successMessage && (
           <div className="success-banner">
-            <span className="success-icon">✓</span>
+            <Icon name="cert" size="sm" ariaLabel="Success" />
             {successMessage}
           </div>
         )}
@@ -470,7 +471,7 @@ const ProfileForm = () => {
         {/* Error Message Banner */}
         {apiError && (
           <div className="error-banner">
-            <span className="error-icon">✕</span>
+            <Icon name="trash" size="sm" ariaLabel="Error" />
             {apiError}
           </div>
         )}
@@ -479,7 +480,7 @@ const ProfileForm = () => {
           {/* Profile Picture Section (UC-022) */}
           <div className="form-section">
             <h3>
-              <span style={{fontSize: '1.5rem'}}>📷</span>
+              <Icon name="camera" size="lg" />
               Profile Picture
             </h3>
             <ProfilePictureUpload />
@@ -488,7 +489,7 @@ const ProfileForm = () => {
           {/* Personal Information Section */}
           <div className="form-section">
             <h3>
-              <span style={{fontSize: '1.5rem'}}>👤</span>
+              <Icon name="user" size="lg" />
               Personal Information
             </h3>
             
@@ -604,7 +605,7 @@ const ProfileForm = () => {
           {/* Professional Information Section */}
           <div className="form-section">
             <h3>
-              <span style={{fontSize: '1.5rem'}}>💼</span>
+              <Icon name="briefcase" size="lg" />
               Professional Information
             </h3>
 

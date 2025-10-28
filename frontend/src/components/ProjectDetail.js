@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { projectsAPI } from '../services/api';
 import './ProjectDetail.css';
+import Icon from './Icon';
 
 const ProjectDetail = () => {
   const { projectId } = useParams();
@@ -52,12 +53,12 @@ const ProjectDetail = () => {
 
       {(item.start_date || item.end_date || item.role || item.industry || item.category) && (
         <div className="meta">
-          {item.role && <span>👤 {item.role}</span>}
-          {(item.start_date || item.end_date) && <span>🗓️ {item.start_date || '—'} → {item.end_date || '—'}</span>}
-          {item.team_size != null && <span>👥 Team size: {item.team_size}</span>}
-          {item.industry && <span>🏷️ {item.industry}</span>}
-          {item.category && <span>📂 {item.category}</span>}
-          {item.project_url && <a href={item.project_url} target="_blank" rel="noreferrer">🔗 Link</a>}
+          {item.role && <span><Icon name="user" size="sm" /> {item.role}</span>}
+          {(item.start_date || item.end_date) && <span><Icon name="calendar" size="sm" /> {item.start_date || '—'} → {item.end_date || '—'}</span>}
+          {item.team_size != null && <span><Icon name="users" size="sm" /> Team size: {item.team_size}</span>}
+          {item.industry && <span><Icon name="link" size="sm" /> {item.industry}</span>}
+          {item.category && <span><Icon name="folder" size="sm" /> {item.category}</span>}
+          {item.project_url && <a href={item.project_url} target="_blank" rel="noreferrer"><Icon name="link" size="sm" /> Link</a>}
         </div>
       )}
 

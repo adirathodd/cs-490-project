@@ -119,6 +119,11 @@
   --z-modal: 1050;
   --z-popover: 1060;
   --z-tooltip: 1070;
+  /* Icon sizing tokens */
+  --icon-size-sm: 16px;
+  --icon-size-md: 20px;
+  --icon-size-lg: 24px;
+  --icon-size-xl: 32px;
 }
 
 /* ============================================
@@ -457,6 +462,24 @@ code {
   font-size: 4rem;
   margin-bottom: var(--space-4);
   opacity: 0.5;
+}
+
+/* Central icon helper */
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+
+/* Small inline utility for spinning icons (loading) */
+.icon.spin, .loading-spinner .spin {
+  animation: icon-spin 1s linear infinite;
+}
+
+@keyframes icon-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .empty-state h3 {

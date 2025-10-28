@@ -20,6 +20,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { skillsAPI } from '../services/api';
 import './SkillsOrganized.css';
+import Icon from './Icon';
 
 // Droppable category container component
 const DroppableCategory = ({ category, children, isOver }) => {
@@ -382,13 +383,13 @@ const SkillsOrganized = () => {
           </div>
           <div className="header-actions">
             <button className="btn-manage" onClick={() => navigate('/skills')}>
-              ✏️ Manage Skills
+              <Icon name="edit" size="sm" /> Manage Skills
             </button>
             <button className="btn-export" onClick={() => handleExport('json')}>
-              📥 JSON
+              <Icon name="upload" size="sm" /> JSON
             </button>
             <button className="btn-export" onClick={() => handleExport('csv')}>
-              📥 CSV
+              <Icon name="upload" size="sm" /> CSV
             </button>
           </div>
         </div>
@@ -398,7 +399,7 @@ const SkillsOrganized = () => {
       {success && <div className="alert alert-success">{success}</div>}
 
       <div className="info-banner">
-        <div className="info-icon">ℹ️</div>
+        <div className="info-icon"><Icon name="info" size="lg" ariaLabel="Info" /></div>
         <div className="info-content">
           <strong>Organize Your Skills:</strong> Search and filter skills, drag and drop to reorder or move between categories, and export your organized list.
         </div>
@@ -519,7 +520,7 @@ const SkillsOrganized = () => {
       </DndContext>
 
       <div className="organized-footer">
-        <p className="hint-text">💡 Drag and drop skills to reorder within categories or move between categories</p>
+        <p className="hint-text"><Icon name="idea" size="sm" /> Drag and drop skills to reorder within categories or move between categories</p>
       </div>
     </div>
   );

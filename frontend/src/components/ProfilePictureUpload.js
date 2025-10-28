@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Cropper from 'react-easy-crop';
 import { authAPI } from '../services/api';
 import './ProfilePictureUpload.css';
+import Icon from './Icon';
+import LoadingSpinner from './LoadingSpinner';
 
 const ProfilePictureUpload = ({ onUploadSuccess }) => {
   const [profilePicture, setProfilePicture] = useState(null);
@@ -287,7 +289,7 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
       {/* Success Message */}
       {successMessage && (
         <div className="upload-success-message">
-          <span className="success-icon">✓</span>
+          <Icon name="cert" size="sm" ariaLabel="Success" />
           {successMessage}
         </div>
       )}
@@ -295,7 +297,7 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
       {/* Error Message */}
       {error && (
         <div className="upload-error-message">
-          <span className="error-icon">✕</span>
+          <Icon name="trash" size="sm" ariaLabel="Error" />
           {error}
         </div>
       )}
@@ -324,7 +326,7 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
             {/* Zoom Control */}
             <div className="zoom-control">
               <label htmlFor="zoom-slider">
-                <span className="zoom-icon">🔍</span> Zoom
+                <Icon name="search" size="sm" /> Zoom
               </label>
               <input
                 id="zoom-slider"
@@ -355,14 +357,14 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
                 onClick={handleUpload}
                 disabled={uploading}
               >
-                {uploading ? (
-                  <>
-                    <span className="upload-spinner"></span>
-                    Uploading...
-                  </>
-                ) : (
-                  'Confirm Upload'
-                )}
+                  {uploading ? (
+                    <>
+                      <LoadingSpinner size="sm" />
+                      Uploading...
+                    </>
+                  ) : (
+                    'Confirm Upload'
+                  )}
               </button>
             </div>
           </div>
@@ -401,7 +403,7 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
             htmlFor="profile-picture-input"
             className={`picture-upload-btn ${uploading ? 'disabled' : ''}`}
           >
-            <span className="upload-icon">📷</span>
+            <Icon name="camera" size="sm" />
             {profilePicture ? 'Change Picture' : 'Upload Picture'}
           </label>
 
@@ -411,7 +413,7 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
               onClick={handleDelete}
               disabled={uploading}
             >
-              <span className="delete-icon">🗑️</span>
+              <Icon name="trash" size="sm" />
               Remove
             </button>
           )}
