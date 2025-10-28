@@ -248,12 +248,16 @@ const Employment = () => {
   return (
     <div className="employment-container">
       <div className="employment-page-header">
-        <button 
-          className="back-button"
-          onClick={() => navigate('/dashboard')}
+        <div className="page-backbar">
+        <a
+          className="btn-back"
+          href="/dashboard"
+          aria-label="Back to dashboard"
+          title="Back to dashboard"
         >
           ← Back to Dashboard
-        </button>
+        </a>
+      </div>
         <h1 className="employment-page-title">Employment History</h1>
       </div>
 
