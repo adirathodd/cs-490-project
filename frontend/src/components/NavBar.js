@@ -56,6 +56,19 @@ const NavBar = () => {
 
   return (
     <nav className="nav">
+      <div className="nav-brand">ATS</div>
+      <button
+        className="nav-toggle"
+        onClick={() => setOpen(v => !v)}
+        aria-label="Toggle navigation"
+        aria-expanded={open}
+      >☰</button>
+      <div
+        className={`nav-links ${open ? 'open' : ''}`}
+        onClick={() => setOpen(false)}
+        role="navigation"
+        aria-hidden={!open}
+      />
       <div className="nav-brand">ResumeRocket</div>
       <button className="nav-toggle" onClick={() => setOpen(v => !v)} aria-label="Toggle navigation">☰</button>
       <div className={`nav-links ${open ? 'open' : ''}`} onClick={() => setOpen(false)}>

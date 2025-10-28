@@ -495,3 +495,18 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Extra adjustments for narrow mobile view (up to 767px tall) */
+@media (max-width: 767px) {
+  .dashboard-nav { padding: 12px 12px; }
+  .dashboard-nav .nav-brand h1 { font-size: 16px; }
+  .dashboard-content { padding: 16px 12px; }
+  .account-banner { padding: 12px; }
+  .account-banner-content { gap: 12px; }
+  .account-avatar { width: 64px; height: 64px; }
+  .account-name { font-size: 20px; }
+  .edit-profile-button { width: 100%; padding: 10px 12px; }
+  .dashboard-card { padding: 16px; }
+  .card-icon { font-size: 36px; }
+  .card-button, .card-button-secondary { padding: 8px 12px; font-size: 13px; }
+}

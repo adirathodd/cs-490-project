@@ -582,4 +582,65 @@ authAPI.deleteEmployment = async (id) => {
   }
 };
 
-export default authAPI;
+// Provide a forgiving default export that supports both
+// - `import authAPI from './services/api'` (legacy/default import)
+// - `import { authAPI } from './services/api'` (named import)
+// and also exposes other API groups as properties for callers that expect `api.authAPI`.
+const _defaultExport = {
+  // spread authAPI methods to the top-level for backwards compatibility
+  ...authAPI,
+  // include grouped namespaces as properties
+  authAPI,
+  profileAPI,
+  skillsAPI,
+  educationAPI,
+  certificationsAPI,
+  projectsAPI,
+};
+
+export default _defaultExport;
+
+// CommonJS compatibility: some consumers (tests or older imports) may `require()` the module
+// and expect `module.exports.authAPI` or `module.exports.default` to exist. Provide both.
+try {
+  if (typeof module !== 'undefined' && module && module.exports) {
+    module.exports = _defaultExport; // override CommonJS export
+    module.exports.default = _defaultExport;
+    module.exports.authAPI = authAPI;
+  }
+} catch (e) {
+  // ignore in strict ESM environments
+}
+
+// Defensive fallbacks: in some bundler/runtime interop cases the `authAPI` object
+// ends up missing properties. Provide runtime-safe fallbacks that call the
+// underlying axios `api` instance so callers like `authAPI.getBasicProfile()`
+// and `authAPI.getProfilePicture()` always exist.
+try {
+  if (!authAPI || typeof authAPI.getBasicProfile !== 'function') {
+    authAPI.getBasicProfile = async () => {
+      const response = await api.get('/profile/basic');
+      return response.data;
+    };
+  }
+
+  if (!authAPI || typeof authAPI.getProfilePicture !== 'function') {
+    authAPI.getProfilePicture = async () => {
+      const response = await api.get('/profile/picture');
+      return response.data;
+    };
+  }
+
+  // Ensure the default export and CommonJS export expose these as well
+  if (_defaultExport) {
+    _defaultExport.authAPI = authAPI;
+    _defaultExport.getBasicProfile = authAPI.getBasicProfile;
+    _defaultExport.getProfilePicture = authAPI.getProfilePicture;
+  }
+  if (typeof module !== 'undefined' && module && module.exports) {
+    module.exports = _defaultExport;
+    module.exports.authAPI = authAPI;
+  }
+} catch (e) {
+  // ignore any errors during best-effort compatibility wiring
+}

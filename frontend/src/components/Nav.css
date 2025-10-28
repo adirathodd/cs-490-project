@@ -9,12 +9,15 @@
   position: sticky;
   top: 0;
   z-index: 1000;
+  min-height: 56px; /* consistent header height for positioning */
 }
 
 .nav-brand {
   font-weight: 600;
   font-size: 1.1rem;
 }
+
+/* By default the brand is inline; on small screens we'll center it visually */
 
 .nav-links {
   display: flex;
@@ -75,14 +78,132 @@
   background: transparent;
   color: #e2e8f0;
   border: none;
-  font-size: 1.3rem;
+  font-size: 1.5rem;
   cursor: pointer;
+  padding: 0.5rem; /* increase touch target */
+  line-height: 1;
 }
 
-@media (max-width: 768px) {
+/* Show hamburger on tablets and below so navigation collapses for widths <= 1024px */
+@media (max-width: 1024px) {
   .nav-toggle { display: block; }
+  /* make nav a positioning context so we can place the toggle at the far right */
+  .nav { position: relative; }
+  .nav-toggle { position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); }
   .nav-links { display: none; }
-  .nav-links.open { display: flex; flex-direction: column; gap: 0.5rem; position: absolute; top: 56px; left: 0; right: 0; background: #0f172a; padding: 0.75rem 1rem; border-top: 1px solid #1e293b; }
+  .nav-links.open {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    position: absolute;
+    top: 64px;
+    left: 0;
+    right: 0;
+    background: linear-gradient(180deg, #0f172a 0%, #071024 100%);
+    padding: 1rem 1rem;
+    border-top: 1px solid #0b1220;
+    z-index: 1100;
+  }
+
+  /* Make links larger and touch-friendly when the menu is open */
+  .nav-links.open .nav-link {
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 1rem;
+  }
+
+  /* Ensure logout button / user actions remain accessible */
+  .nav-user { display: none; }
+}
+
+/* On very small screens ensure button sizes are large enough for touch */
+@media (max-width: 480px) {
+  .nav-toggle { font-size: 1.6rem; padding: 0.6rem; }
+  .nav-links.open .nav-link { font-size: 1.05rem; padding: 0.85rem 1rem; }
+}
+
+/* Tablet band: 768px - 1024px
+   Explicitly left-align the brand and right-align the hamburger toggle.
+   This ensures the toggle does not end up visually centered when the
+   smaller-screen grid rules are not active. */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .nav {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    padding-left: 1rem;
+    padding-right: 3rem; /* leave room for absolutely positioned toggle */
+  }
+
+  .nav-brand {
+    margin-right: auto;
+    text-align: left;
+    max-width: calc(100% - 80px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* force left alignment on tablet by absolutely placing the brand */
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .nav-toggle {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    justify-self: end;
+    z-index: 1200;
+  }
+
+  .nav-links.open { top: 64px; }
+}
+
+/* Fix alignment and centering for small screens (320px - 767px).
+   Use a grid layout so brand is centered and hamburger sits to the right
+   without overlapping. This avoids absolute positioning conflicts. */
+@media (max-width: 767px) {
+  .nav {
+    display: grid;
+    grid-template-columns: 1fr auto 56px; /* left spacer, center brand, right toggle */
+    align-items: center;
+    column-gap: 8px;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .nav-brand {
+    grid-column: 2;
+    justify-self: center;
+    transform: none;
+    position: relative;
+    max-width: calc(100% - 120px); /* avoid overlap with the toggle */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: auto;
+  }
+
+  .nav-toggle {
+    grid-column: 3;
+    justify-self: end;
+    position: relative;
+    right: 0;
+    top: 0;
+    transform: none;
+    z-index: 1200;
+  }
+
+  .nav-links.open {
+    grid-column: 1 / -1;
+    top: 56px;
+  }
+
+  .nav-links.open .nav-link { text-align: center; }
+
+  .nav-user { display: none; }
 }
 
 /* Breadcrumbs */
