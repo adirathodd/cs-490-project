@@ -177,6 +177,9 @@
   font-size: 15px;
 }
 
+/* Keep date input and 'Currently enrolled' inline and aligned */
+/* Removed inline-field-row to restore checkbox under the date input */
+
 .required {
   color: #e53e3e;
   margin-left: 4px;
@@ -223,12 +226,12 @@
 }
 
 .inline-checkbox {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
   font-weight: 500;
-  margin-top: 12px;
+  margin-top: 6px;
 }
 
 .inline-checkbox input[type="checkbox"] {
@@ -242,6 +245,7 @@
   font-size: 14px;
   color: #6b7280;
   font-weight: 500;
+  line-height: 1;
 }
 
 .error-message {

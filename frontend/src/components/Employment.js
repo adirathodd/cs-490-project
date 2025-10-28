@@ -189,13 +189,19 @@ const Employment = () => {
         return;
       }
 
+      // Normalize payload for API: ensure end_date is null when is_current, and empty strings become null
+      const payload = {
+        ...formData,
+        end_date: formData.is_current ? null : (formData.end_date || null)
+      };
+
       if (editingId) {
         // Update existing entry
-        await authAPI.updateEmployment(editingId, formData);
+        await authAPI.updateEmployment(editingId, payload);
         setSuccess('Employment entry updated successfully!');
       } else {
         // Create new entry
-        await authAPI.createEmployment(formData);
+        await authAPI.createEmployment(payload);
         setSuccess('Employment entry added successfully!');
       }
 
@@ -358,19 +364,17 @@ const Employment = () => {
                   disabled={formData.is_current}
                   required={!formData.is_current}
                 />
+                <label className="inline-checkbox" htmlFor="is_current">
+                  <input
+                    id="is_current"
+                    type="checkbox"
+                    name="is_current"
+                    checked={formData.is_current}
+                    onChange={handleInputChange}
+                  />
+                  <span>I currently work here</span>
+                </label>
               </div>
-            </div>
-
-            <div className="form-group checkbox-group">
-              <label>
-                <input
-                  type="checkbox"
-                  name="is_current"
-                  checked={formData.is_current}
-                  onChange={handleInputChange}
-                />
-                <span>I currently work here</span>
-              </label>
             </div>
 
             <div className="form-group">

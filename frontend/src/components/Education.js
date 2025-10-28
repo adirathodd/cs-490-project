@@ -72,7 +72,12 @@ const Education = () => {
 
   const onChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    setForm((prev) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value,
+      // If user marks currently enrolled, clear any graduation date value
+      ...(name === 'currently_enrolled' && checked ? { graduation_date: '' } : {})
+    }));
     if (fieldErrors[name]) {
       setFieldErrors((prev) => { const n = { ...prev }; delete n[name]; return n; });
     }
@@ -93,7 +98,12 @@ const Education = () => {
     const payload = { ...data };
     // Normalize empty strings to null where appropriate
     if (payload.gpa === '') delete payload.gpa;
-    if (!payload.graduation_date) payload.graduation_date = null;
+    // If currently enrolled, always send graduation_date as null
+    if (payload.currently_enrolled) {
+      payload.graduation_date = null;
+    } else if (!payload.graduation_date) {
+      payload.graduation_date = null;
+    }
     return payload;
   };
 
