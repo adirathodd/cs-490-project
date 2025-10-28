@@ -189,6 +189,13 @@ docker compose down -v
    FIREBASE_CREDENTIALS=/path/to/firebase-service-account.json
    ```
 
+## ✉️ Email Settings
+
+- Outgoing emails use SMTP settings from `backend/.env`.
+- To change the sender address, set `DEFAULT_FROM_EMAIL` in `backend/.env`.
+- Current default sender: `resumerocket123@gmail.com` (can be overridden via env).
+- If using Gmail SMTP, it's recommended that `EMAIL_HOST_USER` matches `DEFAULT_FROM_EMAIL` and that you use an App Password.
+
 ## 📁 Project Structure
 
 ```
