@@ -262,6 +262,24 @@ form {
   gap: 6px;
   cursor: pointer;
   font-weight: 500;
+  line-height: 1;
+}
+
+/* Inline checkbox style aligned with inputs (mirrors Education form) */
+.inline-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  margin-top: 6px;
+}
+
+.inline-checkbox input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #667eea;
 }
 
 .checkbox-group input[type="checkbox"] {
