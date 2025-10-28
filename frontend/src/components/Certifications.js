@@ -48,6 +48,8 @@ const Certifications = () => {
   const [orgActiveIndex, setOrgActiveIndex] = useState(-1);
   const orgBoxRef = useRef(null);
   const orgInputRef = useRef(null);
+  const docInputRef = useRef(null);
+  const [isDraggingDoc, setIsDraggingDoc] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -139,6 +141,64 @@ const Certifications = () => {
       }
     }
   };
+
+  // Upload helpers for document drag & drop (single file)
+  const openDocDialog = () => docInputRef.current?.click();
+
+  const onDocDragOver = (ev) => {
+    ev.preventDefault();
+    if (!isDraggingDoc) setIsDraggingDoc(true);
+  };
+
+  const onDocDragLeave = (ev) => {
+    ev.preventDefault();
+    setIsDraggingDoc(false);
+  };
+
+  const onDocDrop = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    setIsDraggingDoc(false);
+    const dt = ev.dataTransfer;
+    if (!dt) return;
+    const file = (dt.files && dt.files[0]) || null;
+    if (!file) return;
+    const ok = [
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+    ];
+    if (!ok.includes(file.type)) return;
+    setForm((prev) => ({ ...prev, document: file }));
+  };
+
+  const removeDocument = () => setForm((prev) => ({ ...prev, document: null }));
+
+  const formatBytes = (bytes) => {
+    if (!Number.isFinite(bytes)) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ['KB', 'MB', 'GB'];
+    let i = -1;
+    do { bytes = bytes / 1024; i++; } while (bytes >= 1024 && i < units.length - 1);
+    return `${bytes.toFixed(bytes >= 100 ? 0 : bytes >= 10 ? 1 : 2)} ${units[i]}`;
+  };
+
+  const docPreview = useMemo(() => {
+    if (!form.document) return null;
+    if (form.document.type?.startsWith('image/')) {
+      const url = URL.createObjectURL(form.document);
+      return { kind: 'image', url };
+    }
+    return { kind: 'file' };
+  }, [form.document]);
+
+  useEffect(() => {
+    return () => {
+      if (docPreview?.kind === 'image' && docPreview.url) {
+        URL.revokeObjectURL(docPreview.url);
+      }
+    };
+  }, [docPreview]);
 
   const validate = () => {
     const errs = {};
@@ -364,10 +424,6 @@ const Certifications = () => {
               {(categories || []).map((c) => (<option key={c} value={c}>{c}</option>))}
             </select>
           </div>
-          <div className="form-group">
-            <label htmlFor="document">Upload Document</label>
-            <input id="document" name="document" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={onChange} />
-          </div>
         </div>
 
         <div className="form-row">
@@ -387,6 +443,91 @@ const Certifications = () => {
               <div className="inline-input">
                 <label htmlFor="reminder_days_before">Days before expiration</label>
                 <input id="reminder_days_before" type="number" min="1" max="365" name="reminder_days_before" value={form.reminder_days_before} onChange={onChange} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Document Upload - moved to bottom */}
+        <div className="form-row">
+          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <label htmlFor="document">Upload Document</label>
+            <input
+              id="document"
+              name="document"
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={onChange}
+              ref={docInputRef}
+              style={{ display: 'none' }}
+            />
+
+            <div
+              className={`upload-dropzone ${isDraggingDoc ? 'dragover' : ''}`}
+              onClick={openDocDialog}
+              onDragEnter={onDocDragOver}
+              onDragOver={onDocDragOver}
+              onDragLeave={onDocDragLeave}
+              onDrop={onDocDrop}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && openDocDialog()}
+              aria-label="Upload certification document by click or drag and drop"
+            >
+              <div className="upload-illustration" aria-hidden="true">
+                {/* Document icon */}
+                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                  <path d="M7 3.75A2.25 2.25 0 0 1 9.25 1.5h3.879c.597 0 1.17.237 1.591.659l3.121 3.121c.422.421.659.994.659 1.591V18.75A2.25 2.25 0 0 1 16.25 21H9.75A2.25 2.25 0 0 1 7.5 18.75V3.75z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                  <path d="M12 1.5v3.75c0 .621.504 1.125 1.125 1.125H16.5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                  <path d="M8.75 12h6.5M8.75 15.25h6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </div>
+              <div className="upload-copy">
+                <div className="upload-title">Drag & drop your document</div>
+                <div className="upload-subtitle">or click to browse</div>
+                <div className="upload-hint">PDF, JPG, PNG up to ~10MB</div>
+              </div>
+              <div className="upload-actions">
+                <button type="button" className="upload-browse" onClick={openDocDialog} aria-label="Browse files">
+                  Browse File
+                </button>
+                {form.document && (
+                  <button type="button" className="upload-clear" onClick={removeDocument} aria-label="Clear selected file">
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {form.document && (
+              <div className="upload-previews" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
+                <div className="upload-preview-card">
+                  <div className="upload-thumb">
+                    {docPreview?.kind === 'image' ? (
+                      <img src={docPreview.url} alt={form.document.name} />
+                    ) : (
+                      <div className="doc-fallback" aria-hidden="true">
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M7 3.75A2.25 2.25 0 0 1 9.25 1.5h3.879c.597 0 1.17.237 1.591.659l3.121 3.121c.422.421.659.994.659 1.591V18.75A2.25 2.25 0 0 1 16.25 21H9.75A2.25 2.25 0 0 1 7.5 18.75V3.75z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                          <path d="M12 1.5v3.75c0 .621.504 1.125 1.125 1.125H16.5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="thumb-remove"
+                      title="Remove file"
+                      aria-label="Remove file"
+                      onClick={removeDocument}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="thumb-meta">
+                    <div className="thumb-name" title={form.document.name}>{form.document.name}</div>
+                    <div className="thumb-size">{formatBytes(form.document.size)}</div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
