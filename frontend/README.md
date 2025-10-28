@@ -68,3 +68,21 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 ### `npm run build` fails to minify
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+
+## Typography
+
+This project uses a small, fast typography system to ensure consistent, readable text across the app.
+
+- Primary (body) font: Inter — loaded from Google Fonts with system fallbacks.
+- Heading font: Poppins — used for H1–H6 to give clearer hierarchy. Both fonts use `display=swap` for fast rendering.
+
+Verification steps:
+
+1. Start the dev server: `npm start` in the `frontend` folder.
+2. Open http://localhost:3000 and browse pages (Dashboard, Education, Certifications, Profile). Check:
+   - Headings (H1–H3) use a slightly heavier Poppins weight and tighter line-height.
+   - Body copy uses Inter at 16px with 1.5 line-height for comfortable reading.
+   - Captions use smaller size and muted color (`.caption`).
+3. If you need a lighter weight for specific elements, use `.font-light` (requires the 300 weight to be available).
+
+If you want to add or change fonts, update `public/index.html` (Google Fonts import) and `src/index.css` (the `--font-family-*` variables).
