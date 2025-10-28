@@ -13,6 +13,7 @@ from django.core.files.base import ContentFile
 from PIL import Image
 import io
 import re
+from django.core.exceptions import MultipleObjectsReturned
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -60,13 +61,21 @@ class FirebaseAuthentication(authentication.BaseAuthentication):
             # Get or link the user record
             uid = decoded_token.get('uid')
             email = decoded_token.get('email')
+            # Some providers (e.g., GitHub with private email) may omit email in ID token; try fetching from Firebase user record
+            if uid and not email:
+                try:
+                    fu = firebase_auth.get_user(uid)
+                    email = getattr(fu, 'email', None) or None
+                except Exception:
+                    email = None
 
-            if not uid or not email:
+            if not uid:
                 raise exceptions.AuthenticationFailed('Invalid token payload')
 
             # Strategy:
             # 1) Prefer existing user by Firebase UID (username)
-            # 2) Else, find by email and link that user by setting username to UID (if no conflict)
+            # 2) Else, find by email (case-insensitive). If multiple, pick a canonical one deterministically.
+            #    Link that user by setting username to UID (if no conflict)
             # 3) Else, create a new user
             created = False
             user = None
@@ -92,11 +101,46 @@ class FirebaseAuthentication(authentication.BaseAuthentication):
                     last = ' '.join(parts[1:]) if len(parts) > 1 else ''
                     user = User.objects.create_user(
                         username=uid,
-                        email=email,
+                        email=(email or '').lower(),
                         first_name=first,
                         last_name=last,
                     )
                     created = True
+                except MultipleObjectsReturned:
+                    # Multiple users share the same email (legacy/bug). Choose a canonical user deterministically.
+                    # Prefer earliest date_joined; fall back to lowest id.
+                    try:
+                        qs = User.objects.filter(email__iexact=email)
+                        # Some custom user models may not have date_joined; use getattr check
+                        if hasattr(User, 'DATE_JOINED_FIELD') or (hasattr(User, '_meta') and 'date_joined' in [f.name for f in User._meta.fields]):
+                            canonical = qs.order_by('date_joined', 'id').first()
+                        else:
+                            canonical = qs.order_by('id').first()
+                        user = canonical
+                        if user and user.username != uid:
+                            if not User.objects.filter(username=uid).exclude(pk=user.pk).exists():
+                                user.username = uid
+                                user.save(update_fields=['username'])
+                            else:
+                                logger.warning(f"Username collision while resolving duplicates for UID {uid}; canonical user id={user.id}")
+                        # Log the duplicate condition for later clean-up/merge
+                        dup_ids = list(qs.exclude(pk=user.pk).values_list('id', flat=True)) if user else []
+                        if dup_ids:
+                            logger.warning("Multiple Django users share the same email '%s'. Canonical user id=%s; duplicates=%s", email, getattr(user, 'id', None), dup_ids)
+                    except Exception as e:
+                        logger.error(f"Failed resolving duplicate users for email {email}: {e}")
+                        # As a last resort, create a new user to avoid auth failure (but this shouldn't normally happen)
+                        name = decoded_token.get('name', '') or ''
+                        parts = name.split()
+                        first = parts[0] if parts else ''
+                        last = ' '.join(parts[1:]) if len(parts) > 1 else ''
+                        user = User.objects.create_user(
+                            username=uid,
+                            email=(email or '').lower(),
+                            first_name=first,
+                            last_name=last,
+                        )
+                        created = True
             
             if created:
                 logger.info(f"Created new user from Firebase token: {email}")
@@ -105,7 +149,8 @@ class FirebaseAuthentication(authentication.BaseAuthentication):
                 # Create application-level user account record with UUID
                 try:
                     from core.models import UserAccount
-                    UserAccount.objects.create(user=user, email=(email or '').lower())
+                    # Ensure a unique UserAccount for this email
+                    UserAccount.objects.get_or_create(user=user, defaults={'email': (email or '').lower()})
                 except Exception:
                     # Not fatal if creation fails; will be retried in later flows
                     pass
@@ -217,10 +262,24 @@ class FirebaseAuthentication(authentication.BaseAuthentication):
                     logger.warning(f"Could not fetch extra Firebase user info for {uid}: {e}")
                     CandidateProfile.objects.create(user=user)
             
-            # Update email if it changed
-            if user.email != email:
-                user.email = email
+            # Update email if it changed (normalize to lowercase)
+            if user.email != (email or '').lower():
+                user.email = (email or '').lower()
                 user.save(update_fields=['email'])
+
+            # Ensure a corresponding UserAccount exists and is synced to this email
+            try:
+                from core.models import UserAccount
+                acc = getattr(user, 'account', None)
+                if not acc:
+                    UserAccount.objects.get_or_create(user=user, defaults={'email': (email or '').lower()})
+                else:
+                    if acc.email != (email or '').lower():
+                        acc.email = (email or '').lower()
+                        acc.save(update_fields=['email'])
+            except Exception:
+                # Non-fatal
+                pass
 
             # Try to update user/profile fields from Firebase record on each auth
             try:

@@ -5,12 +5,17 @@ import './Nav.css';
 
 const NavBar = () => {
   const navigate = useNavigate();
-  const { currentUser, signOut } = useAuth();
+  const { currentUser, userProfile, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
-  const displayName = (currentUser?.displayName?.trim()) || currentUser?.email || 'Account';
+  // Prefer backend candidate profile/user name to ensure consistency across providers
+  const backendFullName = (userProfile?.full_name || '').trim();
+  const backendFirstLast = `${(userProfile?.first_name || '').trim()} ${(userProfile?.last_name || '').trim()}`.trim();
+  const firebaseName = (currentUser?.displayName || '').trim();
+  const emailFallback = currentUser?.email || 'Account';
+  const displayName = backendFullName || backendFirstLast || firebaseName || emailFallback;
 
   const handleLogout = async () => {
     try {
@@ -54,7 +59,7 @@ const NavBar = () => {
     divider: { height: 1, background: '#334155', margin: '4px 0' },
   };
 
-  // Use the combined logo-with-wordmark image from public/ and add a cache-busting query param
+  // Use app brand asset from public/
   const logoUrl = (process.env.PUBLIC_URL || '') + '/LogoandWords.png?v=20251028';
 
   return (
@@ -71,6 +76,21 @@ const NavBar = () => {
         <NavLink to="/projects" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Projects</NavLink>
         <NavLink to="/certifications" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Certifications</NavLink>
         <NavLink to="/profile" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Profile</NavLink>
+        {/* Mobile-only actions so Sign Out is accessible when the user menu is hidden */}
+        <button
+          type="button"
+          className="nav-link mobile-only"
+          onClick={(e) => { e.stopPropagation(); navigate('/profile'); setOpen(false); }}
+        >
+          View Profile
+        </button>
+        <button
+          type="button"
+          className="nav-link mobile-only"
+          onClick={async (e) => { e.stopPropagation(); setOpen(false); await handleLogout(); }}
+        >
+          Sign Out
+        </button>
       </div>
       <div className="nav-user" ref={menuRef}>
         <button className="nav-btn" onClick={() => setMenuOpen(v => !v)} aria-haspopup="menu" aria-expanded={menuOpen}>

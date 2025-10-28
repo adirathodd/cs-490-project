@@ -35,6 +35,8 @@
   padding: 0.4rem 0.6rem;
   border-radius: 6px;
   transition: background 0.2s ease, color 0.2s ease;
+  background: transparent;
+  border: none;
 }
 
 .nav-link:hover {
@@ -118,6 +120,12 @@
 
   /* Ensure logout button / user actions remain accessible */
   .nav-user { display: none; }
+}
+
+/* Mobile-only helpers */
+.mobile-only { display: none; }
+@media (max-width: 1024px) {
+  .nav-links.open .mobile-only { display: block; }
 }
 
 /* On very small screens ensure button sizes are large enough for touch */
