@@ -611,3 +611,36 @@ try {
 } catch (e) {
   // ignore in strict ESM environments
 }
+
+// Defensive fallbacks: in some bundler/runtime interop cases the `authAPI` object
+// ends up missing properties. Provide runtime-safe fallbacks that call the
+// underlying axios `api` instance so callers like `authAPI.getBasicProfile()`
+// and `authAPI.getProfilePicture()` always exist.
+try {
+  if (!authAPI || typeof authAPI.getBasicProfile !== 'function') {
+    authAPI.getBasicProfile = async () => {
+      const response = await api.get('/profile/basic');
+      return response.data;
+    };
+  }
+
+  if (!authAPI || typeof authAPI.getProfilePicture !== 'function') {
+    authAPI.getProfilePicture = async () => {
+      const response = await api.get('/profile/picture');
+      return response.data;
+    };
+  }
+
+  // Ensure the default export and CommonJS export expose these as well
+  if (_defaultExport) {
+    _defaultExport.authAPI = authAPI;
+    _defaultExport.getBasicProfile = authAPI.getBasicProfile;
+    _defaultExport.getProfilePicture = authAPI.getProfilePicture;
+  }
+  if (typeof module !== 'undefined' && module && module.exports) {
+    module.exports = _defaultExport;
+    module.exports.authAPI = authAPI;
+  }
+} catch (e) {
+  // ignore any errors during best-effort compatibility wiring
+}
