@@ -3,31 +3,55 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Confirm Account Deletion</title>
+  <title>Confirm Account Deletion • ATS Candidate System</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; padding: 2rem; color:#111; }
-    .box { max-width: 540px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1.5rem; }
-    h1 { font-size: 1.5rem; margin-bottom: .75rem; }
-    p { line-height: 1.6; }
-    .danger { color: #b00020; font-weight: 600; }
-    .actions { margin-top: 1.25rem; }
-    button { background: #b00020; color: #fff; border: none; padding: .625rem 1rem; border-radius: 6px; cursor: pointer; }
+    :root {
+      --bg: #f7fafc;
+      --text: #1a202c;
+      --muted: #4a5568;
+      --border: #e2e8f0;
+      --primary-start: #667eea;
+      --primary-end: #764ba2;
+      --danger: #e53e3e;
+      --danger-hover: #c53030;
+      --card-bg: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); }
+    .nav { position: sticky; top:0; background: var(--card-bg); box-shadow: 0 2px 4px rgba(0,0,0,.08); padding: 16px 32px; display:flex; align-items:center; justify-content:space-between; }
+    .brand { font-size: 20px; font-weight: 700; background: linear-gradient(135deg, var(--primary-start), var(--primary-end)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .shell { max-width: 880px; margin: 0 auto; padding: 40px 16px; }
+  .banner { background: linear-gradient(135deg, var(--primary-start), var(--primary-end)); color:#fff; border-radius: 16px; padding: 24px; box-shadow: 0 8px 24px rgba(102,126,234,.3); margin-bottom: 24px; }
+  .banner .muted { color: #fff; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+    h1 { margin:0 0 8px 0; font-size: 24px; font-weight: 700; }
+    p { margin: 0 0 10px 0; line-height: 1.65; color: var(--muted); }
+  .warning { color: var(--danger); font-weight: 600; }
+    .actions { margin-top: 16px; display:flex; gap:12px; }
+    .btn { appearance: none; border: none; border-radius: 10px; padding: 12px 18px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { background: var(--danger-hover); }
+    .muted { font-size: 14px; color: var(--muted); }
   </style>
 </head>
 <body>
-  <div class="box">
-    <h1>Delete your account?</h1>
-    <p class="danger">This is immediate and permanent.</p>
-    <p>
-      You're about to permanently delete the ATS account for <strong>{{ email }}</strong>, including all associated data.
-      This action cannot be undone.
-    </p>
-    <form method="post">
-      {% csrf_token %}
-      <div class="actions">
-        <button type="submit">Yes, delete my account</button>
-      </div>
-    </form>
+  <div class="nav">
+    <div class="brand">ATS Candidate System</div>
+  </div>
+  <div class="shell">
+    <div class="banner">
+      <h1>Confirm account deletion</h1>
+      <p class="muted">You're about to permanently delete the account for <strong>{{ email }}</strong>.</p>
+    </div>
+    <div class="card">
+      <p class="warning">This is immediate and permanent. This action cannot be undone.</p>
+      <form method="post" style="margin-top: 12px;">
+        {% csrf_token %}
+        <div class="actions">
+          <button type="submit" class="btn btn-danger">Yes, delete my account</button>
+        </div>
+      </form>
+    </div>
   </div>
 </body>
 </html>

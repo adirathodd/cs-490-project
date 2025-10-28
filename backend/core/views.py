@@ -25,7 +25,7 @@ from core.serializers import (
     ProjectMediaSerializer,
     WorkExperienceSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (
@@ -225,9 +225,22 @@ def register_user(request):
                 first_name=first_name,
                 last_name=last_name,
             )
+            # Store password using bcrypt (configured in settings)
+            try:
+                user.set_password(password)
+                user.save(update_fields=['password'])
+            except Exception:
+                # Non-fatal: password storage should not block registration if Firebase created
+                logger.warning("Failed to set local password hash for user %s", email)
             
             # Create candidate profile
             profile = CandidateProfile.objects.create(user=user)
+
+            # Create application-level UserAccount record with UUID id and normalized email
+            try:
+                UserAccount.objects.create(user=user, email=email)
+            except Exception as e:
+                logger.warning(f"Failed to create UserAccount for {email}: {e}")
             
             logger.info(f"Created Django user and profile for: {email}")
         except Exception as e:
@@ -357,6 +370,11 @@ def login_user(request):
             )
             profile = CandidateProfile.objects.create(user=user)
             logger.info(f"Created Django user from existing Firebase user: {email}")
+            # Ensure UserAccount exists
+            try:
+                UserAccount.objects.get_or_create(user=user, defaults={'email': (email or '').lower()})
+            except Exception:
+                pass
         
         # Generate custom token
         try:
@@ -435,6 +453,9 @@ def get_current_user(request):
     """
     try:
         user = request.user
+        
+        # Refresh user from database to get latest changes (e.g., after profile update)
+        user.refresh_from_db()
 
         profile = CandidateProfile.objects.get(user=user)
 
@@ -477,6 +498,7 @@ def request_account_deletion(request):
     """Initiate account deletion by sending an email with a confirmation link."""
     try:
         user = request.user
+        logger.debug(f"Account deletion requested by user id={getattr(user, 'id', None)} email={getattr(user, 'email', None)}")
         # Create a new deletion request token (invalidate older by allowing overwrite behavior on retrieve)
         # Token valid for 1 hour
         deletion = AccountDeletionRequest.create_for_user(user, ttl_hours=1)
@@ -503,7 +525,12 @@ def request_account_deletion(request):
             if user.email:
                 msg = EmailMultiAlternatives(subject, text_content, from_email, [user.email])
                 msg.attach_alternative(html_content, "text/html")
-                msg.send(fail_silently=True)
+                try:
+                    # In DEBUG, surface email errors to logs to aid troubleshooting
+                    sent = msg.send(fail_silently=not settings.DEBUG)
+                    logger.info(f"Account deletion email send result={sent} to={user.email} from={from_email}")
+                except Exception as send_err:
+                    logger.warning(f"Email send error (deletion link) to {user.email}: {send_err}")
         except Exception as e:
             logger.warning(f"Failed to send deletion confirmation email to {user.email}: {e}")
 
@@ -516,7 +543,8 @@ def request_account_deletion(request):
 
         return Response(payload, status=status.HTTP_200_OK)
     except Exception as e:
-        logger.error(f"Error initiating account deletion for {getattr(request.user, 'email', 'unknown')}: {e}")
+        # Log full traceback to aid debugging
+        logger.exception(f"Error initiating account deletion for {getattr(request.user, 'email', 'unknown')}: {e}")
         return Response(
             {'error': {'code': 'deletion_init_failed', 'message': 'Failed to initiate account deletion.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

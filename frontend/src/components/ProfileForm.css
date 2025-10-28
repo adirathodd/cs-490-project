@@ -64,15 +64,87 @@
 }
 
 /* Loading State */
-.loading-spinner {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  min-height: 400px;
-  gap: var(--space-4);
+/* Loading State (Skeleton) */
+.loading-skeleton {
+  width: 100%;
+  max-width: 900px;
 }
 
+.skeleton-card {
+  background: var(--white);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  padding: var(--space-10);
+  width: 100%;
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: #f3f4f6; /* gray-100 */
+  border-radius: 8px;
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -150px;
+  height: 100%;
+  width: 150px;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.6) 50%, rgba(255,255,255,0) 100%);
+  animation: shimmer 1.2s infinite;
+}
+
+@keyframes shimmer {
+  0% { left: -150px; }
+  100% { left: 100%; }
+}
+
+.skeleton-line {
+  height: 14px;
+  margin: 10px 0;
+}
+
+.skeleton-title {
+  height: 28px;
+  width: 40%;
+  margin-bottom: 10px;
+}
+
+.skeleton-subtitle {
+  height: 16px;
+  width: 60%;
+}
+
+.skeleton-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.skeleton-field {
+  height: 44px;
+  border-radius: 10px;
+}
+
+.skeleton-textarea {
+  height: 120px;
+  border-radius: 10px;
+}
+
+.skeleton-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.skeleton-button {
+  height: 48px;
+  width: 140px;
+  border-radius: 10px;
+}
 .loading-spinner-icon {
   width: 60px;
   height: 60px;

@@ -59,3 +59,4 @@ python-dateutil==2.9.0
 pytest==8.3.3
 pytest-django==4.9.0
 pytest-cov==5.0.0
+bcrypt==4.2.0

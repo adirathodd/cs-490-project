@@ -37,7 +37,7 @@ const US_STATES = [
 ];
 
 const ProfileForm = () => {
-  const { currentUser, loading: authLoading, signOut } = useAuth();
+  const { currentUser, loading: authLoading, signOut, refreshUserProfile } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [fetchingProfile, setFetchingProfile] = useState(true);
@@ -225,6 +225,11 @@ const ProfileForm = () => {
       // Update original data after successful save
       setOriginalData(formData);
       setHasUnsavedChanges(false);
+
+      // Refresh the user profile in AuthContext to update the banner and other views
+      if (refreshUserProfile) {
+        await refreshUserProfile();
+      }
       
       // Clear success message after 5 seconds
       setTimeout(() => setSuccessMessage(''), 5000);
@@ -265,6 +270,7 @@ const ProfileForm = () => {
       setLoading(false);
     }
   };
+
 
   const handleCancel = () => {
     // Check if there are unsaved changes
@@ -310,7 +316,12 @@ const ProfileForm = () => {
 
     setDeleting(true);
     try {
-      // Reauthenticate the user with provided password
+      // Force password-based reauthentication only (no popup flows)
+      if (!deletePassword) {
+        setDeleteError('Please enter your password to confirm deletion.');
+        setDeleting(false);
+        return;
+      }
       const credential = EmailAuthProvider.credential(currentUser.email, deletePassword);
       await reauthenticateWithCredential(currentUser, credential);
 
@@ -331,8 +342,13 @@ const ProfileForm = () => {
       closeDeleteDialog();
     } catch (error) {
       console.error('Account deletion error:', error);
-      if (error?.code === 'auth/wrong-password' || error?.response?.status === 401) {
+      // Handle common Firebase and API errors with clearer messages
+      if (error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential' || error?.response?.status === 401) {
         setDeleteError('Incorrect password. Please try again.');
+      } else if (error?.code === 'auth/requires-recent-login') {
+        setDeleteError('Please log out and log back in, then try again.');
+      } else if (error?.message === 'Network Error' || error?.code === 'ERR_NETWORK') {
+        setDeleteError('Network error. Please check your connection and try again.');
       } else if (error?.response?.data?.error?.message) {
         setDeleteError(error.response.data.error.message);
       } else {
@@ -356,8 +372,43 @@ const ProfileForm = () => {
   if (authLoading || fetchingProfile || !currentUser) {
     return (
       <div className="profile-form-container">
-        <div className="loading-spinner">
-          {authLoading ? 'Authenticating...' : fetchingProfile ? 'Loading profile...' : 'Loading user data...'}
+        <div className="loading-skeleton">
+          <div className="skeleton-card">
+            {/* Header skeleton */}
+            <div className="skeleton skeleton-title" style={{ width: '280px' }} />
+            <div className="skeleton skeleton-subtitle" style={{ width: '60%', marginBottom: 24 }} />
+
+            {/* Personal Information section */}
+            <div style={{ marginBottom: 24 }}>
+              <div className="skeleton skeleton-line" style={{ width: '180px', height: 22, marginBottom: 16 }} />
+              <div className="skeleton-row">
+                <div className="skeleton skeleton-field" />
+                <div className="skeleton skeleton-field" />
+              </div>
+              <div className="skeleton skeleton-field" style={{ marginTop: 16 }} />
+              <div className="skeleton-row" style={{ marginTop: 16 }}>
+                <div className="skeleton skeleton-field" />
+                <div className="skeleton skeleton-field" />
+              </div>
+            </div>
+
+            {/* Professional Information section */}
+            <div>
+              <div className="skeleton skeleton-line" style={{ width: '220px', height: 22, marginBottom: 16 }} />
+              <div className="skeleton skeleton-field" style={{ marginBottom: 16 }} />
+              <div className="skeleton skeleton-textarea" />
+              <div className="skeleton-row" style={{ marginTop: 16 }}>
+                <div className="skeleton skeleton-field" />
+                <div className="skeleton skeleton-field" />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="skeleton-actions">
+              <div className="skeleton skeleton-button" style={{ width: 120 }} />
+              <div className="skeleton skeleton-button" style={{ width: 150 }} />
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -578,6 +629,8 @@ const ProfileForm = () => {
               )}
               <small className="field-help">LinkedIn-style professional title</small>
             </div>
+
+              {/* Change Password functionality removed as requested */}
 
             <div className="form-group">
               <label htmlFor="summary">

@@ -4,6 +4,32 @@ from django.db import models
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 import secrets
+import uuid
+
+
+class UserAccount(models.Model):
+    """Application-level user record with UUID id and normalized unique email.
+
+    This complements Django's auth_user table to meet UC-010 requirements:
+    - UUID primary keys
+    - Lowercased, unique email with DB constraint
+    - created_at / updated_at timestamps
+    The one-to-one link to the Django User keeps compatibility with existing relations.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='account')
+    email = models.EmailField(unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["email"])]
+
+    def save(self, *args, **kwargs):
+        # Ensure lowercase email for consistency
+        if self.email:
+            self.email = self.email.lower()
+        return super().save(*args, **kwargs)
 
 class CandidateProfile(models.Model):
     EXPERIENCE_LEVELS = [
