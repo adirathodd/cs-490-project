@@ -17,6 +17,8 @@ import ProjectsPortfolio from './components/ProjectsPortfolio';
 import ProjectDetail from './components/ProjectDetail';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
+import NavBar from './components/NavBar';
+import Breadcrumbs from './components/Breadcrumbs';
 import './App.css';
 
 function App() {
@@ -35,15 +37,21 @@ function App() {
           <Route
             path="/dashboard"
             element={
-              <PrivateRoute>
-                <Dashboard />
-              </PrivateRoute>
+            <PrivateRoute>
+            <>
+            <NavBar />
+            <Breadcrumbs />
+            <Dashboard />
+            </>
+            </PrivateRoute>
             }
-          />
+            />
           <Route
             path="/profile"
             element={
               <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
                 <Profile />
               </PrivateRoute>
             }
@@ -52,6 +60,8 @@ function App() {
             path="/profile/:userId"
             element={
               <PrivateRoute>
+                <NavBar />
+            <Breadcrumbs />
                 <Profile />
               </PrivateRoute>
             }
@@ -60,6 +70,8 @@ function App() {
             path="/profile/edit"
             element={
               <PrivateRoute>
+                <NavBar />
+              <Breadcrumbs />
                 <ProfileForm />
               </PrivateRoute>
             }
@@ -68,6 +80,8 @@ function App() {
             path="/profile/basic"
             element={
               <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
                 <ProfileForm />
               </PrivateRoute>
             }
@@ -76,6 +90,8 @@ function App() {
             path="/skills"
             element={
               <PrivateRoute>
+                <NavBar />
+            <Breadcrumbs />
                 <Skills />
               </PrivateRoute>
             }
@@ -84,6 +100,8 @@ function App() {
             path="/skills/organized"
             element={
               <PrivateRoute>
+                <NavBar />
+            <Breadcrumbs />
                 <SkillsOrganized />
               </PrivateRoute>
             }
@@ -92,6 +110,8 @@ function App() {
             path="/education"
             element={
               <PrivateRoute>
+                <NavBar />
+              <Breadcrumbs />
                 <Education />
               </PrivateRoute>
             }
@@ -100,6 +120,8 @@ function App() {
             path="/employment"
             element={
               <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
                 <Employment />
               </PrivateRoute>
             }
@@ -108,6 +130,8 @@ function App() {
             path="/certifications"
             element={
               <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
                 <Certifications />
               </PrivateRoute>
             }
@@ -116,6 +140,8 @@ function App() {
             path="/projects"
             element={
               <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
                 <Projects />
               </PrivateRoute>
             }
@@ -124,6 +150,8 @@ function App() {
             path="/projects/portfolio"
             element={
               <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
                 <ProjectsPortfolio />
               </PrivateRoute>
             }
@@ -132,6 +160,8 @@ function App() {
             path="/projects/:projectId"
             element={
               <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
                 <ProjectDetail />
               </PrivateRoute>
             }
