@@ -917,6 +917,35 @@ def update_basic_profile(request):
             logger.info(f"Created new profile for user: {user.email}")
 
         if request.method == 'GET':
+            # Autofill first/last name if empty using Firebase display name when available
+            try:
+                if (not (user.first_name or '').strip()) and (not (user.last_name or '').strip()):
+                    try:
+                        fb_user = firebase_auth.get_user(user.username)
+                        display_name = getattr(fb_user, 'display_name', None)
+                        if display_name:
+                            parts = display_name.split()
+                            user.first_name = parts[0] if parts else ''
+                            user.last_name = ' '.join(parts[1:]) if len(parts) > 1 else ''
+                            user.save(update_fields=['first_name', 'last_name'])
+                    except Exception:
+                        # As a soft fallback, derive a name-like value from email prefix
+                        try:
+                            if (not (user.first_name or '').strip()) and user.email:
+                                local = user.email.split('@')[0]
+                                if local:
+                                    # Basic capitalization of segments
+                                    segs = [s for s in local.replace('.', ' ').replace('_', ' ').split() if s]
+                                    if segs:
+                                        user.first_name = segs[0].capitalize()
+                                        user.last_name = ' '.join([s.capitalize() for s in segs[1:]])
+                                        user.save(update_fields=['first_name', 'last_name'])
+                        except Exception:
+                            pass
+            except Exception:
+                # Non-fatal: if autofill fails, proceed with existing values
+                pass
+
             serializer = BasicProfileSerializer(profile)
             return Response(serializer.data, status=status.HTTP_200_OK)
 
