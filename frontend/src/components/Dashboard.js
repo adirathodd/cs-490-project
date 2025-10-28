@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import authAPI from '../services/api';
+import { authAPI } from '../services/api';
 import './Dashboard.css';
 import Icon from './Icon';
 
@@ -224,6 +224,8 @@ const Dashboard = () => {
           <h2>Your Dashboard</h2>
           <p>Manage your professional profile and showcase your experience.</p>
         </div>
+
+        {/* Profile Overview (UC-033) */}
 
         <div className="dashboard-grid">
           <div className="dashboard-card">

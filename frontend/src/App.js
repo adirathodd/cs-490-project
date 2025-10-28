@@ -6,6 +6,7 @@ import Register from './components/Register';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import Profile from './components/Profile';
+import DashboardOverview from './components/DashboardOverview';
 import ProfileForm from './components/ProfileForm';
 import Skills from './components/Skills';
 import SkillsOrganized from './components/SkillsOrganized';
@@ -50,9 +51,12 @@ function App() {
             path="/profile"
             element={
               <PrivateRoute>
-                <NavBar />
-                <Breadcrumbs />
-                <Profile />
+                <>
+                  <NavBar />
+                  <Breadcrumbs />
+                  <Profile />
+                  <DashboardOverview />
+                </>
               </PrivateRoute>
             }
           />
