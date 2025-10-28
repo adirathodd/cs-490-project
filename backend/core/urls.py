@@ -11,6 +11,7 @@ urlpatterns = [
     path('auth/register', views.register_user, name='register'),
     path('auth/login', views.login_user, name='login'),
     path('auth/verify-token', views.verify_token, name='verify-token'),
+    path('auth/oauth/link', views.oauth_link_via_provider, name='oauth-link-provider'),
     path('auth/logout', views.logout_user, name='logout'),
     path('users/me', views.get_current_user, name='current-user'),
     path('users/me/delete-request', views.request_account_deletion, name='request-account-deletion'),

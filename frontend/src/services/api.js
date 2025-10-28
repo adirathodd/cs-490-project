@@ -126,6 +126,17 @@ export const authAPI = {
     }
   },
 
+  // Exchange a provider access token (e.g., GitHub) for a Firebase custom token
+  // when the provider reports an email matching an existing account. Returns { custom_token, email }
+  linkProviderToken: async (provider, accessToken) => {
+    try {
+      const response = await api.post('/auth/oauth/link', { provider, access_token: accessToken });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.message;
+    }
+  },
+
   // UC-022: Profile Picture Upload
   getProfilePicture: async () => {
     try {

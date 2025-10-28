@@ -8,6 +8,7 @@ import {
   updateProfile,
   reauthenticateWithCredential,
   GoogleAuthProvider,
+  GithubAuthProvider,
   EmailAuthProvider,
   signInWithPopup,
   sendPasswordResetEmail,
@@ -20,6 +21,9 @@ import firebaseConfig from '../config/firebase';
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
+const githubProvider = new GithubAuthProvider();
+// Request email scope for GitHub
+githubProvider.addScope('user:email');
 
 window.auth = auth;
 
@@ -33,6 +37,7 @@ export {
   reauthenticateWithCredential,
   EmailAuthProvider,
   googleProvider,
+  githubProvider,
   signInWithPopup,
   sendPasswordResetEmail,
   verifyPasswordResetCode,
