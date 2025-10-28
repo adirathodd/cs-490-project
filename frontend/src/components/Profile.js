@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { authAPI, profileAPI } from '../services/api';
 import './Profile.css';
 import Icon from './Icon';
+import DashboardOverview from './DashboardOverview';
 
 const Profile = () => {
   const { currentUser, userProfile } = useAuth();
