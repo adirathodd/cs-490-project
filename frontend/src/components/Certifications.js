@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { certificationsAPI } from '../services/api';
 import './Certifications.css';
+import Icon from './Icon';
 
 const defaultForm = {
   name: '',
@@ -252,7 +253,7 @@ const Certifications = () => {
       </div>
 
       <div className="certifications-header">
-        <h2>🏆 Your Professional Certifications</h2>
+        <h2><Icon name="cert" size="md" /> Your Professional Certifications</h2>
         <button 
           className="add-certification-button"
           onClick={() => {
@@ -272,7 +273,7 @@ const Certifications = () => {
         <div className="certification-form-card">
           <div className="form-header">
             <h3>{editingId ? 'Edit Certification' : 'Add Certification'}</h3>
-            <button className="close-button" onClick={resetForm}>✕</button>
+            <button className="close-button" onClick={resetForm}><Icon name="trash" size="sm" ariaLabel="Close" /></button>
           </div>
 
           <form className="certification-form" onSubmit={handleSubmit}>
@@ -405,7 +406,7 @@ const Certifications = () => {
 
       {(items || []).length === 0 && !showForm ? (
         <div className="empty-state">
-          <div className="empty-icon">🏆</div>
+          <div className="empty-icon"><Icon name="cert" size="xl" ariaLabel="No certifications" /></div>
           <h3>No Certifications Yet</h3>
           <p>Add your professional certifications to showcase your expertise.</p>
           <button className="add-certification-button" onClick={() => {
@@ -427,7 +428,7 @@ const Certifications = () => {
                     {item.name}
                   </div>
                   <div className="certification-item-sub">
-                    <span className="organization">🏢 {item.issuing_organization}</span>
+                    <span className="organization"><Icon name="link" size="sm" /> {item.issuing_organization}</span>
                     {item.category && <span className="cert-category-badge">{item.category}</span>}
                     {statusBadge(item.verification_status)}
                   </div>
@@ -453,14 +454,14 @@ const Certifications = () => {
                     onClick={() => startEdit(item)}
                     title="Edit"
                   >
-                    ✏️
+                    <Icon name="edit" size="sm" ariaLabel="Edit" />
                   </button>
                   <button 
                     className="delete-button"
                     onClick={() => setDeleteConfirm(item.id)}
                     title="Delete"
                   >
-                    🗑️
+                    <Icon name="trash" size="sm" ariaLabel="Delete" />
                   </button>
                 </div>
               </div>

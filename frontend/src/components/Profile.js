@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate, useParams } from 'react-router-dom';
 import { authAPI, profileAPI } from '../services/api';
 import './Profile.css';
+import Icon from './Icon';
 import DashboardOverview from './DashboardOverview';
 
 const Profile = () => {
@@ -99,7 +100,7 @@ const Profile = () => {
           </button>
         </div>
         <div className="profile-error">
-          <div className="profile-error-icon">⚠️</div>
+          <div className="profile-error-icon"><Icon name="info" size="lg" ariaLabel="Error" /></div>
           <div className="profile-error-message">{error}</div>
         </div>
       </div>
@@ -141,17 +142,17 @@ const Profile = () => {
             <div className="profile-meta">
               {profile?.email && (
                 <div className="profile-meta-item">
-                  📧 {profile.email}
+                  <Icon name="link" size="sm" /> {profile.email}
                 </div>
               )}
               {profile?.phone && (
                 <div className="profile-meta-item">
-                  📱 {profile.phone}
+                  <Icon name="camera" size="sm" /> {profile.phone}
                 </div>
               )}
               {(profile?.city || profile?.state) && (
                 <div className="profile-meta-item">
-                  📍 {profile.city && profile.state ? `${profile.city}, ${profile.state}` : profile.city || profile.state}
+                  <Icon name="location" size="sm" /> {profile.city && profile.state ? `${profile.city}, ${profile.state}` : profile.city || profile.state}
                 </div>
               )}
             </div>
@@ -160,13 +161,13 @@ const Profile = () => {
                 className="profile-action-btn"
                 onClick={() => navigate('/profile/edit')}
               >
-                ✏️ Edit Profile
+                <Icon name="edit" size="sm" /> Edit Profile
               </button>
               <button 
                 className="profile-action-btn secondary"
                 onClick={() => navigate('/dashboard')}
               >
-                🏠 Dashboard
+                <Icon name="home" size="sm" /> Dashboard
               </button>
             </div>
           </div>
@@ -179,7 +180,7 @@ const Profile = () => {
         <div className="profile-section">
           <div className="profile-section-header">
             <h2 className="profile-section-title">
-              <span className="profile-section-icon">👤</span>
+              <Icon name="user" size="md" className="profile-section-icon" ariaLabel="Personal Information" />
               Personal Information
             </h2>
           </div>
@@ -213,7 +214,7 @@ const Profile = () => {
         <div className="profile-section">
           <div className="profile-section-header">
             <h2 className="profile-section-title">
-              <span className="profile-section-icon">💼</span>
+              <Icon name="briefcase" size="md" className="profile-section-icon" ariaLabel="Professional Information" />
               Professional Information
             </h2>
           </div>
@@ -252,7 +253,7 @@ const Profile = () => {
           <div className="profile-section">
             <div className="profile-section-header">
               <h2 className="profile-section-title">
-                <span className="profile-section-icon">📍</span>
+                <Icon name="location" size="md" className="profile-section-icon" ariaLabel="Location" />
                 Location
               </h2>
             </div>

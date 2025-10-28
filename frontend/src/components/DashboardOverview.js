@@ -75,7 +75,7 @@ const DashboardOverview = () => {
     const percent = Math.round((done / total) * 100);
     const suggestions = [];
     if (!profile) suggestions.push('Complete your basic profile information');
-    if (employmentCount === 0) suggestions.push('Add your first employment entry');
+    if (employmentCount === 0) suggestions.push('Add an employment entry');
     if ((skills || []).length === 0) suggestions.push('Add at least 3 relevant skills');
     if ((education || []).length === 0) suggestions.push('Add an education entry');
     if ((projects || []).length === 0) suggestions.push('Showcase a project you worked on');
@@ -84,10 +84,15 @@ const DashboardOverview = () => {
 
   const skillChartData = useMemo(() => {
     const mapLevel = (lvl) => (lvl || '').toLowerCase();
-    return (skills || []).slice(0, 5).map(s => ({
-      name: s.skill_name || s.name || 'Skill',
-      level: mapLevel(s.level),
-    }));
+    return (skills || []).slice(0, 5).map(s => {
+      const level = mapLevel(s.level);
+      return {
+        name: s.skill_name || s.name || 'Skill',
+        level,
+        // If level is missing, provide a numeric value so the chart still shows a bar
+        value: level ? undefined : 100,
+      };
+    });
   }, [skills]);
 
   if (loading) return <div>Loading overview…</div>;
