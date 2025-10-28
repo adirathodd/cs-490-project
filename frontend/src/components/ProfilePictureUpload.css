@@ -89,9 +89,9 @@
 /* Upload Controls */
 .picture-controls {
   display: flex;
+  flex-direction: column;
   gap: 0.75rem;
-  align-items: center;
-  flex-wrap: wrap;
+  align-items: center; /* center stacked buttons */
   justify-content: center;
 }
 
