@@ -222,26 +222,29 @@
   line-height: 1.6;
 }
 
-.inline-checkbox {
+.form-group label.inline-checkbox {
   display: flex;
   align-items: center;
   gap: 8px;
+  justify-content: flex-start;
   cursor: pointer;
   font-weight: 500;
   margin-top: 12px;
+  margin-bottom: 0; /* override generic label spacing */
 }
 
-.inline-checkbox input[type="checkbox"] {
+.form-group label.inline-checkbox input[type="checkbox"] {
   width: 20px;
   height: 20px;
   cursor: pointer;
   accent-color: #667eea;
 }
 
-.checkbox-label-text {
+.form-group label.inline-checkbox .checkbox-label-text {
   font-size: 14px;
   color: #6b7280;
   font-weight: 500;
+  flex: 0 0 auto;
 }
 
 .error-message {
