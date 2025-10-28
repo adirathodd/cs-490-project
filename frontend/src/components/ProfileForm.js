@@ -310,7 +310,12 @@ const ProfileForm = () => {
 
     setDeleting(true);
     try {
-      // Reauthenticate the user with provided password
+      // Force password-based reauthentication only (no popup flows)
+      if (!deletePassword) {
+        setDeleteError('Please enter your password to confirm deletion.');
+        setDeleting(false);
+        return;
+      }
       const credential = EmailAuthProvider.credential(currentUser.email, deletePassword);
       await reauthenticateWithCredential(currentUser, credential);
 
@@ -331,8 +336,13 @@ const ProfileForm = () => {
       closeDeleteDialog();
     } catch (error) {
       console.error('Account deletion error:', error);
-      if (error?.code === 'auth/wrong-password' || error?.response?.status === 401) {
+      // Handle common Firebase and API errors with clearer messages
+      if (error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential' || error?.response?.status === 401) {
         setDeleteError('Incorrect password. Please try again.');
+      } else if (error?.code === 'auth/requires-recent-login') {
+        setDeleteError('Please log out and log back in, then try again.');
+      } else if (error?.message === 'Network Error' || error?.code === 'ERR_NETWORK') {
+        setDeleteError('Network error. Please check your connection and try again.');
       } else if (error?.response?.data?.error?.message) {
         setDeleteError(error.response.data.error.message);
       } else {

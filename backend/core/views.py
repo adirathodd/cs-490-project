@@ -477,6 +477,7 @@ def request_account_deletion(request):
     """Initiate account deletion by sending an email with a confirmation link."""
     try:
         user = request.user
+        logger.debug(f"Account deletion requested by user id={getattr(user, 'id', None)} email={getattr(user, 'email', None)}")
         # Create a new deletion request token (invalidate older by allowing overwrite behavior on retrieve)
         # Token valid for 1 hour
         deletion = AccountDeletionRequest.create_for_user(user, ttl_hours=1)
@@ -503,7 +504,12 @@ def request_account_deletion(request):
             if user.email:
                 msg = EmailMultiAlternatives(subject, text_content, from_email, [user.email])
                 msg.attach_alternative(html_content, "text/html")
-                msg.send(fail_silently=True)
+                try:
+                    # In DEBUG, surface email errors to logs to aid troubleshooting
+                    sent = msg.send(fail_silently=not settings.DEBUG)
+                    logger.info(f"Account deletion email send result={sent} to={user.email} from={from_email}")
+                except Exception as send_err:
+                    logger.warning(f"Email send error (deletion link) to {user.email}: {send_err}")
         except Exception as e:
             logger.warning(f"Failed to send deletion confirmation email to {user.email}: {e}")
 
@@ -516,7 +522,8 @@ def request_account_deletion(request):
 
         return Response(payload, status=status.HTTP_200_OK)
     except Exception as e:
-        logger.error(f"Error initiating account deletion for {getattr(request.user, 'email', 'unknown')}: {e}")
+        # Log full traceback to aid debugging
+        logger.exception(f"Error initiating account deletion for {getattr(request.user, 'email', 'unknown')}: {e}")
         return Response(
             {'error': {'code': 'deletion_init_failed', 'message': 'Failed to initiate account deletion.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

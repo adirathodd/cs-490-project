@@ -196,6 +196,37 @@ docker compose down -v
 - Current default sender: `resumerocket123@gmail.com` (can be overridden via env).
 - If using Gmail SMTP, it's recommended that `EMAIL_HOST_USER` matches `DEFAULT_FROM_EMAIL` and that you use an App Password.
 
+### Gmail SMTP (App Password) Checklist
+
+If you're using Gmail to send emails from the backend, follow these steps:
+
+1. Enable 2-Step Verification (2FA) on the Gmail account.
+2. Create an App Password in Google Account Security:
+   - Select App: "Mail"
+   - Select Device: "Other (Custom name)" (any name is fine)
+   - Copy the generated 16-character password (no spaces).
+3. Configure `backend/.env`:
+   ```env
+   DJANGO_EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+   EMAIL_HOST=smtp.gmail.com
+   EMAIL_PORT=587
+   EMAIL_USE_TLS=true
+   EMAIL_USE_SSL=false
+   EMAIL_HOST_USER=resumerocket123@gmail.com
+   EMAIL_HOST_PASSWORD=<16-char-app-password-without-spaces>
+   DEFAULT_FROM_EMAIL=resumerocket123@gmail.com
+   ```
+4. Reload the backend to apply changes:
+   - Restart: `docker compose restart backend`
+   - If you edited `backend/.env` and it is mounted into the container, restart is enough. If the env is baked into the image, rebuild: `docker compose up -d --build backend`.
+5. Test send:
+   - Trigger a real flow (e.g., account deletion request), or
+   - Use a quick Django shell snippet to send a test email.
+
+Troubleshooting:
+- SMTPAuthenticationError 535 (Bad Credentials): Regenerate the App Password and ensure it's pasted as a single 16-character string without spaces.
+- No email received: Check Spam/Promotions and ensure `DEFAULT_FROM_EMAIL` matches `EMAIL_HOST_USER`.
+
 ## 📁 Project Structure
 
 ```
