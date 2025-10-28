@@ -234,6 +234,7 @@
   font-weight: 500;
   margin-top: 12px;
   margin-bottom: 0; /* override generic label spacing */
+  margin-top: 6px;
 }
 
 .form-group label.inline-checkbox input[type="checkbox"] {
@@ -248,6 +249,7 @@
   color: #6b7280;
   font-weight: 500;
   flex: 0 0 auto;
+  line-height: 1;
 }
 
 .error-message {
