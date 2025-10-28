@@ -406,6 +406,7 @@ const Employment = () => {
               <div className="input-with-button">
                 <input
                   type="text"
+                    className="large-input"
                   value={achievementInput}
                   onChange={(e) => setAchievementInput(e.target.value)}
                   onKeyPress={(e) => {
@@ -416,7 +417,7 @@ const Employment = () => {
                   }}
                   placeholder="e.g., Increased revenue by 40%"
                 />
-                <button type="button" onClick={handleAddAchievement} className="add-btn">
+                  <button type="button" onClick={handleAddAchievement} className="add-btn large-add-btn">
                   Add
                 </button>
               </div>
@@ -443,6 +444,7 @@ const Employment = () => {
               <div className="input-with-button">
                 <input
                   type="text"
+                    className="large-input"
                   value={skillInput}
                   onChange={(e) => setSkillInput(e.target.value)}
                   onKeyPress={(e) => {
@@ -453,7 +455,7 @@ const Employment = () => {
                   }}
                   placeholder="e.g., Python, AWS, Docker"
                 />
-                <button type="button" onClick={handleAddSkill} className="add-btn">
+                  <button type="button" onClick={handleAddSkill} className="add-btn large-add-btn">
                   Add
                 </button>
               </div>

@@ -301,10 +301,35 @@ form {
 .input-with-button {
   display: flex;
   gap: 8px;
+  align-items: stretch;
 }
 
 .input-with-button input {
   flex: 1;
+}
+
+/* Larger input styling specifically for Achievements and Skills inputs */
+.large-input {
+  padding: 16px 18px;
+  font-size: 16px;
+  min-height: 52px;
+  flex: 1 1 auto; /* ensure input grows */
+  min-width: 0;   /* prevent overflow in flex */
+}
+
+/* Match the larger input height for the adjacent Add button */
+.large-add-btn {
+  padding: 12px 18px;
+  min-height: 52px;
+  font-size: 16px;
+  flex: 0 0 auto; /* button should not grow */
+  width: auto;    /* avoid full-width stretching */
+}
+
+/* Extra safety: never let the Add button grow inside the pair */
+.input-with-button .add-btn,
+.input-with-button .large-add-btn {
+  flex-grow: 0;
 }
 
 .add-btn {
