@@ -953,3 +953,16 @@
     font-size: 14px;
   }
 }
+
+/* Extra adjustments for narrow mobile view (up to 767px tall) to ensure text/buttons fit */
+@media (max-width: 767px) {
+  .certifications-container { padding: 12px; }
+  .certifications-page-title { font-size: 28px; }
+  .certifications-header { padding: 12px; }
+  .certification-item-header, .certification-item-details { padding: 12px; }
+  .certification-item-title { font-size: 18px; }
+  .certification-item-sub { font-size: 14px; }
+  .certification-item-actions { width: 100%; justify-content: center; }
+  .add-certification-button, .save-button, .cancel-button { padding: 8px 12px; min-width: 0; }
+  .empty-state { padding: 40px; }
+}

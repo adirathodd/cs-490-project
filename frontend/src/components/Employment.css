@@ -73,13 +73,20 @@
   background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
   color: var(--on-primary);
   border: none;
-  padding: 12px 28px;
+  padding: 10px 16px;
   border-radius: 10px;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.2;
+  min-height: 44px;
 }
 
 .add-button:hover {
@@ -108,8 +115,10 @@
 }
 
 .error-message {
+  font-size: 16px;
+  color: #e53e3e;
+  margin-bottom: 12px;
   background: #fee2e2;
-  color: #991b1b;
   border: 1px solid #fecaca;
 }
 
@@ -302,12 +311,17 @@ form {
   background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
   color: var(--on-primary);
   border: none;
-  padding: 12px 24px;
+  padding: 10px 14px;
   border-radius: 10px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  white-space: nowrap;
+  white-space: normal;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 40px;
 }
 
 .add-btn:hover {
@@ -942,6 +956,19 @@ form {
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
+/* Additional tighter adjustments for very narrow screens (320px wide up to 767px tall) */
+@media (max-width: 767px) {
+  .employment-container { padding: 12px 12px; }
+  .employment-header { padding: 12px; }
+  .employment-header h2 { font-size: 18px; }
+  .employment-page-title { font-size: 28px; }
+  .empty-state { padding: 40px; }
+  .employment-card, .employment-form-card { padding: 12px; }
+  .employment-header-row, .employment-description, .achievements-section, .skills-section { padding: 12px; }
+  .employment-actions { width: 100%; justify-content: center; }
+  .add-button, .add-btn, .action-button, .save-button, .cancel-button { min-width: 0; padding: 10px 14px; }
+  .employment-description { padding: 12px; }
+}
 .employment-form-card .form-actions .save-button:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
