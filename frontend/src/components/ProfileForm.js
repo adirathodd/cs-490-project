@@ -37,7 +37,7 @@ const US_STATES = [
 ];
 
 const ProfileForm = () => {
-  const { currentUser, loading: authLoading, signOut } = useAuth();
+  const { currentUser, loading: authLoading, signOut, refreshUserProfile } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [fetchingProfile, setFetchingProfile] = useState(true);
@@ -226,6 +226,11 @@ const ProfileForm = () => {
       setOriginalData(formData);
       setHasUnsavedChanges(false);
       
+      // Refresh the user profile in AuthContext to update the banner
+      if (refreshUserProfile) {
+        await refreshUserProfile();
+      }
+      
       // Clear success message after 5 seconds
       setTimeout(() => setSuccessMessage(''), 5000);
       
@@ -366,8 +371,43 @@ const ProfileForm = () => {
   if (authLoading || fetchingProfile || !currentUser) {
     return (
       <div className="profile-form-container">
-        <div className="loading-spinner">
-          {authLoading ? 'Authenticating...' : fetchingProfile ? 'Loading profile...' : 'Loading user data...'}
+        <div className="loading-skeleton">
+          <div className="skeleton-card">
+            {/* Header skeleton */}
+            <div className="skeleton skeleton-title" style={{ width: '280px' }} />
+            <div className="skeleton skeleton-subtitle" style={{ width: '60%', marginBottom: 24 }} />
+
+            {/* Personal Information section */}
+            <div style={{ marginBottom: 24 }}>
+              <div className="skeleton skeleton-line" style={{ width: '180px', height: 22, marginBottom: 16 }} />
+              <div className="skeleton-row">
+                <div className="skeleton skeleton-field" />
+                <div className="skeleton skeleton-field" />
+              </div>
+              <div className="skeleton skeleton-field" style={{ marginTop: 16 }} />
+              <div className="skeleton-row" style={{ marginTop: 16 }}>
+                <div className="skeleton skeleton-field" />
+                <div className="skeleton skeleton-field" />
+              </div>
+            </div>
+
+            {/* Professional Information section */}
+            <div>
+              <div className="skeleton skeleton-line" style={{ width: '220px', height: 22, marginBottom: 16 }} />
+              <div className="skeleton skeleton-field" style={{ marginBottom: 16 }} />
+              <div className="skeleton skeleton-textarea" />
+              <div className="skeleton-row" style={{ marginTop: 16 }}>
+                <div className="skeleton skeleton-field" />
+                <div className="skeleton skeleton-field" />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="skeleton-actions">
+              <div className="skeleton skeleton-button" style={{ width: 120 }} />
+              <div className="skeleton skeleton-button" style={{ width: 150 }} />
+            </div>
+          </div>
         </div>
       </div>
     );

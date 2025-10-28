@@ -197,8 +197,9 @@ class FirebaseAuthentication(authentication.BaseAuthentication):
                 display_name = firebase_user.display_name or decoded_token.get('name', '')
                 photo_url = getattr(firebase_user, 'photo_url', None)
 
-                # Update user's name if different
-                if display_name:
+                # Update user's name from Firebase ONLY if the local name is blank.
+                # Do not overwrite names the user has explicitly set in their profile.
+                if display_name and not ((user.first_name or '').strip() or (user.last_name or '').strip()):
                     parts = display_name.split()
                     first = parts[0]
                     last = ' '.join(parts[1:]) if len(parts) > 1 else ''
