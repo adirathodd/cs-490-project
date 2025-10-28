@@ -24,6 +24,30 @@ api.interceptors.request.use(
   }
 );
 
+// Normalize errors and add light retry for transient GET failures
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const config = error?.config || {};
+    const status = error?.response?.status;
+    const method = (config.method || '').toLowerCase();
+    const isGet = method === 'get';
+    const isTransient = !error.response || [408, 429, 500, 502, 503, 504].includes(status);
+
+    if (isGet && isTransient && (config.__retryCount || 0) < 1) {
+      config.__retryCount = (config.__retryCount || 0) + 1;
+      await new Promise((r) => setTimeout(r, 500));
+      return api.request(config);
+    }
+
+    const normalized = error?.response?.data?.error || {
+      code: 'network_error',
+      message: 'Network error. Please try again.',
+    };
+    return Promise.reject({ error: normalized });
+  }
+);
+
 // Profile API calls
 export const profileAPI = {
   getUserProfile: async (userId) => {
@@ -52,7 +76,7 @@ export const authAPI = {
       const response = await api.post('/auth/register', userData);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Registration failed' };
+      throw error.error || error.response?.data?.error || { code: 'registration_failed', message: 'Registration failed' };
     }
   },
 
@@ -61,7 +85,7 @@ export const authAPI = {
       const response = await api.post('/auth/login', credentials);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Login failed' };
+      throw error.error || error.response?.data?.error || { code: 'login_failed', message: 'Login failed' };
     }
   },
 
@@ -70,7 +94,7 @@ export const authAPI = {
       const response = await api.get('/users/me');
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to fetch user' };
+      throw error.error || error.response?.data?.error || { code: 'fetch_user_failed', message: 'Failed to fetch user' };
     }
   },
 
@@ -79,7 +103,7 @@ export const authAPI = {
       const response = await api.patch('/users/me', profileData);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to update profile' };
+      throw error.error || error.response?.data?.error || { code: 'update_profile_failed', message: 'Failed to update profile' };
     }
   },
 
