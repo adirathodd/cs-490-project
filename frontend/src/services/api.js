@@ -599,3 +599,15 @@ const _defaultExport = {
 };
 
 export default _defaultExport;
+
+// CommonJS compatibility: some consumers (tests or older imports) may `require()` the module
+// and expect `module.exports.authAPI` or `module.exports.default` to exist. Provide both.
+try {
+  if (typeof module !== 'undefined' && module && module.exports) {
+    module.exports = _defaultExport; // override CommonJS export
+    module.exports.default = _defaultExport;
+    module.exports.authAPI = authAPI;
+  }
+} catch (e) {
+  // ignore in strict ESM environments
+}
