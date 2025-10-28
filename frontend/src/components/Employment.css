@@ -7,7 +7,7 @@
   margin: 0 auto;
   padding: 32px 16px;
   min-height: 100vh;
-  background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+  background: linear-gradient(135deg, #f8f9ff 0%, var(--white) 100%);
 }
 
 .employment-page-header {
@@ -15,7 +15,7 @@
 }
 
 .back-button {
-  background: white;
+  background: var(--white);
   border: 1.5px solid #d1d5db;
   padding: 10px 20px;
   border-radius: 10px;
@@ -54,7 +54,7 @@
   align-items: center;
   margin-bottom: 32px;
   padding: 32px;
-  background: white;
+  background: var(--white);
   border-radius: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
@@ -70,8 +70,8 @@
 }
 
 .add-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
   border: none;
   padding: 12px 28px;
   border-radius: 10px;
@@ -108,26 +108,27 @@
 }
 
 .error-message {
-  background: #fee;
-  color: #c33;
-  border: 1px solid #fcc;
+.add-button {
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
+  border: none;
+  padding: 12px 24px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
-
-.success-message {
-  background: #efe;
-  color: #3a3;
-  border: 1px solid #cfc;
+.add-button:hover {
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  transform: translateY(-1px);
 }
-
-.loading {
-  text-align: center;
-  padding: 96px;
   font-size: 18px;
   color: #6b7280;
 }
 
 .empty-state {
-  background: white;
+  background: var(--white);
   border-radius: 24px;
   padding: 96px;
   text-align: center;
@@ -155,7 +156,7 @@
 }
 
 .employment-form-card {
-  background: white;
+  background: var(--white);
   border-radius: 24px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
   margin-bottom: 48px;
@@ -164,8 +165,8 @@
 }
 
 .form-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
   padding: 32px;
   display: flex;
   justify-content: space-between;
@@ -181,7 +182,7 @@
 .close-button {
   background: rgba(255, 255, 255, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
+  color: var(--on-primary);
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -243,7 +244,7 @@ form {
   font-size: 15px;
   transition: all 0.2s ease;
   font-family: inherit;
-  background: white;
+  background: var(--white);
 }
 
 .form-group input:focus,
@@ -294,8 +295,8 @@ form {
 }
 
 .add-btn {
-  background: #667eea;
-  color: white;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
   border: none;
   padding: 12px 24px;
   border-radius: 10px;
@@ -306,7 +307,7 @@ form {
 }
 
 .add-btn:hover {
-  background: #764ba2;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
   transform: translateY(-1px);
 }
 
@@ -399,7 +400,7 @@ form {
 }
 
 .cancel-button {
-  background: white;
+  background: var(--white);
   border: 2px solid #d1d5db;
   color: #374151;
   padding: 12px 32px;
@@ -416,9 +417,10 @@ form {
 }
 
 .save-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.save-button {
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
   border: none;
-  color: white;
+  color: var(--on-primary);
   padding: 12px 32px;
   border-radius: 10px;
   font-size: 15px;
@@ -451,7 +453,7 @@ form {
 
 .employment-card {
   position: relative;
-  background: white;
+  background: var(--white);
   border-radius: 24px;
   margin-bottom: 32px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
@@ -469,7 +471,7 @@ form {
   height: 16px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 50%;
-  box-shadow: 0 0 0 4px white, 0 0 0 6px #667eea;
+  box-shadow: 0 0 0 4px var(--white), 0 0 0 6px #667eea;
   z-index: 2;
 }
 
@@ -480,7 +482,7 @@ form {
 }
 
 .employment-header-row {
-  background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+  background: linear-gradient(135deg, #f8f9ff 0%, var(--white) 100%);
   padding: 32px;
   border-bottom: 2px solid #f3f4f6;
   display: flex;
@@ -540,8 +542,8 @@ form {
 }
 
 .current-badge {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--success-gradient-start, #10b981) 0%, var(--success-gradient-end, #059669) 100%);
+  color: var(--on-primary);
   padding: 4px 12px;
   border-radius: 20px;
   font-size: 12px;
@@ -560,7 +562,7 @@ form {
 .action-button {
   width: 44px;
   height: 44px;
-  background: white;
+  background: var(--white);
   border: 2px solid #d1d5db;
   border-radius: 10px;
   cursor: pointer;
@@ -593,13 +595,13 @@ form {
   line-height: 1.7;
   font-size: 15px;
   white-space: pre-wrap;
-  background: white;
+  background: var(--white);
   border-bottom: 1px solid #f3f4f6;
 }
 
 .achievements-section {
   padding: 32px;
-  background: linear-gradient(135deg, #fafbff 0%, #ffffff 100%);
+  background: linear-gradient(135deg, #fafbff 0%, var(--white) 100%);
   border-bottom: 1px solid #f3f4f6;
 }
 
@@ -642,7 +644,7 @@ form {
 
 .skills-section {
   padding: 32px;
-  background: white;
+  background: var(--white);
 }
 
 .skills-section strong {
@@ -674,9 +676,9 @@ form {
 }
 
 .skill-badge:hover {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-color: #667eea;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
+  border-color: var(--primary-gradient-start);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
@@ -713,8 +715,8 @@ form {
 }
 
 .confirm-yes {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--error-gradient-start, #ef4444) 0%, var(--error-gradient-end, #dc2626) 100%);
+  color: var(--on-primary);
   border: none;
   padding: 10px 24px;
   border-radius: 10px;
@@ -730,7 +732,7 @@ form {
 }
 
 .confirm-no {
-  background: white;
+  background: var(--white);
   border: 2px solid #d1d5db;
   color: #374151;
   padding: 10px 24px;
@@ -770,7 +772,7 @@ form {
 }
 
 .modal-dialog {
-  background: white;
+  background: var(--white);
   border-radius: 16px;
   padding: 32px;
   max-width: 450px;
@@ -833,8 +835,9 @@ form {
 }
 
 .modal-confirm-button {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  color: white;
+.modal-confirm-button {
+  background: linear-gradient(135deg, var(--error-gradient-start, #ef4444) 0%, var(--error-gradient-end, #dc2626) 100%);
+  color: var(--on-primary);
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
 }
 
@@ -921,4 +924,6 @@ form {
   .modal-confirm-button {
     width: 100%;
   }
+}
+}
 }

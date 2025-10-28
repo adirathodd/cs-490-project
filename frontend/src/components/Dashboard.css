@@ -1,10 +1,10 @@
 .dashboard-container {
   min-height: 100vh;
-  background-color: #f7fafc;
+  background-color: var(--gray-100);
 }
 
 .dashboard-nav {
-  background: white;
+  background: var(--white);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   padding: 16px 40px;
   display: flex;
@@ -18,7 +18,7 @@
 .nav-brand h1 {
   margin: 0;
   font-size: 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -41,9 +41,9 @@
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: white;
-  color: #4a5568;
-  border: 1px solid #e2e8f0;
+  background: var(--white);
+  color: var(--gray-700);
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
@@ -52,13 +52,13 @@
 }
 
 .user-menu-button:hover {
-  border-color: #667eea;
+  border-color: var(--primary-color);
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
 }
 
 .dropdown-arrow {
   font-size: 10px;
-  color: #718096;
+  color: var(--gray-600);
   transition: transform 0.2s;
 }
 
@@ -66,8 +66,8 @@
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--white);
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
   min-width: 200px;
@@ -97,13 +97,13 @@
   border: none;
   text-align: left;
   font-size: 14px;
-  color: #2d3748;
+  color: var(--gray-800);
   cursor: pointer;
   transition: background 0.15s;
 }
 
 .dropdown-item:hover {
-  background: #f7fafc;
+  background: var(--gray-100);
 }
 
 .dropdown-icon {
@@ -116,20 +116,20 @@
 
 .dropdown-divider {
   height: 1px;
-  background: #e2e8f0;
+  background: var(--gray-200);
   margin: 4px 0;
 }
 
 .sign-out-item {
-  color: #e53e3e;
+  color: var(--error-text);
 }
 
 .sign-out-item:hover {
-  background: #fff5f5;
+  background: var(--error-bg);
 }
 
 .user-name {
-  color: #4a5568;
+  color: var(--gray-700);
   font-weight: 500;
   font-size: 14px;
 }
@@ -143,7 +143,7 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: white;
+  background: var(--white);
   border: 1px solid #e2e8f0;
   box-shadow: 0 20px 40px rgba(15, 23, 42, 0.2);
   padding: 24px;
@@ -180,8 +180,8 @@
 
 .confirm-yes {
   padding: 10px 24px;
-  background: #e53e3e;
-  color: white;
+  background: linear-gradient(135deg, var(--error-gradient-start, #ef4444) 0%, var(--error-gradient-end, #dc2626) 100%);
+  color: var(--on-primary);
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -216,12 +216,12 @@
 
 /* Account Banner */
 .account-banner {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
   border-radius: 16px;
   padding: 32px;
   margin-bottom: 32px;
   box-shadow: 0 8px 24px rgba(102, 126, 234, 0.3);
-  color: white;
+  color: var(--on-primary);
 }
 
 .account-banner-content {
@@ -262,7 +262,7 @@
   justify-content: center;
   font-size: 36px;
   font-weight: 600;
-  color: white;
+  color: var(--on-primary);
   background: rgba(255, 255, 255, 0.2);
 }
 
@@ -274,7 +274,7 @@
   margin: 0 0 4px 0;
   font-size: 28px;
   font-weight: 600;
-  color: white;
+  color: var(--on-primary);
 }
 
 .account-email {
@@ -304,8 +304,8 @@
 
 .edit-profile-button {
   padding: 12px 24px;
-  background: white;
-  color: #667eea;
+  background: var(--white);
+  color: var(--primary-color);
   border: none;
   border-radius: 8px;
   font-size: 15px;
@@ -355,7 +355,7 @@
 }
 
 .dashboard-card {
-  background: white;
+  background: var(--white);
   border-radius: 12px;
   padding: 30px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -392,8 +392,8 @@
 
 .card-button {
   padding: 10px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
   border: none;
   border-radius: 6px;
   font-size: 14px;

@@ -7,7 +7,7 @@
   margin: 0 auto;
   padding: 32px 16px;
   min-height: 100vh;
-  background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+  background: linear-gradient(135deg, #f8f9ff 0%, var(--white) 100%);
 }
 
 .page-backbar {
@@ -15,7 +15,7 @@
 }
 
 .btn-back {
-  background: white;
+  background: var(--white);
   border: 1.5px solid #d1d5db;
   padding: 10px 20px;
   border-radius: 10px;
@@ -54,7 +54,7 @@
   align-items: center;
   margin-bottom: 32px;
   padding: 32px;
-  background: white;
+  background: var(--white);
   border-radius: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
@@ -70,8 +70,8 @@
 }
 
 .add-education-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
   border: none;
   padding: 12px 28px;
   border-radius: 10px;
@@ -111,7 +111,7 @@
 }
 
 .education-form-card {
-  background: white;
+  background: var(--white);
   border-radius: 24px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
   margin-bottom: 48px;
@@ -120,8 +120,8 @@
 }
 
 .form-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
   padding: 32px;
   display: flex;
   justify-content: space-between;
@@ -137,7 +137,7 @@
 .close-button {
   background: rgba(255, 255, 255, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
+  color: var(--on-primary);
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -194,7 +194,7 @@
   font-size: 15px;
   transition: all 0.2s ease;
   font-family: inherit;
-  background: white;
+  background: var(--white);
 }
 
 .form-group input:focus,
@@ -267,7 +267,7 @@
 }
 
 .education-form .cancel-button {
-  background: white;
+  background: var(--white);
   border: 2px solid #d1d5db;
   color: #374151;
   padding: 12px 32px;
@@ -289,9 +289,9 @@
 }
 
 .education-form .save-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
   border: none;
-  color: white;
+  color: var(--on-primary);
   padding: 12px 32px;
   border-radius: 10px;
   font-size: 15px;
@@ -313,7 +313,7 @@
 }
 
 .empty-state {
-  background: white;
+  background: var(--white);
   border-radius: 24px;
   padding: 96px;
   text-align: center;
@@ -358,7 +358,7 @@
 
 .education-item {
   position: relative;
-  background: white;
+  background: var(--white);
   border-radius: 24px;
   margin-bottom: 32px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
@@ -376,7 +376,7 @@
   height: 16px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 50%;
-  box-shadow: 0 0 0 4px white, 0 0 0 6px #667eea;
+  box-shadow: 0 0 0 4px var(--white), 0 0 0 6px #667eea;
   z-index: 2;
 }
 
@@ -387,7 +387,7 @@
 }
 
 .education-item-header {
-  background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+  background: linear-gradient(135deg, #f8f9ff 0%, var(--white) 100%);
   padding: 32px;
   border-bottom: 2px solid #f3f4f6;
   display: flex;
@@ -450,14 +450,14 @@
 }
 
 .status.ongoing {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--success-gradient-start, #10b981) 0%, var(--success-gradient-end, #059669) 100%);
+  color: var(--on-primary);
   box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
 }
 
 .status.completed {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.25);
 }
 
@@ -470,7 +470,7 @@
 .education-item-actions .edit-button {
   width: 44px;
   height: 44px;
-  background: white;
+  background: var(--white);
   border: 2px solid #d1d5db;
   border-radius: 10px;
   cursor: pointer;
@@ -492,7 +492,7 @@
 .education-item-actions .delete-button {
   width: 44px;
   height: 44px;
-  background: white;
+  background: var(--white);
   border: 2px solid #d1d5db;
   border-radius: 10px;
   cursor: pointer;
@@ -513,7 +513,7 @@
 
 .education-item-details {
   padding: 32px;
-  background: white;
+  background: var(--white);
   color: #374151;
   line-height: 1.7;
   font-size: 15px;
@@ -584,8 +584,8 @@
 }
 
 .confirm-yes {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--error-gradient-start, #ef4444) 0%, var(--error-gradient-end, #dc2626) 100%);
+  color: var(--on-primary);
   border: none;
   padding: 10px 24px;
   border-radius: 10px;
@@ -601,7 +601,7 @@
 }
 
 .confirm-no {
-  background: white;
+  background: var(--white);
   border: 2px solid #d1d5db;
   color: #374151;
   padding: 10px 24px;

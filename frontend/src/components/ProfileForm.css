@@ -79,7 +79,6 @@
   border: 5px solid var(--gray-300);
   border-top-color: var(--primary-color);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
 }
 
 .loading-spinner div {
@@ -302,7 +301,7 @@
 }
 
 .modal-dialog {
-  background: white;
+  background: var(--white);
   border-radius: 12px;
   padding: 30px;
   max-width: 450px;
@@ -364,7 +363,7 @@
 
 .modal-confirm-button {
   background-color: #e74c3c;
-  color: white;
+  color: var(--on-primary);
 }
 
 .modal-confirm-button:hover {
@@ -390,7 +389,7 @@
 }
 
 .profile-form-card .cancel-button {
-  background: white;
+  background: var(--white);
   color: #374151;
   border: 2px solid #d1d5db;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
@@ -405,7 +404,7 @@
 
 .profile-form-card .save-button {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  color: var(--on-primary);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
   border: none;
 }
@@ -452,7 +451,7 @@
 
 .profile-form-card .delete-button:hover:not(:disabled) {
   background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
-  color: white;
+  color: var(--on-primary);
   border-color: #991b1b;
   transform: translateY(-3px);
   box-shadow: 0 8px 16px rgba(220, 38, 38, 0.35), 0 4px 8px rgba(220, 38, 38, 0.25);
