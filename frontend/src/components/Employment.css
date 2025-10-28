@@ -118,6 +118,8 @@
   font-size: 16px;
   color: #e53e3e;
   margin-bottom: 12px;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
 }
 
 .empty-state {
@@ -266,7 +268,7 @@ form {
 .checkbox-group label {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   cursor: pointer;
   font-weight: 500;
   line-height: 1;
@@ -850,7 +852,6 @@ form {
 }
 
 .modal-confirm-button {
-.modal-confirm-button {
   background: linear-gradient(135deg, var(--error-gradient-start, #ef4444) 0%, var(--error-gradient-end, #dc2626) 100%);
   color: var(--on-primary);
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
@@ -940,6 +941,19 @@ form {
     width: 100%;
   }
 }
+
+/* Save button style fix/override */
+.employment-form-card .form-actions .save-button {
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  border: none;
+  color: var(--on-primary);
+  padding: 12px 32px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
 /* Additional tighter adjustments for very narrow screens (320px wide up to 767px tall) */
@@ -954,4 +968,8 @@ form {
   .employment-actions { width: 100%; justify-content: center; }
   .add-button, .add-btn, .action-button, .save-button, .cancel-button { min-width: 0; padding: 10px 14px; }
   .employment-description { padding: 12px; }
+}
+.employment-form-card .form-actions .save-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
 }

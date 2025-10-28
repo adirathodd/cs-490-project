@@ -363,6 +363,12 @@
   animation: fadeIn 0.2s ease-out;
 }
 
+/* Delete Account Modal (scoped overrides) */
+.modal-overlay.delete-modal {
+  background-color: rgba(153, 27, 27, 0.35); /* red-800 at 35% */
+  backdrop-filter: blur(2px);
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -380,6 +386,24 @@
   width: 90%;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.3s ease-out;
+}
+
+.modal-dialog.delete-modal {
+  border-radius: 16px;
+  border: 1px solid #fecaca; /* red-200 */
+  box-shadow: 0 24px 64px rgba(153, 27, 27, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.modal-dialog.delete-modal::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: linear-gradient(90deg, #ef4444 0%, #dc2626 50%, #991b1b 100%);
 }
 
 @keyframes slideUp {
@@ -400,6 +424,18 @@
   font-weight: 600;
 }
 
+.modal-dialog.delete-modal h3 {
+  color: #991b1b; /* red-800 */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-dialog.delete-modal h3::before {
+  content: "⚠️";
+  font-size: 20px;
+}
+
 .modal-dialog p {
   margin: 0 0 25px 0;
   color: #666;
@@ -407,10 +443,18 @@
   line-height: 1.5;
 }
 
+.modal-dialog.delete-modal p {
+  color: #4b5563; /* gray-600 */
+}
+
 .modal-actions {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
+}
+
+.delete-modal .modal-actions {
+  margin-top: 16px;
 }
 
 .modal-cancel-button,
@@ -433,6 +477,17 @@
   background-color: #e0e0e0;
 }
 
+.delete-modal .modal-cancel-button {
+  background-color: #ffffff;
+  color: #374151; /* gray-700 */
+  border: 1px solid #e5e7eb; /* gray-200 */
+}
+
+.delete-modal .modal-cancel-button:hover {
+  background-color: #f9fafb; /* gray-50 */
+  border-color: #d1d5db; /* gray-300 */
+}
+
 .modal-confirm-button {
   background-color: #e74c3c;
   color: var(--on-primary);
@@ -441,6 +496,83 @@
 .modal-confirm-button:hover {
   background-color: #c0392b;
   box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+}
+
+.delete-modal .modal-confirm-button {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%);
+  color: #ffffff;
+  box-shadow: 0 8px 20px rgba(220, 38, 38, 0.35);
+}
+
+.delete-modal .modal-confirm-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(220, 38, 38, 0.45);
+}
+
+.delete-modal .modal-confirm-button:disabled {
+  opacity: 0.85;
+}
+
+/* Delete modal: provider toggle buttons */
+.delete-modal .auth-method-toggle {
+  display: flex;
+  gap: 8px;
+  background: #fef2f2; /* red-50 */
+  border: 1px solid #fecaca; /* red-200 */
+  border-radius: 10px;
+  padding: 6px;
+}
+
+.delete-modal .modal-toggle-button {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #991b1b;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.delete-modal .modal-toggle-button:hover {
+  background: #fee2e2; /* red-100 */
+  border-color: #fca5a5; /* red-300 */
+}
+
+.delete-modal .modal-toggle-button.active {
+  background: #dc2626; /* red-600 */
+  color: #ffffff;
+  border-color: #dc2626;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
+
+/* Delete modal: input styles */
+.delete-modal input[type="password"] {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1.5px solid #e5e7eb; /* gray-200 */
+  background: #ffffff;
+  font-size: 15px;
+}
+
+.delete-modal input[type="password"]:focus {
+  outline: none;
+  border-color: #dc2626; /* red-600 */
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.12);
+}
+
+.delete-modal input.error {
+  border-color: #dc2626; /* red-600 */
+}
+
+/* Delete modal: error message box */
+.delete-modal .error-message {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: #991b1b;
 }
 
 .profile-form-card .cancel-button,

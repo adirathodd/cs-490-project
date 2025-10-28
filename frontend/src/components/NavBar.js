@@ -68,7 +68,10 @@ const NavBar = () => {
         onClick={() => setOpen(false)}
         role="navigation"
         aria-hidden={!open}
-      >
+      />
+      <div className="nav-brand">ResumeRocket</div>
+      <button className="nav-toggle" onClick={() => setOpen(v => !v)} aria-label="Toggle navigation">☰</button>
+      <div className={`nav-links ${open ? 'open' : ''}`} onClick={() => setOpen(false)}>
         <NavLink to="/dashboard" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Dashboard</NavLink>
         <NavLink to="/skills" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Skills</NavLink>
         <NavLink to="/employment" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Employment</NavLink>
