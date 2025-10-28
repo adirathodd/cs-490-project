@@ -246,9 +246,16 @@ const Certifications = () => {
   return (
     <div className="certifications-container">
       <div className="certifications-page-header">
-        <a className="back-button" href="/dashboard" aria-label="Back to dashboard" title="Back to dashboard">
+        <div className="page-backbar">
+        <a
+          className="btn-back"
+          href="/dashboard"
+          aria-label="Back to dashboard"
+          title="Back to dashboard"
+        >
           ← Back to Dashboard
         </a>
+      </div>
         <h1 className="certifications-page-title">Certifications</h1>
       </div>
 

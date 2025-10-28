@@ -202,16 +202,21 @@ const Projects = () => {
   return (
     <div className="projects-container">
       <div className="projects-page-header">
-        <button 
-          className="back-button"
-          onClick={() => window.location.href = '/dashboard'}
+        <div className="page-backbar">
+        <a
+          className="btn-back"
+          href="/dashboard"
           aria-label="Back to dashboard"
+          title="Back to dashboard"
         >
           ← Back to Dashboard
-        </button>
+        </a>
+      </div>
         <h1 className="projects-page-title">Projects</h1>
-        <div style={{ marginLeft: 'auto' }}>
-          <a className="btn-back" href="/projects/portfolio" title="View Portfolio">View Portfolio →</a>
+        <div style={{ marginLeft: 'auto', marginTop: '6px' }}>
+          <a className="btn-back" href="/projects/portfolio" title="View Portfolio" style={{ display: 'inline-block', marginTop: '6px' }}>
+            View Portfolio →
+          </a>
         </div>
       </div>
 

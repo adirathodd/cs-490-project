@@ -140,45 +140,7 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard-container">
-      <nav className="dashboard-nav">
-        <div className="nav-brand">
-          <h1>ATS Candidate System</h1>
-        </div>
-        <div className="nav-user">
-          <div className="user-menu-wrapper" ref={userMenuRef}>
-            <button onClick={toggleUserMenu} className="user-menu-button">
-              <span className="user-name">
-                {displayNameToShow || (currentUser?.email ? currentUser.email : 'User')}
-              </span>
-              <span className="dropdown-arrow">{showUserMenu ? '▲' : '▼'}</span>
-            </button>
-            {showUserMenu && (
-              <div className="user-dropdown">
-                <button className="dropdown-item" onClick={handleProfile}>
-                  <Icon name="user" size="md" ariaLabel="My Profile" className="dropdown-icon" />
-                  My Profile
-                </button>
-                <div className="dropdown-divider"></div>
-                <button className="dropdown-item sign-out-item" onClick={handleSignOutClick}>
-                  <Icon name="signout" size="md" ariaLabel="Sign Out" className="dropdown-icon" />
-                  Sign Out
-                </button>
-              </div>
-            )}
-          </div>
-          <div className="signout-wrapper" ref={confirmRef}>
-            {showConfirm && (
-              <div className="signout-confirm">
-                <p>Are you sure you want to sign out?</p>
-                <div className="confirm-actions">
-                  <button className="confirm-yes" onClick={() => handleConfirm(true)}>Yes</button>
-                  <button className="confirm-no" onClick={() => handleConfirm(false)}>No</button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </nav>
+      
 
       <div className="dashboard-content">
         {/* Account Information Banner */}
