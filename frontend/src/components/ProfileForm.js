@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { reauthenticateWithCredential, EmailAuthProvider } from '../services/firebase';
+import { auth, fetchSignInMethodsForEmail, reauthenticateWithCredential, reauthenticateWithPopup, EmailAuthProvider, googleProvider, githubProvider } from '../services/firebase';
 import { authAPI } from '../services/api';
 import ProfilePictureUpload from './ProfilePictureUpload';
 import './ProfileForm.css';
@@ -53,6 +53,16 @@ const ProfileForm = () => {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
+  // Resolve sign-in methods more reliably via Firebase API; fallback to providerData
+  const [resolvedProviders, setResolvedProviders] = useState(null);
+  const providerIds = (resolvedProviders && resolvedProviders.length > 0)
+    ? resolvedProviders
+    : (currentUser?.providerData?.map(p => p.providerId) || []);
+  // If provider data is unavailable (e.g., in tests), assume password provider to preserve behavior
+  const hasPasswordProvider = providerIds.length === 0 || providerIds.includes('password');
+  const primaryFederatedProvider = providerIds.find(id => id !== 'password') || null;
+  const hasBothProviders = !!primaryFederatedProvider && providerIds.includes('password');
+  const [deleteAuthMethod, setDeleteAuthMethod] = useState('password');
   
   const [formData, setFormData] = useState({
     first_name: '',
@@ -301,15 +311,11 @@ const ProfileForm = () => {
     setShowDeleteDialog(false);
     setDeleteError('');
     setDeletePassword('');
+    setResolvedProviders(null);
   };
 
   const handleDeleteConfirm = async () => {
     setDeleteError('');
-    if (!deletePassword) {
-      setDeleteError('Please enter your password to confirm deletion.');
-      return;
-    }
-
     if (!currentUser) {
       setDeleteError('No authenticated user found.');
       return;
@@ -317,14 +323,29 @@ const ProfileForm = () => {
 
     setDeleting(true);
     try {
-      // Force password-based reauthentication only (no popup flows)
-      if (!deletePassword) {
-        setDeleteError('Please enter your password to confirm deletion.');
-        setDeleting(false);
-        return;
+      const methodToUse = hasBothProviders ? deleteAuthMethod : (hasPasswordProvider ? 'password' : 'provider');
+      if (methodToUse === 'password') {
+        // Password re-authentication
+        if (!deletePassword) {
+          setDeleteError('Please enter your password to confirm deletion.');
+          setDeleting(false);
+          return;
+        }
+        const credential = EmailAuthProvider.credential(currentUser.email, deletePassword);
+        await reauthenticateWithCredential(currentUser, credential);
+      } else {
+        // Federated re-authentication via popup
+        let providerInstance = null;
+        if (primaryFederatedProvider === 'google.com') {
+          providerInstance = googleProvider;
+        } else if (primaryFederatedProvider === 'github.com') {
+          providerInstance = githubProvider;
+        }
+        if (!providerInstance) {
+          throw new Error('Unsupported sign-in provider for reauthentication.');
+        }
+        await reauthenticateWithPopup(currentUser, providerInstance);
       }
-      const credential = EmailAuthProvider.credential(currentUser.email, deletePassword);
-      await reauthenticateWithCredential(currentUser, credential);
 
       // Refresh token and store it so backend receives a fresh token
       const token = await currentUser.getIdToken(true);
@@ -350,6 +371,8 @@ const ProfileForm = () => {
         setDeleteError('Please log out and log back in, then try again.');
       } else if (error?.message === 'Network Error' || error?.code === 'ERR_NETWORK') {
         setDeleteError('Network error. Please check your connection and try again.');
+      } else if (error?.code === 'auth/popup-closed-by-user') {
+        setDeleteError('Sign-in popup was closed. Please try again.');
       } else if (error?.response?.data?.error?.message) {
         setDeleteError(error.response.data.error.message);
       } else {
@@ -369,6 +392,38 @@ const ProfileForm = () => {
   const cancelDiscard = () => {
     setShowDiscardDialog(false);
   };
+
+  // When the delete dialog opens, resolve sign-in methods for the user's email for accurate toggle rendering
+  useEffect(() => {
+    let cancelled = false;
+    const resolveMethods = async () => {
+      try {
+        if (showDeleteDialog && currentUser?.email) {
+          const methods = await fetchSignInMethodsForEmail(auth, currentUser.email);
+          if (!cancelled) {
+            setResolvedProviders(methods);
+          }
+        }
+      } catch (e) {
+        // Non-fatal: fall back to providerData
+        // eslint-disable-next-line no-console
+        console.warn('Unable to resolve sign-in methods:', e);
+      }
+    };
+    resolveMethods();
+    return () => { cancelled = true; };
+  }, [showDeleteDialog, currentUser]);
+
+  // Ensure deleteAuthMethod stays consistent with available methods when dialog opens/changes
+  useEffect(() => {
+    if (showDeleteDialog) {
+      if (hasBothProviders) {
+        setDeleteAuthMethod('password');
+      } else {
+        setDeleteAuthMethod(hasPasswordProvider ? 'password' : 'provider');
+      }
+    }
+  }, [showDeleteDialog, hasBothProviders, hasPasswordProvider]);
 
   if (authLoading || fetchingProfile || !currentUser) {
     return (
@@ -737,23 +792,68 @@ const ProfileForm = () => {
               <p>
                 We will send an email with a confirmation link. Your account and all associated data will be deleted immediately and permanently only after you confirm via that link.
               </p>
-              <p>Please confirm by entering your password:</p>
-              <input
-                type="password"
-                value={deletePassword}
-                onChange={(e) => setDeletePassword(e.target.value)}
-                placeholder="Your password"
-                className={deleteError ? 'error' : ''}
-              />
-              {deleteError && <div className="error-message">{deleteError}</div>}
-              <div className="modal-actions">
-                <button className="modal-cancel-button" onClick={closeDeleteDialog} disabled={deleting}>
-                  Cancel
-                </button>
-                <button className="modal-confirm-button" onClick={handleDeleteConfirm} disabled={deleting}>
-                  {deleting ? 'Sending...' : 'Send confirmation email'}
-                </button>
-              </div>
+              {hasBothProviders && (
+                <div className="auth-method-toggle" style={{ display: 'flex', gap: 8, margin: '8px 0 16px' }}>
+                  <button
+                    type="button"
+                    className={`modal-toggle-button ${deleteAuthMethod === 'password' ? 'active' : ''}`}
+                    onClick={() => { setDeleteError(''); setDeleteAuthMethod('password'); }}
+                    disabled={deleting}
+                  >
+                    Verify with Password
+                  </button>
+                  <button
+                    type="button"
+                    className={`modal-toggle-button ${deleteAuthMethod === 'provider' ? 'active' : ''}`}
+                    onClick={() => { setDeleteError(''); setDeleteAuthMethod('provider'); }}
+                    disabled={deleting}
+                  >
+                    Verify with {primaryFederatedProvider === 'google.com' ? 'Google' : 'GitHub'}
+                  </button>
+                </div>
+              )}
+              {(() => {
+                const methodToUse = hasBothProviders ? deleteAuthMethod : (hasPasswordProvider ? 'password' : 'provider');
+                if (methodToUse === 'provider') {
+                  return (
+                    <>
+                      <p>
+                        You signed in with {primaryFederatedProvider === 'google.com' ? 'Google' : primaryFederatedProvider === 'github.com' ? 'GitHub' : 'a provider'}. Please verify your identity to continue.
+                      </p>
+                      {deleteError && <div className="error-message">{deleteError}</div>}
+                      <div className="modal-actions">
+                        <button className="modal-cancel-button" onClick={closeDeleteDialog} disabled={deleting}>
+                          Cancel
+                        </button>
+                        <button className="modal-confirm-button" onClick={handleDeleteConfirm} disabled={deleting}>
+                          {deleting ? 'Verifying…' : `Verify with ${primaryFederatedProvider === 'google.com' ? 'Google' : 'GitHub'}`}
+                        </button>
+                      </div>
+                    </>
+                  );
+                }
+                return (
+                  <>
+                    <p>Please confirm by entering your password:</p>
+                    <input
+                      type="password"
+                      value={deletePassword}
+                      onChange={(e) => setDeletePassword(e.target.value)}
+                      placeholder="Your password"
+                      className={deleteError ? 'error' : ''}
+                    />
+                    {deleteError && <div className="error-message">{deleteError}</div>}
+                    <div className="modal-actions">
+                      <button className="modal-cancel-button" onClick={closeDeleteDialog} disabled={deleting}>
+                        Cancel
+                      </button>
+                      <button className="modal-confirm-button" onClick={handleDeleteConfirm} disabled={deleting}>
+                        {deleting ? 'Sending...' : 'Send confirmation email'}
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}
