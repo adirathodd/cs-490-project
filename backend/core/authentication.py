@@ -102,6 +102,13 @@ class FirebaseAuthentication(authentication.BaseAuthentication):
                 logger.info(f"Created new user from Firebase token: {email}")
                 # Create candidate profile automatically
                 from core.models import CandidateProfile
+                # Create application-level user account record with UUID
+                try:
+                    from core.models import UserAccount
+                    UserAccount.objects.create(user=user, email=(email or '').lower())
+                except Exception:
+                    # Not fatal if creation fails; will be retried in later flows
+                    pass
                 # Try to fetch additional info from Firebase user record (e.g., photo URL)
                 try:
                     firebase_user = firebase_auth.get_user(uid)
