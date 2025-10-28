@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { reauthenticateWithCredential, reauthenticateWithPopup, EmailAuthProvider, googleProvider, githubProvider } from '../services/firebase';
+import { auth, fetchSignInMethodsForEmail, reauthenticateWithCredential, reauthenticateWithPopup, EmailAuthProvider, googleProvider, githubProvider } from '../services/firebase';
 import { authAPI } from '../services/api';
 import ProfilePictureUpload from './ProfilePictureUpload';
 import './ProfileForm.css';
@@ -53,12 +53,16 @@ const ProfileForm = () => {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
-  const providers = currentUser?.providerData?.map(p => p.providerId) || [];
+  // Resolve sign-in methods more reliably via Firebase API; fallback to providerData
+  const [resolvedProviders, setResolvedProviders] = useState(null);
+  const providerIds = (resolvedProviders && resolvedProviders.length > 0)
+    ? resolvedProviders
+    : (currentUser?.providerData?.map(p => p.providerId) || []);
   // If provider data is unavailable (e.g., in tests), assume password provider to preserve behavior
-  const hasPasswordProvider = providers.length === 0 || providers.includes('password');
-  const primaryFederatedProvider = providers.find(id => id !== 'password') || null;
-  const hasBothProviders = !!primaryFederatedProvider && providers.includes('password');
-  const [deleteAuthMethod, setDeleteAuthMethod] = useState(hasPasswordProvider ? 'password' : 'provider');
+  const hasPasswordProvider = providerIds.length === 0 || providerIds.includes('password');
+  const primaryFederatedProvider = providerIds.find(id => id !== 'password') || null;
+  const hasBothProviders = !!primaryFederatedProvider && providerIds.includes('password');
+  const [deleteAuthMethod, setDeleteAuthMethod] = useState('password');
   
   const [formData, setFormData] = useState({
     first_name: '',
@@ -307,6 +311,7 @@ const ProfileForm = () => {
     setShowDeleteDialog(false);
     setDeleteError('');
     setDeletePassword('');
+    setResolvedProviders(null);
   };
 
   const handleDeleteConfirm = async () => {
@@ -387,6 +392,38 @@ const ProfileForm = () => {
   const cancelDiscard = () => {
     setShowDiscardDialog(false);
   };
+
+  // When the delete dialog opens, resolve sign-in methods for the user's email for accurate toggle rendering
+  useEffect(() => {
+    let cancelled = false;
+    const resolveMethods = async () => {
+      try {
+        if (showDeleteDialog && currentUser?.email) {
+          const methods = await fetchSignInMethodsForEmail(auth, currentUser.email);
+          if (!cancelled) {
+            setResolvedProviders(methods);
+          }
+        }
+      } catch (e) {
+        // Non-fatal: fall back to providerData
+        // eslint-disable-next-line no-console
+        console.warn('Unable to resolve sign-in methods:', e);
+      }
+    };
+    resolveMethods();
+    return () => { cancelled = true; };
+  }, [showDeleteDialog, currentUser]);
+
+  // Ensure deleteAuthMethod stays consistent with available methods when dialog opens/changes
+  useEffect(() => {
+    if (showDeleteDialog) {
+      if (hasBothProviders) {
+        setDeleteAuthMethod('password');
+      } else {
+        setDeleteAuthMethod(hasPasswordProvider ? 'password' : 'provider');
+      }
+    }
+  }, [showDeleteDialog, hasBothProviders, hasPasswordProvider]);
 
   if (authLoading || fetchingProfile || !currentUser) {
     return (
