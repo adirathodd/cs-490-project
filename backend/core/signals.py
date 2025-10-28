@@ -1,6 +1,10 @@
 import logging
 from django.dispatch import receiver
 from django.contrib.auth.signals import user_logged_in, user_login_failed, user_logged_out
+from django.db.models.signals import post_save
+from django.contrib.auth import get_user_model
+
+from core.models import UserAccount
 
 logger = logging.getLogger(__name__)
 
@@ -71,3 +75,21 @@ def log_user_logged_out(sender, request, user, **kwargs):
         "AUTH logout user_id=%s username=%s ip=%s",
         getattr(user, 'id', None), getattr(user, 'username', None), remote_addr
     )
+
+
+@receiver(post_save, sender=get_user_model())
+def ensure_useraccount_exists(sender, instance, created, **kwargs):
+    """Ensure a UserAccount record exists for every Django User."""
+    try:
+        if created:
+            # Create linked UserAccount with normalized email
+            UserAccount.objects.get_or_create(user=instance, defaults={'email': (getattr(instance, 'email', '') or '').lower()})
+        else:
+            # Keep email in sync (lowercased)
+            acc = getattr(instance, 'account', None)
+            if acc and acc.email != (instance.email or '').lower():
+                acc.email = (instance.email or '').lower()
+                acc.save(update_fields=['email'])
+    except Exception:
+        # Avoid breaking auth flows due to side-effect errors
+        pass

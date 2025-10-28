@@ -25,7 +25,7 @@ from core.serializers import (
     ProjectMediaSerializer,
     WorkExperienceSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (
@@ -225,9 +225,22 @@ def register_user(request):
                 first_name=first_name,
                 last_name=last_name,
             )
+            # Store password using bcrypt (configured in settings)
+            try:
+                user.set_password(password)
+                user.save(update_fields=['password'])
+            except Exception:
+                # Non-fatal: password storage should not block registration if Firebase created
+                logger.warning("Failed to set local password hash for user %s", email)
             
             # Create candidate profile
             profile = CandidateProfile.objects.create(user=user)
+
+            # Create application-level UserAccount record with UUID id and normalized email
+            try:
+                UserAccount.objects.create(user=user, email=email)
+            except Exception as e:
+                logger.warning(f"Failed to create UserAccount for {email}: {e}")
             
             logger.info(f"Created Django user and profile for: {email}")
         except Exception as e:
@@ -357,6 +370,11 @@ def login_user(request):
             )
             profile = CandidateProfile.objects.create(user=user)
             logger.info(f"Created Django user from existing Firebase user: {email}")
+            # Ensure UserAccount exists
+            try:
+                UserAccount.objects.get_or_create(user=user, defaults={'email': (email or '').lower()})
+            except Exception:
+                pass
         
         # Generate custom token
         try:
