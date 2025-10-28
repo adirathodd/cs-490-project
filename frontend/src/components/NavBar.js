@@ -56,7 +56,7 @@ const NavBar = () => {
 
   return (
     <nav className="nav">
-      <div className="nav-brand">ATS</div>
+      <div className="nav-brand">ResumeRocket</div>
       <button className="nav-toggle" onClick={() => setOpen(v => !v)} aria-label="Toggle navigation">☰</button>
       <div className={`nav-links ${open ? 'open' : ''}`} onClick={() => setOpen(false)}>
         <NavLink to="/dashboard" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Dashboard</NavLink>
