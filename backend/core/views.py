@@ -435,6 +435,9 @@ def get_current_user(request):
     """
     try:
         user = request.user
+        
+        # Refresh user from database to get latest changes (e.g., after profile update)
+        user.refresh_from_db()
 
         profile = CandidateProfile.objects.get(user=user)
 
