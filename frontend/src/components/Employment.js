@@ -364,16 +364,18 @@ const Employment = () => {
                   disabled={formData.is_current}
                   required={!formData.is_current}
                 />
-                <label className="inline-checkbox" htmlFor="is_current">
-                  <input
-                    id="is_current"
-                    type="checkbox"
-                    name="is_current"
-                    checked={formData.is_current}
-                    onChange={handleInputChange}
-                  />
-                  <span>I currently work here</span>
-                </label>
+                {/* Moved checkbox under End Date for better alignment */}
+                <div className="checkbox-group">
+                  <label>
+                    <input
+                      type="checkbox"
+                      name="is_current"
+                      checked={formData.is_current}
+                      onChange={handleInputChange}
+                    />
+                    <span>I currently work here</span>
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -471,7 +473,7 @@ const Employment = () => {
                 Cancel
               </button>
               <button type="submit" className="save-button">
-                {editingId ? 'Update' : 'Save'} Employment
+                Save
               </button>
             </div>
           </form>

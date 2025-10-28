@@ -108,23 +108,9 @@
 }
 
 .error-message {
-.add-button {
-  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
-  color: var(--on-primary);
-  border: none;
-  padding: 12px 24px;
-  border-radius: 10px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-.add-button:hover {
-  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
-  transform: translateY(-1px);
-}
-  font-size: 18px;
-  color: #6b7280;
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
 }
 
 .empty-state {
@@ -273,7 +259,7 @@ form {
 .checkbox-group label {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   cursor: pointer;
   font-weight: 500;
   line-height: 1;
@@ -434,7 +420,6 @@ form {
   border-color: #9ca3af;
 }
 
-.save-button {
 .save-button {
   background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
   border: none;
@@ -853,7 +838,6 @@ form {
 }
 
 .modal-confirm-button {
-.modal-confirm-button {
   background: linear-gradient(135deg, var(--error-gradient-start, #ef4444) 0%, var(--error-gradient-end, #dc2626) 100%);
   color: var(--on-primary);
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
@@ -943,5 +927,22 @@ form {
     width: 100%;
   }
 }
+
+/* Save button style fix/override */
+.employment-form-card .form-actions .save-button {
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  border: none;
+  color: var(--on-primary);
+  padding: 12px 32px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
+
+.employment-form-card .form-actions .save-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
 }

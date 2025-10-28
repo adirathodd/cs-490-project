@@ -786,9 +786,9 @@ const ProfileForm = () => {
         </form>
         {/* Delete Account Confirmation Dialog */}
         {showDeleteDialog && (
-          <div className="modal-overlay">
-            <div className="modal-dialog">
-              <h3 style={{ color: '#b00020' }}>Delete Account — Confirmation Required</h3>
+          <div className="modal-overlay delete-modal">
+            <div className="modal-dialog delete-modal">
+              <h3>Delete Account — Confirmation Required</h3>
               <p>
                 We will send an email with a confirmation link. Your account and all associated data will be deleted immediately and permanently only after you confirm via that link.
               </p>
