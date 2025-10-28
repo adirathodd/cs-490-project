@@ -13,12 +13,12 @@ const Dashboard = () => {
   const confirmRef = useRef(null);
   const userMenuRef = useRef(null);
 
-  // Prefer the Firebase provider displayName (e.g., GitHub username),
-  // then API full_name, then first/last name from profile, then email as a last resort.
+  // Prefer the user's saved profile name first (what they edited),
+  // then fall back to the Firebase provider displayName, then email.
   const displayName = (
-    (currentUser?.displayName && currentUser.displayName.trim()) ||
     (userProfile?.full_name && userProfile.full_name.trim()) ||
     (((userProfile?.first_name || userProfile?.last_name) && `${userProfile.first_name || ''} ${userProfile.last_name || ''}`.trim()) || '') ||
+    (currentUser?.displayName && currentUser.displayName.trim()) ||
     currentUser?.email
   );
 
