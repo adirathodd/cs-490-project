@@ -37,7 +37,7 @@ const US_STATES = [
 ];
 
 const ProfileForm = () => {
-  const { currentUser, loading: authLoading, signOut } = useAuth();
+  const { currentUser, loading: authLoading, signOut, refreshUserProfile } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [fetchingProfile, setFetchingProfile] = useState(true);
@@ -225,6 +225,11 @@ const ProfileForm = () => {
       // Update original data after successful save
       setOriginalData(formData);
       setHasUnsavedChanges(false);
+      
+      // Refresh the user profile in AuthContext to update the banner
+      if (refreshUserProfile) {
+        await refreshUserProfile();
+      }
       
       // Clear success message after 5 seconds
       setTimeout(() => setSuccessMessage(''), 5000);

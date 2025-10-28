@@ -97,6 +97,28 @@ export const AuthProvider = ({ children, value: injectedValue }) => {
     return null;
   };
 
+  const refreshUserProfile = async () => {
+    if (currentUser) {
+      try {
+        const profileData = await authAPI.getCurrentUser();
+
+        // Preserve photoURL from Firebase if available
+        if (currentUser.photoURL) {
+          const backendProfile = profileData?.profile || {};
+          if (!backendProfile.portfolio_url) {
+            backendProfile.portfolio_url = currentUser.photoURL;
+          }
+          setUserProfile(backendProfile);
+        } else {
+          setUserProfile(profileData.profile);
+        }
+      } catch (error) {
+        console.error('Error refreshing user profile:', error);
+        throw error;
+      }
+    }
+  };
+
   const value = injectedValue || {
     currentUser,
     userProfile,
@@ -104,6 +126,7 @@ export const AuthProvider = ({ children, value: injectedValue }) => {
     error,
     signOut,
     refreshToken,
+    refreshUserProfile,
     setUserProfile,
   };
 
