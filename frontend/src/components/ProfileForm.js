@@ -731,27 +731,75 @@ const ProfileForm = () => {
         </form>
         {/* Delete Account Confirmation Dialog */}
         {showDeleteDialog && (
-          <div className="modal-overlay">
-            <div className="modal-dialog">
-              <h3 style={{ color: '#b00020' }}>Delete Account — Confirmation Required</h3>
-              <p>
-                We will send an email with a confirmation link. Your account and all associated data will be deleted immediately and permanently only after you confirm via that link.
-              </p>
-              <p>Please confirm by entering your password:</p>
-              <input
-                type="password"
-                value={deletePassword}
-                onChange={(e) => setDeletePassword(e.target.value)}
-                placeholder="Your password"
-                className={deleteError ? 'error' : ''}
-              />
-              {deleteError && <div className="error-message">{deleteError}</div>}
+          <div className="modal-overlay" onClick={closeDeleteDialog}>
+            <div className="modal-dialog delete-account-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <div className="modal-icon-container">
+                  <svg className="modal-warning-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <h3 className="modal-title">Delete Account</h3>
+                <p className="modal-subtitle">This action requires confirmation</p>
+              </div>
+              
+              <div className="modal-content">
+                <div className="warning-box">
+                  <svg className="warning-box-icon" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  <div>
+                    <p className="warning-box-title">What happens next?</p>
+                    <p className="warning-box-text">
+                      We'll send a confirmation link to your email. Your account and all associated data will be permanently deleted only after you confirm via that link.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="modal-input-group">
+                  <label className="modal-input-label">
+                    Confirm your password to continue
+                  </label>
+                  <input
+                    type="password"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    placeholder="Enter your password"
+                    className={`modal-password-input ${deleteError ? 'error' : ''}`}
+                    autoFocus
+                  />
+                  {deleteError && (
+                    <div className="modal-error-message">
+                      <svg className="modal-error-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                      {deleteError}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="modal-actions">
                 <button className="modal-cancel-button" onClick={closeDeleteDialog} disabled={deleting}>
                   Cancel
                 </button>
                 <button className="modal-confirm-button" onClick={handleDeleteConfirm} disabled={deleting}>
-                  {deleting ? 'Sending...' : 'Send confirmation email'}
+                  {deleting ? (
+                    <>
+                      <svg className="spinner-icon" viewBox="0 0 24 24" fill="none">
+                        <circle className="spinner-circle" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="spinner-path" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="send-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      Send Confirmation Email
+                    </>
+                  )}
                 </button>
               </div>
             </div>

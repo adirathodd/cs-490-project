@@ -189,13 +189,19 @@ const Employment = () => {
         return;
       }
 
+      // Prepare data for submission - remove end_date if is_current is true or if it's empty
+      const submitData = {
+        ...formData,
+        end_date: formData.is_current || !formData.end_date ? null : formData.end_date
+      };
+
       if (editingId) {
         // Update existing entry
-        await authAPI.updateEmployment(editingId, formData);
+        await authAPI.updateEmployment(editingId, submitData);
         setSuccess('Employment entry updated successfully!');
       } else {
         // Create new entry
-        await authAPI.createEmployment(formData);
+        await authAPI.createEmployment(submitData);
         setSuccess('Employment entry added successfully!');
       }
 
@@ -467,7 +473,7 @@ const Employment = () => {
                 Cancel
               </button>
               <button type="submit" className="save-button">
-                {editingId ? 'Update' : 'Save'} Employment
+                {editingId ? 'Update' : 'Save'}
               </button>
             </div>
           </form>

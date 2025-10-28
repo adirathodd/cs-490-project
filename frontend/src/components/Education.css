@@ -225,23 +225,34 @@
 .inline-checkbox {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   cursor: pointer;
   font-weight: 500;
   margin-top: 12px;
+  user-select: none;
 }
 
 .inline-checkbox input[type="checkbox"] {
   width: 20px;
   height: 20px;
+  min-width: 20px;
+  min-height: 20px;
   cursor: pointer;
   accent-color: #667eea;
+  margin: 0 8px 0 0;
+  flex-shrink: 0;
+  vertical-align: middle;
+  position: relative;
+  top: 0;
 }
 
 .checkbox-label-text {
   font-size: 14px;
   color: #6b7280;
   font-weight: 500;
+  line-height: 20px;
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .error-message {

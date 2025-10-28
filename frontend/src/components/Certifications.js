@@ -48,6 +48,7 @@ const Certifications = () => {
   const [orgActiveIndex, setOrgActiveIndex] = useState(-1);
   const orgBoxRef = useRef(null);
   const orgInputRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -136,6 +137,40 @@ const Certifications = () => {
       setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
       if (fieldErrors[name]) {
         setFieldErrors((prev) => { const n = { ...prev }; delete n[name]; return n; });
+      }
+    }
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      // Check if file type is acceptable
+      const acceptedTypes = ['.pdf', '.jpg', '.jpeg', '.png'];
+      const fileExt = '.' + file.name.split('.').pop().toLowerCase();
+      if (acceptedTypes.includes(fileExt)) {
+        setForm((prev) => ({ ...prev, document: file }));
       }
     }
   };
@@ -364,10 +399,6 @@ const Certifications = () => {
               {(categories || []).map((c) => (<option key={c} value={c}>{c}</option>))}
             </select>
           </div>
-          <div className="form-group">
-            <label htmlFor="document">Upload Document</label>
-            <input id="document" name="document" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={onChange} />
-          </div>
         </div>
 
         <div className="form-row">
@@ -390,6 +421,44 @@ const Certifications = () => {
               </div>
             )}
           </div>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="document">Upload Document</label>
+          <div 
+            className={`file-upload-wrapper ${isDragging ? 'dragging' : ''}`}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
+            <input 
+              id="document" 
+              name="document" 
+              type="file" 
+              accept=".pdf,.jpg,.jpeg,.png" 
+              onChange={onChange}
+              className="file-input-hidden"
+            />
+            <label htmlFor="document" className="file-upload-button">
+              <Icon name="upload" size="md" />
+              <span className="file-upload-text">
+                {form.document 
+                  ? form.document.name
+                  : 'Choose file or drag and drop'}
+              </span>
+              <span className="file-upload-hint">PDF, JPG, PNG up to 10MB</span>
+            </label>
+          </div>
+          {form.document && (
+            <div className="preview-grid">
+              <div className="preview-item">
+                <Icon name="image" size="sm" />
+                <span>{form.document.name}</span>
+                <span className="file-size">{(form.document.size / 1024).toFixed(1)} KB</span>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="form-actions">

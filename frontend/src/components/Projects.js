@@ -37,6 +37,7 @@ const Projects = () => {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -96,6 +97,37 @@ const Projects = () => {
     setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
     if (fieldErrors[name]) {
       setFieldErrors((prev) => { const n = { ...prev }; delete n[name]; return n; });
+    }
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    const files = Array.from(e.dataTransfer.files || []).filter(
+      file => file.type.startsWith('image/')
+    );
+    
+    if (files.length > 0) {
+      setForm((prev) => ({ ...prev, media: files }));
     }
   };
 
@@ -338,11 +370,40 @@ const Projects = () => {
 
         <div className="form-group">
           <label htmlFor="media">Screenshots (images)</label>
-          <input id="media" type="file" name="media" multiple accept="image/*" onChange={onChange} />
+          <div 
+            className={`file-upload-wrapper ${isDragging ? 'dragging' : ''}`}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
+            <input 
+              id="media" 
+              type="file" 
+              name="media" 
+              multiple 
+              accept="image/*" 
+              onChange={onChange}
+              className="file-input-hidden"
+            />
+            <label htmlFor="media" className="file-upload-button">
+              <Icon name="upload" size="md" />
+              <span className="file-upload-text">
+                {form.media?.length > 0 
+                  ? `${form.media.length} file${form.media.length > 1 ? 's' : ''} selected` 
+                  : 'Choose files or drag and drop'}
+              </span>
+              <span className="file-upload-hint">PNG, JPG, GIF up to 10MB each</span>
+            </label>
+          </div>
           {form.media?.length > 0 && (
             <div className="preview-grid">
               {form.media.map((file, idx) => (
-                <div key={idx} className="preview-item">{file.name}</div>
+                <div key={idx} className="preview-item">
+                  <Icon name="image" size="sm" />
+                  <span>{file.name}</span>
+                  <span className="file-size">{(file.size / 1024).toFixed(1)} KB</span>
+                </div>
               ))}
             </div>
           )}

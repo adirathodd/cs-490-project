@@ -72,9 +72,26 @@ const Education = () => {
 
   const onChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    const newValue = type === 'checkbox' ? checked : value;
+    
+    setForm((prev) => {
+      const updated = { ...prev, [name]: newValue };
+      
+      // If currently_enrolled is checked, clear graduation_date
+      if (name === 'currently_enrolled' && checked) {
+        updated.graduation_date = '';
+      }
+      
+      return updated;
+    });
+    
     if (fieldErrors[name]) {
       setFieldErrors((prev) => { const n = { ...prev }; delete n[name]; return n; });
+    }
+    
+    // Clear graduation_date error if currently_enrolled is checked
+    if (name === 'currently_enrolled' && checked && fieldErrors.graduation_date) {
+      setFieldErrors((prev) => { const n = { ...prev }; delete n.graduation_date; return n; });
     }
   };
 
