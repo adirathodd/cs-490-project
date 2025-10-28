@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { reauthenticateWithCredential, EmailAuthProvider, updatePassword, sendPasswordResetEmail } from '../services/firebase';
+import { reauthenticateWithCredential, EmailAuthProvider } from '../services/firebase';
 import { authAPI } from '../services/api';
 import ProfilePictureUpload from './ProfilePictureUpload';
 import './ProfileForm.css';
@@ -52,13 +52,6 @@ const ProfileForm = () => {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
-  // Change password state
-  const [pwdCurrent, setPwdCurrent] = useState('');
-  const [pwdNew, setPwdNew] = useState('');
-  const [pwdConfirm, setPwdConfirm] = useState('');
-  const [pwdLoading, setPwdLoading] = useState(false);
-  const [pwdError, setPwdError] = useState('');
-  const [pwdSuccess, setPwdSuccess] = useState('');
   
   const [formData, setFormData] = useState({
     first_name: '',
@@ -75,8 +68,6 @@ const ProfileForm = () => {
   const [characterCount, setCharacterCount] = useState(0);
   const MAX_SUMMARY_LENGTH = 500;
   const MAX_HEADLINE_LENGTH = 160;
-
-  const hasPasswordProvider = !!(currentUser?.providerData || []).find(p => p.providerId === 'password');
 
   useEffect(() => {
     if (currentUser && !isInitialized) {
@@ -280,96 +271,6 @@ const ProfileForm = () => {
     }
   };
 
-  const validateNewPassword = (value) => {
-    if (!value || value.length < 8) return 'Password must be at least 8 characters long';
-    if (!/[A-Z]/.test(value)) return 'Password must contain at least one uppercase letter';
-    if (!/[a-z]/.test(value)) return 'Password must contain at least one lowercase letter';
-    if (!/\d/.test(value)) return 'Password must contain at least one number';
-    return '';
-  };
-
-  const handleChangePassword = async (e) => {
-    e.preventDefault();
-    setPwdError('');
-    setPwdSuccess('');
-
-    if (!hasPasswordProvider) {
-      setPwdError('Your account uses Google Sign-In. Use the "Email me a set-password link" below.');
-      return;
-    }
-
-    if (!pwdCurrent) {
-      setPwdError('Please enter your current password');
-      return;
-    }
-    const pwdErr = validateNewPassword(pwdNew);
-    if (pwdErr) {
-      setPwdError(pwdErr);
-      return;
-    }
-    if (pwdNew !== pwdConfirm) {
-      setPwdError('New password and confirmation do not match');
-      return;
-    }
-
-    if (!currentUser?.email) {
-      setPwdError('No authenticated user');
-      return;
-    }
-
-    setPwdLoading(true);
-    try {
-      const credential = EmailAuthProvider.credential(currentUser.email, pwdCurrent);
-      await reauthenticateWithCredential(currentUser, credential);
-      await updatePassword(currentUser, pwdNew);
-
-      // Refresh token so backend gets a fresh ID token
-      const token = await currentUser.getIdToken(true);
-      localStorage.setItem('firebaseToken', token);
-
-      setPwdSuccess('Password updated successfully.');
-      setPwdCurrent('');
-      setPwdNew('');
-      setPwdConfirm('');
-    } catch (error) {
-      // Handle common errors
-      const code = error?.code || '';
-      if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-        setPwdError('Current password is incorrect.');
-      } else if (code === 'auth/weak-password') {
-        setPwdError('New password is too weak.');
-      } else if (code === 'auth/requires-recent-login') {
-        setPwdError('Please sign out and sign back in, then try again.');
-      } else {
-        setPwdError('Failed to update password. Please try again.');
-      }
-    } finally {
-      setPwdLoading(false);
-    }
-  };
-
-  const handleSendSetPasswordEmail = async () => {
-    setPwdError('');
-    setPwdSuccess('');
-    if (!currentUser?.email) {
-      setPwdError('No authenticated user');
-      return;
-    }
-    setPwdLoading(true);
-    try {
-      await sendPasswordResetEmail(currentUser.auth, currentUser.email);
-      setPwdSuccess('We sent an email with a link to set your password.');
-    } catch (error) {
-      const code = error?.code || '';
-      if (code === 'auth/too-many-requests') {
-        setPwdError('Too many requests. Please try again later.');
-      } else {
-        setPwdError('Failed to send email. Please try again.');
-      }
-    } finally {
-      setPwdLoading(false);
-    }
-  };
 
   const handleCancel = () => {
     // Check if there are unsaved changes
@@ -729,78 +630,7 @@ const ProfileForm = () => {
               <small className="field-help">LinkedIn-style professional title</small>
             </div>
 
-              {/* Change Password Section */}
-              <div className="form-section">
-                <h3>
-                  <span style={{fontSize: '1.5rem'}}>🔒</span>
-                  Change Password
-                </h3>
-
-                {pwdSuccess && (
-                  <div className="success-banner">
-                    <span className="success-icon">✓</span>
-                    {pwdSuccess}
-                  </div>
-                )}
-                {pwdError && (
-                  <div className="error-banner">
-                    <span className="error-icon">✕</span>
-                    {pwdError}
-                  </div>
-                )}
-
-                {hasPasswordProvider ? (
-                  <form onSubmit={handleChangePassword} className="password-form">
-                    <div className="form-group">
-                      <label htmlFor="pwdCurrent">Current Password</label>
-                      <input
-                        type="password"
-                        id="pwdCurrent"
-                        value={pwdCurrent}
-                        onChange={(e) => setPwdCurrent(e.target.value)}
-                        disabled={pwdLoading}
-                        placeholder="Enter current password"
-                      />
-                    </div>
-                    <div className="form-row">
-                      <div className="form-group">
-                        <label htmlFor="pwdNew">New Password</label>
-                        <input
-                          type="password"
-                          id="pwdNew"
-                          value={pwdNew}
-                          onChange={(e) => setPwdNew(e.target.value)}
-                          disabled={pwdLoading}
-                          placeholder="At least 8 chars, mixed case + number"
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label htmlFor="pwdConfirm">Confirm New Password</label>
-                        <input
-                          type="password"
-                          id="pwdConfirm"
-                          value={pwdConfirm}
-                          onChange={(e) => setPwdConfirm(e.target.value)}
-                          disabled={pwdLoading}
-                          placeholder="Re-enter new password"
-                        />
-                      </div>
-                    </div>
-                    <div className="form-actions">
-                      <button type="submit" className="save-button" disabled={pwdLoading}>
-                        {pwdLoading ? 'Updating…' : 'Update Password'}
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <div>
-                    <p>Your account currently uses Google Sign-In. You can set a password to also sign in with email/password.</p>
-                    <button type="button" className="save-button" onClick={handleSendSetPasswordEmail} disabled={pwdLoading}>
-                      {pwdLoading ? 'Sending…' : 'Email me a set-password link'}
-                    </button>
-                  </div>
-                )}
-              </div>
+              {/* Change Password functionality removed as requested */}
 
             <div className="form-group">
               <label htmlFor="summary">
