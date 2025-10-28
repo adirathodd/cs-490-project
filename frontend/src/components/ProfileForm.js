@@ -235,19 +235,7 @@ const ProfileForm = () => {
       setOriginalData(formData);
       setHasUnsavedChanges(false);
 
-      // Refresh global userProfile so other views (e.g., dashboard) immediately reflect changes
-      try {
-        const refreshed = await authAPI.getCurrentUser();
-        if (refreshed && refreshed.profile) {
-          setUserProfile(refreshed.profile);
-        }
-      } catch (e) {
-        // Non-fatal if refresh fails; UI already shows success
-        // eslint-disable-next-line no-console
-        console.warn('Profile refresh after save failed:', e);
-      }
-      
-      // Refresh the user profile in AuthContext to update the banner
+      // Refresh the user profile in AuthContext to update the banner and other views
       if (refreshUserProfile) {
         await refreshUserProfile();
       }
