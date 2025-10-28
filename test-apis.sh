@@ -7,9 +7,9 @@
 # ================= CONFIG =================
 base="http://localhost:8000/api"
 apiKey=""      # Optional if you already set idToken
-email="adirathod99@gmail.com"       # e.g., user@example.com
-password="James007!"   # e.g., supersecret
-idToken="eyJhbGciOiJSUzI1NiIsImtpZCI6IjdlYTA5ZDA1NzI2MmU2M2U2MmZmNzNmMDNlMDRhZDI5ZDg5Zjg5MmEiLCJ0eXAiOiJKV1QifQ.eyJuYW1lIjoiQWRpIFJhdGhvZCIsImlzcyI6Imh0dHBzOi8vc2VjdXJldG9rZW4uZ29vZ2xlLmNvbS9hdHMtY2FuZGlkYXRlLXN5c3RlbSIsImF1ZCI6ImF0cy1jYW5kaWRhdGUtc3lzdGVtIiwiYXV0aF90aW1lIjoxNzYxNjkwOTUzLCJ1c2VyX2lkIjoiVU9CSFV4cmhqdVIyQzhaMkdiMFNLMFU1NEVxMiIsInN1YiI6IlVPQkhVeHJoanVSMkM4WjJHYjBTSzBVNTRFcTIiLCJpYXQiOjE3NjE2OTA5NTMsImV4cCI6MTc2MTY5NDU1MywiZW1haWwiOiJhZGlyYXRob2Q5OUBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImZpcmViYXNlIjp7ImlkZW50aXRpZXMiOnsiZW1haWwiOlsiYWRpcmF0aG9kOTlAZ21haWwuY29tIl19LCJzaWduX2luX3Byb3ZpZGVyIjoicGFzc3dvcmQifX0.S5CAzvvbI5d_FSAkoR8iPqjhMlh6s7AyFJSuPfdtvVQOm2LKGO-EBHXedjOknMesulU2oGjH9NjZxDaoJU67upgpPiEkth2t5VEhHMXitLgIqwYLHUb_HcQ1et9BAXVvT_q5wB3QuQx4bANbPx1Q8G3qvd7DPrP9WVObmLH4mK02RIJQ9s7c2sSMalxj7x0FyzXjttmdKkcC4HFtsMessn7cWGXinRojXLl-zlOcUEJJJDry-g75t8sQeObdR_ZdnEgUvSPyAXXgS0MSxBsYbZNZTc4Ch9WFvUFbLgM-ZAVmSZ-ebmi5iVNiNrzk3F6MLSGpmwc57Acki4m4VHpTng"     # You can paste a token from the frontend: window.auth.currentUser.getIdToken().then(t=>console.log(t))
+email=""       # e.g., user@example.com
+password=""   # e.g., supersecret
+idToken=""     # You can paste a token from the frontend: window.auth.currentUser.getIdToken().then(t=>console.log(t))
 
 doRegister=false
 doDelete=false  # Reserved for future use
