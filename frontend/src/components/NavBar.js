@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './Nav.css';
-import logoWordmark from '../logo.svg';
 
 const NavBar = () => {
   const navigate = useNavigate();
@@ -60,8 +59,8 @@ const NavBar = () => {
     divider: { height: 1, background: '#334155', margin: '4px 0' },
   };
 
-  // Use bundled SVG wordmark which is always available in the app bundle
-  const logoUrl = logoWordmark;
+  // Use app brand asset from public/
+  const logoUrl = (process.env.PUBLIC_URL || '') + '/LogoandWords.png?v=20251028';
 
   return (
     <nav className="nav">
