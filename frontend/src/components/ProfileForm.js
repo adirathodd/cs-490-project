@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { auth, fetchSignInMethodsForEmail, reauthenticateWithCredential, reauthenticateWithPopup, EmailAuthProvider, googleProvider, githubProvider } from '../services/firebase';
 import { authAPI } from '../services/api';
-import {getBasicProfile, getBasicProfilePicture} from '../services/api';  
 import ProfilePictureUpload from './ProfilePictureUpload';
 import './ProfileForm.css';
 import Icon from './Icon';
@@ -95,7 +94,7 @@ const ProfileForm = () => {
     
     try {
       setFetchingProfile(true);
-      const response = await getBasicProfile();
+      const response = await authAPI.getBasicProfile();
       
       const profileData = {
         first_name: response.first_name || '',
