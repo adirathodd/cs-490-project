@@ -4,9 +4,9 @@ Set-StrictMode -Version Latest
 # ================= CONFIG =================
 $base = "http://localhost:8000/api"
 $apiKey = ""  # Optional if you already set $idToken
-$email = #email
-$password = #password
-$idToken =  #set this with window.auth.currentUser.getIdToken().then(t => console.log(t)); in console
+$email = "rmohammed13.m@gmail.com"
+$password = "Password100"
+$idToken =  "eyJhbGciOiJSUzI1NiIsImtpZCI6IjdlYTA5ZDA1NzI2MmU2M2U2MmZmNzNmMDNlMDRhZDI5ZDg5Zjg5MmEiLCJ0eXAiOiJKV1QifQ.eyJuYW1lIjoiUmF5aGFuIE1vaGFtbWVkIiwicGljdHVyZSI6Imh0dHBzOi8vbGgzLmdvb2dsZXVzZXJjb250ZW50LmNvbS9hL0FDZzhvY0xTUTN2MDlnZ25IaFJhWnBMSzFDaVhNS3Fkelp6a19MNDViN25rclNwSG45Rk12QT1zOTYtYyIsImlzcyI6Imh0dHBzOi8vc2VjdXJldG9rZW4uZ29vZ2xlLmNvbS9hdHMtY2FuZGlkYXRlLXN5c3RlbSIsImF1ZCI6ImF0cy1jYW5kaWRhdGUtc3lzdGVtIiwiYXV0aF90aW1lIjoxNzYxNjg3MjgyLCJ1c2VyX2lkIjoiMVI4MXJVMjBEUldGNU5rMGF0SGZZWERxY1JGMyIsInN1YiI6IjFSODFyVTIwRFJXRjVOazBhdEhmWVhEcWNSRjMiLCJpYXQiOjE3NjE2ODcyODIsImV4cCI6MTc2MTY5MDg4MiwiZW1haWwiOiJyYXloYW4ubW9oYW1tZWQxNUBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZmlyZWJhc2UiOnsiaWRlbnRpdGllcyI6eyJnb29nbGUuY29tIjpbIjExNzQ5OTgzMDQ1NjE5NTgzMzg4MCJdLCJlbWFpbCI6WyJyYXloYW4ubW9oYW1tZWQxNUBnbWFpbC5jb20iXX0sInNpZ25faW5fcHJvdmlkZXIiOiJnb29nbGUuY29tIn19.sFM-4pQ3XGybDgemm-HTRSbpbtd5z8qscfuTK0dPd1woGLFKxaFafkoAS7qLFcHRlTPMk-jHklnDVBBtVCbLOZOfzqBI5sbdjjcR81qUFW07RPsOcTpo5ob5wT1bCgUma7aBZB2W9uVXDfoi65FfEBOkBBFF0hCmCvxlJqeI885hUFK8nm9fp01RKC8JnQ1TSZJTdHggznNIgH4sfNWAUNHLIUNYn8aLM5s8YLPzfk-VE_KzcgDOa-8DFaARkgN5zH6p3Jn7GZ4Yi51QG4yUjRNm-ufacmY8MhxSXVX_JjpPhC5bvspUP4md2m35j4toy3VKM_uOaQUL-FUkSU1vmg"
 $doRegister = $false
 $doDelete = $false
 # ==========================================

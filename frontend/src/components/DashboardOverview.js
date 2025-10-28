@@ -50,10 +50,10 @@ const DashboardOverview = () => {
 
         if (!isMounted) return;
         setProfile(me?.profile || null);
-        setSkills(Array.isArray(skillsRes) ? skillsRes : skillsRes?.results || []);
-        setEducation(eduRes?.results || []);
-        setProjects(Array.isArray(projRes) ? projRes : projRes?.results || []);
-        setEmploymentCount((empList?.results || []).length);
+        setSkills(Array.isArray(skillsRes) ? skillsRes : (skillsRes?.results || []));
+        setEducation(Array.isArray(eduRes) ? eduRes : (eduRes?.results || []));
+        setProjects(Array.isArray(projRes) ? projRes : (projRes?.results || []));
+        setEmploymentCount(Array.isArray(empList) ? empList.length : ((empList?.results || []).length));
         setError(null);
       } catch (e) {
         if (!isMounted) return;
