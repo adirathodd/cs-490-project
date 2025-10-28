@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import authAPI from '../services/api';
 import './Dashboard.css';
+import Icon from './Icon';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -154,12 +155,12 @@ const Dashboard = () => {
             {showUserMenu && (
               <div className="user-dropdown">
                 <button className="dropdown-item" onClick={handleProfile}>
-                  <span className="dropdown-icon">👤</span>
+                  <Icon name="user" size="md" ariaLabel="My Profile" className="dropdown-icon" />
                   My Profile
                 </button>
                 <div className="dropdown-divider"></div>
                 <button className="dropdown-item sign-out-item" onClick={handleSignOutClick}>
-                  <span className="dropdown-icon">🚪</span>
+                  <Icon name="signout" size="md" ariaLabel="Sign Out" className="dropdown-icon" />
                   Sign Out
                 </button>
               </div>
@@ -200,27 +201,21 @@ const Dashboard = () => {
                 <p className="account-email">{currentUser?.email}</p>
                 {userProfile && (
                   <div className="account-info-row">
-                    {userProfile.phone && (
-                      <span className="account-info-item">
-                        📱 {userProfile.phone}
-                      </span>
-                    )}
-                    {userProfile.location && (
-                      <span className="account-info-item">
-                        📍 {userProfile.location}
-                      </span>
-                    )}
-                    {userProfile.city && userProfile.state && (
-                      <span className="account-info-item">
-                        🏙️ {userProfile.city}, {userProfile.state}
-                      </span>
-                    )}
+                        {userProfile.phone && (
+                          <span className="account-info-item"><Icon name="camera" size="sm" /> {userProfile.phone}</span>
+                        )}
+                        {userProfile.location && (
+                          <span className="account-info-item"><Icon name="location" size="sm" /> {userProfile.location}</span>
+                        )}
+                        {userProfile.city && userProfile.state && (
+                          <span className="account-info-item"><Icon name="home" size="sm" /> {userProfile.city}, {userProfile.state}</span>
+                        )}
                   </div>
                 )}
               </div>
             </div>
             <button className="edit-profile-button" onClick={handleUpdateProfile}>
-              ✏️ Edit Profile
+              <Icon name="edit" size="sm" /> Edit Profile
             </button>
           </div>
         </div>
@@ -232,20 +227,9 @@ const Dashboard = () => {
 
         <div className="dashboard-grid">
           <div className="dashboard-card">
-            <div className="card-icon" aria-label="Skills">
-              <svg
-                width="48"
-                height="48"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                role="img"
-                aria-hidden="true"
-              >
-                <path d="M12 2l2.39 4.84 5.34.78-3.87 3.77.91 5.3L12 14.77 7.23 16.7l.91-5.3L4.27 7.62l5.34-.78L12 2z" stroke="#6B46C1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M9 22v-5l3 2 3-2v5" stroke="#6B46C1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
+              <div className="card-icon" aria-label="Skills">
+                <Icon name="idea" size="lg" color="#000000" ariaLabel="Skills" />
+              </div>
             <h3>Skills</h3>
             <p>Add and manage your skills</p>
             <button className="card-button" onClick={() => navigate('/skills')}>Manage Skills</button>
@@ -255,28 +239,28 @@ const Dashboard = () => {
           </div>
 
           <div className="dashboard-card">
-            <div className="card-icon">💼</div>
+              <div className="card-icon"><Icon name="briefcase" size="lg" ariaLabel="Employment" /></div>
             <h3>Employment History</h3>
             <p>Add and manage your work experience</p>
             <button className="card-button" onClick={() => navigate('/employment')}>View/Edit Employment</button>
           </div>
 
           <div className="dashboard-card">
-            <div className="card-icon">🎓</div>
+            <div className="card-icon"><Icon name="education" size="lg" ariaLabel="Education" /></div>
             <h3>Education</h3>
             <p>Add and manage your educational background</p>
             <button className="card-button" onClick={() => navigate('/education')}>Manage Education</button>
           </div>
 
           <div className="dashboard-card">
-            <div className="card-icon" aria-label="Certifications">🏅</div>
+            <div className="card-icon" aria-label="Certifications"><Icon name="cert" size="lg" ariaLabel="Certifications" /></div>
             <h3>Certifications</h3>
             <p>Add and manage your professional certifications</p>
             <button className="card-button" onClick={() => navigate('/certifications')}>Manage Certifications</button>
           </div>
 
           <div className="dashboard-card">
-            <div className="card-icon" aria-label="Projects">🧩</div>
+            <div className="card-icon" aria-label="Projects"><Icon name="project" size="lg" ariaLabel="Projects" /></div>
             <h3>Projects</h3>
             <p>Showcase significant work beyond employment</p>
             <button className="card-button" onClick={() => navigate('/projects')}>Manage Projects</button>

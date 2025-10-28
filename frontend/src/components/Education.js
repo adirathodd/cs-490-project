@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { educationAPI } from '../services/api';
 import './Education.css';
+import Icon from './Icon';
 
 const defaultForm = {
   institution: '',
@@ -170,7 +171,7 @@ const Education = () => {
       <h2>Education</h2>
 
       <div className="education-header">
-        <h2>🎓 Your Educational Background</h2>
+        <h2><Icon name="education" size="md" /> Your Educational Background</h2>
         <button 
           className="add-education-button"
           onClick={() => {
@@ -190,7 +191,7 @@ const Education = () => {
         <div className="education-form-card">
           <div className="form-header">
             <h3>{editingId ? 'Edit Education' : 'Add Education'}</h3>
-            <button className="close-button" onClick={resetForm}>✕</button>
+            <button className="close-button" onClick={resetForm}><Icon name="trash" size="sm" ariaLabel="Close" /></button>
           </div>
 
           <form className="education-form" onSubmit={handleSubmit}>
@@ -273,7 +274,7 @@ const Education = () => {
 
       {(items || []).length === 0 && !showForm ? (
         <div className="empty-state">
-          <div className="empty-icon">🎓</div>
+          <div className="empty-icon"><Icon name="education" size="xl" ariaLabel="No education" /></div>
           <h3>No Education Entries Yet</h3>
           <p>Add your educational background to build your profile.</p>
           <button className="add-education-button" onClick={() => {
@@ -311,14 +312,14 @@ const Education = () => {
                     onClick={() => startEdit(item)}
                     title="Edit"
                   >
-                    ✏️
+                    <Icon name="edit" size="sm" ariaLabel="Edit" />
                   </button>
                   <button 
                     className="delete-button"
                     onClick={() => setDeleteConfirm(item.id)}
                     title="Delete"
                   >
-                    🗑️
+                    <Icon name="trash" size="sm" ariaLabel="Delete" />
                   </button>
                 </div>
               </div>

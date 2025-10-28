@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { skillsAPI } from '../services/api';
 import './Skills.css';
+import Icon from './Icon';
 
 const Skills = () => {
   const navigate = useNavigate();
@@ -246,13 +247,13 @@ const Skills = () => {
       </div>
       
       <div className="skills-actions-bar">
-        <h2>My Skills</h2>
+        <h2><Icon name="idea" size="md" ariaLabel="My Skills" /> My Skills</h2>
         <div className="header-actions">
           <button 
             className="btn-secondary"
             onClick={() => navigate('/skills/organized')}
           >
-            📊 Organize by Category
+            <Icon name="idea" size="sm" /> Organize by Category
           </button>
           <button 
             className="btn-add-skill"
@@ -453,14 +454,14 @@ const Skills = () => {
                         onClick={() => handleEdit(skill)}
                         title="Edit proficiency"
                       >
-                        ✏️
+                        <Icon name="edit" size="sm" ariaLabel="Edit skill" />
                       </button>
                       <button 
                         className="btn-delete"
                         onClick={() => setDeleteConfirm(skill.id)}
                         title="Remove skill"
                       >
-                        🗑️
+                        <Icon name="trash" size="sm" ariaLabel="Delete skill" />
                       </button>
                     </div>
                   </>

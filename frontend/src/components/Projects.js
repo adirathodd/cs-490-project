@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { projectsAPI } from '../services/api';
 import './Projects.css';
+import Icon from './Icon';
 
 const emptyForm = {
   name: '',
@@ -218,7 +219,7 @@ const Projects = () => {
 
       {!showForm && (
         <div className="projects-header">
-          <h2>📁 Your Projects</h2>
+          <h2><Icon name="folder" size="md" /> Your Projects</h2>
           <button
             className="add-button"
             onClick={() => {
@@ -362,7 +363,7 @@ const Projects = () => {
       <div className="projects-list">
         {(items || []).length === 0 && !showForm ? (
           <div className="empty-state">
-            <div className="empty-icon">📁</div>
+            <div className="empty-icon"><Icon name="folder" size="xl" ariaLabel="No projects" /></div>
             <h3>No Projects Yet</h3>
             <p>Start building your portfolio by adding your first project.</p>
             <button
@@ -383,9 +384,9 @@ const Projects = () => {
                   <div className="project-main">
                     <h3>{item.name}</h3>
                     <div className="project-meta">
-                      {item.role && <span>👤 {item.role}</span>}
+                      {item.role && <span><Icon name="users" size="sm" /> {item.role}</span>}
                       {(item.start_date || item.end_date) && (
-                        <span className="dates">🗓️ {item.start_date || '—'} to {item.end_date || '—'}</span>
+                        <span className="dates"><Icon name="calendar" size="sm" /> {item.start_date || '—'} to {item.end_date || '—'}</span>
                       )}
                       {item.status && <span className={`badge ${item.status}`}>{statusOptions.find(s => s.value === item.status)?.label || item.status}</span>}
                     </div>
@@ -398,7 +399,7 @@ const Projects = () => {
                     aria-label="Edit project"
                     title="Edit project"
                   >
-                    ✏️
+                    <Icon name="edit" size="sm" />
                   </button>
                   <button 
                     className="action-button delete" 
@@ -406,7 +407,7 @@ const Projects = () => {
                     aria-label="Delete project"
                     title="Delete project"
                   >
-                    🗑️
+                    <Icon name="trash" size="sm" />
                   </button>
                 </div>
               </div>

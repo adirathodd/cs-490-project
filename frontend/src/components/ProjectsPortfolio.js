@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { projectsAPI } from '../services/api';
 import './ProjectsPortfolio.css';
+import Icon from './Icon';
 
 const useQuery = () => new URLSearchParams(useLocation().search);
 
@@ -163,9 +164,9 @@ const ProjectsPortfolio = () => {
                   {p.status && <span className={`badge ${p.status}`}>{p.status}</span>}
                 </div>
                 <div className="meta">
-                  {p.role && <span>👤 {p.role}</span>}
-                  {(p.start_date || p.end_date) && <span>🗓️ {p.start_date || '—'} → {p.end_date || '—'}</span>}
-                  {p.industry && <span>🏷️ {p.industry}</span>}
+                  {p.role && <span><Icon name="user" size="sm" /> {p.role}</span>}
+                  {(p.start_date || p.end_date) && <span><Icon name="calendar" size="sm" /> {p.start_date || '—'} → {p.end_date || '—'}</span>}
+                  {p.industry && <span><Icon name="link" size="sm" /> {p.industry}</span>}
                 </div>
                 {(p.technologies && p.technologies.length > 0) && (
                   <div className="tags">
