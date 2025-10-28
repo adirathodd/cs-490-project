@@ -152,6 +152,26 @@ docker compose exec backend python manage.py collectstatic
 docker compose exec backend python manage.py test
 ```
 
+### Inspect Important Tables
+Quickly list counts and sample rows from key tables:
+
+```bash
+# Curated important tables (default, 10 rows each)
+docker compose exec backend python manage.py show_important_tables
+
+# Show more rows
+docker compose exec backend python manage.py show_important_tables --limit 25
+
+# Order rows (e.g., newest first by created_at when available)
+docker compose exec backend python manage.py show_important_tables --order -created_at
+
+# Include all models defined in core.models
+docker compose exec backend python manage.py show_important_tables --all
+
+# Only specific models by name
+docker compose exec backend python manage.py show_important_tables --models UserAccount CandidateProfile Education
+```
+
 ### Database Operations
 ```bash
 # Access PostgreSQL shell
