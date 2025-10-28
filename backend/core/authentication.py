@@ -57,22 +57,46 @@ class FirebaseAuthentication(authentication.BaseAuthentication):
             if not decoded_token:
                 raise exceptions.AuthenticationFailed('Invalid authentication token')
             
-            # Get or create the user
+            # Get or link the user record
             uid = decoded_token.get('uid')
             email = decoded_token.get('email')
-            
+
             if not uid or not email:
                 raise exceptions.AuthenticationFailed('Invalid token payload')
-            
-            # Try to get existing user, or create if first time
-            user, created = User.objects.get_or_create(
-                username=uid,  # Use Firebase UID as username
-                defaults={
-                    'email': email,
-                    'first_name': decoded_token.get('name', '').split()[0] if decoded_token.get('name') else '',
-                    'last_name': ' '.join(decoded_token.get('name', '').split()[1:]) if decoded_token.get('name') else '',
-                }
-            )
+
+            # Strategy:
+            # 1) Prefer existing user by Firebase UID (username)
+            # 2) Else, find by email and link that user by setting username to UID (if no conflict)
+            # 3) Else, create a new user
+            created = False
+            user = None
+            try:
+                user = User.objects.get(username=uid)
+            except User.DoesNotExist:
+                # Not found by UID; try link by email
+                try:
+                    user = User.objects.get(email__iexact=email)
+                    # Link this Django user to Firebase UID if not already linked
+                    if user.username != uid:
+                        # Avoid rare collision
+                        if not User.objects.filter(username=uid).exclude(pk=user.pk).exists():
+                            user.username = uid
+                            user.save(update_fields=['username'])
+                        else:
+                            logger.warning(f"Username collision for UID {uid}; keeping existing username for user {user.id}")
+                except User.DoesNotExist:
+                    # Create a brand new user
+                    name = decoded_token.get('name', '') or ''
+                    parts = name.split()
+                    first = parts[0] if parts else ''
+                    last = ' '.join(parts[1:]) if len(parts) > 1 else ''
+                    user = User.objects.create_user(
+                        username=uid,
+                        email=email,
+                        first_name=first,
+                        last_name=last,
+                    )
+                    created = True
             
             if created:
                 logger.info(f"Created new user from Firebase token: {email}")
@@ -189,7 +213,7 @@ class FirebaseAuthentication(authentication.BaseAuthentication):
             # Update email if it changed
             if user.email != email:
                 user.email = email
-                user.save()
+                user.save(update_fields=['email'])
 
             # Try to update user/profile fields from Firebase record on each auth
             try:
@@ -197,15 +221,15 @@ class FirebaseAuthentication(authentication.BaseAuthentication):
                 display_name = firebase_user.display_name or decoded_token.get('name', '')
                 photo_url = getattr(firebase_user, 'photo_url', None)
 
-                # Update user's name if different
-                if display_name:
+                # Update user's name only if it's currently empty (do not overwrite user edits)
+                if display_name and not (user.first_name or user.last_name):
                     parts = display_name.split()
                     first = parts[0]
                     last = ' '.join(parts[1:]) if len(parts) > 1 else ''
                     if user.first_name != first or user.last_name != last:
                         user.first_name = first
                         user.last_name = last
-                        user.save()
+                        user.save(update_fields=['first_name', 'last_name'])
 
                 # Ensure CandidateProfile exists and update portfolio_url with photo if available
                 from core.models import CandidateProfile
