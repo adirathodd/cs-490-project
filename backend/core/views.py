@@ -1,13 +1,11 @@
 """
 Authentication views for Firebase-based user registration and login.
 """
-from rest_framework import status
+from rest_framework import status, serializers
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
-from django.template.loader import render_to_string
-from django.utils.html import strip_tags
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from core.serializers import (
@@ -23,8 +21,11 @@ from core.serializers import (
     SkillAutocompleteSerializer,
     EducationSerializer,
     CertificationSerializer,
+    ProjectSerializer,
+    ProjectMediaSerializer,
+    WorkExperienceSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (
@@ -32,11 +33,15 @@ from core.storage_utils import (
     delete_old_picture,
 )
 from django.core.files.base import ContentFile
-import imghdr
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from PIL import Image
+import io
 import logging
 import traceback
 import requests
-from django.db.models import Case, When, Value, IntegerField, F
+from django.db.models import Case, When, Value, IntegerField, F, Q
+from django.db import models
 from django.db.models.functions import Coalesce
 import firebase_admin
 from firebase_admin import auth as firebase_auth
@@ -380,7 +385,41 @@ def login_user(request):
         )
 
 
-@api_view(['GET', 'DELETE'])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_user(request):
+    """
+    POST /api/auth/logout
+
+    For Firebase-based auth, revoke the user's refresh tokens so that any
+    subsequent ID tokens minted with the old refresh token are invalid.
+    Frontend should also clear its cached token.
+    """
+    try:
+        user = request.user
+        try:
+            if initialize_firebase():
+                firebase_auth.revoke_refresh_tokens(user.username)
+        except Exception:
+            # Non-fatal; proceed with response even if revoke fails
+            pass
+
+        if hasattr(request, 'session'):
+            request.session.flush()
+
+        return Response({
+            'success': True,
+            'message': 'Logout successful. Tokens revoked where applicable.'
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Logout error: {e}")
+        return Response(
+            {'error': {'code': 'logout_failed', 'message': 'Failed to logout.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
 def get_current_user(request):
     """
@@ -397,28 +436,22 @@ def get_current_user(request):
     try:
         user = request.user
 
-        # Handle account deletion - disabled in favor of email confirmation flow
-        if request.method == 'DELETE':
-            return Response(
-                {
-                    'error': {
-                        'code': 'deletion_flow_updated',
-                        'message': 'Confirmation email sent. Please check your email to confirm deletion.'
-                    }
-                },
-                status=status.HTTP_405_METHOD_NOT_ALLOWED
-            )
-
-        # For GET, return profile as before
         profile = CandidateProfile.objects.get(user=user)
 
-        user_serializer = UserSerializer(user)
-        profile_serializer = UserProfileSerializer(profile)
+        if request.method == 'GET':
+            user_serializer = UserSerializer(user)
+            profile_serializer = UserProfileSerializer(profile)
+            return Response({'user': user_serializer.data, 'profile': profile_serializer.data}, status=status.HTTP_200_OK)
 
-        return Response({
-            'user': user_serializer.data,
-            'profile': profile_serializer.data,
-        }, status=status.HTTP_200_OK)
+        # PUT: update
+        serializer = BasicProfileSerializer(profile, data=request.data, partial=False)
+        if not serializer.is_valid():
+            return Response(
+                {'error': {'code': 'validation_error', 'message': 'Please check your input.', 'details': serializer.errors}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        serializer.save()
+        return Response({'profile': serializer.data, 'message': 'Profile updated successfully.'}, status=status.HTTP_200_OK)
     
     except CandidateProfile.DoesNotExist:
         # Create profile if it doesn't exist
@@ -445,7 +478,8 @@ def request_account_deletion(request):
     try:
         user = request.user
         # Create a new deletion request token (invalidate older by allowing overwrite behavior on retrieve)
-        deletion = AccountDeletionRequest.create_for_user(user)
+        # Token valid for 1 hour
+        deletion = AccountDeletionRequest.create_for_user(user, ttl_hours=1)
 
         # Build confirmation URL
         confirm_path = f"/api/auth/delete/confirm/{deletion.token}"
@@ -461,6 +495,7 @@ def request_account_deletion(request):
                 'confirm_url': confirm_url,
                 'primary_start': '#667eea',
                 'primary_end': '#764ba2',
+                'ttl_hours': 1,
             }
             html_content = render_to_string('emails/account_deletion_request.html', context)
             text_content = render_to_string('emails/account_deletion_request.txt', context)
@@ -784,6 +819,57 @@ def user_profile(request, user_id=None):
         )
 
 
+# ------------------------------
+# Employment (Work Experience)
+# ------------------------------
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def employment_list_create(request):
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        experiences = WorkExperience.objects.filter(candidate=profile).order_by('-start_date')
+        serializer = WorkExperienceSerializer(experiences, many=True)
+        return Response({'results': serializer.data}, status=status.HTTP_200_OK)
+
+    data = request.data.copy()
+    data['candidate'] = profile.id
+    serializer = WorkExperienceSerializer(data=data)
+    if serializer.is_valid():
+        serializer.save(candidate=profile)
+        return Response({'work_experience': serializer.data, 'message': 'Employment record created.'}, status=status.HTTP_201_CREATED)
+    return Response({'error': {'code': 'validation_error', 'message': 'Invalid input.', 'details': serializer.errors}}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def employment_detail(request, pk: int):
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        experience = WorkExperience.objects.get(pk=pk, candidate=profile)
+    except WorkExperience.DoesNotExist:
+        return Response({'error': {'code': 'not_found', 'message': 'Employment record not found.'}}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({'work_experience': WorkExperienceSerializer(experience).data}, status=status.HTTP_200_OK)
+    if request.method in ['PUT', 'PATCH']:
+        partial = request.method == 'PATCH'
+        serializer = WorkExperienceSerializer(experience, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'work_experience': serializer.data, 'message': 'Employment record updated.'}, status=status.HTTP_200_OK)
+        return Response({'error': {'code': 'validation_error', 'message': 'Invalid input.', 'details': serializer.errors}}, status=status.HTTP_400_BAD_REQUEST)
+    experience.delete()
+    return Response({'message': 'Employment record deleted.'}, status=status.HTTP_204_NO_CONTENT)
+
 # --- UC-021: Basic Profile Information Form ---
 @api_view(['GET', 'PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
@@ -1043,8 +1129,17 @@ def get_profile_picture(request):
                         elif 'gif' in content_type:
                             ext = 'gif'
                     if not ext:
-                        guessed = imghdr.what(None, h=content)
-                        ext = guessed if guessed else 'jpg'
+                        try:
+                            img = Image.open(io.BytesIO(content))
+                            fmt = (img.format or '').lower()
+                            if fmt in ('jpeg', 'jpg'):
+                                ext = 'jpg'
+                            elif fmt in ('png', 'gif', 'webp'):
+                                ext = fmt
+                            else:
+                                ext = 'jpg'
+                        except Exception:
+                            ext = 'jpg'
 
                     filename = f"profile_{profile.user.username}.{ext}"
                     try:
@@ -1093,46 +1188,54 @@ def skills_list_create(request):
     """
     try:
         user = request.user
-        
         # Get or create profile
         try:
             profile = CandidateProfile.objects.get(user=user)
         except CandidateProfile.DoesNotExist:
             profile = CandidateProfile.objects.create(user=user)
-        
+
         if request.method == 'GET':
-            # List all user skills
             candidate_skills = CandidateSkill.objects.filter(candidate=profile).select_related('skill')
-            serializer = CandidateSkillSerializer(candidate_skills, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        
-        elif request.method == 'POST':
-            # Add new skill
-            serializer = CandidateSkillSerializer(data=request.data)
-            
-            if not serializer.is_valid():
-                msgs = _validation_messages(serializer.errors)
-                return Response(
-                    {
-                        'error': {
-                            'code': 'validation_error',
-                            'message': (msgs[0] if msgs else 'Validation error'),
-                            'messages': msgs,
-                            'details': serializer.errors
-                        }
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            serializer.save(candidate=profile)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-    
+            data = CandidateSkillSerializer(candidate_skills, many=True).data
+            return Response(data, status=status.HTTP_200_OK)
+
+        # POST: add new skill
+        serializer = CandidateSkillSerializer(data=request.data, context={'candidate': profile})
+        if not serializer.is_valid():
+            msgs = _validation_messages(serializer.errors)
+            return Response(
+                {
+                    'error': {
+                        'code': 'validation_error',
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': serializer.errors
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            saved = serializer.save()
+            return Response(CandidateSkillSerializer(saved).data, status=status.HTTP_201_CREATED)
+        except serializers.ValidationError as ve:
+            # Duplicate or semantic validation at create time
+            detail = getattr(ve, 'detail', ve.args)
+            msgs = _validation_messages(detail)
+            code = 'conflict' if ('already' in ' '.join(msgs).lower() or 'exists' in ' '.join(msgs).lower()) else 'validation_error'
+            return Response(
+                {
+                    'error': {
+                        'code': code,
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': detail
+                    }
+                },
+                status=status.HTTP_409_CONFLICT if code == 'conflict' else status.HTTP_400_BAD_REQUEST
+            )
     except Exception as e:
-        logger.error(f"Error in skills_list_create: {e}")
-        return Response(
-            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        logger.error(f"Error in skills_list_create: {e}\n{traceback.format_exc()}")
+        return Response({'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
@@ -1213,6 +1316,15 @@ def skill_detail(request, skill_id):
             {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# Back-compat wrapper for routes expecting `skills_detail` with `<int:pk>`
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def skills_detail(request, pk: int):
+    # Pass the underlying Django HttpRequest to the DRF-decorated view
+    django_request = getattr(request, '_request', request)
+    return skill_detail(django_request, skill_id=pk)
 
 
 @api_view(['GET'])
@@ -1914,3 +2026,585 @@ def certification_detail(request, certification_id):
             {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+    
+# ======================
+# UC-031: PROJECTS VIEWS
+# ======================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def projects_list_create(request):
+    """List and create projects for the authenticated user.
+
+    GET: list all
+    POST: create (supports multipart for media uploads using key 'media')
+    """
+    try:
+        user = request.user
+        profile, _ = CandidateProfile.objects.get_or_create(user=user)
+
+        if request.method == 'GET':
+            qs = Project.objects.filter(candidate=profile)
+
+            # Filtering
+            q = request.query_params.get('q') or request.query_params.get('search')
+            industry = request.query_params.get('industry')
+            status_param = request.query_params.get('status')
+            tech = request.query_params.get('tech') or request.query_params.get('technology')
+            date_from = request.query_params.get('date_from')
+            date_to = request.query_params.get('date_to')
+            match = (request.query_params.get('match') or 'any').lower()  # any|all for tech
+
+            if q:
+                # simple relevance via conditional scoring
+                name_hit = Case(When(name__icontains=q, then=Value(3)), default=Value(0), output_field=IntegerField())
+                desc_hit = Case(When(description__icontains=q, then=Value(2)), default=Value(0), output_field=IntegerField())
+                outc_hit = Case(When(outcomes__icontains=q, then=Value(1)), default=Value(0), output_field=IntegerField())
+                role_hit = Case(When(role__icontains=q, then=Value(1)), default=Value(0), output_field=IntegerField())
+                tech_hit = Case(When(skills_used__name__icontains=q, then=Value(2)), default=Value(0), output_field=IntegerField())
+                qs = qs.annotate(relevance=(name_hit + desc_hit + outc_hit + role_hit + tech_hit))
+                # Base text filter
+                qs = qs.filter(
+                    Q(name__icontains=q) | Q(description__icontains=q) | Q(outcomes__icontains=q) | Q(role__icontains=q) | Q(skills_used__name__icontains=q)
+                )
+
+            if industry:
+                qs = qs.filter(industry__icontains=industry)
+
+            if status_param:
+                qs = qs.filter(status=status_param)
+
+            if tech:
+                tech_list = [t.strip() for t in tech.split(',') if t.strip()]
+                if tech_list:
+                    if match == 'all':
+                        # Ensure project has all techs: chain filters
+                        for t in tech_list:
+                            qs = qs.filter(skills_used__name__iexact=t)
+                    else:
+                        qs = qs.filter(skills_used__name__in=tech_list)
+
+            # Date range: filter by start_date/end_date overlapping window
+            # If only date_from: projects ending after or starting after date_from
+            if date_from:
+                qs = qs.filter(Q(start_date__gte=date_from) | Q(end_date__gte=date_from))
+            if date_to:
+                qs = qs.filter(Q(end_date__lte=date_to) | Q(start_date__lte=date_to))
+
+            qs = qs.distinct()
+
+            # Sorting
+            sort = (request.query_params.get('sort') or 'date_desc').lower()
+            if sort == 'date_asc':
+                qs = qs.order_by('start_date', 'created_at', 'id')
+            elif sort == 'custom':
+                qs = qs.order_by('display_order', '-start_date', '-created_at', '-id')
+            elif sort == 'created_asc':
+                qs = qs.order_by('created_at')
+            elif sort == 'created_desc':
+                qs = qs.order_by('-created_at')
+            elif sort == 'updated_asc':
+                qs = qs.order_by('updated_at')
+            elif sort == 'updated_desc':
+                qs = qs.order_by('-updated_at')
+            elif sort == 'relevance' and q:
+                qs = qs.order_by('-relevance', 'display_order', '-start_date', '-created_at')
+            else:
+                # date_desc default
+                qs = qs.order_by('-start_date', '-created_at', '-id')
+
+            data = ProjectSerializer(qs, many=True, context={'request': request}).data
+            return Response(data, status=status.HTTP_200_OK)
+
+        # POST create
+        payload = request.data.copy()
+        # If technologies is a comma-separated string, split it
+        techs = payload.get('technologies')
+        if isinstance(techs, str):
+            # Allow JSON list string or comma-separated
+            import json
+            try:
+                parsed = json.loads(techs)
+                if isinstance(parsed, list):
+                    payload.setlist('technologies', parsed) if hasattr(payload, 'setlist') else payload.update({'technologies': parsed})
+            except Exception:
+                payload['technologies'] = [t.strip() for t in techs.split(',') if t.strip()]
+
+        serializer = ProjectSerializer(data=payload, context={'request': request})
+        if not serializer.is_valid():
+            msgs = _validation_messages(serializer.errors)
+            return Response(
+                {
+                    'error': {
+                        'code': 'validation_error',
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': serializer.errors
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        project = serializer.save(candidate=profile)
+
+        # Handle media files (multiple allowed)
+        files = request.FILES.getlist('media')
+        for idx, f in enumerate(files):
+            ProjectMedia.objects.create(project=project, image=f, order=idx)
+
+        return Response(ProjectSerializer(project, context={'request': request}).data, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        logger.error(f"Error in projects_list_create: {e}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def project_detail(request, project_id):
+    """Retrieve/Update/Delete a project; PATCH/PUT may accept additional 'media' files to append."""
+    try:
+        user = request.user
+        try:
+            profile = CandidateProfile.objects.get(user=user)
+        except CandidateProfile.DoesNotExist:
+            return Response(
+                {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            project = Project.objects.get(id=project_id, candidate=profile)
+        except Project.DoesNotExist:
+            return Response(
+                {'error': {'code': 'project_not_found', 'message': 'Project not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if request.method == 'GET':
+            return Response(ProjectSerializer(project, context={'request': request}).data, status=status.HTTP_200_OK)
+
+        if request.method in ['PUT', 'PATCH']:
+            partial = request.method == 'PATCH'
+            payload = request.data.copy()
+            techs = payload.get('technologies')
+            if isinstance(techs, str):
+                import json
+                try:
+                    parsed = json.loads(techs)
+                    if isinstance(parsed, list):
+                        payload.setlist('technologies', parsed) if hasattr(payload, 'setlist') else payload.update({'technologies': parsed})
+                except Exception:
+                    payload['technologies'] = [t.strip() for t in techs.split(',') if t.strip()]
+
+            serializer = ProjectSerializer(project, data=payload, partial=partial, context={'request': request})
+            if not serializer.is_valid():
+                msgs = _validation_messages(serializer.errors)
+                return Response(
+                    {
+                        'error': {
+                            'code': 'validation_error',
+                            'message': (msgs[0] if msgs else 'Validation error'),
+                            'messages': msgs,
+                            'details': serializer.errors
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            instance = serializer.save()
+
+            # Append any uploaded media
+            files = request.FILES.getlist('media')
+            if files:
+                # continue ordering from last
+                start_order = (instance.media.aggregate(m=models.Max('order')).get('m') or 0) + 1
+                for offset, f in enumerate(files):
+                    ProjectMedia.objects.create(project=instance, image=f, order=start_order + offset)
+
+            return Response(ProjectSerializer(instance, context={'request': request}).data, status=status.HTTP_200_OK)
+
+        # DELETE
+        project.delete()
+        return Response({'message': 'Project deleted successfully.'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error in project_detail: {e}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
+def project_media_upload(request, project_id):
+    """Upload one or more media files for a project. Field name: 'media' (multiple)."""
+    try:
+        user = request.user
+        profile = CandidateProfile.objects.get(user=user)
+        project = Project.objects.get(id=project_id, candidate=profile)
+        files = request.FILES.getlist('media')
+        if not files:
+            return Response({'error': {'code': 'no_files', 'message': 'No files provided.'}}, status=status.HTTP_400_BAD_REQUEST)
+        start_order = (project.media.aggregate(m=models.Max('order')).get('m') or 0) + 1
+        created = []
+        for i, f in enumerate(files):
+            m = ProjectMedia.objects.create(project=project, image=f, order=start_order + i)
+            created.append(m)
+        return Response(ProjectMediaSerializer(created, many=True, context={'request': request}).data, status=status.HTTP_201_CREATED)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}}, status=status.HTTP_404_NOT_FOUND)
+    except Project.DoesNotExist:
+        return Response({'error': {'code': 'project_not_found', 'message': 'Project not found.'}}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error in project_media_upload: {e}\n{traceback.format_exc()}")
+        return Response({'error': {'code': 'internal_error', 'message': 'Failed to upload media.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Wrapper for profile/projects/<int:pk> -> projects_detail
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def projects_detail(request, pk: int):
+    django_request = getattr(request, '_request', request)
+    return project_detail(django_request, project_id=pk)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def project_media_delete(request, project_id, media_id):
+    """Delete a specific media item from a project."""
+    try:
+        user = request.user
+        profile = CandidateProfile.objects.get(user=user)
+        project = Project.objects.get(id=project_id, candidate=profile)
+        media = ProjectMedia.objects.get(id=media_id, project=project)
+        media.delete()
+        return Response({'message': 'Media deleted successfully.'}, status=status.HTTP_200_OK)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}}, status=status.HTTP_404_NOT_FOUND)
+    except Project.DoesNotExist:
+        return Response({'error': {'code': 'project_not_found', 'message': 'Project not found.'}}, status=status.HTTP_404_NOT_FOUND)
+    except ProjectMedia.DoesNotExist:
+        return Response({'error': {'code': 'media_not_found', 'message': 'Media not found.'}}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error in project_media_delete: {e}\n{traceback.format_exc()}")
+        return Response({'error': {'code': 'internal_error', 'message': 'Failed to delete media.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ======================
+# UC-023, UC-024, UC-025: EMPLOYMENT HISTORY VIEWS
+# ======================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def employment_list_create(request):
+    """
+    UC-023: Employment History - Add Entry
+    UC-024: Employment History - View (List)
+    
+    GET: List all employment history entries for the authenticated user
+    POST: Create a new employment history entry
+    
+    **GET Response**:
+    [
+        {
+            "id": 1,
+            "company_name": "Tech Corp",
+            "job_title": "Senior Software Engineer",
+            "location": "San Francisco, CA",
+            "start_date": "2020-01-15",
+            "end_date": "2023-06-30",
+            "is_current": false,
+            "description": "Led development of...",
+            "achievements": ["Increased performance by 40%", "Led team of 5 engineers"],
+            "skills_used": [{"id": 1, "name": "Python", "category": "Technical"}],
+            "duration": "3 years, 5 months",
+            "formatted_dates": "Jan 2020 - Jun 2023"
+        }
+    ]
+    
+    **POST Request Body**:
+    {
+        "company_name": "Tech Corp",
+        "job_title": "Senior Software Engineer",
+        "location": "San Francisco, CA",
+        "start_date": "2020-01-15",
+        "end_date": "2023-06-30",  // Optional if is_current = true
+        "is_current": false,
+        "description": "Led development of cloud infrastructure...",
+        "achievements": ["Increased performance by 40%"],
+        "skills_used_names": ["Python", "AWS", "Docker"]
+    }
+    """
+    try:
+        user = request.user
+        profile = CandidateProfile.objects.get(user=user)
+        
+        if request.method == 'GET':
+            # Get all employment entries ordered by start_date (most recent first)
+            from core.models import WorkExperience
+            from core.serializers import WorkExperienceSerializer
+            
+            work_experiences = WorkExperience.objects.filter(candidate=profile).order_by('-start_date')
+            serializer = WorkExperienceSerializer(work_experiences, many=True, context={'request': request})
+            
+            return Response({
+                'employment_history': serializer.data,
+                'total_entries': work_experiences.count()
+            }, status=status.HTTP_200_OK)
+        
+        elif request.method == 'POST':
+            # Create new employment entry
+            from core.models import WorkExperience
+            from core.serializers import WorkExperienceSerializer
+            
+            serializer = WorkExperienceSerializer(data=request.data, context={'request': request})
+            
+            if serializer.is_valid():
+                serializer.save(candidate=profile)
+                
+                logger.info(f"Employment entry created for user {user.email}: {serializer.data.get('job_title')} at {serializer.data.get('company_name')}")
+                
+                return Response({
+                    'message': 'Employment entry added successfully.',
+                    'employment': serializer.data
+                }, status=status.HTTP_201_CREATED)
+            
+            logger.warning(f"Invalid employment data from user {user.email}: {serializer.errors}")
+            return Response({
+                'error': {
+                    'code': 'validation_error',
+                    'message': 'Invalid employment data.',
+                    'details': serializer.errors
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    except CandidateProfile.DoesNotExist:
+        # Create profile if it doesn't exist
+        if request.method == 'GET':
+            return Response({'employment_history': [], 'total_entries': 0}, status=status.HTTP_200_OK)
+        else:
+            profile = CandidateProfile.objects.create(user=user)
+            return employment_list_create(request)  # Retry with created profile
+    
+    except Exception as e:
+        logger.error(f"Error in employment_list_create: {e}\n{traceback.format_exc()}")
+        return Response({
+            'error': {
+                'code': 'internal_error',
+                'message': 'Failed to process employment history request.'
+            }
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def employment_detail(request, employment_id):
+    """
+    UC-024: Employment History - View and Edit
+    UC-025: Employment History - Delete Entry
+    
+    GET: Retrieve a specific employment entry
+    PUT/PATCH: Update an employment entry
+    DELETE: Delete an employment entry (with confirmation)
+    
+    **GET Response**:
+    {
+        "id": 1,
+        "company_name": "Tech Corp",
+        "job_title": "Senior Software Engineer",
+        ...
+    }
+    
+    **PUT/PATCH Request Body** (UC-024):
+    {
+        "company_name": "Tech Corp Updated",
+        "job_title": "Lead Software Engineer",
+        "location": "Remote",
+        "start_date": "2020-01-15",
+        "end_date": null,
+        "is_current": true,
+        "description": "Updated description...",
+        "achievements": ["New achievement"],
+        "skills_used_names": ["Python", "Go", "Kubernetes"]
+    }
+    
+    **DELETE Response** (UC-025):
+    {
+        "message": "Employment entry deleted successfully."
+    }
+    """
+    try:
+        user = request.user
+        profile = CandidateProfile.objects.get(user=user)
+        
+        from core.models import WorkExperience
+        from core.serializers import WorkExperienceSerializer
+        
+        # Get the employment entry
+        try:
+            employment = WorkExperience.objects.get(id=employment_id, candidate=profile)
+        except WorkExperience.DoesNotExist:
+            return Response({
+                'error': {
+                    'code': 'employment_not_found',
+                    'message': 'Employment entry not found.'
+                }
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        if request.method == 'GET':
+            # Retrieve employment entry details
+            serializer = WorkExperienceSerializer(employment, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        elif request.method in ['PUT', 'PATCH']:
+            # Update employment entry (UC-024)
+            partial = request.method == 'PATCH'
+            serializer = WorkExperienceSerializer(
+                employment,
+                data=request.data,
+                partial=partial,
+                context={'request': request}
+            )
+            
+            if serializer.is_valid():
+                serializer.save()
+                
+                logger.info(f"Employment entry {employment_id} updated by user {user.email}")
+                
+                return Response({
+                    'message': 'Employment entry updated successfully.',
+                    'employment': serializer.data
+                }, status=status.HTTP_200_OK)
+            
+            logger.warning(f"Invalid employment update data from user {user.email}: {serializer.errors}")
+            return Response({
+                'error': {
+                    'code': 'validation_error',
+                    'message': 'Invalid employment data.',
+                    'details': serializer.errors
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        elif request.method == 'DELETE':
+            # Delete employment entry (UC-025)
+            company_name = employment.company_name
+            job_title = employment.job_title
+            
+            employment.delete()
+            
+            logger.info(f"Employment entry {employment_id} ({job_title} at {company_name}) deleted by user {user.email}")
+            
+            return Response({
+                'message': 'Employment entry deleted successfully.'
+            }, status=status.HTTP_200_OK)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response({
+            'error': {
+                'code': 'profile_not_found',
+                'message': 'Profile not found.'
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    except Exception as e:
+        logger.error(f"Error in employment_detail: {e}\n{traceback.format_exc()}")
+        return Response({
+            'error': {
+                'code': 'internal_error',
+                'message': 'Failed to process employment request.'
+            }
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def employment_timeline(request):
+    """
+    Get employment history in timeline format for career progression visualization.
+    
+    **Response**:
+    {
+        "timeline": [
+            {
+                "id": 1,
+                "company_name": "Tech Corp",
+                "job_title": "Senior Engineer",
+                "start_date": "2020-01-15",
+                "end_date": "2023-06-30",
+                "is_current": false,
+                "duration": "3y 5m",
+                "formatted_dates": "Jan 2020 - Jun 2023"
+            }
+        ],
+        "total_years_experience": 5.4,
+        "companies_count": 3,
+        "current_position": {
+            "company_name": "Current Corp",
+            "job_title": "Lead Engineer"
+        }
+    }
+    """
+    try:
+        user = request.user
+        profile = CandidateProfile.objects.get(user=user)
+        
+        from core.models import WorkExperience
+        from core.serializers import WorkExperienceSummarySerializer
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        
+        work_experiences = WorkExperience.objects.filter(candidate=profile).order_by('-start_date')
+        serializer = WorkExperienceSummarySerializer(work_experiences, many=True, context={'request': request})
+        
+        # Calculate total years of experience
+        total_months = 0
+        for exp in work_experiences:
+            start = exp.start_date
+            end = exp.end_date if exp.end_date else date.today()
+            delta = relativedelta(end, start)
+            total_months += delta.years * 12 + delta.months
+        
+        total_years = round(total_months / 12, 1)
+        
+        # Get current position
+        current_position = work_experiences.filter(is_current=True).first()
+        current_position_data = None
+        if current_position:
+            current_position_data = {
+                'company_name': current_position.company_name,
+                'job_title': current_position.job_title,
+                'location': current_position.location
+            }
+        
+        # Count unique companies
+        companies_count = work_experiences.values('company_name').distinct().count()
+        
+        return Response({
+            'timeline': serializer.data,
+            'total_years_experience': total_years,
+            'companies_count': companies_count,
+            'current_position': current_position_data
+        }, status=status.HTTP_200_OK)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response({
+            'timeline': [],
+            'total_years_experience': 0,
+            'companies_count': 0,
+            'current_position': None
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.error(f"Error in employment_timeline: {e}\n{traceback.format_exc()}")
+        return Response({
+            'error': {
+                'code': 'internal_error',
+                'message': 'Failed to generate employment timeline.'
+            }
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

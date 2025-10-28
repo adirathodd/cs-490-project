@@ -19,6 +19,8 @@ from .models import (
     AIGenerationLog, AutomationRule,
     # Notifications
     Reminder, Notification,
+    # Projects
+    Project, ProjectMedia,
 )
 
 
@@ -63,6 +65,20 @@ class CertificationAdmin(admin.ModelAdmin):
     list_display = ['candidate', 'name', 'issuing_organization', 'issue_date', 'expiry_date']
     list_filter = ['issue_date']
     search_fields = ['candidate__user__username', 'name', 'issuing_organization']
+
+
+# Projects
+class ProjectMediaInline(admin.TabularInline):
+    model = ProjectMedia
+    extra = 0
+
+
+@admin.register(Project)
+class ProjectAdmin(admin.ModelAdmin):
+    list_display = ['candidate', 'name', 'status', 'start_date', 'end_date', 'team_size']
+    list_filter = ['status', 'industry', 'category']
+    search_fields = ['candidate__user__username', 'name', 'role', 'industry', 'category']
+    inlines = [ProjectMediaInline]
 
 
 @admin.register(Achievement)

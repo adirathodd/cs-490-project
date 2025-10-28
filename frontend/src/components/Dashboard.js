@@ -219,26 +219,12 @@ const Dashboard = () => {
 
         <div className="welcome-section">
           <h2>Your Dashboard</h2>
-          <p>Manage your job search and applications all in one place.</p>
+          <p>Manage your professional profile and showcase your experience.</p>
         </div>
 
         <div className="dashboard-grid">
           <div className="dashboard-card">
-            <div className="card-icon">💼</div>
-            <h3>Job Opportunities</h3>
-            <p>Browse and track job openings</p>
-            <button className="card-button">View Jobs</button>
-          </div>
-
-          <div className="dashboard-card">
-            <div className="card-icon">📄</div>
-            <h3>Applications</h3>
-            <p>Track your job applications</p>
-            <button className="card-button">View Applications</button>
-          </div>
-
-          <div className="dashboard-card">
-            <div className="card-icon" aria-label="Certifications">
+            <div className="card-icon" aria-label="Skills">
               <svg
                 width="48"
                 height="48"
@@ -261,6 +247,13 @@ const Dashboard = () => {
           </div>
 
           <div className="dashboard-card">
+            <div className="card-icon">💼</div>
+            <h3>Employment History</h3>
+            <p>Add and manage your work experience</p>
+            <button className="card-button" onClick={() => navigate('/employment')}>View/Edit Employment</button>
+          </div>
+
+          <div className="dashboard-card">
             <div className="card-icon">🎓</div>
             <h3>Education</h3>
             <p>Add and manage your educational background</p>
@@ -275,24 +268,10 @@ const Dashboard = () => {
           </div>
 
           <div className="dashboard-card">
-            <div className="card-icon" aria-label="Analytics">📊</div>
-            <h3>Analytics</h3>
-            <p>View your job search metrics</p>
-            <button className="card-button">View Analytics</button>
-          </div>
-
-          <div className="dashboard-card">
-            <div className="card-icon">🤖</div>
-            <h3>AI Tools</h3>
-            <p>Resume optimization and more</p>
-            <button className="card-button">Explore Tools</button>
-          </div>
-
-          <div className="dashboard-card">
-            <div className="card-icon">🔔</div>
-            <h3>Notifications</h3>
-            <p>Stay updated on your applications</p>
-            <button className="card-button">View Notifications</button>
+            <div className="card-icon" aria-label="Projects">🧩</div>
+            <h3>Projects</h3>
+            <p>Showcase significant work beyond employment</p>
+            <button className="card-button" onClick={() => navigate('/projects')}>Manage Projects</button>
           </div>
         </div>
       </div>

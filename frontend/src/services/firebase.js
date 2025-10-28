@@ -25,6 +25,8 @@ const githubProvider = new GithubAuthProvider();
 // Request email scope for GitHub
 githubProvider.addScope('user:email');
 
+window.auth = auth;
+
 export {
   auth,
   createUserWithEmailAndPassword,

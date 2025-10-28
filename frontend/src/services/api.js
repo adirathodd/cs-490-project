@@ -406,4 +406,156 @@ export const certificationsAPI = {
   },
 };
 
+// UC-031: Projects API calls
+export const projectsAPI = {
+  getProjects: async (params = {}) => {
+    try {
+      // Support filters/sort/search via query params
+      const usp = new URLSearchParams();
+      Object.entries(params || {}).forEach(([k, v]) => {
+        if (v === undefined || v === null || v === '') return;
+        usp.append(k, Array.isArray(v) ? v.join(',') : v);
+      });
+      const path = usp.toString() ? `/projects?${usp.toString()}` : '/projects';
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch projects' };
+    }
+  },
+
+  getProject: async (id) => {
+    try {
+      const response = await api.get(`/projects/${id}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch project' };
+    }
+  },
+
+  addProject: async (data) => {
+    try {
+      // If files present, use multipart
+      if (data.media && Array.isArray(data.media) && data.media.length > 0) {
+        const form = new FormData();
+        Object.entries(data).forEach(([k, v]) => {
+          if (k === 'media') return; // handle separately
+          if (k === 'technologies' && Array.isArray(v)) {
+            form.append('technologies', JSON.stringify(v));
+          } else if (v !== undefined && v !== null) {
+            form.append(k, v);
+          }
+        });
+        data.media.forEach((file) => form.append('media', file));
+        const response = await api.post('/projects', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+        return response.data;
+      }
+      const payload = { ...data };
+      if (Array.isArray(payload.technologies)) {
+        payload.technologies = payload.technologies; // send as JSON by axios
+      }
+      const response = await api.post('/projects', payload);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to add project' };
+    }
+  },
+
+  updateProject: async (id, data) => {
+    try {
+      if (data.media && Array.isArray(data.media) && data.media.length > 0) {
+        const form = new FormData();
+        Object.entries(data).forEach(([k, v]) => {
+          if (k === 'media') return;
+          if (k === 'technologies' && Array.isArray(v)) {
+            form.append('technologies', JSON.stringify(v));
+          } else if (v !== undefined) {
+            form.append(k, v === null ? '' : v);
+          }
+        });
+        data.media.forEach((file) => form.append('media', file));
+        const response = await api.patch(`/projects/${id}`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+        return response.data;
+      }
+      const response = await api.patch(`/projects/${id}`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to update project' };
+    }
+  },
+
+  deleteProject: async (id) => {
+    try {
+      const response = await api.delete(`/projects/${id}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete project' };
+    }
+  },
+
+  deleteProjectMedia: async (projectId, mediaId) => {
+    try {
+      const response = await api.delete(`/projects/${projectId}/media/${mediaId}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete media' };
+    }
+  },
+};
+
+// UC-023, UC-024, UC-025: Employment History API calls
+authAPI.getEmploymentHistory = async () => {
+  try {
+    const response = await api.get('/employment');
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+authAPI.getEmploymentTimeline = async () => {
+  try {
+    const response = await api.get('/employment/timeline');
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+authAPI.getEmployment = async (id) => {
+  try {
+    const response = await api.get(`/employment/${id}`);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+authAPI.createEmployment = async (employmentData) => {
+  try {
+    const response = await api.post('/employment', employmentData);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+authAPI.updateEmployment = async (id, employmentData) => {
+  try {
+    const response = await api.patch(`/employment/${id}`, employmentData);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+authAPI.deleteEmployment = async (id) => {
+  try {
+    const response = await api.delete(`/employment/${id}`);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
 export default authAPI;

@@ -505,8 +505,8 @@ Establish the foundational infrastructure for the ATS for Candidates platform by
 
 ---
 
-#### UC-031: Special Projects - Add Project Entries
-**Summary**: As a user, I want to add special projects so I can showcase significant work beyond regular employment.
+#### UC-031: Projects - Add Project Entries
+**Summary**: As a user, I want to add projects so I can showcase significant work beyond regular employment.
 
 **Acceptance Criteria**:
 - Project form includes: project name, description, role, start/end dates
@@ -522,7 +522,7 @@ Establish the foundational infrastructure for the ATS for Candidates platform by
 
 ---
 
-#### UC-032: Special Projects - Portfolio View
+#### UC-032: Projects - Portfolio View
 **Summary**: As a user, I want to view my projects in a portfolio format so I can effectively showcase my work.
 
 **Acceptance Criteria**:

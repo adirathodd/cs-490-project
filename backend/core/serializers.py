@@ -6,7 +6,7 @@ import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia, WorkExperience
 
 User = get_user_model()
 
@@ -300,6 +300,42 @@ class ProfilePictureUploadSerializer(serializers.Serializer):
         return value
 
 
+class WorkExperienceSerializer(serializers.ModelSerializer):
+    """
+    Serializer for employment (work experience) entries.
+    """
+    id = serializers.IntegerField(read_only=True)
+    skills_used = serializers.PrimaryKeyRelatedField(many=True, required=False, queryset=Skill.objects.all())
+    class Meta:
+        model = WorkExperience
+        fields = [
+            'id', 'company_name', 'job_title', 'location', 'start_date', 'end_date',
+            'is_current', 'description', 'achievements', 'skills_used'
+        ]
+
+    def validate(self, data):
+        # Ensure end_date is after start_date if provided
+        start = data.get('start_date')
+        end = data.get('end_date')
+        if start and end and end < start:
+            raise serializers.ValidationError("End date cannot be before start date.")
+        return data
+
+    def create(self, validated_data):
+        skills = validated_data.pop('skills_used', [])
+        instance = WorkExperience.objects.create(**validated_data)
+        instance.skills_used.set(skills)
+        return instance
+
+    def update(self, instance, validated_data):
+        skills = validated_data.pop('skills_used', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if skills is not None:
+            instance.skills_used.set(skills)
+        return instance
+
 class ProfilePictureSerializer(serializers.ModelSerializer):
     """
     Serializer for profile picture information.
@@ -372,46 +408,54 @@ class CandidateSkillSerializer(serializers.ModelSerializer):
         return value.lower()
     
     def validate(self, data):
-        """Validate that either skill_id or name is provided."""
+        """Validate request data.
+
+        For creation, require either skill_id or name. For updates, allow
+        partial payloads that only include level/years.
+        """
+        # If updating an existing instance, don't require skill fields
+        if self.instance is not None:
+            return data
+
+        # Create: ensure a skill identifier is provided
         skill_id = data.get('skill_id')
         name = data.get('name')
-        
         if not skill_id and not name:
-            raise serializers.ValidationError(
-                "Either skill_id or name must be provided."
-            )
-        
+            raise serializers.ValidationError("Either skill_id or name must be provided.")
         return data
     
     def create(self, validated_data):
-        """Create or get skill, then create candidate skill."""
-        candidate = validated_data.get('candidate')
+        """Create or get skill, then create candidate skill.
+
+        Expects the current candidate profile in serializer context under 'candidate'.
+        """
+        candidate = self.context.get('candidate')
+        if candidate is None:
+            raise serializers.ValidationError({'candidate': 'Candidate context is required.'})
+
         skill_id = validated_data.pop('skill_id', None)
-        skill_name = validated_data.pop('name', None)
-        skill_category = validated_data.pop('category', '')
-        
-        # Get or create skill
-        if skill_id:
+        skill_name = (validated_data.pop('name', None) or '').strip()
+        skill_category = (validated_data.pop('category', '') or '').strip()
+
+        # Resolve skill
+        if skill_id is not None:
             try:
-                skill = Skill.objects.get(id=skill_id)
+                skill = Skill.objects.get(pk=skill_id)
             except Skill.DoesNotExist:
-                raise serializers.ValidationError({"skill_id": "Skill not found."})
+                raise serializers.ValidationError({'skill_id': 'Skill not found.'})
         else:
-            # Create or get skill by name
-            skill, created = Skill.objects.get_or_create(
-                name__iexact=skill_name,
-                defaults={'name': skill_name, 'category': skill_category}
-            )
-        
-        # Check for duplicates
+            if not skill_name:
+                raise serializers.ValidationError({'name': 'Skill name is required when skill_id is not provided.'})
+            skill = Skill.objects.filter(name__iexact=skill_name).first()
+            if skill is None:
+                skill = Skill.objects.create(name=skill_name, category=skill_category)
+
+        # Prevent duplicates per candidate
         if CandidateSkill.objects.filter(candidate=candidate, skill=skill).exists():
-            raise serializers.ValidationError(
-                {"skill": "You have already added this skill."}
-            )
-        
-        # Create candidate skill
-        validated_data['skill'] = skill
-        return super().create(validated_data)
+            raise serializers.ValidationError({'skill': 'You have already added this skill.'})
+
+        # Create mapping
+        return CandidateSkill.objects.create(candidate=candidate, skill=skill, **validated_data)
 
 
 class SkillAutocompleteSerializer(serializers.Serializer):
@@ -561,5 +605,329 @@ class CertificationSerializer(serializers.ModelSerializer):
             # When it expires, expiry_date can be optional, but we'll allow null (user may add later)
             pass
         return data
+
+
+# ======================
+# UC-031: PROJECTS SERIALIZERS
+# ======================
+
+class ProjectMediaSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = ProjectMedia
+        fields = ['id', 'image_url', 'caption', 'order', 'uploaded_at']
+        read_only_fields = ['id', 'image_url', 'uploaded_at']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image:
+            url = obj.image.url
+            return request.build_absolute_uri(url) if request else url
+        return None
+
+
+class ProjectSerializer(serializers.ModelSerializer):
+    """Serializer for project entries."""
+    # Accept and return technologies as a list of skill names
+    technologies = serializers.ListField(child=serializers.CharField(), required=False)
+    status = serializers.ChoiceField(choices=[('completed','Completed'),('ongoing','Ongoing'),('planned','Planned')])
+    media = ProjectMediaSerializer(many=True, read_only=True)
+    thumbnail_url = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Project
+        fields = [
+            'id', 'name', 'description', 'role', 'start_date', 'end_date',
+            'project_url', 'team_size', 'collaboration_details', 'outcomes',
+            'industry', 'category', 'status', 'technologies', 'media',
+            'thumbnail_url', 'display_order',
+        ]
+        read_only_fields = ['id', 'media', 'thumbnail_url']
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Derive technologies from linked skills if not explicitly set
+        data['technologies'] = [s.name for s in instance.skills_used.all()]
+        return data
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        start_date = data.get('start_date') or getattr(self.instance, 'start_date', None)
+        end_date = data.get('end_date') or getattr(self.instance, 'end_date', None)
+        status_val = data.get('status') or getattr(self.instance, 'status', None)
+
+        errors = {}
+        if start_date and end_date and start_date > end_date:
+            errors['start_date'] = 'Start date cannot be after end date.'
+
+        # Team size validation
+        team_size = data.get('team_size')
+        if team_size is not None and team_size <= 0:
+            errors['team_size'] = 'Team size must be a positive number.'
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return data
+
+    def get_thumbnail_url(self, obj):
+        request = self.context.get('request')
+        first = obj.media.first()
+        if first and first.image:
+            url = first.image.url
+            return request.build_absolute_uri(url) if request else url
+        return None
+
+    def _sync_technologies(self, project: Project, technologies):
+        if technologies is None:
+            return
+        # Map list of names to Skill instances
+        names = [str(n).strip() for n in technologies if str(n).strip()]
+        if not names:
+            project.skills_used.clear()
+            return
+        skills = []
+        for name in names:
+            # get_or_create case-insensitive
+            existing = Skill.objects.filter(name__iexact=name).first()
+            if existing:
+                skills.append(existing)
+            else:
+                skills.append(Skill.objects.create(name=name, category=''))
+        project.skills_used.set(skills)
+
+    def create(self, validated_data):
+        technologies = validated_data.pop('technologies', None)
+        project = Project.objects.create(**validated_data)
+        self._sync_technologies(project, technologies)
+        return project
+
+    def update(self, instance, validated_data):
+        technologies = validated_data.pop('technologies', None)
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+        instance.save()
+        if technologies is not None:
+            self._sync_technologies(instance, technologies)
+        return instance
+
+
+# ======================
+# UC-023, UC-024, UC-025: EMPLOYMENT HISTORY SERIALIZERS
+# ======================
+
+class WorkExperienceSerializer(serializers.ModelSerializer):
+    """
+    Serializer for UC-023: Employment History - Add Entry
+    UC-024: Employment History - View and Edit
+    UC-025: Employment History - Delete Entry
+    
+    Handles adding, viewing, editing, and deleting work experience entries.
+    """
+    # Accept skills_used as list of skill names
+    skills_used_names = serializers.ListField(
+        child=serializers.CharField(),
+        write_only=True,
+        required=False,
+        help_text="List of skill names used in this role"
+    )
+    skills_used = SkillSerializer(many=True, read_only=True)
+    
+    # Computed fields
+    duration = serializers.SerializerMethodField(read_only=True)
+    formatted_dates = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = WorkExperience
+        fields = [
+            'id',
+            'company_name',
+            'job_title',
+            'location',
+            'start_date',
+            'end_date',
+            'is_current',
+            'description',
+            'achievements',
+            'skills_used',
+            'skills_used_names',
+            'duration',
+            'formatted_dates',
+        ]
+        read_only_fields = ['id', 'duration', 'formatted_dates']
+    
+    def get_duration(self, obj):
+        """Calculate duration of employment."""
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        
+        start = obj.start_date
+        end = obj.end_date if obj.end_date else date.today()
+        
+        delta = relativedelta(end, start)
+        years = delta.years
+        months = delta.months
+        
+        if years > 0 and months > 0:
+            return f"{years} year{'s' if years > 1 else ''}, {months} month{'s' if months > 1 else ''}"
+        elif years > 0:
+            return f"{years} year{'s' if years > 1 else ''}"
+        elif months > 0:
+            return f"{months} month{'s' if months > 1 else ''}"
+        else:
+            return "Less than a month"
+    
+    def get_formatted_dates(self, obj):
+        """Get formatted date range string."""
+        start_str = obj.start_date.strftime('%b %Y')
+        end_str = 'Present' if obj.is_current else obj.end_date.strftime('%b %Y')
+        return f"{start_str} - {end_str}"
+    
+    def validate(self, attrs):
+        """Validate employment history data."""
+        data = super().validate(attrs)
+        
+        # Get values from data or instance
+        company_name = data.get('company_name') or getattr(self.instance, 'company_name', None)
+        job_title = data.get('job_title') or getattr(self.instance, 'job_title', None)
+        start_date = data.get('start_date') or getattr(self.instance, 'start_date', None)
+        end_date = data.get('end_date') or getattr(self.instance, 'end_date', None)
+        is_current = data.get('is_current')
+        if is_current is None and self.instance:
+            is_current = self.instance.is_current
+        description = data.get('description', '')
+        
+        errors = {}
+        
+        # Required fields validation (UC-023)
+        if not job_title:
+            errors['job_title'] = 'Job title is required.'
+        if not company_name:
+            errors['company_name'] = 'Company name is required.'
+        if not start_date:
+            errors['start_date'] = 'Start date is required.'
+        
+        # Current position logic (UC-023)
+        if is_current:
+            # If current position, end_date should be null
+            data['end_date'] = None
+        else:
+            # If not current, end_date is required
+            if not end_date:
+                errors['end_date'] = 'End date is required for past positions.'
+        
+        # Date validation (UC-023): start date must be before end date
+        if start_date and end_date and start_date > end_date:
+            errors['start_date'] = 'Start date must be before end date.'
+        
+        # Description character limit (UC-023: 1000 character limit)
+        if description and len(description) > 1000:
+            errors['description'] = 'Job description must not exceed 1000 characters.'
+        
+        if errors:
+            raise serializers.ValidationError(errors)
+        
+        return data
+    
+    def _sync_skills(self, work_experience, skills_names):
+        """Sync skills for work experience."""
+        if skills_names is None:
+            return
+        
+        skills = []
+        for name in skills_names:
+            name = str(name).strip()
+            if not name:
+                continue
+            
+            # Get or create skill (case-insensitive)
+            skill = Skill.objects.filter(name__iexact=name).first()
+            if not skill:
+                skill = Skill.objects.create(name=name, category='')
+            skills.append(skill)
+        
+        work_experience.skills_used.set(skills)
+    
+    def create(self, validated_data):
+        """Create work experience entry."""
+        skills_names = validated_data.pop('skills_used_names', None)
+        achievements = validated_data.get('achievements', [])
+        
+        # Ensure achievements is a list
+        if not isinstance(achievements, list):
+            validated_data['achievements'] = []
+        
+        work_experience = WorkExperience.objects.create(**validated_data)
+        self._sync_skills(work_experience, skills_names)
+        
+        return work_experience
+    
+    def update(self, instance, validated_data):
+        """Update work experience entry (UC-024)."""
+        skills_names = validated_data.pop('skills_used_names', None)
+        
+        # Update fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Update skills if provided
+        if skills_names is not None:
+            self._sync_skills(instance, skills_names)
+        
+        return instance
+
+
+class WorkExperienceSummarySerializer(serializers.ModelSerializer):
+    """
+    Simplified serializer for work experience listing.
+    Used for timeline views and career progression displays.
+    """
+    duration = serializers.SerializerMethodField(read_only=True)
+    formatted_dates = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = WorkExperience
+        fields = [
+            'id',
+            'company_name',
+            'job_title',
+            'location',
+            'start_date',
+            'end_date',
+            'is_current',
+            'duration',
+            'formatted_dates',
+        ]
+        read_only_fields = fields
+    
+    def get_duration(self, obj):
+        """Calculate duration of employment."""
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        
+        start = obj.start_date
+        end = obj.end_date if obj.end_date else date.today()
+        
+        delta = relativedelta(end, start)
+        years = delta.years
+        months = delta.months
+        
+        if years > 0 and months > 0:
+            return f"{years}y {months}m"
+        elif years > 0:
+            return f"{years}y"
+        elif months > 0:
+            return f"{months}m"
+        else:
+            return "<1m"
+    
+    def get_formatted_dates(self, obj):
+        """Get formatted date range string."""
+        start_str = obj.start_date.strftime('%b %Y')
+        end_str = 'Present' if obj.is_current else obj.end_date.strftime('%b %Y')
+        return f"{start_str} - {end_str}"
+
 
 
