@@ -18,8 +18,8 @@
   margin-bottom: 16px;
 }
 
-btn-back,
-back-button {
+.btn-back,
+.back-button {
   background: var(--surface);
   border: 1.5px solid #d1d5db;
   padding: 10px 20px;
@@ -59,7 +59,7 @@ back-button {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 32px;
-  padding: 32px;
+  padding: 24px;
   background: var(--surface);
   border-radius: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
@@ -79,13 +79,20 @@ back-button {
   background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
   color: var(--on-primary);
   border: none;
-  padding: 12px 28px;
+  padding: 10px 16px;
   border-radius: 10px;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: normal; /* allow long labels to wrap */
+  line-height: 1.2;
+  min-height: 44px;
 }
 
 .add-button:hover {
@@ -406,7 +413,7 @@ form {
 
 .project-header {
   background: linear-gradient(135deg, #f8f9ff 0%, var(--surface) 100%);
-  padding: 32px;
+  padding: 24px;
   border-bottom: 2px solid var(--surface-2);
   display: flex;
   justify-content: space-between;
@@ -420,7 +427,7 @@ form {
 }
 
 .project-main {
-  flex: 1;
+  flex: 2; /* allow main content more space so lines are longer */
   min-width: 0;
 }
 
@@ -461,7 +468,7 @@ form {
 }
 
 .project-details {
-  padding: 24px 32px;
+  padding: 16px 20px;
   background: linear-gradient(135deg, #fafbff 0%, var(--surface) 100%);
   border-bottom: 1px solid var(--surface-2);
   display: flex;
@@ -489,12 +496,9 @@ form {
   flex-shrink: 0;
 }
 
-action-button,
-edit-button,
-delete-button {
-action-button,
-edit-button,
-delete-button {
+.action-button,
+.edit-button,
+.delete-button {
   width: 44px;
   height: 44px;
   background: var(--surface);
@@ -711,8 +715,9 @@ delete-button {
 
   .projects-header {
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
     text-align: center;
+    padding: 16px; /* reduce padding so action buttons do not overflow */
   }
 
   .projects-header h2 {
@@ -741,7 +746,7 @@ delete-button {
 
   .project-actions {
     width: 100%;
-    justify-content: flex-end;
+    justify-content: center;
   }
 
   .form-row {
@@ -755,5 +760,4 @@ delete-button {
   .project-media-grid {
     grid-template-columns: 1fr;
   }
-}
 }

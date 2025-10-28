@@ -199,3 +199,12 @@
     font-size: 24px;
   }
 }
+
+/* Extra adjustments for narrow mobile view (up to 767px tall) */
+@media (max-width: 767px) {
+  .auth-card { padding: 20px 12px; max-width: 420px; }
+  .auth-card h2 { font-size: 22px; }
+  .auth-subtitle { font-size: 13px; }
+  .auth-button { padding: 12px 18px; font-size: 15px; }
+  .form-row { grid-template-columns: 1fr; }
+}

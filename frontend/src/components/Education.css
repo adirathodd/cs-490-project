@@ -672,3 +672,17 @@
     font-size: 14px;
   }
 }
+
+/* Extra adjustments for narrow mobile view (up to 767px tall) to ensure text/buttons fit */
+@media (max-width: 767px) {
+  .education-container { padding: 12px; }
+  .education-container > h2 { font-size: 28px; }
+  .education-header { padding: 12px; }
+  .education-header h2 { font-size: 18px; }
+  .education-item-header, .education-item-details { padding: 12px; }
+  .education-item-title { font-size: 18px; }
+  .education-item-sub { font-size: 14px; }
+  .education-item-actions { width: 100%; justify-content: center; }
+  .add-education-button, .save-button, .cancel-button { padding: 8px 12px; min-width: 0; }
+  .empty-state { padding: 40px; }
+}
