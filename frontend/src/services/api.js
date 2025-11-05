@@ -40,11 +40,21 @@ api.interceptors.response.use(
       return api.request(config);
     }
 
-    const normalized = error?.response?.data?.error || {
+    const backendErr = error?.response?.data?.error;
+    const normalized = backendErr || {
       code: 'network_error',
       message: 'Network error. Please try again.',
     };
-    return Promise.reject({ error: normalized });
+    const enriched = {
+      ...normalized,
+      status: status ?? null,
+      method,
+      url: config?.url,
+      details: normalized.details || error?.response?.data || null,
+      messages: Array.isArray(normalized.messages) ? normalized.messages : [],
+    };
+    // Provide both top-level fields and nested under `error` for backward compatibility
+    return Promise.reject({ ...enriched, error: enriched });
   }
 );
 
@@ -537,6 +547,29 @@ authAPI.getEmploymentHistory = async () => {
   }
 };
 
+// UC-036: Jobs API calls
+export const jobsAPI = {
+  getJobs: async () => {
+    const response = await api.get('/jobs');
+    return response.data;
+  },
+
+  addJob: async (data) => {
+    const response = await api.post('/jobs', data);
+    return response.data;
+  },
+
+  updateJob: async (id, data) => {
+    const response = await api.patch(`/jobs/${id}`, data);
+    return response.data;
+  },
+
+  deleteJob: async (id) => {
+    const response = await api.delete(`/jobs/${id}`);
+    return response.data;
+  },
+};
+
 authAPI.getEmploymentTimeline = async () => {
   try {
     const response = await api.get('/employment/timeline');
@@ -596,6 +629,7 @@ const _defaultExport = {
   educationAPI,
   certificationsAPI,
   projectsAPI,
+  jobsAPI,
 };
 
 export default _defaultExport;
@@ -607,6 +641,7 @@ try {
     module.exports = _defaultExport; // override CommonJS export
     module.exports.default = _defaultExport;
     module.exports.authAPI = authAPI;
+    module.exports.jobsAPI = jobsAPI;
   }
 } catch (e) {
   // ignore in strict ESM environments
@@ -636,10 +671,12 @@ try {
     _defaultExport.authAPI = authAPI;
     _defaultExport.getBasicProfile = authAPI.getBasicProfile;
     _defaultExport.getProfilePicture = authAPI.getProfilePicture;
+    _defaultExport.jobsAPI = jobsAPI;
   }
   if (typeof module !== 'undefined' && module && module.exports) {
     module.exports = _defaultExport;
     module.exports.authAPI = authAPI;
+    module.exports.jobsAPI = jobsAPI;
   }
 } catch (e) {
   // ignore any errors during best-effort compatibility wiring

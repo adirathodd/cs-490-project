@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Lightweight API test script (bash port of test-apis.ps1)
+# Lightweightst-apis.ps1)
 # macOS/bash friendly, no external deps required (uses Python stdlib for JSON parsing)
 # Fill in apiKey/email/password OR supply idToken directly.
 
@@ -9,10 +9,11 @@ base="http://localhost:8000/api"
 apiKey=""      # Optional if you already set idToken
 email=""       # e.g., user@example.com
 password=""   # e.g., supersecret
-idToken=""     # You can paste a token from the frontend: window.auth.currentUser.getIdToken().then(t=>console.log(t))
+idToken="
+"     # You can paste a token from the frontend: window.auth.currentUser.getIdToken().then(t=>console.log(t))
 
 doRegister=false
-doDelete=false  # Reserved for future use
+doDelete=false  # Reserved for API test script (bash port of te future use
 # ==========================================
 
 # ========== Helpers ==============

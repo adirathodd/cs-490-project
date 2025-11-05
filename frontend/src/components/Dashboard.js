@@ -230,6 +230,13 @@ const Dashboard = () => {
             <p>Showcase significant work beyond employment</p>
             <button className="card-button" onClick={() => navigate('/projects')}>Manage Projects</button>
           </div>
+
+          <div className="dashboard-card">
+            <div className="card-icon" aria-label="Jobs"><Icon name="briefcase" size="lg" ariaLabel="Jobs" /></div>
+            <h3>Jobs</h3>
+            <p>Track opportunities you want to apply for</p>
+            <button className="card-button" onClick={() => navigate('/jobs')}>Add Job Entry</button>
+          </div>
         </div>
       </div>
     </div>

@@ -6,7 +6,7 @@ import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia, WorkExperience
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia, WorkExperience, JobEntry
 
 User = get_user_model()
 
@@ -932,6 +932,67 @@ class WorkExperienceSummarySerializer(serializers.ModelSerializer):
         start_str = obj.start_date.strftime('%b %Y')
         end_str = 'Present' if obj.is_current else obj.end_date.strftime('%b %Y')
         return f"{start_str} - {end_str}"
+
+
+
+# ======================
+# UC-036: JOB ENTRIES SERIALIZER
+# ======================
+
+class JobEntrySerializer(serializers.ModelSerializer):
+    """Serializer for user-tracked job entries."""
+    id = serializers.IntegerField(read_only=True)
+    salary_range = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = JobEntry
+        fields = [
+            'id', 'title', 'company_name', 'location',
+            'salary_min', 'salary_max', 'salary_currency', 'salary_range',
+            'posting_url', 'application_deadline',
+            'description', 'industry', 'job_type',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'salary_range']
+
+    def get_salary_range(self, obj):
+        if obj.salary_min is None and obj.salary_max is None:
+            return None
+        if obj.salary_min is not None and obj.salary_max is not None:
+            return f"{obj.salary_currency} {obj.salary_min} - {obj.salary_max}"
+        if obj.salary_min is not None:
+            return f"{obj.salary_currency} {obj.salary_min}+"
+        return f"Up to {obj.salary_currency} {obj.salary_max}"
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        # Required fields: title, company_name
+        title = data.get('title') or getattr(self.instance, 'title', None)
+        company = data.get('company_name') or getattr(self.instance, 'company_name', None)
+        errors = {}
+        if not title:
+            errors['title'] = 'Job title is required.'
+        if not company:
+            errors['company_name'] = 'Company name is required.'
+
+        # Description limit (enforced also by model max_length)
+        desc = data.get('description')
+        if desc and len(desc) > 2000:
+            errors['description'] = 'Job description must not exceed 2000 characters.'
+
+        # Salary range logic
+        smin = data.get('salary_min')
+        smax = data.get('salary_max')
+        if smin is not None and smax is not None:
+            try:
+                if smin > smax:
+                    errors['salary_min'] = 'Minimum salary cannot be greater than maximum salary.'
+            except Exception:
+                errors['salary_min'] = 'Invalid salary range.'
+
+        if errors:
+            raise serializers.ValidationError(errors)
+        return data
 
 
 
