@@ -141,7 +141,10 @@ const Register = () => {
       console.error('Registration error:', error);
       console.log('Error details:', error.response?.data);
       
-      if (error.response?.data?.error?.message) {
+      // Check for error message from API (normalized by api.js interceptor)
+      if (error.message) {
+        setApiError(error.message);
+      } else if (error.response?.data?.error?.message) {
         setApiError(error.response.data.error.message);
       } else if (error.response?.data?.error) {
         setApiError(error.response.data.error);

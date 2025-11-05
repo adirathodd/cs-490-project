@@ -76,10 +76,17 @@ class CandidateProfile(models.Model):
         if self.city and self.state:
             return f"{self.city}, {self.state}"
         return self.city or self.state or self.location
+    
+    def get_full_name(self):
+        """Return candidate's full name from linked User"""
+        return f"{self.user.first_name} {self.user.last_name}".strip()
 
 class Skill(models.Model):
     name = models.CharField(max_length=120, unique=True)
     category = models.CharField(max_length=120, blank=True)
+
+    def __str__(self):
+        return self.name
 
 class CandidateSkill(models.Model):
     candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="skills")

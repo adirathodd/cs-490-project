@@ -197,6 +197,18 @@ def register_user(request):
         first_name = validated_data['first_name']
         last_name = validated_data['last_name']
         
+        # First check if user already exists in Django
+        if User.objects.filter(email=email).exists():
+            return Response(
+                {
+                    'error': {
+                        'code': 'duplicate_email',
+                        'message': 'An account with this email already exists. Please log in instead. If you forgot your password, use the password reset option.'
+                    }
+                },
+                status=status.HTTP_409_CONFLICT
+            )
+        
         # Create user in Firebase
         try:
             firebase_user = firebase_auth.create_user(
@@ -207,7 +219,12 @@ def register_user(request):
             logger.info(f"Created Firebase user: {firebase_user.uid}")
         except firebase_admin.exceptions.AlreadyExistsError:
             return Response(
-                {'error': {'code': 'duplicate_email', 'message': 'A user with this email already exists.'}},
+                {
+                    'error': {
+                        'code': 'duplicate_email',
+                        'message': 'An account with this email already exists. Please log in instead. If you forgot your password, use the password reset option.'
+                    }
+                },
                 status=status.HTTP_409_CONFLICT
             )
         except Exception as e:
@@ -219,6 +236,7 @@ def register_user(request):
         
         # Create Django user
         try:
+            # Create Django user first since we already checked for duplicates
             user = User.objects.create_user(
                 username=firebase_user.uid,  # Use Firebase UID as username
                 email=email,
@@ -244,7 +262,7 @@ def register_user(request):
             
             logger.info(f"Created Django user and profile for: {email}")
         except Exception as e:
-            # Rollback: delete Firebase user if Django user creation fails
+            # Something went wrong creating the Django user - rollback Firebase user
             try:
                 firebase_auth.delete_user(firebase_user.uid)
             except:
