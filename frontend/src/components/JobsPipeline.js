@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { DndContext, closestCenter, useSensor, useSensors, PointerSensor, useDroppable } from '@dnd-kit/core';
+import { DndContext, closestCenter, useSensor, useSensors, PointerSensor, useDroppable, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { jobsAPI } from '../services/api';
@@ -90,6 +90,11 @@ export default function JobsPipeline() {
   const [filter, setFilter] = useState('all');
   const [bulkMode, setBulkMode] = useState(false);
   const [selected, setSelected] = useState(new Set());
+  const [activeId, setActiveId] = useState(null);
+  const [search, setSearch] = useState('');
+  const [collapsed, setCollapsed] = useState({}); // stageKey -> boolean
+  const [sortByRecency, setSortByRecency] = useState({}); // stageKey -> boolean
+  const [openMenu, setOpenMenu] = useState(null); // stageKey | null
 
   const visibleStages = useMemo(() => {
     return filter === 'all' ? STAGES : STAGES.filter(s => s.key === filter);
@@ -122,8 +127,37 @@ export default function JobsPipeline() {
 
   useEffect(() => { load(); }, []);
 
+  const findJobById = (id) => {
+    for (const key of Object.keys(jobsByStage)) {
+      const j = (jobsByStage[key] || []).find((x) => x.id === id);
+      if (j) return j;
+    }
+    return null;
+  };
+
+  const filteredAndSorted = (stageKey) => {
+    let list = Array.from(jobsByStage[stageKey] || []);
+    const term = search.trim().toLowerCase();
+    if (term) {
+      list = list.filter((j) =>
+        (j.title || '').toLowerCase().includes(term) ||
+        (j.company_name || '').toLowerCase().includes(term) ||
+        (j.location || '').toLowerCase().includes(term)
+      );
+    }
+    if (sortByRecency[stageKey]) {
+      list.sort((a, b) => {
+        const ta = a.last_status_change ? new Date(a.last_status_change).getTime() : 0;
+        const tb = b.last_status_change ? new Date(b.last_status_change).getTime() : 0;
+        return tb - ta;
+      });
+    }
+    return list;
+  };
+
   const onDragEnd = async (event) => {
     const { active, over } = event;
+    setActiveId(null);
     if (!active || !over) return;
     const fromId = active?.data?.current?.sortable?.containerId;
     // If hovering over an item, its containerId is where we dropped; otherwise fall back to over.id (a container)
@@ -174,6 +208,9 @@ export default function JobsPipeline() {
       await load();
     }
   };
+  const onDragStart = (event) => {
+    setActiveId(event?.active?.id ?? null);
+  };
 
   const toggleSelect = (id) => {
     setSelected((prev) => {
@@ -213,6 +250,14 @@ export default function JobsPipeline() {
         )}
 
         <div className="form-row" style={{ alignItems: 'center' }}>
+          <div className="form-group" style={{ flex: 1 }}>
+            <label>Search jobs</label>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by title, company, or location"
+            />
+          </div>
           <div className="form-group">
             <label>Filter by status</label>
             <select value={filter} onChange={(e) => setFilter(e.target.value)}>
@@ -230,28 +275,75 @@ export default function JobsPipeline() {
               </select>
             </div>
           </div>
+          <div className="form-group" style={{ alignSelf: 'flex-end' }}>
+            <label>&nbsp;</label>
+            <a className="back-button" href="/jobs" style={{ textDecoration: 'none' }}>+ Add Job</a>
+          </div>
         </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${visibleStages.length}, 1fr)`, gap: 12 }}>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
           {visibleStages.map((stage) => (
-            <div key={stage.key} className="profile-form-card" style={{ background: stage.color }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ marginTop: 0 }}><Icon name="list" size="sm" /> {stage.label}</h3>
-                <div title="count" style={{ fontWeight: 600 }}>{counts[stage.key] ?? (jobsByStage[stage.key]?.length || 0)}</div>
+            <div key={stage.key} className="profile-form-card" style={{ background: stage.color, padding: 0 }}>
+              <div style={{ maxHeight: '65vh', overflowY: 'auto' }}>
+                <div style={{ position: 'sticky', top: 0, zIndex: 1, background: stage.color, borderBottom: '1px solid #e5e7eb', padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0 }}><Icon name="list" size="sm" /> {stage.label}</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div title="count" style={{ fontWeight: 600 }}>{counts[stage.key] ?? (jobsByStage[stage.key]?.length || 0)}</div>
+                    <button
+                      className="back-button"
+                      aria-label={`Column options for ${stage.label}`}
+                      onClick={() => setOpenMenu((prev) => (prev === stage.key ? null : stage.key))}
+                      style={{ padding: '4px 8px' }}
+                    >⋯</button>
+                    {openMenu === stage.key && (
+                      <div style={{ position: 'absolute', right: 12, top: 44, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, boxShadow: '0 8px 20px rgba(0,0,0,0.08)', zIndex: 2 }}>
+                        <button
+                          className="back-button"
+                          onClick={() => {
+                            setSortByRecency((p) => ({ ...p, [stage.key]: !p[stage.key] }));
+                            setOpenMenu(null);
+                          }}
+                          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'transparent' }}
+                        >{sortByRecency[stage.key] ? 'Unsort' : 'Sort by recency'}</button>
+                        <button
+                          className="back-button"
+                          onClick={() => {
+                            setCollapsed((p) => ({ ...p, [stage.key]: !p[stage.key] }));
+                            setOpenMenu(null);
+                          }}
+                          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'transparent' }}
+                        >{collapsed[stage.key] ? 'Expand' : 'Collapse'}</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div style={{ padding: 12 }}>
+                  <SortableContext id={stage.key} items={(jobsByStage[stage.key] || []).map(j => j.id)} strategy={verticalListSortingStrategy}>
+                    <DroppableColumn id={stage.key}>
+                      {(!collapsed[stage.key] ? filteredAndSorted(stage.key) : []).map((job) => (
+                        <SortableJobCard key={job.id} job={job} selected={bulkMode && selected.has(job.id)} onToggleSelect={() => bulkMode && toggleSelect(job.id)} />
+                      ))}
+                      {loading && <p>Loading…</p>}
+                      {!loading && (!jobsByStage[stage.key] || jobsByStage[stage.key].length === 0) && <p style={{ color: '#666' }}>No jobs</p>}
+                    </DroppableColumn>
+                  </SortableContext>
+                </div>
               </div>
-              <SortableContext id={stage.key} items={(jobsByStage[stage.key] || []).map(j => j.id)} strategy={verticalListSortingStrategy}>
-                <DroppableColumn id={stage.key}>
-                  {(jobsByStage[stage.key] || []).map((job) => (
-                    <SortableJobCard key={job.id} job={job} selected={bulkMode && selected.has(job.id)} onToggleSelect={() => bulkMode && toggleSelect(job.id)} />
-                  ))}
-                  {loading && <p>Loading…</p>}
-                  {!loading && (jobsByStage[stage.key] || []).length === 0 && <p style={{ color: '#666' }}>No jobs</p>}
-                </DroppableColumn>
-              </SortableContext>
             </div>
           ))}
+
+          <DragOverlay>
+            {activeId ? (
+              <div style={{ cursor: 'grabbing' }}>
+                {(() => {
+                  const j = findJobById(activeId);
+                  return j ? <JobCard job={j} selected={false} onToggleSelect={() => {}} /> : null;
+                })()}
+              </div>
+            ) : null}
+          </DragOverlay>
         </DndContext>
       </div>
     </div>
