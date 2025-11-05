@@ -387,7 +387,38 @@ export default function JobsPipeline() {
             <div key={stage.key} className="profile-form-card" style={{ background: stage.color, padding: 0, marginTop: 0 }}>
               <div style={{ maxHeight: '65vh', overflowY: 'auto' }}>
                 <div style={{ position: 'sticky', top: 0, zIndex: 1, background: stage.color, borderBottom: '1px solid #e5e7eb', padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3 style={{ margin: 0 }}><Icon name="list" size="sm" /> {stage.label}</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {/** Column checkbox for bulk moves: appears when bulkMode is active. Clicking moves selected jobs to this stage. */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {bulkMode ? (
+                        (() => {
+                          // compute checked/indeterminate state for this stage based on current selection
+                          const sel = Array.from(selected);
+                          const selCount = sel.length;
+                          let checked = false;
+                          let indeterminate = false;
+                          if (selCount > 0) {
+                            const inThis = sel.map((id) => findJobById(id)?.status === stage.key);
+                            checked = inThis.every(Boolean);
+                            indeterminate = inThis.some(Boolean) && !checked;
+                          }
+                          return (
+                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              <input
+                                type="checkbox"
+                                disabled={selected.size === 0}
+                                checked={checked}
+                                onChange={(e) => { e.stopPropagation(); /* move selected to this stage */ moveSelected(stage.key); }}
+                                ref={(el) => { if (el) el.indeterminate = indeterminate; }}
+                                aria-label={`Move selected jobs to ${stage.label}`}
+                              />
+                            </label>
+                          );
+                        })()
+                      ) : null}
+                      <h3 style={{ margin: 0 }}><Icon name="list" size="sm" /> {stage.label}</h3>
+                    </div>
+                  </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div title="count" style={{ fontWeight: 600 }}>{counts[stage.key] ?? (jobsByStage[stage.key]?.length || 0)}</div>
                     <button
