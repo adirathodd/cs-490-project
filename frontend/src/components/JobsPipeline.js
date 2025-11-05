@@ -384,7 +384,7 @@ export default function JobsPipeline() {
   <div style={{ display: 'grid', gridTemplateColumns: `repeat(${visibleStages.length}, 1fr)`, gap: 12, width: '100%', marginTop: 16 }}>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
           {visibleStages.map((stage) => (
-            <div key={stage.key} className="profile-form-card" style={{ background: stage.color, padding: 0 }}>
+            <div key={stage.key} className="profile-form-card" style={{ background: stage.color, padding: 0, marginTop: 0 }}>
               <div style={{ maxHeight: '65vh', overflowY: 'auto' }}>
                 <div style={{ position: 'sticky', top: 0, zIndex: 1, background: stage.color, borderBottom: '1px solid #e5e7eb', padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <h3 style={{ margin: 0 }}><Icon name="list" size="sm" /> {stage.label}</h3>
