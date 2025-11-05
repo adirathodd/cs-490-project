@@ -231,6 +231,9 @@ export default function JobsPipeline() {
     // Reorder within the same column
     if (fromId === toId) {
       if (activeId === overId) return;
+      // If the column is currently sorted or filtered, skip manual reordering to avoid confusing state
+      const term = search.trim();
+      if (sortByRecency[fromId] || term) return;
       setJobsByStage((prev) => {
         const list = Array.from(prev[fromId] || []);
         const oldIndex = list.findIndex((j) => j.id === activeId);
@@ -401,9 +404,14 @@ export default function JobsPipeline() {
                   </div>
                 </div>
                 <div style={{ padding: 12 }}>
-                  <SortableContext id={stage.key} items={(jobsByStage[stage.key] || []).map(j => j.id)} strategy={verticalListSortingStrategy}>
-                    <DroppableColumn id={stage.key} isEmpty={!jobsByStage[stage.key] || jobsByStage[stage.key].length === 0}>
-                      {(!collapsed[stage.key] ? filteredAndSorted(stage.key) : []).map((job) => (
+                  {(() => {
+                    // Use the exact list that is rendered for SortableContext items to keep dnd-kit indexes in sync
+                    const visibleList = !collapsed[stage.key] ? filteredAndSorted(stage.key) : [];
+                    const isEmpty = !visibleList || visibleList.length === 0;
+                    return (
+                      <SortableContext id={stage.key} items={visibleList.map((j) => j.id)} strategy={verticalListSortingStrategy}>
+                        <DroppableColumn id={stage.key} isEmpty={isEmpty}>
+                          {visibleList.map((job) => (
                         <SortableJobCard
                           key={job.id}
                           job={job}
@@ -412,11 +420,13 @@ export default function JobsPipeline() {
                           onOpenDetails={(j) => setDrawerJob(j)}
                           compact={compact}
                         />
-                      ))}
-                      {loading && <p>Loading…</p>}
-                      {!loading && (!jobsByStage[stage.key] || jobsByStage[stage.key].length === 0) && <p style={{ color: '#666' }}>No jobs</p>}
-                    </DroppableColumn>
-                  </SortableContext>
+                          ))}
+                          {loading && <p>Loading…</p>}
+                          {!loading && isEmpty && <p style={{ color: '#666' }}>No jobs</p>}
+                        </DroppableColumn>
+                      </SortableContext>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
