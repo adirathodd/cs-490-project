@@ -234,7 +234,6 @@ const Jobs = () => {
         } else {
           setSuccess('Job details partially imported. Please fill in the remaining fields.');
         }
-
         setTimeout(() => setSuccess(''), 5000);
       } else {
         setError(result.error || 'Failed to import job details');
