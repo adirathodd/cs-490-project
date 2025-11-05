@@ -99,6 +99,18 @@
   animation: slideIn 0.3s ease;
 }
 
+.success-banner {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+  padding: 16px 20px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  font-size: 15px;
+  font-weight: 500;
+  animation: slideIn 0.3s ease;
+}
+
 @keyframes slideIn {
   from {
     opacity: 0;
@@ -175,6 +187,9 @@
   color: #374151;
   margin-bottom: 8px;
   font-size: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 /* Keep date input and 'Currently enrolled' inline and aligned */
@@ -183,6 +198,17 @@
 .required {
   color: #e53e3e;
   margin-left: 4px;
+}
+
+.char-counter {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.char-counter.limit-reached {
+  color: #e53e3e;
+  font-weight: 600;
 }
 
 .form-group input[type="text"],
@@ -517,6 +543,30 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   border-color: #ef4444;
+}
+
+.education-item-actions .view-button {
+  width: 44px;
+  height: 44px;
+  background: var(--white);
+  border: 2px solid #d1d5db;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  text-decoration: none;
+  color: #374151;
+}
+
+.education-item-actions .view-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border-color: #10b981;
 }
 
 .education-item-details {
