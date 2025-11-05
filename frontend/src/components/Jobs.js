@@ -206,8 +206,17 @@ const Jobs = () => {
         </div>
         <div className="profile-header">
           <div>
-            <h2>Job Tracker</h2>
-            <p className="form-subtitle">Track roles you're interested in and keep key details handy.</p>
+            <h2 style={{ margin: 0 }}>Job Tracker</h2>
+            <p className="form-subtitle" style={{ marginTop: '6px' }}>Track roles you're interested in and keep key details handy.</p>
+            <a
+              className="btn-back"
+              href="/jobs/pipeline"
+              title="View Pipeline"
+              aria-label="View job status pipeline"
+              style={{ display: 'inline-block', marginTop: '6px' }}
+            >
+              View Pipeline →
+            </a>
           </div>
         </div>
 

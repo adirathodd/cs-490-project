@@ -866,13 +866,43 @@ class JobEntry(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    STATUS_CHOICES = [
+        ("interested", "Interested"),
+        ("applied", "Applied"),
+        ("phone_screen", "Phone Screen"),
+        ("interview", "Interview"),
+        ("offer", "Offer"),
+        ("rejected", "Rejected"),
+    ]
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="interested")
+    last_status_change = models.DateTimeField(auto_now_add=True)
+
     class Meta:
         ordering = ['-updated_at']
         indexes = [
             models.Index(fields=["candidate", "-updated_at"]),
             models.Index(fields=["job_type"]),
             models.Index(fields=["industry"]),
+            models.Index(fields=["candidate", "status"]),
         ]
 
     def __str__(self):
         return f"{self.title} @ {self.company_name}"
+
+
+class JobStatusChange(models.Model):
+    """History of job status changes for auditing and analytics."""
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name="status_changes")
+    old_status = models.CharField(max_length=20, choices=JobEntry.STATUS_CHOICES)
+    new_status = models.CharField(max_length=20, choices=JobEntry.STATUS_CHOICES)
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-changed_at']
+        indexes = [
+            models.Index(fields=["job", "-changed_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.job_id}: {self.old_status} -> {self.new_status} @ {self.changed_at}"
