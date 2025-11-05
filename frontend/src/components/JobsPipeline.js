@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { DndContext, closestCenter, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
+import { DndContext, closestCenter, useSensor, useSensors, PointerSensor, useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { jobsAPI } from '../services/api';
@@ -53,6 +53,25 @@ const SortableJobCard = ({ job, selected, onToggleSelect }) => {
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <JobCard job={job} selected={selected} onToggleSelect={onToggleSelect} />
+    </div>
+  );
+};
+
+// Droppable container to allow dropping into empty columns
+const DroppableColumn = ({ id, children }) => {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        minHeight: 24,
+        paddingBottom: 2,
+        outline: isOver ? '2px dashed #6366f1' : 'none',
+        outlineOffset: -2,
+        transition: 'outline 120ms ease',
+      }}
+    >
+      {children}
     </div>
   );
 };
@@ -223,13 +242,13 @@ export default function JobsPipeline() {
                 <div title="count" style={{ fontWeight: 600 }}>{counts[stage.key] ?? (jobsByStage[stage.key]?.length || 0)}</div>
               </div>
               <SortableContext id={stage.key} items={(jobsByStage[stage.key] || []).map(j => j.id)} strategy={verticalListSortingStrategy}>
-                <div>
+                <DroppableColumn id={stage.key}>
                   {(jobsByStage[stage.key] || []).map((job) => (
                     <SortableJobCard key={job.id} job={job} selected={bulkMode && selected.has(job.id)} onToggleSelect={() => bulkMode && toggleSelect(job.id)} />
                   ))}
                   {loading && <p>Loading…</p>}
                   {!loading && (jobsByStage[stage.key] || []).length === 0 && <p style={{ color: '#666' }}>No jobs</p>}
-                </div>
+                </DroppableColumn>
               </SortableContext>
             </div>
           ))}
