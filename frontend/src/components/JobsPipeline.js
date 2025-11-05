@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { DndContext, closestCenter, useSensor, useSensors, PointerSensor, useDroppable, DragOverlay } from '@dnd-kit/core';
+import { DndContext, closestCenter, useSensor, useSensors, PointerSensor, MouseSensor, TouchSensor, useDroppable, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { jobsAPI } from '../services/api';
@@ -43,6 +43,7 @@ const JobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact = false
             target="_blank"
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
             title="Open job link"
           >
             <Icon name="link" size="sm" />
@@ -51,6 +52,7 @@ const JobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact = false
         <button
           className="back-button"
           onClick={(e) => { e.stopPropagation(); onOpenDetails?.(job); }}
+          onMouseDown={(e) => e.stopPropagation()}
           title="View details"
           style={{ padding: '2px 6px' }}
         >
@@ -73,11 +75,11 @@ const SortableJobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact
     transition,
     cursor: 'grab',
     zIndex: isDragging ? 10 : undefined,
+    touchAction: 'none',
   };
   const handle = (
     <span
-      {...attributes}
-      {...listeners}
+      /* visual handle only; whole card is draggable */
       onClick={(e) => e.stopPropagation()}
       title="Drag"
       aria-label="Drag handle"
@@ -87,7 +89,7 @@ const SortableJobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact
     </span>
   );
   return (
-    <div ref={setNodeRef} style={style}>
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <JobCard job={job} selected={selected} onToggleSelect={onToggleSelect} onOpenDetails={onOpenDetails} compact={compact} dragHandle={handle} />
     </div>
   );
@@ -117,9 +119,9 @@ const DroppableColumn = ({ id, children, isEmpty }) => {
 
 export default function JobsPipeline() {
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 },
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 1 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 1 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
   );
 
   const [jobsByStage, setJobsByStage] = useState({});
