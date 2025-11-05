@@ -104,6 +104,12 @@ jest.mock('./services/firebase', () => ({
 			deleteProject: jest.fn(),
 			deleteProjectMedia: jest.fn(),
 		},
+		jobsAPI: {
+			getJobs: jest.fn().mockResolvedValue([]),
+			addJob: jest.fn(),
+			updateJob: jest.fn(),
+			deleteJob: jest.fn(),
+		},
 	}));
 
 	// Mock firebase/auth directly for components that import from it

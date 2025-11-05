@@ -24,8 +24,9 @@ from core.serializers import (
     ProjectSerializer,
     ProjectMediaSerializer,
     WorkExperienceSerializer,
+    JobEntrySerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (
@@ -1880,6 +1881,103 @@ def education_detail(request, education_id):
         return Response(
             {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# ======================
+# UC-036: JOB ENTRIES
+# ======================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def jobs_list_create(request):
+    """List and create user job entries."""
+    try:
+        user = request.user
+        profile, _ = CandidateProfile.objects.get_or_create(user=user)
+
+        if request.method == 'GET':
+            qs = JobEntry.objects.filter(candidate=profile).order_by('-updated_at', '-id')
+            return Response(JobEntrySerializer(qs, many=True).data, status=status.HTTP_200_OK)
+
+        # POST
+        serializer = JobEntrySerializer(data=request.data)
+        if not serializer.is_valid():
+            msgs = _validation_messages(serializer.errors)
+            return Response(
+                {
+                    'error': {
+                        'code': 'validation_error',
+                        'message': (msgs[0] if msgs else 'Validation error'),
+                        'messages': msgs,
+                        'details': serializer.errors,
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        instance = serializer.save(candidate=profile)
+        data = JobEntrySerializer(instance).data
+        data['message'] = 'Job entry saved successfully.'
+        return Response(data, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        logger.error(f"Error in jobs_list_create: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def job_detail(request, job_id):
+    """Retrieve/Update/Delete a job entry for the authenticated user."""
+    try:
+        try:
+            profile = CandidateProfile.objects.get(user=request.user)
+        except CandidateProfile.DoesNotExist:
+            return Response(
+                {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            job = JobEntry.objects.get(id=job_id, candidate=profile)
+        except JobEntry.DoesNotExist:
+            return Response(
+                {'error': {'code': 'job_not_found', 'message': 'Job entry not found.'}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if request.method == 'GET':
+            return Response(JobEntrySerializer(job).data, status=status.HTTP_200_OK)
+
+        if request.method in ['PUT', 'PATCH']:
+            partial = request.method == 'PATCH'
+            serializer = JobEntrySerializer(job, data=request.data, partial=partial)
+            if not serializer.is_valid():
+                msgs = _validation_messages(serializer.errors)
+                return Response(
+                    {
+                        'error': {
+                            'code': 'validation_error',
+                            'message': (msgs[0] if msgs else 'Validation error'),
+                            'messages': msgs,
+                            'details': serializer.errors,
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        # DELETE
+        job.delete()
+        return Response({'message': 'Job entry deleted successfully.'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error in job_detail: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'An error occurred processing your request.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
 

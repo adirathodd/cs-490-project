@@ -79,4 +79,8 @@ urlpatterns = [
 
     # Account Deletion confirmation (email link landing)
     path('auth/delete/confirm/<str:token>', views.confirm_account_deletion, name='confirm-account-deletion'),
+
+    # UC-036: Jobs endpoints
+    path('jobs', views.jobs_list_create, name='jobs-list-create'),
+    path('jobs/<int:job_id>', views.job_detail, name='job-detail'),
 ]

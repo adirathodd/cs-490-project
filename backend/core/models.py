@@ -820,3 +820,59 @@ class Notification(models.Model):
         indexes = [
             models.Index(fields=["user", "is_read", "-created_at"]),
         ]
+
+
+# ======================
+# UC-036: JOB ENTRIES
+# ======================
+
+class JobEntry(models.Model):
+    """User-tracked job opportunities (manual entries).
+
+    Keeps it independent from Company/JobOpportunity, so users can quickly log leads
+    without needing company domains, etc.
+
+    Acceptance fields:
+    - title (required)
+    - company_name (required)
+    - location
+    - salary range (min/max, currency)
+    - posting_url
+    - application_deadline
+    - description (2000 char limit)
+    - industry
+    - job_type (dropdown)
+    """
+    JOB_TYPES = [
+        ("ft", "Full-time"),
+        ("pt", "Part-time"),
+        ("contract", "Contract"),
+        ("intern", "Internship"),
+        ("temp", "Temporary"),
+    ]
+
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="job_entries")
+    title = models.CharField(max_length=220)
+    company_name = models.CharField(max_length=180)
+    location = models.CharField(max_length=160, blank=True)
+    salary_min = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    salary_max = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    salary_currency = models.CharField(max_length=3, default="USD")
+    posting_url = models.URLField(blank=True)
+    application_deadline = models.DateField(null=True, blank=True)
+    description = models.TextField(blank=True, max_length=2000)
+    industry = models.CharField(max_length=120, blank=True)
+    job_type = models.CharField(max_length=20, choices=JOB_TYPES, default="ft")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=["candidate", "-updated_at"]),
+            models.Index(fields=["job_type"]),
+            models.Index(fields=["industry"]),
+        ]
+
+    def __str__(self):
+        return f"{self.title} @ {self.company_name}"

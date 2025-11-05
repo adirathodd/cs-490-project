@@ -337,6 +337,34 @@
   font-size: var(--font-size-sm);
 }
 
+/* Back bar and button (shared across forms: Profile, Jobs, Education, etc.) */
+.page-backbar {
+  margin-bottom: var(--space-6);
+}
+
+.btn-back {
+  background: var(--white);
+  border: 1.5px solid #d1d5db;
+  padding: 10px 20px;
+  border-radius: 10px;
+  color: #4b5563;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  text-decoration: none;
+}
+
+.btn-back:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+  transform: translateX(-4px);
+}
+
 /* Form Actions */
 .profile-form-card .form-actions {
   display: flex;
@@ -664,6 +692,11 @@
 .profile-form-card .delete-button:active:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(220, 38, 38, 0.25);
+}
+
+/* Ensure vertical spacing between stacked cards (e.g., form card + list card) */
+.profile-form-container .profile-form-card + .profile-form-card {
+  margin-top: 24px;
 }
 
 /* Responsive Design */
