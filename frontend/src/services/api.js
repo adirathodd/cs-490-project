@@ -560,16 +560,12 @@ export const jobsAPI = {
   },
 
   getJob: async (id) => {
-    const response = await api.get(`/jobs/${id}`);
-  getJobs: async (params = {}) => {
-    const usp = new URLSearchParams();
-    Object.entries(params || {}).forEach(([k, v]) => {
-      if (v === undefined || v === null || v === '') return;
-      usp.append(k, v);
-    });
-    const path = usp.toString() ? `/jobs?${usp.toString()}` : '/jobs';
-    const response = await api.get(path);
-    return response.data;
+    try {
+      const response = await api.get(`/jobs/${id}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch job' };
+    }
   },
 
   addJob: async (data) => {

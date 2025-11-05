@@ -309,7 +309,7 @@ class Education(models.Model):
     candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="educations")
     institution = models.CharField(max_length=200)
     # Education level dropdown
-    degree_type = models.CharField(max_length=10, choices=DEGREE_CHOICES)
+    degree_type = models.CharField(max_length=20, choices=DEGREE_CHOICES)
     field_of_study = models.CharField(max_length=200, blank=True)
     # Timeline
     start_date = models.DateField(null=True, blank=True)
@@ -906,7 +906,7 @@ class JobEntry(models.Model):
     ]
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="interested")
-    last_status_change = models.DateTimeField(auto_now_add=True)
+    last_status_change = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     class Meta:
         ordering = ['-updated_at']

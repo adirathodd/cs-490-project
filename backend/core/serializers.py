@@ -410,70 +410,82 @@ class CandidateSkillSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = CandidateSkill
+    # UC-026/UC-027: Add and manage user skills with proficiency and ordering
+    skill_id = serializers.IntegerField(write_only=True, required=False)
+    name = serializers.CharField(write_only=True, required=False)
+    category = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    skill_name = serializers.CharField(source='skill.name', read_only=True)
+    skill_category = serializers.CharField(source='skill.category', read_only=True)
+
+    class Meta:
+        model = CandidateSkill
         fields = [
-            'id', 'skill_id', 'skill_name', 'skill_category',
-            'name', 'category', 'level', 'years', 'order'
+            'id',
+            # write-only inputs to create/resolve the Skill
+            'skill_id', 'name', 'category',
+            # resolved skill info
+            'skill_name', 'skill_category',
+            # candidate skill properties
+            'level', 'years', 'order',
         ]
         read_only_fields = ['id']
-    
+
     def validate_level(self, value):
-        """Validate proficiency level."""
+        # Validate proficiency level.
         valid_levels = ['beginner', 'intermediate', 'advanced', 'expert']
-        if value.lower() not in valid_levels:
+        if value and value.lower() not in valid_levels:
             raise serializers.ValidationError(
                 f"Invalid proficiency level. Must be one of: {', '.join(valid_levels)}"
             )
-        return value.lower()
-    
-    def validate(self, data):
-        """Validate request data.
+        return value.lower() if value else value
 
-        For creation, require either skill_id or name. For updates, allow
-        partial payloads that only include level/years.
-        """
-        # If updating an existing instance, don't require skill fields
+    def validate(self, data):
+        # For create, require either skill_id or name. For updates, allow partial payloads.
         if self.instance is not None:
             return data
-
-        # Create: ensure a skill identifier is provided
-        skill_id = data.get('skill_id')
-        name = data.get('name')
-        if not skill_id and not name:
+        if not data.get('skill_id') and not (data.get('name') or '').strip():
             raise serializers.ValidationError("Either skill_id or name must be provided.")
         return data
-    
-    def create(self, validated_data):
-        """Create or get skill, then create candidate skill.
 
-        Expects the current candidate profile in serializer context under 'candidate'.
-        """
+    def _resolve_skill(self, skill_id, skill_name, skill_category):
+        if skill_id is not None:
+            try:
+                return Skill.objects.get(pk=skill_id)
+            except Skill.DoesNotExist:
+                raise serializers.ValidationError({'skill_id': 'Skill not found.'})
+        # name path
+        if not skill_name:
+            raise serializers.ValidationError({'name': 'Skill name is required when skill_id is not provided.'})
+        skill = Skill.objects.filter(name__iexact=skill_name).first()
+        if skill is None:
+            skill = Skill.objects.create(name=skill_name, category=skill_category or '')
+        return skill
+
+    def create(self, validated_data):
+        # Expects CandidateProfile in context as 'candidate'
         candidate = self.context.get('candidate')
         if candidate is None:
             raise serializers.ValidationError({'candidate': 'Candidate context is required.'})
 
         skill_id = validated_data.pop('skill_id', None)
         skill_name = (validated_data.pop('name', None) or '').strip()
-        skill_category = (validated_data.pop('category', '') or '').strip()
+        skill_category = (validated_data.pop('category', None) or '').strip()
 
-        # Resolve skill
-        if skill_id is not None:
-            try:
-                skill = Skill.objects.get(pk=skill_id)
-            except Skill.DoesNotExist:
-                raise serializers.ValidationError({'skill_id': 'Skill not found.'})
-        else:
-            if not skill_name:
-                raise serializers.ValidationError({'name': 'Skill name is required when skill_id is not provided.'})
-            skill = Skill.objects.filter(name__iexact=skill_name).first()
-            if skill is None:
-                skill = Skill.objects.create(name=skill_name, category=skill_category)
+        skill = self._resolve_skill(skill_id, skill_name, skill_category)
 
-        # Prevent duplicates per candidate
+        # Prevent duplicates
         if CandidateSkill.objects.filter(candidate=candidate, skill=skill).exists():
             raise serializers.ValidationError({'skill': 'You have already added this skill.'})
 
-        # Create mapping
         return CandidateSkill.objects.create(candidate=candidate, skill=skill, **validated_data)
+
+    def update(self, instance, validated_data):
+        # Allow updating level/years/order only
+        for field in ['level', 'years', 'order']:
+            if field in validated_data:
+                setattr(instance, field, validated_data[field])
+        instance.save()
+        return instance
 
 
 class SkillAutocompleteSerializer(serializers.Serializer):
@@ -777,13 +789,7 @@ class ProjectSerializer(serializers.ModelSerializer):
 # ======================
 
 class WorkExperienceSerializer(serializers.ModelSerializer):
-    """
-    Serializer for UC-023: Employment History - Add Entry
-    UC-024: Employment History - View and Edit
-    UC-025: Employment History - Delete Entry
-    
-    Handles adding, viewing, editing, and deleting work experience entries.
-    """
+    """Employment history entry serializer (add, view/edit, delete)."""
     # Accept skills_used as list of skill names
     skills_used_names = serializers.ListField(
         child=serializers.CharField(),
@@ -894,7 +900,7 @@ class WorkExperienceSerializer(serializers.ModelSerializer):
         return data
     
     def _sync_skills(self, work_experience, skills_names):
-        """Sync skills for work experience."""
+        # Sync skills for work experience.
         if skills_names is None:
             return
         
@@ -913,7 +919,7 @@ class WorkExperienceSerializer(serializers.ModelSerializer):
         work_experience.skills_used.set(skills)
     
     def create(self, validated_data):
-        """Create work experience entry."""
+        # Create work experience entry.
         # Pop both name-based and id-based skills inputs if present
         skills_names = validated_data.pop('skills_used_names', None)
         skills_ids = validated_data.pop('skills_used', None)
@@ -942,7 +948,7 @@ class WorkExperienceSerializer(serializers.ModelSerializer):
         return work_experience
     
     def update(self, instance, validated_data):
-        """Update work experience entry (UC-024)."""
+        # Update work experience entry (UC-024).
         skills_names = validated_data.pop('skills_used_names', None)
         skills_ids = validated_data.pop('skills_used', None)
 
@@ -968,10 +974,8 @@ class WorkExperienceSerializer(serializers.ModelSerializer):
 
 
 class WorkExperienceSummarySerializer(serializers.ModelSerializer):
-    """
-    Simplified serializer for work experience listing.
-    Used for timeline views and career progression displays.
-    """
+    # Simplified serializer for work experience listing.
+    # Used for timeline views and career progression displays.
     duration = serializers.SerializerMethodField(read_only=True)
     formatted_dates = serializers.SerializerMethodField(read_only=True)
     
@@ -991,7 +995,7 @@ class WorkExperienceSummarySerializer(serializers.ModelSerializer):
         read_only_fields = fields
     
     def get_duration(self, obj):
-        """Calculate duration of employment."""
+        # Calculate duration of employment.
         from datetime import date
         from dateutil.relativedelta import relativedelta
         
@@ -1012,7 +1016,7 @@ class WorkExperienceSummarySerializer(serializers.ModelSerializer):
             return "<1m"
     
     def get_formatted_dates(self, obj):
-        """Get formatted date range string."""
+        # Get formatted date range string.
         start_str = obj.start_date.strftime('%b %Y')
         end_str = 'Present' if obj.is_current else obj.end_date.strftime('%b %Y')
         return f"{start_str} - {end_str}"
@@ -1024,7 +1028,7 @@ class WorkExperienceSummarySerializer(serializers.ModelSerializer):
 # ======================
 
 class JobEntrySerializer(serializers.ModelSerializer):
-    """Serializer for user-tracked job entries (UC-036 + UC-038)."""
+    # Serializer for user-tracked job entries (UC-036 + UC-038).
     id = serializers.IntegerField(read_only=True)
     salary_range = serializers.SerializerMethodField(read_only=True)
     days_in_stage = serializers.SerializerMethodField(read_only=True)
