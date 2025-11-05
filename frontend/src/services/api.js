@@ -541,9 +541,26 @@ authAPI.getEmploymentHistory = async () => {
 };
 
 // UC-036: Jobs API calls
+// UC-039: Enhanced with search/filter params support
 export const jobsAPI = {
-  getJobs: async () => {
-    const response = await api.get('/jobs');
+  getJobs: async (params = {}) => {
+    try {
+      // Build query string from params object
+      const usp = new URLSearchParams();
+      Object.entries(params || {}).forEach(([k, v]) => {
+        if (v === undefined || v === null || v === '') return;
+        usp.append(k, v);
+      });
+      const path = usp.toString() ? `/jobs?${usp.toString()}` : '/jobs';
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch jobs' };
+    }
+  },
+
+  getJob: async (id) => {
+    const response = await api.get(`/jobs/${id}`);
     return response.data;
   },
 

@@ -17,6 +17,7 @@ import Employment from './components/Employment';
 import ProjectsPortfolio from './components/ProjectsPortfolio';
 import ProjectDetail from './components/ProjectDetail';
 import Jobs from './components/Jobs';
+import JobDetailView from './components/JobDetailView';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
 import NavBar from './components/NavBar';
@@ -179,6 +180,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <Jobs />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/jobs/:id"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <JobDetailView />
               </PrivateRoute>
             }
           />
