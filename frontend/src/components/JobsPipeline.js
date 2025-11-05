@@ -140,7 +140,12 @@ export default function JobsPipeline() {
   const [drawerJob, setDrawerJob] = useState(null);
 
   const visibleStages = useMemo(() => {
-    return filter === 'all' ? STAGES : STAGES.filter(s => s.key === filter);
+    if (filter === 'all') return STAGES;
+    if (filter === 'interviewing') {
+      const allowed = new Set(['phone_screen', 'interview']);
+      return STAGES.filter(s => allowed.has(s.key));
+    }
+    return STAGES.filter(s => s.key === filter);
   }, [filter]);
 
   const load = async () => {
@@ -331,7 +336,7 @@ export default function JobsPipeline() {
                 >
                   Total: {totals}
                 </button>
-                <button className="back-button" onClick={() => setFilter('phone_screen')}>Interviewing: {interviewing}</button>
+                <button className="back-button" onClick={() => setFilter('interviewing')}>Interviewing: {interviewing}</button>
                 <button className="back-button" onClick={() => setFilter('offer')}>Offers: {offers}</button>
               </div>
             );
@@ -351,6 +356,7 @@ export default function JobsPipeline() {
             <label>Filter by status</label>
             <select value={filter} onChange={(e) => setFilter(e.target.value)}>
               <option value="all">All</option>
+              <option value="interviewing">Interviewing (Phone + Interview)</option>
               {STAGES.map(s => (<option key={s.key} value={s.key}>{s.label}</option>))}
             </select>
           </div>
