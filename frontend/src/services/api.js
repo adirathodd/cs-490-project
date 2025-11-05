@@ -583,6 +583,15 @@ export const jobsAPI = {
     return response.data;
   },
 
+  importFromUrl: async (url) => {
+    try {
+      const response = await api.post('/jobs/import-from-url', { url });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to import job from URL' };
+    }
+  },
+
   // UC-037 additions
   getJobStats: async () => {
     const response = await api.get('/jobs/stats');

@@ -2208,6 +2208,76 @@ def job_detail(request, job_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def import_job_from_url(request):
+    """
+    SCRUM-39: Import job details from a job posting URL.
+    
+    Supports LinkedIn, Indeed, and Glassdoor URLs.
+    
+    POST Request Body:
+    {
+        "url": "https://www.linkedin.com/jobs/view/123456"
+    }
+    
+    Response:
+    {
+        "status": "success|partial|failed",
+        "data": {
+            "title": "Software Engineer",
+            "company_name": "Acme Inc",
+            "description": "...",
+            "location": "New York, NY",
+            "job_type": "ft",
+            "posting_url": "..."
+        },
+        "fields_extracted": ["title", "company_name", "description", ...],
+        "error": "Error message if failed"
+    }
+    """
+    try:
+        from core.job_import_utils import import_job_from_url as do_import
+        
+        url = request.data.get('url', '').strip()
+        
+        if not url:
+            return Response(
+                {
+                    'error': {
+                        'code': 'missing_url',
+                        'message': 'URL is required',
+                        'messages': ['Please provide a job posting URL']
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Perform import
+        result = do_import(url)
+        
+        # Return result
+        response_data = result.to_dict()
+        
+        if result.status == 'failed':
+            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.error(f"Error importing job from URL: {e}")
+        return Response(
+            {
+                'error': {
+                    'code': 'import_failed',
+                    'message': 'Failed to import job details from URL',
+                    'messages': [str(e)]
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def jobs_bulk_deadline(request):
     """Bulk set/clear application_deadline for a list of job IDs belonging to the current user.
 
