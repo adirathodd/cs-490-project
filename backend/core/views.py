@@ -1891,14 +1891,88 @@ def education_detail(request, education_id):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def jobs_list_create(request):
-    """List and create user job entries."""
+    """List and create user job entries. UC-039: Supports search, filter, and sort."""
     try:
         user = request.user
         profile, _ = CandidateProfile.objects.get_or_create(user=user)
 
         if request.method == 'GET':
-            qs = JobEntry.objects.filter(candidate=profile).order_by('-updated_at', '-id')
-            return Response(JobEntrySerializer(qs, many=True).data, status=status.HTTP_200_OK)
+            # UC-039: Start with base queryset
+            qs = JobEntry.objects.filter(candidate=profile)
+            
+            # Search by keywords in title, company_name, description
+            search_query = request.GET.get('q', '').strip()
+            if search_query:
+                qs = qs.filter(
+                    Q(title__icontains=search_query) |
+                    Q(company_name__icontains=search_query) |
+                    Q(description__icontains=search_query)
+                )
+            
+            # Filter by industry
+            industry = request.GET.get('industry', '').strip()
+            if industry:
+                qs = qs.filter(industry__icontains=industry)
+            
+            # Filter by location
+            location = request.GET.get('location', '').strip()
+            if location:
+                qs = qs.filter(location__icontains=location)
+            
+            # Filter by job_type
+            job_type = request.GET.get('job_type', '').strip()
+            if job_type:
+                qs = qs.filter(job_type=job_type)
+            
+            # Filter by salary range
+            salary_min = request.GET.get('salary_min', '').strip()
+            salary_max = request.GET.get('salary_max', '').strip()
+            if salary_min:
+                try:
+                    qs = qs.filter(Q(salary_min__gte=int(salary_min)) | Q(salary_max__gte=int(salary_min)))
+                except ValueError:
+                    pass
+            if salary_max:
+                try:
+                    qs = qs.filter(Q(salary_max__lte=int(salary_max)) | Q(salary_min__lte=int(salary_max)))
+                except ValueError:
+                    pass
+            
+            # Filter by deadline date range
+            deadline_from = request.GET.get('deadline_from', '').strip()
+            deadline_to = request.GET.get('deadline_to', '').strip()
+            if deadline_from:
+                try:
+                    from datetime import datetime
+                    date_obj = datetime.strptime(deadline_from, '%Y-%m-%d').date()
+                    qs = qs.filter(application_deadline__gte=date_obj)
+                except ValueError:
+                    pass
+            if deadline_to:
+                try:
+                    from datetime import datetime
+                    date_obj = datetime.strptime(deadline_to, '%Y-%m-%d').date()
+                    qs = qs.filter(application_deadline__lte=date_obj)
+                except ValueError:
+                    pass
+            
+            # Sorting
+            sort_by = request.GET.get('sort', 'date_added').strip()
+            if sort_by == 'deadline':
+                qs = qs.order_by(F('application_deadline').asc(nulls_last=True), '-updated_at')
+            elif sort_by == 'salary':
+                qs = qs.order_by(F('salary_max').desc(nulls_last=True), F('salary_min').desc(nulls_last=True), '-updated_at')
+            elif sort_by == 'company_name':
+                qs = qs.order_by('company_name', '-updated_at')
+            else:  # date_added (default)
+                qs = qs.order_by('-updated_at', '-id')
+            
+            results = JobEntrySerializer(qs, many=True).data
+            return Response({
+                'results': results,
+                'count': len(results),
+                'search_query': search_query
+            }, status=status.HTTP_200_OK)
 
         # POST
         serializer = JobEntrySerializer(data=request.data)
