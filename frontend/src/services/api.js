@@ -561,6 +561,14 @@ export const jobsAPI = {
 
   getJob: async (id) => {
     const response = await api.get(`/jobs/${id}`);
+  getJobs: async (params = {}) => {
+    const usp = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v === undefined || v === null || v === '') return;
+      usp.append(k, v);
+    });
+    const path = usp.toString() ? `/jobs?${usp.toString()}` : '/jobs';
+    const response = await api.get(path);
     return response.data;
   },
 
@@ -577,6 +585,17 @@ export const jobsAPI = {
   deleteJob: async (id) => {
     const response = await api.delete(`/jobs/${id}`);
     return response.data;
+  },
+
+  // UC-037 additions
+  getJobStats: async () => {
+    const response = await api.get('/jobs/stats');
+    return response.data; // { interested: n, applied: n, ... }
+  },
+
+  bulkUpdateStatus: async (ids, status) => {
+    const response = await api.post('/jobs/bulk-status', { ids, status });
+    return response.data; // { updated: n }
   },
 
   importFromUrl: async (url) => {

@@ -23,16 +23,40 @@ function daysInStage(job) {
   return Math.max(0, Math.floor((now - t) / (1000 * 60 * 60 * 24)));
 }
 
-const JobCard = ({ job, selected, onToggleSelect }) => (
+const JobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact = false, onOpenLink, dragHandle }) => (
   <div
     className="profile-form-card"
-    style={{ padding: 12, marginBottom: 8, border: selected ? '2px solid #6366f1' : '1px solid #e5e7eb' }}
+    style={{ padding: compact ? 8 : 12, marginBottom: 8, border: selected ? '2px solid #6366f1' : '1px solid #e5e7eb' }}
     data-testid={`job-card-${job.id}`}
     onClick={onToggleSelect}
     role="button"
   >
-    <div style={{ fontWeight: 600 }}>
-      {job.title} <span style={{ color: '#666', fontWeight: 400 }}>@ {job.company_name}</span>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+      <div style={{ fontWeight: 600 }}>
+        {job.title} <span style={{ color: '#666', fontWeight: 400 }}>@ {job.company_name}</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {dragHandle}
+        {job.posting_url ? (
+          <a
+            href={job.posting_url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title="Open job link"
+          >
+            <Icon name="link" size="sm" />
+          </a>
+        ) : null}
+        <button
+          className="back-button"
+          onClick={(e) => { e.stopPropagation(); onOpenDetails?.(job); }}
+          title="View details"
+          style={{ padding: '2px 6px' }}
+        >
+          <Icon name="info" size="sm" />
+        </button>
+      </div>
     </div>
     <div style={{ color: '#666', fontSize: 13 }}>
       {job.location || '—'} • {job.job_type?.toUpperCase()}
@@ -42,7 +66,7 @@ const JobCard = ({ job, selected, onToggleSelect }) => (
 );
 
 // Draggable/sortable wrapper for a job card using dnd-kit
-const SortableJobCard = ({ job, selected, onToggleSelect }) => {
+const SortableJobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact = false }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: job.id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -50,15 +74,27 @@ const SortableJobCard = ({ job, selected, onToggleSelect }) => {
     cursor: 'grab',
     zIndex: isDragging ? 10 : undefined,
   };
+  const handle = (
+    <span
+      {...attributes}
+      {...listeners}
+      onClick={(e) => e.stopPropagation()}
+      title="Drag"
+      aria-label="Drag handle"
+      style={{ cursor: 'grab', userSelect: 'none', padding: '2px 4px', border: '1px dashed #e5e7eb', borderRadius: 4, color: '#666' }}
+    >
+      ▒▒
+    </span>
+  );
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <JobCard job={job} selected={selected} onToggleSelect={onToggleSelect} />
+    <div ref={setNodeRef} style={style}>
+      <JobCard job={job} selected={selected} onToggleSelect={onToggleSelect} onOpenDetails={onOpenDetails} compact={compact} dragHandle={handle} />
     </div>
   );
 };
 
 // Droppable container to allow dropping into empty columns
-const DroppableColumn = ({ id, children }) => {
+const DroppableColumn = ({ id, children, isEmpty }) => {
   const { setNodeRef, isOver } = useDroppable({ id });
   return (
     <div
@@ -72,6 +108,9 @@ const DroppableColumn = ({ id, children }) => {
       }}
     >
       {children}
+      {isOver && isEmpty && (
+        <div style={{ color: '#666', fontSize: 12, textAlign: 'center', padding: 8 }}>Drop here</div>
+      )}
     </div>
   );
 };
@@ -95,6 +134,8 @@ export default function JobsPipeline() {
   const [collapsed, setCollapsed] = useState({}); // stageKey -> boolean
   const [sortByRecency, setSortByRecency] = useState({}); // stageKey -> boolean
   const [openMenu, setOpenMenu] = useState(null); // stageKey | null
+  const [compact, setCompact] = useState(false);
+  const [drawerJob, setDrawerJob] = useState(null);
 
   const visibleStages = useMemo(() => {
     return filter === 'all' ? STAGES : STAGES.filter(s => s.key === filter);
@@ -126,6 +167,26 @@ export default function JobsPipeline() {
   };
 
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    // restore UI prefs
+    try {
+      const c = localStorage.getItem('pipeline_collapsed');
+      const s = localStorage.getItem('pipeline_sort');
+      const cp = localStorage.getItem('pipeline_compact');
+      if (c) setCollapsed(JSON.parse(c));
+      if (s) setSortByRecency(JSON.parse(s));
+      if (cp) setCompact(cp === '1');
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem('pipeline_collapsed', JSON.stringify(collapsed)); } catch {}
+  }, [collapsed]);
+  useEffect(() => {
+    try { localStorage.setItem('pipeline_sort', JSON.stringify(sortByRecency)); } catch {}
+  }, [sortByRecency]);
+  useEffect(() => {
+    try { localStorage.setItem('pipeline_compact', compact ? '1' : '0'); } catch {}
+  }, [compact]);
 
   const findJobById = (id) => {
     for (const key of Object.keys(jobsByStage)) {
@@ -249,6 +310,22 @@ export default function JobsPipeline() {
           <div className="error-banner" role="alert"><span className="error-icon">!</span><span>{error}</span></div>
         )}
 
+        {/* Summary chips */}
+        <div className="form-row" style={{ alignItems: 'center', marginBottom: 8 }}>
+          {(() => {
+            const totals = STAGES.reduce((acc, s) => acc + (counts[s.key] ?? (jobsByStage[s.key]?.length || 0)), 0);
+            const interviewing = (counts['phone_screen'] ?? 0) + (counts['interview'] ?? 0);
+            const offers = counts['offer'] ?? 0;
+            return (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <span className="back-button" title="Total jobs" style={{ cursor: 'default' }}>Total: {totals}</span>
+                <button className="back-button" onClick={() => setFilter('phone_screen')}>Interviewing: {interviewing}</button>
+                <button className="back-button" onClick={() => setFilter('offer')}>Offers: {offers}</button>
+              </div>
+            );
+          })()}
+        </div>
+
         <div className="form-row" style={{ alignItems: 'center' }}>
           <div className="form-group" style={{ flex: 1 }}>
             <label>Search jobs</label>
@@ -278,6 +355,10 @@ export default function JobsPipeline() {
           <div className="form-group" style={{ alignSelf: 'flex-end' }}>
             <label>&nbsp;</label>
             <a className="back-button" href="/jobs" style={{ textDecoration: 'none' }}>+ Add Job</a>
+          </div>
+          <div className="form-group" style={{ alignSelf: 'flex-end' }}>
+            <label>&nbsp;</label>
+            <button className="back-button" onClick={() => setCompact((p) => !p)}>{compact ? 'Cozy cards' : 'Compact cards'}</button>
           </div>
         </div>
       </div>
@@ -321,9 +402,16 @@ export default function JobsPipeline() {
                 </div>
                 <div style={{ padding: 12 }}>
                   <SortableContext id={stage.key} items={(jobsByStage[stage.key] || []).map(j => j.id)} strategy={verticalListSortingStrategy}>
-                    <DroppableColumn id={stage.key}>
+                    <DroppableColumn id={stage.key} isEmpty={!jobsByStage[stage.key] || jobsByStage[stage.key].length === 0}>
                       {(!collapsed[stage.key] ? filteredAndSorted(stage.key) : []).map((job) => (
-                        <SortableJobCard key={job.id} job={job} selected={bulkMode && selected.has(job.id)} onToggleSelect={() => bulkMode && toggleSelect(job.id)} />
+                        <SortableJobCard
+                          key={job.id}
+                          job={job}
+                          selected={bulkMode && selected.has(job.id)}
+                          onToggleSelect={() => bulkMode && toggleSelect(job.id)}
+                          onOpenDetails={(j) => setDrawerJob(j)}
+                          compact={compact}
+                        />
                       ))}
                       {loading && <p>Loading…</p>}
                       {!loading && (!jobsByStage[stage.key] || jobsByStage[stage.key].length === 0) && <p style={{ color: '#666' }}>No jobs</p>}
@@ -339,13 +427,40 @@ export default function JobsPipeline() {
               <div style={{ cursor: 'grabbing' }}>
                 {(() => {
                   const j = findJobById(activeId);
-                  return j ? <JobCard job={j} selected={false} onToggleSelect={() => {}} /> : null;
+                  return j ? <JobCard job={j} selected={false} onToggleSelect={() => {}} compact={compact} /> : null;
                 })()}
               </div>
             ) : null}
           </DragOverlay>
         </DndContext>
       </div>
+
+      {/* Right-side details drawer */}
+      {drawerJob && (
+        <>
+          <div onClick={() => setDrawerJob(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.15)' }} />
+          <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: 'min(420px, 92vw)', background: '#fff', borderLeft: '1px solid #e5e7eb', boxShadow: '-8px 0 24px rgba(0,0,0,0.08)', padding: 16, overflowY: 'auto', zIndex: 50 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0 }}>{drawerJob.title}</h3>
+              <button className="back-button" onClick={() => setDrawerJob(null)}>Close</button>
+            </div>
+            <div style={{ color: '#666', marginBottom: 8 }}>{drawerJob.company_name} • {drawerJob.location || '—'} • {drawerJob.job_type?.toUpperCase()}</div>
+            {drawerJob.posting_url && (
+              <div style={{ marginBottom: 8 }}>
+                <a className="back-button" href={drawerJob.posting_url} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                  <Icon name="link" size="sm" /> Open job posting
+                </a>
+              </div>
+            )}
+            {drawerJob.description && (
+              <div className="profile-form-card" style={{ padding: 12 }}>
+                <h4 style={{ marginTop: 0 }}>Description / Notes</h4>
+                <p style={{ whiteSpace: 'pre-wrap' }}>{drawerJob.description}</p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -48,6 +48,7 @@ import firebase_admin
 from firebase_admin import auth as firebase_auth
 import logging
 from django.conf import settings
+from core import job_import_utils
 
 
 # ------------------------------
@@ -2234,10 +2235,8 @@ def import_job_from_url(request):
     }
     """
     try:
-        from core.job_import_utils import import_job_from_url as do_import
-        
         url = request.data.get('url', '').strip()
-        
+
         if not url:
             return Response(
                 {
@@ -2249,10 +2248,10 @@ def import_job_from_url(request):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Perform import
-        result = do_import(url)
-        
+
+        # Perform import using the job_import_utils module so test patches can reliably intercept
+        result = job_import_utils.import_job_from_url(url)
+
         # Return result
         response_data = result.to_dict()
         
