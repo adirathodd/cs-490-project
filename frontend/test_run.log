@@ -1,0 +1,1884 @@
+
+> frontend@0.1.0 test
+> react-scripts test --coverage --watchAll=false
+
+PASS src/App.test.js
+  ● Console
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+      3 |
+      4 | test('renders login screen by default', async () => {
+    > 5 |   render(<App />);
+        |         ^
+      6 |   // Expect the public login page header
+      7 |   expect(await screen.findByText(/welcome back/i)).toBeInTheDocument();
+      8 | });
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at Object.logV6DeprecationWarnings [as UNSAFE_logV6DeprecationWarnings] (node_modules/react-router/lib/deprecations.ts:26:5)
+      at node_modules/react-router-dom/index.tsx:816:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15476:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at Object.<anonymous> (src/App.test.js:5:9)
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+      3 |
+      4 | test('renders login screen by default', async () => {
+    > 5 |   render(<App />);
+        |         ^
+      6 |   // Expect the public login page header
+      7 |   expect(await screen.findByText(/welcome back/i)).toBeInTheDocument();
+      8 | });
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at Object.logV6DeprecationWarnings [as UNSAFE_logV6DeprecationWarnings] (node_modules/react-router/lib/deprecations.ts:37:5)
+      at node_modules/react-router-dom/index.tsx:816:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15476:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at Object.<anonymous> (src/App.test.js:5:9)
+
+PASS src/components/Register.test.js
+PASS src/components/Dashboard.test.js
+  ● Console
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+      379 |     };
+      380 |   }
+    > 381 |   return render(
+          |                ^
+      382 |     <MemoryRouter>
+      383 |       <Dashboard />
+      384 |     </MemoryRouter>
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:26:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at setup (src/components/Dashboard.test.js:381:16)
+      at Object.<anonymous> (src/components/Dashboard.test.js:16:3)
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+      379 |     };
+      380 |   }
+    > 381 |   return render(
+          |                ^
+      382 |     <MemoryRouter>
+      383 |       <Dashboard />
+      384 |     </MemoryRouter>
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:37:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at setup (src/components/Dashboard.test.js:381:16)
+      at Object.<anonymous> (src/components/Dashboard.test.js:16:3)
+
+    console.log
+      Profile picture fetch error: error
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: error
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: { response: { status: 500 } }
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: { response: { status: 500 } }
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: {}
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: { response: { status: 404 } }
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: { response: { status: 404 } }
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: {}
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: error
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: { response: { status: 500 } }
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: {}
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: { response: { status: 400 } }
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: {}
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: error
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: { response: { status: 500 } }
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: {}
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: { response: { status: 404 } }
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: { response: { status: 400 } }
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: {}
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: { response: { status: 400 } }
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: {}
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture response: {}
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: { response: { status: 404 } }
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture fetch error: { response: { status: 404 } }
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+    console.log
+      Profile picture response: undefined
+
+      at fetchProfilePicture (src/components/Dashboard.js:39:19)
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Dashboard.js:42:24)
+
+      at fetchProfilePicture (src/components/Dashboard.js:63:19)
+
+PASS src/components/Skills.test.js
+  ● Console
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+      1 | // --- Coverage for handleInputChange and fetchSuggestions ---
+      2 | test('clears suggestions when skill name < 2 chars', async () => {
+    > 3 |   render(
+        |         ^
+      4 |     <MemoryRouter>
+      5 |       <Skills />
+      6 |     </MemoryRouter>
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:26:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at Object.<anonymous> (src/components/Skills.test.js:3:9)
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+      1 | // --- Coverage for handleInputChange and fetchSuggestions ---
+      2 | test('clears suggestions when skill name < 2 chars', async () => {
+    > 3 |   render(
+        |         ^
+      4 |     <MemoryRouter>
+      5 |       <Skills />
+      6 |     </MemoryRouter>
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:37:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at Object.<anonymous> (src/components/Skills.test.js:3:9)
+
+PASS src/components/ProjectsPortfolio.test.js
+PASS src/components/Projects.test.js
+PASS src/components/SkillsOrganized.test.js
+PASS src/components/ResetPassword.test.js
+  ● Console
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+      79 |
+      80 |   const renderWithRoute = (route = '/reset-password?oobCode=valid') =>
+    > 81 |     render(
+         |           ^
+      82 |       <MemoryRouter initialEntries={[route]}>
+      83 |         <ResetPassword />
+      84 |       </MemoryRouter>
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:26:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at renderWithRoute (src/components/ResetPassword.test.js:81:11)
+      at Object.<anonymous> (src/components/ResetPassword.test.js:14:5)
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+      79 |
+      80 |   const renderWithRoute = (route = '/reset-password?oobCode=valid') =>
+    > 81 |     render(
+         |           ^
+      82 |       <MemoryRouter initialEntries={[route]}>
+      83 |         <ResetPassword />
+      84 |       </MemoryRouter>
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:37:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at renderWithRoute (src/components/ResetPassword.test.js:81:11)
+      at Object.<anonymous> (src/components/ResetPassword.test.js:14:5)
+
+PASS src/components/Profile.test.js
+  ● Console
+
+    console.log
+      Profile picture fetch error: TypeError: Cannot read properties of undefined (reading 'profile_picture_url')
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Profile.js:67:24)
+          at runNextTicks (node:internal/process/task_queues:65:5)
+          at listOnTimeout (node:internal/timers:569:9)
+          at processTimers (node:internal/timers:543:7)
+
+      at fetchProfilePicture (src/components/Profile.js:75:19)
+
+PASS src/services/api.test.js
+PASS src/components/ProfileForm.test.js
+  ● Console
+
+    console.error
+      Error fetching profile: TypeError: _api.authAPI.getBasicProfile is not a function
+          at fetchProfile (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/ProfileForm.js:97:38)
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/ProfileForm.js:86:7
+          at Object.react_stack_bottom_frame (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+          at runWithFiberInDEV (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+          at commitHookEffectListMount (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+          at commitHookPassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+          at recursivelyTraversePassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15718:11)
+          at recursivelyTraversePassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15476:11)
+          at recursivelyTraversePassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+          at flushPassiveEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+          at flushActQueue (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react/cjs/react.development.js:590:34)
+          at Object.<anonymous>.process.env.NODE_ENV.exports.act (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react/cjs/react.development.js:884:10)
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/react/dist/act-compat.js:47:25
+          at renderRoot (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/react/dist/pure.js:190:26)
+          at render (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/react/dist/pure.js:292:10)
+          at Object.<anonymous> (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/ProfileForm.test.js:38:11)
+          at Promise.then.completed (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/utils.js:391:28)
+          at new Promise (<anonymous>)
+          at callAsyncCircusFn (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/utils.js:316:10)
+          at _callCircusTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:218:40)
+          at processTicksAndRejections (node:internal/process/task_queues:105:5)
+          at _runTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:155:3)
+          at _runTestsForDescribeBlock (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:66:9)
+          at _runTestsForDescribeBlock (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:60:9)
+          at run (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:25:3)
+          at runAndTransformResultsToJestFormat (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:170:21)
+          at jestAdapter (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:82:19)
+          at runTestInternal (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/runTest.js:389:16)
+          at runTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/runTest.js:475:34)
+          at Object.worker (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/testWorker.js:133:12)
+
+      116 |       setCharacterCount(response.summary ? response.summary.length : 0);
+      117 |     } catch (error) {
+    > 118 |       console.error('Error fetching profile:', error);
+          |               ^
+      119 |       if (error.response?.status === 401) {
+      120 |         setApiError('Please log in to view your profile.');
+      121 |       } else if (error.response?.data?.error?.message) {
+
+      at fetchProfile (src/components/ProfileForm.js:118:15)
+      at src/components/ProfileForm.js:86:7
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15718:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15476:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at Object.<anonymous> (src/components/ProfileForm.test.js:38:11)
+
+    console.error
+      Error fetching profile picture: TypeError: _api.authAPI.getProfilePicture is not a function
+          at fetchProfilePicture (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/ProfilePictureUpload.js:35:34)
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/ProfilePictureUpload.js:29:5
+          at Object.react_stack_bottom_frame (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+          at runWithFiberInDEV (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+          at commitHookEffectListMount (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+          at commitHookPassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+          at recursivelyTraversePassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15718:11)
+          at recursivelyTraversePassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15718:11)
+          at recursivelyTraversePassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15718:11)
+          at recursivelyTraversePassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15718:11)
+          at recursivelyTraversePassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15476:11)
+          at recursivelyTraversePassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15718:11)
+          at recursivelyTraversePassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15476:11)
+          at recursivelyTraversePassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+          at flushPassiveEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+          at flushActQueue (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react/cjs/react.development.js:590:34)
+          at Object.<anonymous>.process.env.NODE_ENV.exports.act (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react/cjs/react.development.js:884:10)
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/react/dist/act-compat.js:47:25
+          at renderRoot (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/react/dist/pure.js:190:26)
+          at render (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/react/dist/pure.js:292:10)
+          at Object.<anonymous> (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/ProfileForm.test.js:38:11)
+          at Promise.then.completed (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/utils.js:391:28)
+          at new Promise (<anonymous>)
+          at callAsyncCircusFn (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/utils.js:316:10)
+          at _callCircusTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:218:40)
+          at processTicksAndRejections (node:internal/process/task_queues:105:5)
+          at _runTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:155:3)
+          at _runTestsForDescribeBlock (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:66:9)
+          at _runTestsForDescribeBlock (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:60:9)
+          at run (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:25:3)
+          at runAndTransformResultsToJestFormat (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:170:21)
+          at jestAdapter (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:82:19)
+          at runTestInternal (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/runTest.js:389:16)
+          at runTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/runTest.js:475:34)
+          at Object.worker (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/testWorker.js:133:12)
+
+      38 |       }
+      39 |     } catch (err) {
+    > 40 |       console.error('Error fetching profile picture:', err);
+         |               ^
+      41 |       // Silently handle missing profile picture - it's normal for users to not have one yet
+      42 |       // Only log errors that are actual system failures, not 404s
+      43 |       if (err.response && err.response.status !== 404 && err.response.status !== 400) {
+
+      at fetchProfilePicture (src/components/ProfilePictureUpload.js:40:15)
+      at src/components/ProfilePictureUpload.js:29:5
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15718:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15718:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15718:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15718:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15476:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15718:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15476:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at Object.<anonymous> (src/components/ProfileForm.test.js:38:11)
+
+    console.warn
+      Unable to resolve sign-in methods: TypeError: (0 , _firebase.fetchSignInMethodsForEmail) is not a function
+          at resolveMethods (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/ProfileForm.js:402:59)
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/ProfileForm.js:413:5
+          at Object.react_stack_bottom_frame (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+          at runWithFiberInDEV (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+          at commitHookEffectListMount (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+          at commitHookPassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+          at recursivelyTraversePassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15718:11)
+          at recursivelyTraversePassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15476:11)
+          at recursivelyTraversePassiveMountEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+          at commitPassiveMountOnFiber (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+          at flushPassiveEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+          at flushPendingEffects (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:18358:14)
+          at flushSpawnedWork (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:18323:44)
+          at commitRoot (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:17955:9)
+          at performWorkOnRoot (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:16667:15)
+          at performSyncWorkOnRoot (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:18972:7)
+          at flushSyncWorkAcrossRoots_impl (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:18814:21)
+          at processRootScheduleInMicrotask (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:18853:9)
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:18982:11
+          at flushActQueue (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react/cjs/react.development.js:590:34)
+          at Object.<anonymous>.process.env.NODE_ENV.exports.act (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react/cjs/react.development.js:884:10)
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/react/dist/act-compat.js:47:25
+          at Object.eventWrapper (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/react/dist/pure.js:107:28)
+          at fireEvent (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/dom/dist/events.js:12:35)
+          at fireEvent.<computed> [as click] (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/dom/dist/events.js:110:36)
+          at fireEvent.click (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/react/dist/fire-event.js:15:52)
+          at Object.<anonymous> (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/ProfileForm.test.js:44:15)
+          at Promise.then.completed (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/utils.js:391:28)
+          at new Promise (<anonymous>)
+          at callAsyncCircusFn (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/utils.js:316:10)
+          at _callCircusTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:218:40)
+          at processTicksAndRejections (node:internal/process/task_queues:105:5)
+          at _runTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:155:3)
+          at _runTestsForDescribeBlock (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:66:9)
+          at _runTestsForDescribeBlock (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:60:9)
+          at run (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:25:3)
+          at runAndTransformResultsToJestFormat (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:170:21)
+          at jestAdapter (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:82:19)
+          at runTestInternal (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/runTest.js:389:16)
+          at runTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/runTest.js:475:34)
+          at Object.worker (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/testWorker.js:133:12)
+
+      408 |         // Non-fatal: fall back to providerData
+      409 |         // eslint-disable-next-line no-console
+    > 410 |         console.warn('Unable to resolve sign-in methods:', e);
+          |                 ^
+      411 |       }
+      412 |     };
+      413 |     resolveMethods();
+
+      at resolveMethods (src/components/ProfileForm.js:410:17)
+      at src/components/ProfileForm.js:413:5
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15718:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15476:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at flushPendingEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18358:14)
+      at flushSpawnedWork (node_modules/react-dom/cjs/react-dom-client.development.js:18323:44)
+      at commitRoot (node_modules/react-dom/cjs/react-dom-client.development.js:17955:9)
+      at performWorkOnRoot (node_modules/react-dom/cjs/react-dom-client.development.js:16667:15)
+      at performSyncWorkOnRoot (node_modules/react-dom/cjs/react-dom-client.development.js:18972:7)
+      at flushSyncWorkAcrossRoots_impl (node_modules/react-dom/cjs/react-dom-client.development.js:18814:21)
+      at processRootScheduleInMicrotask (node_modules/react-dom/cjs/react-dom-client.development.js:18853:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:18982:11
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at Object.eventWrapper (node_modules/@testing-library/react/dist/pure.js:107:28)
+      at fireEvent (node_modules/@testing-library/dom/dist/events.js:12:35)
+      at fireEvent.<computed> [as click] (node_modules/@testing-library/dom/dist/events.js:110:36)
+      at fireEvent.click (node_modules/@testing-library/react/dist/fire-event.js:15:52)
+      at Object.<anonymous> (src/components/ProfileForm.test.js:44:15)
+
+PASS src/components/Education.test.js
+PASS src/components/PrivateRoute.test.js
+  ● Console
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+      19 |   it('renders loading spinner while checking auth state', () => {
+      20 |     useAuth.mockReturnValue({ loading: true, currentUser: null });
+    > 21 |     render(
+         |           ^
+      22 |       <MemoryRouter initialEntries={['/dashboard']}>
+      23 |         <Routes>
+      24 |           <Route
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:26:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at Object.<anonymous> (src/components/PrivateRoute.test.js:21:11)
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+      19 |   it('renders loading spinner while checking auth state', () => {
+      20 |     useAuth.mockReturnValue({ loading: true, currentUser: null });
+    > 21 |     render(
+         |           ^
+      22 |       <MemoryRouter initialEntries={['/dashboard']}>
+      23 |         <Routes>
+      24 |           <Route
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:37:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at Object.<anonymous> (src/components/PrivateRoute.test.js:21:11)
+
+PASS src/components/NavBar.test.js
+  ● Console
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+      16 | const { useAuth } = require('../context/AuthContext');
+      17 |
+    > 18 | const renderNav = () => render(
+         |                               ^
+      19 |   <MemoryRouter>
+      20 |     <NavBar />
+      21 |   </MemoryRouter>
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:26:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at renderNav (src/components/NavBar.test.js:18:31)
+      at Object.<anonymous> (src/components/NavBar.test.js:37:5)
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+      16 | const { useAuth } = require('../context/AuthContext');
+      17 |
+    > 18 | const renderNav = () => render(
+         |                               ^
+      19 |   <MemoryRouter>
+      20 |     <NavBar />
+      21 |   </MemoryRouter>
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:37:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at renderNav (src/components/NavBar.test.js:18:31)
+      at Object.<anonymous> (src/components/NavBar.test.js:37:5)
+
+PASS src/components/dashboard/SkillDistribution.test.js
+PASS src/context/AuthContext.test.js
+  ● Console
+
+    console.error
+      Error fetching user profile: Error: boom
+          at Object.<anonymous> (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/context/AuthContext.test.js:231:50)
+          at Promise.then.completed (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/utils.js:391:28)
+          at new Promise (<anonymous>)
+          at callAsyncCircusFn (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/utils.js:316:10)
+          at _callCircusTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:218:40)
+          at _runTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:155:3)
+          at _runTestsForDescribeBlock (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:66:9)
+          at _runTestsForDescribeBlock (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:60:9)
+          at run (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:25:3)
+          at runAndTransformResultsToJestFormat (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:170:21)
+          at jestAdapter (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:82:19)
+          at runTestInternal (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/runTest.js:389:16)
+          at runTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/runTest.js:475:34)
+          at Object.worker (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/testWorker.js:133:12)
+
+      63 |           }
+      64 |         } catch (error) {
+    > 65 |           console.error('Error fetching user profile:', error);
+         |                   ^
+      66 |           setError(error.message);
+      67 |         }
+      68 |       } else {
+
+      at src/context/AuthContext.js:65:19
+
+    console.error
+      Error fetching user profile: TypeError: Cannot read properties of undefined (reading 'profile')
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/context/AuthContext.js:62:40
+
+      63 |           }
+      64 |         } catch (error) {
+    > 65 |           console.error('Error fetching user profile:', error);
+         |                   ^
+      66 |           setError(error.message);
+      67 |         }
+      68 |       } else {
+
+      at src/context/AuthContext.js:65:19
+
+    console.error
+      Error refreshing user profile: Error: refresh-fail
+          at Object.<anonymous> (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/context/AuthContext.test.js:349:50)
+          at Promise.then.completed (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/utils.js:391:28)
+          at new Promise (<anonymous>)
+          at callAsyncCircusFn (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/utils.js:316:10)
+          at _callCircusTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:218:40)
+          at _runTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:155:3)
+          at _runTestsForDescribeBlock (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:66:9)
+          at _runTestsForDescribeBlock (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:60:9)
+          at run (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:25:3)
+          at runAndTransformResultsToJestFormat (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:170:21)
+          at jestAdapter (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:82:19)
+          at runTestInternal (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/runTest.js:389:16)
+          at runTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/runTest.js:475:34)
+          at Object.worker (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/testWorker.js:133:12)
+
+      114 |         }
+      115 |       } catch (error) {
+    > 116 |         console.error('Error refreshing user profile:', error);
+          |                 ^
+      117 |         throw error;
+      118 |       }
+      119 |     }
+
+      at Object.refreshUserProfile (src/context/AuthContext.js:116:17)
+      at onClick (src/context/AuthContext.test.js:76:13)
+
+    console.error
+      Error fetching user profile: TypeError: Cannot read properties of undefined (reading 'profile')
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/context/AuthContext.js:62:40
+
+      63 |           }
+      64 |         } catch (error) {
+    > 65 |           console.error('Error fetching user profile:', error);
+         |                   ^
+      66 |           setError(error.message);
+      67 |         }
+      68 |       } else {
+
+      at src/context/AuthContext.js:65:19
+
+    console.error
+      Error signing out: Error: signout-fail
+          at Object.<anonymous> (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/context/AuthContext.test.js:425:44)
+          at Promise.then.completed (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/utils.js:391:28)
+          at new Promise (<anonymous>)
+          at callAsyncCircusFn (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/utils.js:316:10)
+          at _callCircusTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:218:40)
+          at _runTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:155:3)
+          at _runTestsForDescribeBlock (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:66:9)
+          at _runTestsForDescribeBlock (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:60:9)
+          at run (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/run.js:25:3)
+          at runAndTransformResultsToJestFormat (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:170:21)
+          at jestAdapter (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:82:19)
+          at runTestInternal (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/runTest.js:389:16)
+          at runTest (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/runTest.js:475:34)
+          at Object.worker (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jest-runner/build/testWorker.js:133:12)
+
+      84 |       setUserProfile(null);
+      85 |     } catch (error) {
+    > 86 |       console.error('Error signing out:', error);
+         |               ^
+      87 |       throw error;
+      88 |     }
+      89 |   };
+
+      at Object.signOut (src/context/AuthContext.js:86:15)
+      at onClick (src/context/AuthContext.test.js:53:13)
+
+PASS src/components/ProjectDetail.test.js
+PASS src/components/Login.test.js
+  ● Console
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+      18 |
+      19 |   const setup = () =>
+    > 20 |     render(
+         |           ^
+      21 |       <MemoryRouter>
+      22 |         <Login />
+      23 |       </MemoryRouter>
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:26:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at setup (src/components/Login.test.js:20:11)
+      at Object.<anonymous> (src/components/Login.test.js:27:5)
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+      18 |
+      19 |   const setup = () =>
+    > 20 |     render(
+         |           ^
+      21 |       <MemoryRouter>
+      22 |         <Login />
+      23 |       </MemoryRouter>
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:37:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at setup (src/components/Login.test.js:20:11)
+      at Object.<anonymous> (src/components/Login.test.js:27:5)
+
+    console.error
+      Login error: { code: 'auth/wrong-password' }
+
+      73 |       navigate('/dashboard');
+      74 |     } catch (error) {
+    > 75 |       console.error('Login error:', error);
+         |               ^
+      76 |       
+      77 |       if (error.code === 'auth/user-not-found') {
+      78 |         setApiError('No account found with this email address');
+
+      at handleSubmit (src/components/Login.js:75:15)
+
+PASS src/components/Breadcrumbs.test.js
+  ● Console
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+       5 |
+       6 | const renderAt = (path) =>
+    >  7 |   render(
+         |         ^
+       8 |     <MemoryRouter initialEntries={[path]}>
+       9 |       <Routes>
+      10 |         <Route path="*" element={<Breadcrumbs />} />
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:26:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at renderAt (src/components/Breadcrumbs.test.js:7:9)
+      at Object.<anonymous> (src/components/Breadcrumbs.test.js:17:27)
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+       5 |
+       6 | const renderAt = (path) =>
+    >  7 |   render(
+         |         ^
+       8 |     <MemoryRouter initialEntries={[path]}>
+       9 |       <Routes>
+      10 |         <Route path="*" element={<Breadcrumbs />} />
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:37:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at renderAt (src/components/Breadcrumbs.test.js:7:9)
+      at Object.<anonymous> (src/components/Breadcrumbs.test.js:17:27)
+
+PASS src/components/Icon.test.js
+PASS src/components/dashboard/SummaryCard.test.js
+PASS src/components/dashboard/ProfileProgress.test.js
+PASS src/components/dashboard/ExportProfile.test.js
+PASS src/components/ForgotPassword.test.js
+  ● Console
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+      12 |
+      13 |   const setup = () =>
+    > 14 |     render(
+         |           ^
+      15 |       <MemoryRouter>
+      16 |         <ForgotPassword />
+      17 |       </MemoryRouter>
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:26:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at setup (src/components/ForgotPassword.test.js:14:11)
+      at Object.<anonymous> (src/components/ForgotPassword.test.js:21:5)
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+      12 |
+      13 |   const setup = () =>
+    > 14 |     render(
+         |           ^
+      15 |       <MemoryRouter>
+      16 |         <ForgotPassword />
+      17 |       </MemoryRouter>
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at logV6DeprecationWarnings (node_modules/react-router/lib/deprecations.ts:37:5)
+      at node_modules/react-router/lib/components.tsx:257:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at setup (src/components/ForgotPassword.test.js:14:11)
+      at Object.<anonymous> (src/components/ForgotPassword.test.js:21:5)
+
+PASS src/context/AuthContext.fallback.test.js
+PASS src/components/LoadingSpinner.test.js
+PASS src/components/dashboard/ActivityTimeline.test.js
+PASS src/reportWebVitals.test.js
+PASS src/services/firebase.test.js
+PASS src/config/firebase.test.js
+PASS src/index.test.js
+PASS src/components/Jobs.test.js (12.516 s)
+  ● Console
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+      28 |     jobsAPI.getJobs.mockResolvedValueOnce([]);
+      29 |
+    > 30 |     render(<Jobs />, { wrapper: RouterWrapper });
+         |           ^
+      31 |
+      32 |     // Header renders
+      33 |     expect(await screen.findByText(/job tracker/i)).toBeInTheDocument();
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at Object.logV6DeprecationWarnings [as UNSAFE_logV6DeprecationWarnings] (node_modules/react-router/lib/deprecations.ts:26:5)
+      at node_modules/react-router-dom/index.tsx:816:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15476:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at Object.<anonymous> (src/components/Jobs.test.js:30:11)
+
+    console.warn
+      ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+      28 |     jobsAPI.getJobs.mockResolvedValueOnce([]);
+      29 |
+    > 30 |     render(<Jobs />, { wrapper: RouterWrapper });
+         |           ^
+      31 |
+      32 |     // Header renders
+      33 |     expect(await screen.findByText(/job tracker/i)).toBeInTheDocument();
+
+      at warnOnce (node_modules/react-router/lib/deprecations.ts:9:13)
+      at logDeprecation (node_modules/react-router/lib/deprecations.ts:14:3)
+      at Object.logV6DeprecationWarnings [as UNSAFE_logV6DeprecationWarnings] (node_modules/react-router/lib/deprecations.ts:37:5)
+      at node_modules/react-router-dom/index.tsx:816:25
+      at Object.react_stack_bottom_frame (node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at commitHookEffectListMount (node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+      at commitHookPassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15476:11)
+      at recursivelyTraversePassiveMountEffects (node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+      at commitPassiveMountOnFiber (node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+      at flushPassiveEffects (node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:17923:15
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:884:10)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at renderRoot (node_modules/@testing-library/react/dist/pure.js:190:26)
+      at render (node_modules/@testing-library/react/dist/pure.js:292:10)
+      at Object.<anonymous> (src/components/Jobs.test.js:30:11)
+
+    console.error
+      Error: Not implemented: window.scrollTo
+          at module.exports (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+          at scrollTo (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jsdom/lib/jsdom/browser/Window.js:866:7)
+          at startEdit (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Jobs.js:179:12)
+          at onClick (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Jobs.js:556:23)
+          at executeDispatch (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:19116:9)
+          at runWithFiberInDEV (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+          at processDispatchQueue (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:19166:19)
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:19767:9
+          at batchedUpdates$1 (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:3255:40)
+          at dispatchEventForPluginEventSystem (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:19320:7)
+          at dispatchEvent (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:23585:11)
+          at dispatchDiscreteEvent (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react-dom/cjs/react-dom-client.development.js:23553:11)
+          at HTMLDivElement.callTheUserObjectsOperation (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+          at innerInvokeEventListeners (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:338:25)
+          at invokeEventListeners (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:274:3)
+          at HTMLButtonElementImpl._dispatch (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:221:9)
+          at HTMLButtonElementImpl.dispatchEvent (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:94:17)
+          at HTMLButtonElement.dispatchEvent (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:231:34)
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/dom/dist/events.js:19:20
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/react/dist/pure.js:108:16
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/react/dist/act-compat.js:48:24
+          at Object.<anonymous>.process.env.NODE_ENV.exports.act (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/react/cjs/react.development.js:814:22)
+          at /Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/react/dist/act-compat.js:47:25
+          at Object.eventWrapper (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/react/dist/pure.js:107:28)
+          at fireEvent (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/dom/dist/events.js:12:35)
+          at fireEvent.<computed> [as click] (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/dom/dist/events.js:110:36)
+          at fireClick (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/user-event/dist/click.js:150:20)
+          at clickElement (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/user-event/dist/click.js:91:5)
+          at Object.click (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/node_modules/@testing-library/user-event/dist/click.js:140:5)
+          at Object.<anonymous> (/Users/adirathodd/Desktop/NJIT/7 2025 fall/CS490/cs-490-project/frontend/src/components/Jobs.test.js:104:21) undefined
+
+      177 |     setCharCount((item.description || '').length);
+      178 |     setShowForm(true);
+    > 179 |     window.scrollTo({ top: 0, behavior: 'smooth' });
+          |            ^
+      180 |   };
+      181 |
+      182 |   const onDelete = async (id) => {
+
+      at VirtualConsole.<anonymous> (node_modules/jsdom/lib/jsdom/virtual-console.js:29:45)
+      at module.exports (node_modules/jsdom/lib/jsdom/browser/not-implemented.js:12:26)
+      at scrollTo (node_modules/jsdom/lib/jsdom/browser/Window.js:866:7)
+      at startEdit (src/components/Jobs.js:179:12)
+      at onClick (src/components/Jobs.js:556:23)
+      at executeDispatch (node_modules/react-dom/cjs/react-dom-client.development.js:19116:9)
+      at runWithFiberInDEV (node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+      at processDispatchQueue (node_modules/react-dom/cjs/react-dom-client.development.js:19166:19)
+      at node_modules/react-dom/cjs/react-dom-client.development.js:19767:9
+      at batchedUpdates$1 (node_modules/react-dom/cjs/react-dom-client.development.js:3255:40)
+      at dispatchEventForPluginEventSystem (node_modules/react-dom/cjs/react-dom-client.development.js:19320:7)
+      at dispatchEvent (node_modules/react-dom/cjs/react-dom-client.development.js:23585:11)
+      at dispatchDiscreteEvent (node_modules/react-dom/cjs/react-dom-client.development.js:23553:11)
+      at HTMLDivElement.callTheUserObjectsOperation (node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+      at innerInvokeEventListeners (node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:338:25)
+      at invokeEventListeners (node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:274:3)
+      at HTMLButtonElementImpl._dispatch (node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:221:9)
+      at HTMLButtonElementImpl.dispatchEvent (node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:94:17)
+      at HTMLButtonElement.dispatchEvent (node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:231:34)
+      at node_modules/@testing-library/dom/dist/events.js:19:20
+      at node_modules/@testing-library/react/dist/pure.js:108:16
+      at node_modules/@testing-library/react/dist/act-compat.js:48:24
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:814:22)
+      at node_modules/@testing-library/react/dist/act-compat.js:47:25
+      at Object.eventWrapper (node_modules/@testing-library/react/dist/pure.js:107:28)
+      at fireEvent (node_modules/@testing-library/dom/dist/events.js:12:35)
+      at fireEvent.<computed> [as click] (node_modules/@testing-library/dom/dist/events.js:110:36)
+      at fireClick (node_modules/@testing-library/user-event/dist/click.js:150:20)
+      at clickElement (node_modules/@testing-library/user-event/dist/click.js:91:5)
+      at Object.click (node_modules/@testing-library/user-event/dist/click.js:140:5)
+      at Object.<anonymous> (src/components/Jobs.test.js:104:21)
+
+--------------------------|---------|----------|---------|---------|----------------------------------------------------------------------------------------------------------------------------------------------
+File                      | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s                                                                                                                            
+--------------------------|---------|----------|---------|---------|----------------------------------------------------------------------------------------------------------------------------------------------
+All files                 |   61.73 |    49.59 |   60.61 |   63.38 |                                                                                                                                              
+ src                      |     100 |      100 |     100 |     100 |                                                                                                                                              
+  App.js                  |     100 |      100 |     100 |     100 |                                                                                                                                              
+  index.js                |     100 |      100 |     100 |     100 |                                                                                                                                              
+  reportWebVitals.js      |     100 |      100 |     100 |     100 |                                                                                                                                              
+ src/components           |   56.21 |    46.08 |    54.8 |   57.77 |                                                                                                                                              
+  Breadcrumbs.js          |     100 |      100 |     100 |     100 |                                                                                                                                              
+  Certifications.js       |     1.2 |        0 |       0 |    1.49 | 22-30,35-642                                                                                                                                 
+  Dashboard.js            |   74.32 |    77.21 |      65 |      75 | 44-49,86,89,97-101,106,110-113,124-125,129,238                                                                                               
+  DashboardOverview.js    |    3.41 |        0 |       0 |    4.49 | 26-226                                                                                                                                       
+  Education.js            |   64.46 |    47.26 |   51.72 |   68.26 | 37-43,58,82,103,105,117-118,125-128,135-150,154-160,291-294,322-360                                                                          
+  Employment.js           |    0.66 |        0 |       0 |    0.69 | 10-615                                                                                                                                       
+  ForgotPassword.js       |   96.96 |      100 |     100 |   96.66 | 39                                                                                                                                           
+  Icon.js                 |     100 |       80 |     100 |     100 | 64-65                                                                                                                                        
+  JobDetailView.js        |    0.96 |        0 |       0 |    1.07 | 8-764                                                                                                                                        
+  Jobs.js                 |      70 |    62.89 |   72.72 |   73.29 | 87-90,100,104,109,117,121,125,129,133,138-140,146-149,155,191-192,198-204,213-214,243-245,250-254,498-502,519-520,579                        
+  LoadingSpinner.js       |     100 |       50 |     100 |     100 | 5                                                                                                                                            
+  Login.js                |    37.5 |    28.08 |      70 |    37.7 | 27,78,81-90,108-214,298                                                                                                                      
+  NavBar.js               |   76.08 |       65 |   71.42 |   84.21 | 29-30,70-71,84-91                                                                                                                            
+  PrivateRoute.js         |     100 |      100 |     100 |     100 |                                                                                                                                              
+  Profile.js              |     100 |    80.51 |     100 |     100 | 48,67-69,110-111,135,160-202                                                                                                                 
+  ProfileForm.js          |   42.97 |    31.53 |   44.11 |   43.47 | 60,92,99-116,120,122,133-175,180-183,187-217,221-281,288-291,297-300,320-321,330-332,338-347,360,366-379,387-389,393,403-404,421,800-808,818 
+  ProfilePictureUpload.js |   23.07 |    14.28 |   22.22 |   23.68 | 36-37,44,52-83,87,91-138,144-221,226-237,242-270,338                                                                                         
+  ProjectDetail.js        |   93.75 |    87.75 |    90.9 |     100 | 21,37,57,75                                                                                                                                  
+  Projects.js             |   99.07 |    88.63 |     100 |     100 | 82,90,107-117,129-133,163,178,184,203,240-259,281,522-538,549,618                                                                            
+  ProjectsPortfolio.js    |    93.1 |     93.9 |   77.77 |   90.47 | 96-99,103-119                                                                                                                                
+  Register.js             |   95.54 |    89.25 |     100 |   96.02 | 36,146,187,227,266-267                                                                                                                       
+  ResetPassword.js        |   95.31 |    94.73 |   88.88 |     100 | 48,56                                                                                                                                        
+  Skills.js               |   91.15 |     73.8 |      90 |   91.48 | 50-51,76,100,139,149-150,162,174,251-261,298                                                                                                 
+  SkillsOrganized.js      |   93.29 |     82.6 |   80.95 |   96.38 | 90,269,374-378                                                                                                                               
+ src/components/dashboard |   98.36 |    94.44 |     100 |   98.27 |                                                                                                                                              
+  ActivityTimeline.js     |     100 |      100 |     100 |     100 |                                                                                                                                              
+  ExportProfile.js        |     100 |      100 |     100 |     100 |                                                                                                                                              
+  ProfileProgress.js      |     100 |      100 |     100 |     100 |                                                                                                                                              
+  SkillDistribution.js    |   96.42 |     92.3 |     100 |   96.15 | 19                                                                                                                                           
+  SummaryCard.js          |     100 |      100 |     100 |     100 |                                                                                                                                              
+ src/config               |     100 |      100 |     100 |     100 |                                                                                                                                              
+  firebase.js             |     100 |      100 |     100 |     100 |                                                                                                                                              
+ src/context              |     100 |    81.25 |     100 |     100 |                                                                                                                                              
+  AuthContext.js          |     100 |    81.25 |     100 |     100 | 36,56,101,107,135                                                                                                                            
+ src/services             |   90.13 |    79.77 |   92.18 |   89.83 |                                                                                                                                              
+  api.js                  |   89.86 |    79.31 |   92.18 |   89.54 | 70,80,149,165,174,216,226,236,270,282,292,304,325,364,539,546-567,576,585,594,603,612                                                        
+  firebase.js             |     100 |      100 |     100 |     100 |                                                                                                                                              
+--------------------------|---------|----------|---------|---------|----------------------------------------------------------------------------------------------------------------------------------------------
+
+Test Suites: 32 passed, 32 total
+Tests:       393 passed, 393 total
+Snapshots:   0 total
+Time:        13.342 s
+Ran all test suites.

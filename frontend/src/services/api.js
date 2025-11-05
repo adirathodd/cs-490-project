@@ -547,6 +547,11 @@ export const jobsAPI = {
     return response.data;
   },
 
+  getJob: async (id) => {
+    const response = await api.get(`/jobs/${id}`);
+    return response.data;
+  },
+
   addJob: async (data) => {
     const response = await api.post('/jobs', data);
     return response.data;

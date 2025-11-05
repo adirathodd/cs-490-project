@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { jobsAPI } from '../services/api';
 import Icon from './Icon';
 import './Education.css';
@@ -32,6 +33,7 @@ const industryOptions = [
 const MAX_DESC = 2000;
 
 const Jobs = () => {
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState(null);
@@ -507,7 +509,18 @@ const Jobs = () => {
           {(items || []).map((item) => (
             <div key={item.id} className="education-item">
               <div className="education-item-header">
-                <div className="education-item-main">
+                <div 
+                  className="education-item-main" 
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => navigate(`/jobs/${item.id}`)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      navigate(`/jobs/${item.id}`);
+                    }
+                  }}
+                >
                   <div className="education-item-title">{item.title}</div>
                   <div className="education-item-sub">
                     <span>{item.company_name}</span>
@@ -527,15 +540,31 @@ const Jobs = () => {
                 </div>
                 <div className="education-item-actions">
                   <button 
+                    className="view-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/jobs/${item.id}`);
+                    }}
+                    title="View Details"
+                  >
+                    <Icon name="eye" size="sm" ariaLabel="View" />
+                  </button>
+                  <button 
                     className="edit-button"
-                    onClick={() => startEdit(item)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startEdit(item);
+                    }}
                     title="Edit"
                   >
                     <Icon name="edit" size="sm" ariaLabel="Edit" />
                   </button>
                   <button 
                     className="delete-button"
-                    onClick={() => onDelete(item.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(item.id);
+                    }}
                     title="Delete"
                   >
                     <Icon name="trash" size="sm" ariaLabel="Delete" />
@@ -547,6 +576,7 @@ const Jobs = () => {
                       target="_blank"
                       rel="noreferrer"
                       title="View Job Posting"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <Icon name="link" size="sm" ariaLabel="View" />
                     </a>
