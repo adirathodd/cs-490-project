@@ -49,7 +49,7 @@ const SkillDistribution = ({ data = [] }) => {
             <div style={label}>{d.name}</div>
             <div style={segmentsWrap}>
               {[0,1,2,3].map((i) => (
-                <div key={i} style={seg(i < filled, i, 4)} />
+                <div key={i} style={seg(i < filled, i, 4)} role="presentation" />
               ))}
             </div>
             <div style={levelText}>{prettyLevel(d.level)}</div>
