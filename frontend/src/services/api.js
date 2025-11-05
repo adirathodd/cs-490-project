@@ -578,6 +578,17 @@ export const jobsAPI = {
     const response = await api.delete(`/jobs/${id}`);
     return response.data;
   },
+
+  // UC-037 additions
+  getJobStats: async () => {
+    const response = await api.get('/jobs/stats');
+    return response.data; // { interested: n, applied: n, ... }
+  },
+
+  bulkUpdateStatus: async (ids, status) => {
+    const response = await api.post('/jobs/bulk-status', { ids, status });
+    return response.data; // { updated: n }
+  },
 };
 
 authAPI.getEmploymentTimeline = async () => {

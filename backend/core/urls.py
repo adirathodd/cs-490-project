@@ -12,6 +12,8 @@ urlpatterns = [
     path('auth/login', views.login_user, name='login'),
     path('auth/verify-token', views.verify_token, name='verify-token'),
     path('auth/oauth/link', views.oauth_link_via_provider, name='oauth-link-provider'),
+    # Back-compat route expected by tests
+    path('auth/oauth/github', views.oauth_github, name='oauth-github'),
     path('auth/logout', views.logout_user, name='logout'),
     path('users/me', views.get_current_user, name='current-user'),
     path('users/me/delete-request', views.request_account_deletion, name='request-account-deletion'),
@@ -83,4 +85,6 @@ urlpatterns = [
     # UC-036: Jobs endpoints
     path('jobs', views.jobs_list_create, name='jobs-list-create'),
     path('jobs/<int:job_id>', views.job_detail, name='job-detail'),
+    path('jobs/stats', views.jobs_stats, name='jobs-stats'),
+    path('jobs/bulk-status', views.jobs_bulk_status, name='jobs-bulk-status'),
 ]

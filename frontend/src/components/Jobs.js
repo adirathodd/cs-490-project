@@ -381,18 +381,29 @@ const Jobs = () => {
       {/* 2. Job Tracker section name and description */}
       <div className="education-header">
         <h2><Icon name="briefcase" size="md" /> Your Job Entries</h2>
-        <button 
-          className="add-education-button"
-          onClick={() => {
-            setForm(defaultForm);
-            setEditingId(null);
-            setFieldErrors({});
-            setCharCount(0);
-            setShowForm(true);
-          }}
-        >
-          + Add Job
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <a
+            className="btn-back"
+            href="/jobs/pipeline"
+            title="View Pipeline"
+            aria-label="View job status pipeline"
+            style={{ textDecoration: 'none' }}
+          >
+            View Pipeline →
+          </a>
+          <button 
+            className="add-education-button"
+            onClick={() => {
+              setForm(defaultForm);
+              setEditingId(null);
+              setFieldErrors({});
+              setCharCount(0);
+              setShowForm(true);
+            }}
+          >
+            + Add Job
+          </button>
+        </div>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
