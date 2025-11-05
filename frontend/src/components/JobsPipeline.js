@@ -364,10 +364,7 @@ export default function JobsPipeline() {
             <label>Bulk actions</label>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="back-button" onClick={() => setBulkMode(!bulkMode)}>{bulkMode ? 'Done Selecting' : 'Select Multiple'}</button>
-              <select disabled={!bulkMode} onChange={(e) => moveSelected(e.target.value)} defaultValue="">
-                <option value="" disabled>Move selected to…</option>
-                {STAGES.map(s => (<option key={s.key} value={s.key}>{s.label}</option>))}
-              </select>
+              {/* Removed the old select-based bulk mover; column checkboxes now handle bulk moves */}
             </div>
           </div>
           <div className="form-group" style={{ alignSelf: 'flex-end' }}>
@@ -390,36 +387,34 @@ export default function JobsPipeline() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     {/** Column checkbox for bulk moves: appears when bulkMode is active. Clicking moves selected jobs to this stage. */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {bulkMode ? (
-                        (() => {
-                          // compute checked/indeterminate state for this stage based on current selection
-                          const sel = Array.from(selected);
-                          const selCount = sel.length;
-                          let checked = false;
-                          let indeterminate = false;
-                          if (selCount > 0) {
-                            const inThis = sel.map((id) => findJobById(id)?.status === stage.key);
-                            checked = inThis.every(Boolean);
-                            indeterminate = inThis.some(Boolean) && !checked;
-                          }
-                          return (
-                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              <input
-                                type="checkbox"
-                                disabled={selected.size === 0}
-                                checked={checked}
-                                onChange={(e) => { e.stopPropagation(); /* move selected to this stage */ moveSelected(stage.key); }}
-                                ref={(el) => { if (el) el.indeterminate = indeterminate; }}
-                                aria-label={`Move selected jobs to ${stage.label}`}
-                              />
-                            </label>
-                          );
-                        })()
-                      ) : null}
                       <h3 style={{ margin: 0 }}><Icon name="list" size="sm" /> {stage.label}</h3>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {bulkMode ? (
+                      (() => {
+                        const sel = Array.from(selected);
+                        let checked = false;
+                        let indeterminate = false;
+                        if (sel.length > 0) {
+                          const inThis = sel.map((id) => findJobById(id)?.status === stage.key);
+                          checked = inThis.every(Boolean);
+                          indeterminate = inThis.some(Boolean) && !checked;
+                        }
+                        return (
+                          <input
+                            type="checkbox"
+                            title={`Move selected jobs to ${stage.label}`}
+                            aria-label={`Move selected jobs to ${stage.label}`}
+                            disabled={selected.size === 0}
+                            checked={checked}
+                            onChange={(e) => { e.stopPropagation(); moveSelected(stage.key); }}
+                            ref={(el) => { if (el) el.indeterminate = indeterminate; }}
+                            style={{ width: 18, height: 18, cursor: selected.size === 0 ? 'not-allowed' : 'pointer', opacity: selected.size === 0 ? 0.5 : 1 }}
+                          />
+                        );
+                      })()
+                    ) : null}
                     <div title="count" style={{ fontWeight: 600 }}>{counts[stage.key] ?? (jobsByStage[stage.key]?.length || 0)}</div>
                     <button
                       className="back-button"
