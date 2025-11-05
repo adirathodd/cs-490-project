@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import JobsPipeline from './JobsPipeline';
 import { jobsAPI } from '../services/api';
@@ -72,13 +72,18 @@ describe('JobsPipeline (UC-037)', () => {
     await userEvent.click(await screen.findByTestId('job-card-1'));
     await userEvent.click(await screen.findByTestId('job-card-2'));
 
-    // The 'Applied' column checkbox should be indeterminate (since selection spans columns)
-    const appliedCheckbox = await screen.findByLabelText(/move selected jobs to applied/i);
-    expect(appliedCheckbox).toBeInTheDocument();
-    // HTML checkbox indeterminate isn't reflected by getByRole easily; ensure UI logic computed
-    // by checking that the checkbox exists and that there is a badge showing selected count on the applied column
-    const badge = screen.getByTestId('move-badge-applied');
-    expect(badge).toHaveTextContent('2');
+  // The 'Applied' column checkbox should be present
+  const appliedCheckbox = await screen.findByLabelText(/move selected jobs to applied/i);
+  expect(appliedCheckbox).toBeInTheDocument();
+  // The badge should exist but be hidden until hover; simulate hover and assert badge becomes visible
+  const badge = screen.getByTestId('move-badge-applied');
+  expect(badge).toHaveTextContent('2');
+  // Simulate hover on the parent container (the checkbox wrapper)
+  const wrapper = appliedCheckbox.parentElement;
+  expect(wrapper).toBeTruthy();
+  // fire mouse enter to reveal badge
+  fireEvent.mouseEnter(wrapper);
+  expect(badge).toHaveStyle('opacity: 1');
 
     // Now add more selections to exceed the threshold and click the applied checkbox to trigger confirmation modal
     // Add one more selection to make total 3 (< threshold 5) - to test confirmation we simulate a larger selection by setting selected via clicking more items
@@ -99,12 +104,37 @@ describe('JobsPipeline (UC-037)', () => {
     }
 
     // Click the 'Applied' column checkbox; should open confirmation modal
-  const appliedCheckbox2 = (await screen.findAllByLabelText(/move selected jobs to applied/i)).pop();
+    const appliedCheckbox2 = (await screen.findAllByLabelText(/move selected jobs to applied/i)).pop();
     await userEvent.click(appliedCheckbox2);
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     // Confirm button should trigger API
     await userEvent.click(screen.getByRole('button', { name: /confirm/i }));
     await waitFor(() => expect(jobsAPI.bulkUpdateStatus).toHaveBeenCalled());
+
+  // After bulk move, undo snackbar should appear and clicking Undo should call updateJob
+  expect(await screen.findByTestId('undo-snackbar')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /undo/i }));
+  await waitFor(() => expect(jobsAPI.updateJob).toHaveBeenCalled());
+  });
+
+  test('use configurable threshold from localStorage', async () => {
+    // set threshold to 2
+    localStorage.setItem('pipeline_move_threshold', '2');
+    jobsAPI.getJobs.mockResolvedValueOnce([
+      { id: 1, title: 'SWE', company_name: 'Acme', status: 'interested', job_type: 'ft' },
+      { id: 2, title: 'DevOps', company_name: 'Beta', status: 'applied', job_type: 'ft' },
+      { id: 3, title: 'QA', company_name: 'Gamma', status: 'interview', job_type: 'ft' },
+    ]);
+    jobsAPI.getJobStats.mockResolvedValueOnce({ interested: 1, applied: 1, phone_screen: 0, interview: 1, offer: 0, rejected: 0 });
+    render(<JobsPipeline />);
+    await userEvent.click(await screen.findByRole('button', { name: /select multiple/i }));
+    await userEvent.click(await screen.findByTestId('job-card-1'));
+    await userEvent.click(await screen.findByTestId('job-card-2'));
+    // With threshold=2, clicking target checkbox should open confirmation (2 > 2 is false) -> need 3 selections
+    await userEvent.click(await screen.findByTestId('job-card-3'));
+    const appliedCheckbox = await screen.findByLabelText(/move selected jobs to applied/i);
+    await userEvent.click(appliedCheckbox);
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 });

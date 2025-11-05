@@ -139,7 +139,18 @@ export default function JobsPipeline() {
   const [compact, setCompact] = useState(false);
   const [drawerJob, setDrawerJob] = useState(null);
   const [pendingMoveTarget, setPendingMoveTarget] = useState(null); // target stage key awaiting confirmation
-  const LARGE_MOVE_THRESHOLD = 5; // moves larger than this require confirmation
+  // threshold can be configured via localStorage key 'pipeline_move_threshold'
+  const getConfiguredThreshold = () => {
+    try {
+      const v = localStorage.getItem('pipeline_move_threshold');
+      const n = Number(v);
+      if (!Number.isNaN(n) && n > 0) return n;
+    } catch {}
+    return 5;
+  };
+  const [LARGE_MOVE_THRESHOLD, setLargeMoveThreshold] = useState(getConfiguredThreshold());
+  // hovered column key for badge visibility
+  const [hoveredStage, setHoveredStage] = useState(null);
 
   const visibleStages = useMemo(() => {
     if (filter === 'all') return STAGES;
@@ -294,18 +305,32 @@ export default function JobsPipeline() {
   };
 
   // perform the actual API call to move selected jobs
+  // perform the actual API call to move selected jobs, capture previous statuses for undo
   const performMoveSelected = async (target) => {
     const ids = Array.from(selected);
     if (!ids.length) return;
+    // snapshot previous statuses
+    const prevStatuses = {};
+    ids.forEach((id) => { const j = findJobById(id); if (j) prevStatuses[id] = j.status; });
     try {
       await jobsAPI.bulkUpdateStatus(ids, target);
+      // keep undo data available (ids + prevStatuses) for a short period
+      setUndoData({ ids, prevStatuses });
+      setShowUndo(true);
+      // clear selection and modal
       setSelected(new Set());
       setPendingMoveTarget(null);
       await load();
+      // clear undo after timeout
+      setTimeout(() => { setShowUndo(false); setUndoData(null); }, 6000);
     } catch (e) {
       setError(e?.message || e?.error?.message || 'Bulk move failed');
     }
   };
+
+  // state for undo snackbar
+  const [undoData, setUndoData] = useState(null);
+  const [showUndo, setShowUndo] = useState(false);
 
   // start move flow; if large, request confirmation first
   const initiateMoveSelected = (target) => {
@@ -315,6 +340,20 @@ export default function JobsPipeline() {
       setPendingMoveTarget(target);
     } else {
       performMoveSelected(target);
+    }
+  };
+
+  // Undo handler exposed to snackbar: performs the per-job updates to restore previous statuses
+  const handleUndo = async () => {
+    if (!undoData) return;
+    const { ids, prevStatuses } = undoData;
+    try {
+      await Promise.all(ids.map((id) => jobsAPI.updateJob(id, { status: prevStatuses[id] })));
+      setShowUndo(false);
+      setUndoData(null);
+      await load();
+    } catch (e) {
+      setError('Undo failed');
     }
   };
 
@@ -417,7 +456,11 @@ export default function JobsPipeline() {
                           indeterminate = inThis.some(Boolean) && !checked;
                         }
                         return (
-                          <div style={{ display: 'inline-flex', alignItems: 'center', position: 'relative' }}>
+                          <div
+                            onMouseEnter={() => setHoveredStage(stage.key)}
+                            onMouseLeave={() => setHoveredStage(null)}
+                            style={{ display: 'inline-flex', alignItems: 'center', position: 'relative' }}
+                          >
                             <input
                               type="checkbox"
                               title={`Move selected jobs to ${stage.label}`}
@@ -428,7 +471,7 @@ export default function JobsPipeline() {
                               ref={(el) => { if (el) el.indeterminate = indeterminate; }}
                               style={{ width: 18, height: 18, cursor: selected.size === 0 ? 'not-allowed' : 'pointer', opacity: selected.size === 0 ? 0.5 : 1 }}
                             />
-                            {/* Hover badge showing how many selected will be moved */}
+                            {/* Hover badge showing how many selected will be moved (visible only when hovering this column) */}
                             {selected.size > 0 && (
                               <div
                                 role="status"
@@ -446,7 +489,7 @@ export default function JobsPipeline() {
                                   justifyContent: 'center',
                                   fontSize: 11,
                                   pointerEvents: 'none',
-                                  opacity: 0.0,
+                                  opacity: hoveredStage === stage.key ? 1 : 0,
                                   transition: 'opacity 120ms ease',
                                 }}
                                 data-testid={`move-badge-${stage.key}`}
@@ -531,16 +574,32 @@ export default function JobsPipeline() {
         {pendingMoveTarget && (
           <>
             <div onClick={() => setPendingMoveTarget(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.15)' }} />
-            <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', background: '#fff', padding: 20, borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.15)', zIndex: 60, width: 'min(520px, 92vw)' }} role="dialog" aria-modal="true">
+            <div
+              role="dialog"
+              aria-modal="true"
+              style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', background: '#fff', padding: 20, borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.15)', zIndex: 60, width: 'min(520px, 92vw)' }}
+              onKeyDown={(e) => {
+                // close on Escape
+                if (e.key === 'Escape') setPendingMoveTarget(null);
+              }}
+            >
               <h3 style={{ marginTop: 0 }}>Confirm bulk move</h3>
               <p>You're moving {Array.from(selected).length} jobs to <strong>{STAGES.find(s => s.key === pendingMoveTarget)?.label}</strong>. This action cannot be undone.</p>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button className="back-button" onClick={() => setPendingMoveTarget(null)}>Cancel</button>
-                <button className="back-button" onClick={() => performMoveSelected(pendingMoveTarget)} style={{ background: '#6366f1', color: '#fff' }}>Confirm</button>
+                <button className="back-button" onClick={() => setPendingMoveTarget(null)} ref={(el) => { if (el && pendingMoveTarget) el.focus(); }}>Cancel</button>
+                <button className="back-button" onClick={() => performMoveSelected(pendingMoveTarget)} style={{ background: '#6366f1', color: '#fff' }} ref={(el) => { if (el && pendingMoveTarget) el.focus(); }}>Confirm</button>
               </div>
             </div>
           </>
         )}
+
+        {/* Undo snackbar */}
+      {showUndo && undoData && (
+        <div data-testid="undo-snackbar" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', background: '#111827', color: '#fff', padding: '10px 14px', borderRadius: 8, zIndex: 70, display: 'flex', gap: 8, alignItems: 'center' }} role="status">
+          <div>Moved {undoData.ids.length} jobs.</div>
+          <button className="back-button" onClick={handleUndo}>Undo</button>
+        </div>
+      )}
 
       {/* Right-side details drawer */}
       {drawerJob && (
