@@ -402,22 +402,40 @@ const Jobs = () => {
       {!showForm && (
         <div className="education-form-card" style={{ marginBottom: '20px' }}>
           <div style={{ padding: '16px' }}>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap' }}>
-              <div style={{ flex: '1 1 300px', minWidth: '250px' }}>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'stretch', marginBottom: '12px', flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 300px', minWidth: '250px', display: 'flex', alignItems: 'stretch' }}>
                 <input
                   type="text"
                   placeholder="🔍 Search by job title, company, or keywords..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{ width: '100%', padding: '10px', fontSize: '15px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                  style={{ 
+                    width: '100%',
+                    padding: '12px 16px',
+                    border: '2px solid #d1d5db',
+                    borderRadius: '10px',
+                    fontSize: '15px',
+                    transition: 'all 0.2s ease',
+                    fontFamily: 'inherit',
+                    background: 'var(--white)',
+                    marginBottom: 0
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#667eea';
+                    e.target.style.boxShadow = '0 0 0 3px rgba(102, 126, 234, 0.1)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#d1d5db';
+                    e.target.style.boxShadow = 'none';
+                  }}
                 />
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
                 <button
                   type="button"
                   className="cancel-button"
                   onClick={() => setShowFilters(!showFilters)}
-                  style={{ padding: '10px 14px', whiteSpace: 'nowrap', height: '40px', minWidth: '92px' }}
+                  style={{ whiteSpace: 'nowrap', minWidth: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   {showFilters ? '▲ Hide' : '▼ Show'} Filters
                 </button>
@@ -425,9 +443,10 @@ const Jobs = () => {
                   type="button"
                   className="delete-button"
                   onClick={clearFilters}
-                  style={{ padding: '8px 12px', whiteSpace: 'nowrap', height: '40px', minWidth: '92px', backgroundColor: '#ef4444', borderColor: '#ef4444', color: '#ffffff', borderRadius: '6px' }}
+                  style={{ whiteSpace: 'nowrap', minWidth: '48px', padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  title="Clear All Filters"
                 >
-                  Clear All
+                  <Icon name="clear" size="md" />
                 </button>
               </div>
             </div>
