@@ -636,6 +636,7 @@ export default _defaultExport;
 
 // CommonJS compatibility: some consumers (tests or older imports) may `require()` the module
 // and expect `module.exports.authAPI` or `module.exports.default` to exist. Provide both.
+/* istanbul ignore next */
 try {
   if (typeof module !== 'undefined' && module && module.exports) {
     module.exports = _defaultExport; // override CommonJS export
@@ -651,6 +652,7 @@ try {
 // ends up missing properties. Provide runtime-safe fallbacks that call the
 // underlying axios `api` instance so callers like `authAPI.getBasicProfile()`
 // and `authAPI.getProfilePicture()` always exist.
+/* istanbul ignore next */
 try {
   if (!authAPI || typeof authAPI.getBasicProfile !== 'function') {
     authAPI.getBasicProfile = async () => {
