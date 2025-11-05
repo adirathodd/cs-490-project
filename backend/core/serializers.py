@@ -401,18 +401,14 @@ class CandidateSkillSerializer(serializers.ModelSerializer):
     Serializer for UC-026: Add and Manage Skills.
     UC-027: Enhanced with ordering support for category organization.
     Handles adding, updating, and displaying user skills with proficiency levels.
-    """
-    skill_name = serializers.CharField(source='skill.name', read_only=True)
-    skill_category = serializers.CharField(source='skill.category', read_only=True)
-    skill_id = serializers.IntegerField(write_only=True, required=False)
-    name = serializers.CharField(write_only=True, required=False, help_text="Skill name for creating new skill")
-    category = serializers.CharField(write_only=True, required=False, help_text="Skill category")
-    
-    class Meta:
-        model = CandidateSkill
+            # UC-037 + UC-038 fields
+            'status', 'last_status_change', 'days_in_stage',
+            'personal_notes', 'recruiter_name', 'recruiter_email', 'recruiter_phone',
+            'hiring_manager_name', 'hiring_manager_email',
+            'salary_negotiation_notes', 'interview_notes', 'application_history',
         fields = [
             'id', 'skill_id', 'skill_name', 'skill_category',
-            'name', 'category', 'level', 'years', 'order'
+        read_only_fields = ['id', 'created_at', 'updated_at', 'salary_range', 'last_status_change', 'days_in_stage']
         ]
         read_only_fields = ['id']
     
@@ -1024,7 +1020,7 @@ class WorkExperienceSummarySerializer(serializers.ModelSerializer):
 # ======================
 
 class JobEntrySerializer(serializers.ModelSerializer):
-    """Serializer for user-tracked job entries."""
+    """Serializer for user-tracked job entries (UC-036 + UC-038)."""
     id = serializers.IntegerField(read_only=True)
     salary_range = serializers.SerializerMethodField(read_only=True)
     days_in_stage = serializers.SerializerMethodField(read_only=True)
@@ -1036,7 +1032,11 @@ class JobEntrySerializer(serializers.ModelSerializer):
             'salary_min', 'salary_max', 'salary_currency', 'salary_range',
             'posting_url', 'application_deadline',
             'description', 'industry', 'job_type',
+            # UC-037 + UC-038 fields
             'status', 'last_status_change', 'days_in_stage',
+            'personal_notes', 'recruiter_name', 'recruiter_email', 'recruiter_phone',
+            'hiring_manager_name', 'hiring_manager_email',
+            'salary_negotiation_notes', 'interview_notes', 'application_history',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'salary_range', 'last_status_change', 'days_in_stage']
@@ -1075,6 +1075,11 @@ class JobEntrySerializer(serializers.ModelSerializer):
                     errors['salary_min'] = 'Minimum salary cannot be greater than maximum salary.'
             except Exception:
                 errors['salary_min'] = 'Invalid salary range.'
+        
+        # Validate application_history format if provided
+        history = data.get('application_history')
+        if history is not None and not isinstance(history, list):
+            errors['application_history'] = 'Application history must be a list.'
 
         if errors:
             raise serializers.ValidationError(errors)

@@ -19,7 +19,9 @@ import {
   FaLink,
   FaMapMarkerAlt,
   FaUsers,
-  FaLightbulb
+  FaLightbulb,
+  FaEye,
+  FaTimesCircle
 } from 'react-icons/fa';
 
 // Simple, centralized Icon wrapper used across the app.
@@ -57,6 +59,8 @@ const iconMap = {
   users: FaUsers,
   location: FaMapMarkerAlt,
   idea: FaLightbulb,
+  eye: FaEye,
+  clear: FaTimesCircle,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {

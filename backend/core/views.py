@@ -1977,17 +1977,95 @@ def education_detail(request, education_id):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def jobs_list_create(request):
-    """List and create user job entries."""
+    """List and create user job entries. UC-039: Supports search, filter, and sort."""
     try:
         user = request.user
         profile, _ = CandidateProfile.objects.get_or_create(user=user)
 
         if request.method == 'GET':
-            qs = JobEntry.objects.filter(candidate=profile).order_by('-updated_at', '-id')
-            status_param = request.query_params.get('status')
+            # Start with base queryset
+            qs = JobEntry.objects.filter(candidate=profile)
+
+            # Optional simple status filter (for pipeline and quick filters)
+            status_param = (request.query_params.get('status') or request.GET.get('status') or '').strip()
             if status_param:
                 qs = qs.filter(status=status_param)
-            return Response(JobEntrySerializer(qs, many=True).data, status=status.HTTP_200_OK)
+
+            # UC-039: Advanced search and filters
+            search_query = (request.GET.get('q') or '').strip()
+            if search_query:
+                qs = qs.filter(
+                    Q(title__icontains=search_query) |
+                    Q(company_name__icontains=search_query) |
+                    Q(description__icontains=search_query)
+                )
+
+            industry = (request.GET.get('industry') or '').strip()
+            if industry:
+                qs = qs.filter(industry__icontains=industry)
+
+            location = (request.GET.get('location') or '').strip()
+            if location:
+                qs = qs.filter(location__icontains=location)
+
+            job_type = (request.GET.get('job_type') or '').strip()
+            if job_type:
+                qs = qs.filter(job_type=job_type)
+
+            salary_min = (request.GET.get('salary_min') or '').strip()
+            salary_max = (request.GET.get('salary_max') or '').strip()
+            if salary_min:
+                try:
+                    qs = qs.filter(Q(salary_min__gte=int(salary_min)) | Q(salary_max__gte=int(salary_min)))
+                except ValueError:
+                    pass
+            if salary_max:
+                try:
+                    qs = qs.filter(Q(salary_max__lte=int(salary_max)) | Q(salary_min__lte=int(salary_max)))
+                except ValueError:
+                    pass
+
+            deadline_from = (request.GET.get('deadline_from') or '').strip()
+            deadline_to = (request.GET.get('deadline_to') or '').strip()
+            if deadline_from:
+                try:
+                    from datetime import datetime
+                    date_obj = datetime.strptime(deadline_from, '%Y-%m-%d').date()
+                    qs = qs.filter(application_deadline__gte=date_obj)
+                except ValueError:
+                    pass
+            if deadline_to:
+                try:
+                    from datetime import datetime
+                    date_obj = datetime.strptime(deadline_to, '%Y-%m-%d').date()
+                    qs = qs.filter(application_deadline__lte=date_obj)
+                except ValueError:
+                    pass
+
+            # Sorting
+            sort_by = (request.GET.get('sort') or 'date_added').strip()
+            if sort_by == 'deadline':
+                qs = qs.order_by(F('application_deadline').asc(nulls_last=True), '-updated_at')
+            elif sort_by == 'salary':
+                qs = qs.order_by(
+                    F('salary_max').desc(nulls_last=True),
+                    F('salary_min').desc(nulls_last=True),
+                    '-updated_at'
+                )
+            elif sort_by == 'company_name':
+                qs = qs.order_by('company_name', '-updated_at')
+            else:
+                qs = qs.order_by('-updated_at', '-id')
+
+            data = JobEntrySerializer(qs, many=True).data
+
+            # Return a simple list unless advanced search/filter params (excluding status) are used
+            advanced_used = bool(
+                search_query or industry or location or job_type or salary_min or salary_max or deadline_from or deadline_to or (sort_by and sort_by != 'date_added')
+            )
+            if advanced_used:
+                return Response({'results': data, 'count': len(data), 'search_query': search_query}, status=status.HTTP_200_OK)
+            return Response(data, status=status.HTTP_200_OK)
 
         # POST
         serializer = JobEntrySerializer(data=request.data)

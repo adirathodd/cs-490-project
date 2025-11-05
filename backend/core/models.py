@@ -832,7 +832,7 @@ class JobEntry(models.Model):
     Keeps it independent from Company/JobOpportunity, so users can quickly log leads
     without needing company domains, etc.
 
-    Acceptance fields:
+    Basic fields (UC-036):
     - title (required)
     - company_name (required)
     - location
@@ -842,6 +842,14 @@ class JobEntry(models.Model):
     - description (2000 char limit)
     - industry
     - job_type (dropdown)
+    
+    Extended fields (UC-038):
+    - personal_notes (unlimited text for observations)
+    - recruiter contact information
+    - hiring manager contact information
+    - salary_negotiation_notes
+    - interview_notes
+    - application_history (JSON with timestamps)
     """
     JOB_TYPES = [
         ("ft", "Full-time"),
@@ -852,6 +860,8 @@ class JobEntry(models.Model):
     ]
 
     candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="job_entries")
+    
+    # Basic job information (UC-036)
     title = models.CharField(max_length=220)
     company_name = models.CharField(max_length=180)
     location = models.CharField(max_length=160, blank=True)
@@ -863,6 +873,26 @@ class JobEntry(models.Model):
     description = models.TextField(blank=True, max_length=2000)
     industry = models.CharField(max_length=120, blank=True)
     job_type = models.CharField(max_length=20, choices=JOB_TYPES, default="ft")
+    
+    # Extended fields for detailed tracking (UC-038)
+    personal_notes = models.TextField(blank=True, help_text="Unlimited text for personal observations")
+    
+    # Contact information
+    recruiter_name = models.CharField(max_length=180, blank=True)
+    recruiter_email = models.EmailField(blank=True)
+    recruiter_phone = models.CharField(max_length=20, blank=True)
+    hiring_manager_name = models.CharField(max_length=180, blank=True)
+    hiring_manager_email = models.EmailField(blank=True)
+    
+    # Additional notes sections
+    salary_negotiation_notes = models.TextField(blank=True)
+    interview_notes = models.TextField(blank=True)
+    
+    # Application history log with timestamps
+    # Format: [{"action": "Applied", "timestamp": "2024-11-04T10:30:00Z", "notes": "..."}, ...]
+    application_history = models.JSONField(default=list, blank=True)
+    
+    # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
