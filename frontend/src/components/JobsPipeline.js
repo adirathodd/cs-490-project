@@ -323,7 +323,14 @@ export default function JobsPipeline() {
             const offers = counts['offer'] ?? 0;
             return (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <span className="back-button" title="Total jobs" style={{ cursor: 'default' }}>Total: {totals}</span>
+                <button
+                  className="back-button"
+                  title="Show all jobs"
+                  onClick={() => setFilter('all')}
+                  aria-label="Show all jobs"
+                >
+                  Total: {totals}
+                </button>
                 <button className="back-button" onClick={() => setFilter('phone_screen')}>Interviewing: {interviewing}</button>
                 <button className="back-button" onClick={() => setFilter('offer')}>Offers: {offers}</button>
               </div>
