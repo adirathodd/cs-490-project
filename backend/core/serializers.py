@@ -419,6 +419,15 @@ class CandidateSkillSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CandidateSkill
+    # UC-026/UC-027: Add and manage user skills with proficiency and ordering
+    skill_id = serializers.IntegerField(write_only=True, required=False)
+    name = serializers.CharField(write_only=True, required=False)
+    category = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    skill_name = serializers.CharField(source='skill.name', read_only=True)
+    skill_category = serializers.CharField(source='skill.category', read_only=True)
+
+    class Meta:
+        model = CandidateSkill
         fields = [
             'id',
             # write-only inputs to create/resolve the Skill
