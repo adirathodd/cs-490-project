@@ -138,6 +138,8 @@ export default function JobsPipeline() {
   const [openMenu, setOpenMenu] = useState(null); // stageKey | null
   const [compact, setCompact] = useState(false);
   const [drawerJob, setDrawerJob] = useState(null);
+  const [pendingMoveTarget, setPendingMoveTarget] = useState(null); // target stage key awaiting confirmation
+  const LARGE_MOVE_THRESHOLD = 5; // moves larger than this require confirmation
 
   const visibleStages = useMemo(() => {
     if (filter === 'all') return STAGES;
@@ -291,15 +293,28 @@ export default function JobsPipeline() {
     });
   };
 
-  const moveSelected = async (target) => {
+  // perform the actual API call to move selected jobs
+  const performMoveSelected = async (target) => {
     const ids = Array.from(selected);
     if (!ids.length) return;
     try {
       await jobsAPI.bulkUpdateStatus(ids, target);
       setSelected(new Set());
+      setPendingMoveTarget(null);
       await load();
     } catch (e) {
       setError(e?.message || e?.error?.message || 'Bulk move failed');
+    }
+  };
+
+  // start move flow; if large, request confirmation first
+  const initiateMoveSelected = (target) => {
+    const ids = Array.from(selected);
+    if (!ids.length) return;
+    if (ids.length > LARGE_MOVE_THRESHOLD) {
+      setPendingMoveTarget(target);
+    } else {
+      performMoveSelected(target);
     }
   };
 
@@ -402,16 +417,42 @@ export default function JobsPipeline() {
                           indeterminate = inThis.some(Boolean) && !checked;
                         }
                         return (
-                          <input
-                            type="checkbox"
-                            title={`Move selected jobs to ${stage.label}`}
-                            aria-label={`Move selected jobs to ${stage.label}`}
-                            disabled={selected.size === 0}
-                            checked={checked}
-                            onChange={(e) => { e.stopPropagation(); moveSelected(stage.key); }}
-                            ref={(el) => { if (el) el.indeterminate = indeterminate; }}
-                            style={{ width: 18, height: 18, cursor: selected.size === 0 ? 'not-allowed' : 'pointer', opacity: selected.size === 0 ? 0.5 : 1 }}
-                          />
+                          <div style={{ display: 'inline-flex', alignItems: 'center', position: 'relative' }}>
+                            <input
+                              type="checkbox"
+                              title={`Move selected jobs to ${stage.label}`}
+                              aria-label={`Move selected jobs to ${stage.label}`}
+                              disabled={selected.size === 0}
+                              checked={checked}
+                              onChange={(e) => { e.stopPropagation(); initiateMoveSelected(stage.key); }}
+                              ref={(el) => { if (el) el.indeterminate = indeterminate; }}
+                              style={{ width: 18, height: 18, cursor: selected.size === 0 ? 'not-allowed' : 'pointer', opacity: selected.size === 0 ? 0.5 : 1 }}
+                            />
+                            {/* Hover badge showing how many selected will be moved */}
+                            {selected.size > 0 && (
+                              <div
+                                role="status"
+                                style={{
+                                  position: 'absolute',
+                                  top: -8,
+                                  right: -8,
+                                  background: '#6366f1',
+                                  color: '#fff',
+                                  borderRadius: '50%',
+                                  width: 18,
+                                  height: 18,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: 11,
+                                  pointerEvents: 'none',
+                                  opacity: 0.0,
+                                  transition: 'opacity 120ms ease',
+                                }}
+                                data-testid={`move-badge-${stage.key}`}
+                              >{selected.size}</div>
+                            )}
+                          </div>
                         );
                       })()
                     ) : null}
@@ -485,6 +526,21 @@ export default function JobsPipeline() {
           </DragOverlay>
         </DndContext>
       </div>
+
+        {/* Confirmation modal for large bulk moves */}
+        {pendingMoveTarget && (
+          <>
+            <div onClick={() => setPendingMoveTarget(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.15)' }} />
+            <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', background: '#fff', padding: 20, borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.15)', zIndex: 60, width: 'min(520px, 92vw)' }} role="dialog" aria-modal="true">
+              <h3 style={{ marginTop: 0 }}>Confirm bulk move</h3>
+              <p>You're moving {Array.from(selected).length} jobs to <strong>{STAGES.find(s => s.key === pendingMoveTarget)?.label}</strong>. This action cannot be undone.</p>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button className="back-button" onClick={() => setPendingMoveTarget(null)}>Cancel</button>
+                <button className="back-button" onClick={() => performMoveSelected(pendingMoveTarget)} style={{ background: '#6366f1', color: '#fff' }}>Confirm</button>
+              </div>
+            </div>
+          </>
+        )}
 
       {/* Right-side details drawer */}
       {drawerJob && (
