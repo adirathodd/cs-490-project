@@ -29,7 +29,7 @@ jobs:
           DJANGO_TEST: '1'
         run: |
           cd backend
-          pytest -q
+          python manage.py test core.tests --verbosity=2
 
   frontend:
     name: Frontend tests (React + Jest)
