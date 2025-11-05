@@ -11,7 +11,7 @@ const ProfileProgress = ({ percent = 0, suggestions = [] }) => {
     <div className="dashboard-card">
       <div style={containerInner}>
         <div style={label}>Profile Completion</div>
-        <div style={barWrap}><div style={bar(clamped)} /></div>
+  <div style={barWrap}><div style={bar(clamped)} data-testid="progress-bar" /></div>
         {suggestions?.length > 0 && (
           <ul style={{ marginTop: 10, paddingLeft: 18, color: '#374151', fontSize: 13 }}>
             {suggestions.map((s, i) => (<li key={i}>{s}</li>))}

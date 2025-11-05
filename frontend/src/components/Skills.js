@@ -239,7 +239,7 @@ const Skills = () => {
     return (
       <div className="skills-container">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh', transform: 'translateY(4vh)' }}>
-          <LoadingSpinner size={48} />
+          <LoadingSpinner size={48} data-testid="spinner" />
         </div>
       </div>
     );

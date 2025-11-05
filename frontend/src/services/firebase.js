@@ -25,7 +25,13 @@ const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 const githubProvider = new GithubAuthProvider();
 // Request email scope for GitHub
-githubProvider.addScope('user:email');
+try {
+  if (githubProvider && typeof githubProvider.addScope === 'function') {
+    githubProvider.addScope('user:email');
+  }
+} catch (e) {
+  // In non-browser/test environments some provider methods may be missing; ignore.
+}
 
 window.auth = auth;
 
