@@ -125,13 +125,19 @@ python manage.py test core.tests --verbosity=2
 To verify Sprint 1 component coverage (models + serializers):
 
 ```bash
-# Using Docker (recommended)
-docker compose exec backend coverage run --source='core' manage.py test core.tests --keepdb --verbosity=0 && docker compose exec backend coverage report --include='core/models.py,core/serializers.py'
+# Using Docker (recommended) - run coverage then show report
+docker compose exec backend bash -c "coverage run --source='core' manage.py test core.tests --verbosity=0; coverage report --include='core/models.py,core/serializers.py'"
+
+# Alternative: Run tests and coverage separately
+docker compose exec backend coverage run --source='core' manage.py test core.tests --verbosity=0
+docker compose exec backend coverage report --include='core/models.py,core/serializers.py'
 
 # Without Docker
 coverage run --source='core' manage.py test core.tests
 coverage report --include='core/models.py,core/serializers.py'
 ```
+
+**Note:** Use semicolon (`;`) instead of `&&` to ensure coverage report shows even if some tests fail.
 
 **Expected Output:**
 ```
