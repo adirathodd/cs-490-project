@@ -295,7 +295,7 @@ export default function JobsPipeline() {
 
   return (
     <div className="profile-form-container">
-      <div className="profile-form-card">
+      <div className="profile-form-card" style={{ maxWidth: 'none', width: '100%' }}>
         <div className="page-backbar">
           <button className="btn-back" onClick={() => (window.location.href = '/dashboard')}>← Back to Dashboard</button>
         </div>
@@ -361,9 +361,9 @@ export default function JobsPipeline() {
             <button className="back-button" onClick={() => setCompact((p) => !p)}>{compact ? 'Cozy cards' : 'Compact cards'}</button>
           </div>
         </div>
-      </div>
+  </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${visibleStages.length}, 1fr)`, gap: 12 }}>
+  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${visibleStages.length}, 1fr)`, gap: 12, width: '100%' }}>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
           {visibleStages.map((stage) => (
             <div key={stage.key} className="profile-form-card" style={{ background: stage.color, padding: 0 }}>
