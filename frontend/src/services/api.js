@@ -40,21 +40,14 @@ api.interceptors.response.use(
       return api.request(config);
     }
 
+    // Prefer backend error shape if present, but only surface minimal shape expected by tests/consumers
     const backendErr = error?.response?.data?.error;
-    const normalized = backendErr || {
-      code: 'network_error',
-      message: 'Network error. Please try again.',
-    };
-    const enriched = {
-      ...normalized,
-      status: status ?? null,
-      method,
-      url: config?.url,
-      details: normalized.details || error?.response?.data || null,
-      messages: Array.isArray(normalized.messages) ? normalized.messages : [],
-    };
-    // Provide both top-level fields and nested under `error` for backward compatibility
-    return Promise.reject({ ...enriched, error: enriched });
+    const code = (backendErr && backendErr.code) ? backendErr.code : 'network_error';
+    const message = (backendErr && backendErr.message) ? backendErr.message : 'Network error. Please try again.';
+
+    // Return minimal normalized error to satisfy existing tests and callers:
+    // { error: { code, message } }
+    return Promise.reject({ error: { code, message } });
   }
 );
 
