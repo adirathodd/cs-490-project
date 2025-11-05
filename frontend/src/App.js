@@ -17,7 +17,6 @@ import Employment from './components/Employment';
 import ProjectsPortfolio from './components/ProjectsPortfolio';
 import ProjectDetail from './components/ProjectDetail';
 import Jobs from './components/Jobs';
-import JobsPipeline from './components/JobsPipeline';
 import JobDetailView from './components/JobDetailView';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
