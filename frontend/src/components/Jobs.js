@@ -45,6 +45,12 @@ const Jobs = () => {
   const [charCount, setCharCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
 
+  // SCRUM-39: Job Import State
+  const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState(null); // 'success', 'partial', 'failed'
+  const [importedFields, setImportedFields] = useState([]);
+
   // UC-039: Search and Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState({
@@ -128,6 +134,76 @@ const Jobs = () => {
     setEditingId(null);
     setCharCount(0);
     setShowForm(false);
+    setImportUrl('');
+    setImporting(false);
+    setImportStatus(null);
+    setImportedFields([]);
+  };
+
+  // SCRUM-39: Handle URL import
+  const handleImportFromUrl = async () => {
+    if (!importUrl.trim()) {
+      setError('Please enter a job posting URL');
+      return;
+    }
+
+    setImporting(true);
+    setError('');
+    setImportStatus(null);
+    setImportedFields([]);
+
+    try {
+      const result = await jobsAPI.importFromUrl(importUrl);
+      
+      if (result.status === 'success' || result.status === 'partial') {
+        // Populate form with imported data
+        setForm((prev) => ({
+          ...prev,
+          ...result.data,
+        }));
+        
+        // Update character count if description was imported
+        if (result.data.description) {
+          setCharCount(result.data.description.length);
+        }
+        
+        setImportStatus(result.status);
+        setImportedFields(result.fields_extracted || []);
+        
+        if (result.status === 'success') {
+          setSuccess('Job details imported successfully! Review and edit as needed.');
+        } else {
+          setSuccess('Job details partially imported. Please fill in the remaining fields.');
+        }
+        
+        setTimeout(() => setSuccess(''), 5000);
+      } else {
+        setError(result.error || 'Failed to import job details');
+        setImportStatus('failed');
+      }
+    } catch (e) {
+      const msg = e?.message || 'Failed to import job from URL';
+      setError(msg);
+      setImportStatus('failed');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // Helper to check if a field was imported
+  const isFieldImported = (fieldName) => {
+    return importedFields.includes(fieldName);
+  };
+
+  // Helper to get field style for imported fields
+  const getFieldStyle = (fieldName) => {
+    if (isFieldImported(fieldName)) {
+      return {
+        background: 'rgba(16, 185, 129, 0.05)',
+        borderColor: '#10b981'
+      };
+    }
+    return {};
   };
 
   // UC-039: Clear all filters and search
@@ -556,11 +632,139 @@ const Jobs = () => {
           </div>
 
           <form className="education-form" onSubmit={handleSubmit}>
+            {/* SCRUM-39: URL Import Section */}
+            {!editingId && (
+              <div className="form-section" style={{ 
+                padding: '20px', 
+                marginBottom: '24px', 
+                background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%)',
+                borderRadius: '10px',
+                border: '2px dashed #667eea'
+              }}>
+                <h4 style={{ 
+                  marginTop: 0, 
+                  marginBottom: '12px', 
+                  color: '#667eea',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <Icon name="link" size="sm" />
+                  Quick Import from Job Posting URL
+                </h4>
+                <p style={{ 
+                  fontSize: '14px', 
+                  color: '#666', 
+                  marginBottom: '16px',
+                  lineHeight: '1.5'
+                }}>
+                  Paste a job posting URL from <strong>LinkedIn</strong>, <strong>Indeed</strong>, or <strong>Glassdoor</strong> to automatically fill in details
+                </p>
+                
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1 }}>
+                    <input
+                      type="url"
+                      placeholder="https://www.linkedin.com/jobs/view/..."
+                      value={importUrl}
+                      onChange={(e) => setImportUrl(e.target.value)}
+                      disabled={importing}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: '2px solid #d1d5db',
+                        borderRadius: '8px',
+                        fontSize: '15px',
+                        fontFamily: 'inherit'
+                      }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleImportFromUrl}
+                    disabled={importing || !importUrl.trim()}
+                    style={{
+                      padding: '12px 24px',
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: importing ? '#9ca3af' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      color: 'white',
+                      cursor: importing || !importUrl.trim() ? 'not-allowed' : 'pointer',
+                      whiteSpace: 'nowrap',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)'
+                    }}
+                  >
+                    {importing ? (
+                      <>
+                        <span style={{ 
+                          display: 'inline-block', 
+                          width: '14px', 
+                          height: '14px', 
+                          border: '2px solid white',
+                          borderTopColor: 'transparent',
+                          borderRadius: '50%',
+                          animation: 'spin 0.6s linear infinite'
+                        }}></span>
+                        Importing...
+                      </>
+                    ) : (
+                      <>
+                        <Icon name="download" size="sm" />
+                        Import
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {importStatus && (
+                  <div style={{ 
+                    marginTop: '16px', 
+                    padding: '12px 16px', 
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: importStatus === 'success' ? '#ecfdf5' : 
+                               importStatus === 'partial' ? '#fef3c7' : '#fee2e2',
+                    border: `1px solid ${importStatus === 'success' ? '#10b981' : 
+                                         importStatus === 'partial' ? '#f59e0b' : '#ef4444'}`,
+                    color: importStatus === 'success' ? '#065f46' : 
+                           importStatus === 'partial' ? '#92400e' : '#991b1b'
+                  }}>
+                    {importStatus === 'success' && '✓ Successfully imported'}
+                    {importStatus === 'partial' && '⚠ Partially imported'}
+                    {importStatus === 'failed' && '✗ Import failed'}
+                    {importedFields.length > 0 && ` (${importedFields.length} field${importedFields.length > 1 ? 's' : ''})`}
+                  </div>
+                )}
+
+                <style>{`
+                  @keyframes spin {
+                    to { transform: rotate(360deg); }
+                  }
+                `}</style>
+              </div>
+            )}
+
             {/* Job Details */}
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="title">
                   Job Title <span className="required">*</span>
+                  {isFieldImported('title') && <span style={{ 
+                    marginLeft: '8px', 
+                    fontSize: '12px', 
+                    color: '#10b981',
+                    fontWeight: '600'
+                  }}>✓ Imported</span>}
                 </label>
                 <input
                   id="title"
@@ -569,12 +773,19 @@ const Jobs = () => {
                   onChange={onChange}
                   placeholder="e.g., Software Engineer"
                   className={fieldErrors.title ? 'error' : ''}
+                  style={getFieldStyle('title')}
                 />
                 {fieldErrors.title && <div className="error-message">{fieldErrors.title}</div>}
               </div>
               <div className="form-group">
                 <label htmlFor="company_name">
                   Company <span className="required">*</span>
+                  {isFieldImported('company_name') && <span style={{ 
+                    marginLeft: '8px', 
+                    fontSize: '12px', 
+                    color: '#10b981',
+                    fontWeight: '600'
+                  }}>✓ Imported</span>}
                 </label>
                 <input
                   id="company_name"
@@ -583,6 +794,7 @@ const Jobs = () => {
                   onChange={onChange}
                   placeholder="e.g., Acme Inc"
                   className={fieldErrors.company_name ? 'error' : ''}
+                  style={getFieldStyle('company_name')}
                 />
                 {fieldErrors.company_name && <div className="error-message">{fieldErrors.company_name}</div>}
               </div>
@@ -590,7 +802,15 @@ const Jobs = () => {
 
             <div className="form-row">
               <div className="form-group">
-                <label htmlFor="location">Location</label>
+                <label htmlFor="location">
+                  Location
+                  {isFieldImported('location') && <span style={{ 
+                    marginLeft: '8px', 
+                    fontSize: '12px', 
+                    color: '#10b981',
+                    fontWeight: '600'
+                  }}>✓ Imported</span>}
+                </label>
                 <input 
                   id="location" 
                   name="location" 
@@ -598,17 +818,27 @@ const Jobs = () => {
                   onChange={onChange} 
                   placeholder="City, State or Remote"
                   className={fieldErrors.location ? 'error' : ''}
+                  style={getFieldStyle('location')}
                 />
                 {fieldErrors.location && <div className="error-message">{fieldErrors.location}</div>}
               </div>
               <div className="form-group">
-                <label htmlFor="job_type">Job Type</label>
+                <label htmlFor="job_type">
+                  Job Type
+                  {isFieldImported('job_type') && <span style={{ 
+                    marginLeft: '8px', 
+                    fontSize: '12px', 
+                    color: '#10b981',
+                    fontWeight: '600'
+                  }}>✓ Imported</span>}
+                </label>
                 <select 
                   id="job_type" 
                   name="job_type" 
                   value={form.job_type} 
                   onChange={onChange}
                   className={fieldErrors.job_type ? 'error' : ''}
+                  style={getFieldStyle('job_type')}
                 >
                   {jobTypeOptions.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -714,6 +944,12 @@ const Jobs = () => {
             <div className="form-group">
               <label htmlFor="description">
                 Description / Notes
+                {isFieldImported('description') && <span style={{ 
+                  marginLeft: '8px', 
+                  fontSize: '12px', 
+                  color: '#10b981',
+                  fontWeight: '600'
+                }}>✓ Imported</span>}
                 <span className={`char-counter ${charCount === MAX_DESC ? 'limit-reached' : ''}`}>
                   {charCount}/{MAX_DESC}
                 </span>
@@ -726,6 +962,7 @@ const Jobs = () => {
                 rows={6}
                 placeholder="Paste description or your notes (max 2000)"
                 className={fieldErrors.description ? 'error' : ''}
+                style={getFieldStyle('description')}
               />
               {fieldErrors.description && <div className="error-message">{fieldErrors.description}</div>}
             </div>

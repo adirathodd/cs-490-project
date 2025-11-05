@@ -83,4 +83,6 @@ urlpatterns = [
     # UC-036: Jobs endpoints
     path('jobs', views.jobs_list_create, name='jobs-list-create'),
     path('jobs/<int:job_id>', views.job_detail, name='job-detail'),
+    # SCRUM-39: Job import from URL
+    path('jobs/import-from-url', views.import_job_from_url, name='import-job-from-url'),
 ]
