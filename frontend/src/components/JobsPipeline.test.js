@@ -48,11 +48,9 @@ describe('JobsPipeline (UC-037)', () => {
     await userEvent.click(await screen.findByRole('button', { name: /select multiple/i }));
     await userEvent.click(screen.getByTestId('job-card-1'));
 
-    // Choose target status
-  // The bulk move select isn't explicitly labelled, select the second combobox
-  const selects = screen.getAllByRole('combobox');
-  const mover = selects[1];
-    await userEvent.selectOptions(mover, 'applied');
+    // Use the column checkbox for the target 'Applied' column
+    const checkbox = await screen.findByLabelText(/move selected jobs to applied/i);
+    await userEvent.click(checkbox);
 
     await waitFor(() => expect(jobsAPI.bulkUpdateStatus).toHaveBeenCalledWith([1], 'applied'));
   });
