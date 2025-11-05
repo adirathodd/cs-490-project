@@ -73,9 +73,8 @@ const NavBar = () => {
         <NavLink to="/skills" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Skills</NavLink>
         <NavLink to="/employment" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Employment</NavLink>
         <NavLink to="/education" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Education</NavLink>
-    <NavLink to="/projects" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Projects</NavLink>
-    <NavLink to="/jobs" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Jobs</NavLink>
-    <NavLink to="/jobs/pipeline" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Pipeline</NavLink>
+  <NavLink to="/projects" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Projects</NavLink>
+  <NavLink to="/jobs" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Jobs</NavLink>
         <NavLink to="/certifications" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Certifications</NavLink>
         <NavLink to="/profile" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Profile</NavLink>
         {/* Mobile-only actions so Sign Out is accessible when the user menu is hidden */}
