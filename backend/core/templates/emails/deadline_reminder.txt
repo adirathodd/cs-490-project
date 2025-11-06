@@ -1,0 +1,10 @@
+{% if urgency == 'day_of' %}Final application day{% else %}Deadline approaching in 3 days{% endif %}
+
+Job: {{ job_title }} @ {{ company_name }}
+Deadline: {{ deadline }}{% if urgency == 'day_of' %} (today){% endif %}
+
+If you still plan to apply, {% if urgency == 'day_of' %}submit now{% else %}prioritize this now{% endif %}.
+
+View job: {{ job_url }}
+
+You are receiving this reminder because the job is not marked as applied. This is a one-time reminder.
