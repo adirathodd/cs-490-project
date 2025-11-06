@@ -21,7 +21,9 @@ import {
   FaUsers,
   FaLightbulb,
   FaEye,
-  FaTimesCircle
+  FaTimesCircle,
+  FaChevronLeft,
+  FaChevronRight
 } from 'react-icons/fa';
 
 // Simple, centralized Icon wrapper used across the app.
@@ -61,6 +63,8 @@ const iconMap = {
   idea: FaLightbulb,
   eye: FaEye,
   clear: FaTimesCircle,
+  chevronLeft: FaChevronLeft,
+  chevronRight: FaChevronRight,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {

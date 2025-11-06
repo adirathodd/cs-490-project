@@ -2249,7 +2249,14 @@ def jobs_upcoming_deadlines(request):
     try:
         profile = CandidateProfile.objects.get(user=request.user)
         limit = int(request.GET.get('limit') or 5)
-        qs = JobEntry.objects.filter(candidate=profile, application_deadline__isnull=False).order_by('application_deadline')[:limit]
+        # Only include non-overdue deadlines (>= today), limit to requested count
+        from django.utils import timezone
+        today = timezone.localdate()
+        qs = (
+            JobEntry.objects
+            .filter(candidate=profile, application_deadline__isnull=False, application_deadline__gte=today)
+            .order_by('application_deadline')[:limit]
+        )
         data = JobEntrySerializer(qs, many=True).data
         return Response(data, status=status.HTTP_200_OK)
     except CandidateProfile.DoesNotExist:

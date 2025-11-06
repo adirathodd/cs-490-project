@@ -908,6 +908,10 @@ class JobEntry(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="interested")
     last_status_change = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
+    # Deadline notification tracking
+    three_day_notice_sent_at = models.DateTimeField(null=True, blank=True)
+    day_of_notice_sent_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ['-updated_at']
         indexes = [
