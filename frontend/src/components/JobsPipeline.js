@@ -96,20 +96,6 @@ const SortableJobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact
     zIndex: isDragging ? 10 : undefined,
     touchAction: 'none',
   };
-
-  // perform bulk deadline update for selected jobs
-  const performBulkDeadline = async (deadline) => {
-    const ids = Array.from(selected);
-    if (!ids.length) return;
-    try {
-      await jobsAPI.bulkUpdateDeadline(ids, deadline || null);
-      setSelected(new Set());
-      setShowDeadlineModal(false);
-      await load();
-    } catch (e) {
-      setError('Failed to update deadlines');
-    }
-  };
   const handle = (
     <span
       /* visual handle only; whole card is draggable */
@@ -367,6 +353,43 @@ export default function JobsPipeline() {
   const [showDeadlineModal, setShowDeadlineModal] = useState(false);
   const [deadlineValue, setDeadlineValue] = useState(''); // YYYY-MM-DD
 
+  // Undo state for bulk-deadline operations
+  const [undoDeadlineData, setUndoDeadlineData] = useState(null);
+  const [showUndoDeadline, setShowUndoDeadline] = useState(false);
+
+  // perform bulk deadline update for selected jobs (properly scoped here)
+  const performBulkDeadline = async (deadline) => {
+    const ids = Array.from(selected);
+    if (!ids.length) return;
+    // capture previous deadlines to allow undo
+    const prevDeadlines = {};
+    ids.forEach((id) => { const j = findJobById(id); if (j) prevDeadlines[id] = j.application_deadline ?? null; });
+    try {
+      await jobsAPI.bulkUpdateDeadline(ids, deadline || null);
+      setUndoDeadlineData({ ids, prevDeadlines });
+      setShowUndoDeadline(true);
+      setSelected(new Set());
+      setShowDeadlineModal(false);
+      await load();
+      setTimeout(() => { setShowUndoDeadline(false); setUndoDeadlineData(null); }, 6000);
+    } catch (e) {
+      setError('Failed to update deadlines');
+    }
+  };
+
+  const handleUndoDeadline = async () => {
+    if (!undoDeadlineData) return;
+    const { ids, prevDeadlines } = undoDeadlineData;
+    try {
+      await Promise.all(ids.map((id) => jobsAPI.updateJob(id, { application_deadline: prevDeadlines[id] })));
+      setShowUndoDeadline(false);
+      setUndoDeadlineData(null);
+      await load();
+    } catch (e) {
+      setError('Undo failed');
+    }
+  };
+
   // start move flow; if large, request confirmation first
   const initiateMoveSelected = (target) => {
     const ids = Array.from(selected);
@@ -449,9 +472,9 @@ export default function JobsPipeline() {
               {STAGES.map(s => (<option key={s.key} value={s.key}>{s.label}</option>))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="form-group" style={{ ...(bulkMode ? { flex: '1 0 100%', maxWidth: '100%' } : {}) }}>
             <label>Bulk actions</label>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button className="back-button" onClick={() => setBulkMode(!bulkMode)}>{bulkMode ? 'Done Selecting' : 'Select Multiple'}</button>
               {/* Bulk deadline management */}
               {bulkMode && (
@@ -471,7 +494,7 @@ export default function JobsPipeline() {
               )}
             </div>
           </div>
-          <div className="form-group" style={{ alignSelf: 'flex-end' }}>
+          <div className="form-group" style={{ alignSelf: 'flex-end', flex: '0 0 auto' }}>
             <label>&nbsp;</label>
             <a className="back-button" href="/jobs" style={{ textDecoration: 'none' }}>+ Add Job</a>
           </div>
@@ -667,6 +690,13 @@ export default function JobsPipeline() {
         <div data-testid="undo-snackbar" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', background: '#111827', color: '#fff', padding: '10px 14px', borderRadius: 8, zIndex: 70, display: 'flex', gap: 8, alignItems: 'center' }} role="status">
           <div>Moved {undoData.ids.length} jobs.</div>
           <button className="back-button" onClick={handleUndo}>Undo</button>
+        </div>
+      )}
+
+      {showUndoDeadline && undoDeadlineData && (
+        <div data-testid="undo-deadline-snackbar" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', background: '#111827', color: '#fff', padding: '10px 14px', borderRadius: 8, zIndex: 70, display: 'flex', gap: 8, alignItems: 'center' }} role="status">
+          <div>Updated deadlines for {undoDeadlineData.ids.length} jobs.</div>
+          <button className="back-button" onClick={handleUndoDeadline}>Undo</button>
         </div>
       )}
 

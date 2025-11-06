@@ -212,6 +212,7 @@
   max-width: 1200px;
   margin: 0 auto;
   padding: 40px 20px;
+  position: relative; /* allow absolute-positioned sidebar */
 }
 
 /* Account Banner */
@@ -352,6 +353,24 @@
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 24px;
   margin-bottom: 40px;
+  /* Add top spacing so it doesn't visually collide with the deadlines sidebar widget */
+  margin-top: 32px;
+}
+
+.dashboard-main {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  margin-bottom: 40px;
+}
+
+.dashboard-left {
+  width: 320px;
+  flex-shrink: 0;
+}
+
+.dashboard-right {
+  flex: 1;
 }
 
 .dashboard-card {
@@ -491,6 +510,43 @@
     grid-template-columns: 1fr;
   }
 
+  .dashboard-main {
+    flex-direction: column;
+  }
+  .dashboard-left { width: 100%; }
+  .dashboard-right { width: 100%; }
+
+
+/* Sidebar for deadlines widget — positioned to the left of the centered content without affecting flow */
+.deadlines-sidebar {
+  position: absolute;
+  left: calc(50% - 600px - 340px); /* align left of centered content and offset left by widget width + gap */
+  top: 220px; /* below the account banner; tune if needed */
+  width: 320px;
+}
+
+@media (max-width: 1024px) {
+  .deadlines-sidebar { display: none; }
+  /* Remove extra top margin when sidebar disappears on narrower screens */
+  .dashboard-grid { margin-top: 0; }
+}
+
+.deadlines-widget .widget-badge {
+  background: #6366f1;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 20px;
+  font-size: 12px;
+}
+.deadlines-sidebar .dashboard-card {
+  /* Ensure distinct separation between widget card bottom and grid cards */
+  margin-bottom: 32px;
+}
+
+
+.deadlines-list .deadlines-item:last-child { border-bottom: none; }
+
+.deadlines-empty { padding: 8px 0; }
   .info-grid {
     grid-template-columns: 1fr;
   }

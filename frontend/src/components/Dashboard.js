@@ -191,6 +191,9 @@ const Dashboard = () => {
 
         {/* Profile Overview (UC-033) */}
 
+        {/* Sidebar widget (left) — absolutely positioned so it doesn't shift the card grid */}
+        <div className="deadlines-sidebar"><DeadlinesWidget /></div>
+
         <div className="dashboard-grid">
           <div className="dashboard-card">
               <div className="card-icon" aria-label="Skills">
@@ -237,9 +240,6 @@ const Dashboard = () => {
             <h3>Jobs</h3>
             <p>Track opportunities you want to apply for</p>
             <button className="card-button" onClick={() => navigate('/jobs')}>Add Job Entry</button>
-          </div>
-          <div className="dashboard-card">
-            <div style={{ minHeight: 36 }}><DeadlinesWidget /></div>
           </div>
         </div>
       </div>
