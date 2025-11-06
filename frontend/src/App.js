@@ -226,6 +226,16 @@ function App() {
               </PrivateRoute>
             }
           />
+          <Route
+            path="/jobs/deadlines"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <JobsCalendar />
+              </PrivateRoute>
+            }
+          />
 
           {/* catch-all */}
           <Route path="*" element={<Navigate to="/login" replace />} />
