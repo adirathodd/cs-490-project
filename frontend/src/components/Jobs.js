@@ -179,6 +179,21 @@ const Jobs = () => {
       });
     }
   }, [showForm]);
+  // Helper: days difference (deadline - today), and urgency color
+  const daysUntil = (dateStr) => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return null;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  };
+  const deadlineColor = (diff) => {
+    if (diff == null) return '#94a3b8';
+    if (diff < 0) return '#dc2626'; // overdue
+    if (diff <= 3) return '#f59e0b'; // urgent
+    return '#059669'; // safe
+  };
 
   const resetForm = () => {
     setForm(defaultForm);
@@ -498,6 +513,15 @@ const Jobs = () => {
           <button
             className="add-education-button"
             onClick={handleAddJobClick}
+          <button 
+            className="add-education-button"
+            onClick={() => {
+              setForm(defaultForm);
+              setEditingId(null);
+              setFieldErrors({});
+              setCharCount(0);
+              setShowForm(true);
+            }}
           >
             + Add Job
           </button>
@@ -528,6 +552,10 @@ const Jobs = () => {
         )}
       </div>
 
+      {/* Calendar: placed below the header and above the search box */}
+      <DeadlineCalendar items={items} />
+
+      {/* UC-039: Search and Filter Section */}
       {!showForm && (
         <div className="education-form-card" style={{ marginBottom: '20px' }}>
           <div style={{ padding: '16px' }}>
@@ -1059,6 +1087,86 @@ const Jobs = () => {
                     tabIndex={0}
                     onKeyPress={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') navigate(`/jobs/${item.id}`);
+          {(items || []).map((item) => (
+            <div key={item.id} className="education-item">
+              <div className="education-item-header">
+                <div 
+                  className="education-item-main" 
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => navigate(`/jobs/${item.id}`)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      navigate(`/jobs/${item.id}`);
+                    }
+                  }}
+                >
+                  <div className="education-item-title">
+                    <span dangerouslySetInnerHTML={{ __html: highlightText(item.title, searchQuery) }} />
+                  </div>
+                  <div className="education-item-sub">
+                    <span dangerouslySetInnerHTML={{ __html: highlightText(item.company_name, searchQuery) }} />
+                    {item.location && <span> • {item.location}</span>}
+                    {item.job_type && <span> • {jobTypeOptions.find(opt => opt.value === item.job_type)?.label || item.job_type}</span>}
+                    {item.industry && <span> • {item.industry}</span>}
+                  </div>
+                  {item.salary_range && (
+                    <div className="education-item-dates">
+                      <span className="status">{item.salary_range}</span>
+                    </div>
+                  )}
+                  {item.application_deadline && (() => {
+                    const diff = daysUntil(item.application_deadline);
+                    const color = deadlineColor(diff);
+                    return (
+                      <div className="education-item-dates" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 10, height: 10, borderRadius: 4, background: color }} aria-hidden />
+                        {/* Keep this exact text for existing tests */}
+                        <span className="status">Deadline: {item.application_deadline}</span>
+                        {diff != null && (
+                          <span style={{ fontSize: 12, color: '#444' }}>
+                            {diff < 0 ? `Overdue by ${Math.abs(diff)}d` : `${diff}d left`}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {item.description && searchQuery && item.description.toLowerCase().includes(searchQuery.toLowerCase()) && (
+                    <div className="education-item-dates" style={{ marginTop: '4px' }}>
+                      <span style={{ color: '#666', fontSize: '13px' }} dangerouslySetInnerHTML={{ 
+                        __html: highlightText(item.description.substring(0, 150), searchQuery) 
+                      }} />
+                      {item.description.length > 150 && '...'}
+                    </div>
+                  )}
+                </div>
+                <div className="education-item-actions">
+                  <button 
+                    className="view-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/jobs/${item.id}`);
+                    }}
+                    title="View Details"
+                  >
+                    <Icon name="eye" size="sm" ariaLabel="View" />
+                  </button>
+                  <button 
+                    className="edit-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startEdit(item);
+                    }}
+                    title="Edit"
+                  >
+                    <Icon name="edit" size="sm" ariaLabel="Edit" />
+                  </button>
+                  <button 
+                    className="delete-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(item.id);
                     }}
                   >
                     <div className="education-item-title">

@@ -428,6 +428,7 @@ export default function JobsPipeline() {
           >
             ← Back
           </a>
+          <button className="btn-back" onClick={() => (window.location.href = '/dashboard')}>← Back to Dashboard</button>
         </div>
         <div className="profile-header">
           <div>
