@@ -589,6 +589,15 @@ export const jobsAPI = {
     const response = await api.post('/jobs/bulk-status', { ids, status });
     return response.data; // { updated: n }
   },
+  bulkUpdateDeadline: async (ids, deadline) => {
+    // deadline should be a string 'YYYY-MM-DD' or null to clear
+    const response = await api.post('/jobs/bulk-deadline', { ids, deadline });
+    return response.data; // { updated: n }
+  },
+  getUpcomingDeadlines: async (limit = 5) => {
+    const response = await api.get(`/jobs/upcoming-deadlines?limit=${limit}`);
+    return response.data;
+  },
 };
 
 authAPI.getEmploymentTimeline = async () => {
