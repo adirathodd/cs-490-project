@@ -241,9 +241,6 @@ const Dashboard = () => {
             <p>Track opportunities you want to apply for</p>
             <button className="card-button" onClick={() => navigate('/jobs')}>Add Job Entry</button>
           </div>
-          <div className="dashboard-card">
-            <div style={{ minHeight: 36 }}><DeadlinesWidget /></div>
-          </div>
         </div>
       </div>
     </div>
