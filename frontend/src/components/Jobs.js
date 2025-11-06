@@ -648,26 +648,38 @@ const Jobs = () => {
         <div style={{ 
           background: '#10b981', 
           color: 'white', 
-          padding: '12px 16px', 
+          padding: '10px 16px', 
           borderRadius: '8px', 
           marginBottom: '16px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          gap: '12px',
+          flexWrap: 'nowrap',
           animation: 'slideIn 0.3s ease-out'
         }}>
-          <span>{undoNotification.message}</span>
+          <span style={{ 
+            fontSize: '14px',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            flex: '1'
+          }}>
+            {undoNotification.message}
+          </span>
           <button
             onClick={undoAction}
             style={{
               background: 'white',
               color: '#10b981',
               border: 'none',
-              padding: '6px 12px',
+              padding: '6px 16px',
               borderRadius: '6px',
               fontWeight: '600',
               cursor: 'pointer',
-              fontSize: '14px'
+              fontSize: '14px',
+              whiteSpace: 'nowrap',
+              flexShrink: 0
             }}
           >
             Undo
@@ -1295,6 +1307,19 @@ const Jobs = () => {
                   )}
                 </div>
                 <div className="education-item-actions">
+                  {/* UC-041: Link to job posting - moved to first position */}
+                  {item.posting_url && (
+                    <a 
+                      className="view-button"
+                      href={item.posting_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="View Job Posting"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Icon name="link" size="sm" ariaLabel="View" />
+                    </a>
+                  )}
                   <button 
                     className="view-button"
                     onClick={(e) => {
@@ -1318,13 +1343,12 @@ const Jobs = () => {
                         <Icon name="edit" size="sm" ariaLabel="Edit" />
                       </button>
                       <button 
-                        className="view-button"
+                        className="archive-button"
                         onClick={(e) => {
                           e.stopPropagation();
                           onArchive(item.id, 'other');
                         }}
                         title="Archive"
-                        style={{ background: '#f97316', color: 'white' }}
                       >
                         <Icon name="archive" size="sm" ariaLabel="Archive" />
                       </button>
@@ -1353,18 +1377,6 @@ const Jobs = () => {
                   >
                     <Icon name="trash" size="sm" ariaLabel="Delete" />
                   </button>
-                  {item.posting_url && (
-                    <a 
-                      className="view-button"
-                      href={item.posting_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="View Job Posting"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Icon name="link" size="sm" ariaLabel="View" />
-                    </a>
-                  )}
                 </div>
               </div>
               {(item.industry || item.description) && (

@@ -597,6 +597,29 @@
   border-color: #667eea;
 }
 
+/* UC-045: Archive button with orange hover */
+.education-item-actions .archive-button {
+  width: 44px;
+  height: 44px;
+  background: var(--white);
+  border: 2px solid #d1d5db;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.education-item-actions .archive-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  border-color: #f97316;
+}
+
 .education-item-actions .delete-button {
   width: 44px;
   height: 44px;
