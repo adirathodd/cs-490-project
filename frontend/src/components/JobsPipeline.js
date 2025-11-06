@@ -184,7 +184,8 @@ export default function JobsPipeline() {
     setLoading(true);
     try {
       // Load all jobs and bucket them client-side
-      const list = await jobsAPI.getJobs();
+      const resp = await jobsAPI.getJobs();
+      const list = Array.isArray(resp) ? resp : (Array.isArray(resp?.results) ? resp.results : []);
       const bucket = STAGES.reduce((acc, s) => ({ ...acc, [s.key]: [] }), {});
       (list || []).forEach((j) => {
         const key = j.status || 'interested';
@@ -419,7 +420,14 @@ export default function JobsPipeline() {
     <div className="profile-form-container" style={{ flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start' }}>
       <div className="profile-form-card" style={{ maxWidth: 'none', width: '100%' }}>
         <div className="page-backbar">
-          <button className="btn-back" onClick={() => (window.location.href = '/dashboard')}>← Back to Dashboard</button>
+          <a
+            className="btn-back"
+            href="/jobs"
+            aria-label="Back to jobs"
+            title="Back to jobs"
+          >
+            ← Back
+          </a>
         </div>
         <div className="profile-header">
           <div>

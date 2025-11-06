@@ -59,11 +59,46 @@ class TestJobImportUtils:
         result = import_job_from_url('not-a-url')
         assert result.status == JobImportResult.STATUS_FAILED
     
-    def test_import_unsupported_job_board(self):
-        """Test import with unsupported job board"""
-        result = import_job_from_url('https://www.example.com/jobs/123')
+    @patch('core.job_import_utils.requests.get')
+    def test_import_generic_job_board(self, mock_get):
+        """Test generic OpenGraph/JSON-LD extraction for unsupported job boards"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = Mock()
+        mock_response.content = b'''
+        <html>
+          <head>
+            <meta property="og:title" content="Backend Developer" />
+            <meta property="og:site_name" content="Example Co" />
+            <meta property="og:description" content="Build robust backend services." />
+            <meta name="job_type" content="Full-time" />
+          </head>
+          <body>
+            <section class="job-description">
+              <p>We are looking for developers.</p>
+            </section>
+          </body>
+        </html>
+        '''
+        mock_get.return_value = mock_response
+
+        result = import_job_from_url('https://jobs.example.com/posting/123')
+        assert result.status in (JobImportResult.STATUS_SUCCESS, JobImportResult.STATUS_PARTIAL)
+        assert result.data.get('title') == 'Backend Developer'
+        assert 'title' in result.fields_extracted
+
+    @patch('core.job_import_utils.requests.get')
+    def test_import_generic_job_board_failure(self, mock_get):
+        """Generic extraction should fail gracefully when no data is available"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = Mock()
+        mock_response.content = b'<html><head></head><body></body></html>'
+        mock_get.return_value = mock_response
+
+        result = import_job_from_url('https://jobs.example.com/posting/empty')
         assert result.status == JobImportResult.STATUS_FAILED
-        assert 'Unsupported' in result.error
+        assert 'Unable to extract job details' in (result.error or '')
     
     @patch('core.job_import_utils.requests.get')
     def test_import_linkedin_success(self, mock_get):
@@ -203,3 +238,24 @@ class TestJobImportAPI:
         data = response.json()
         assert data['status'] == 'failed'
         assert 'error' in data
+
+    @patch('core.job_import_utils.import_job_from_url')
+    def test_import_endpoint_retryable_failure(self, mock_import):
+        """Network-style failures surface as retryable 503"""
+        from core.job_import_utils import JobImportResult
+
+        mock_import.return_value = JobImportResult(
+            status=JobImportResult.STATUS_FAILED,
+            error='Indeed took too long to respond. Please try again later or copy the details manually.'
+        )
+
+        response = self.client.post(
+            '/api/jobs/import-from-url',
+            {'url': 'https://www.indeed.com/viewjob?jk=123'},
+            format='json'
+        )
+
+        assert response.status_code == 503
+        data = response.json()
+        assert data['status'] == 'failed'
+        assert data.get('retryable') is True
