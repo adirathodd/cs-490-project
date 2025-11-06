@@ -406,6 +406,24 @@ class CandidateSkillSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CandidateSkill
+    # UC-026/UC-027: Add and manage user skills with proficiency and ordering
+    skill_id = serializers.IntegerField(write_only=True, required=False)
+    name = serializers.CharField(write_only=True, required=False)
+    category = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    skill_name = serializers.CharField(source='skill.name', read_only=True)
+    skill_category = serializers.CharField(source='skill.category', read_only=True)
+
+    class Meta:
+        model = CandidateSkill
+    # UC-026/UC-027: Add and manage user skills with proficiency and ordering
+    skill_id = serializers.IntegerField(write_only=True, required=False)
+    name = serializers.CharField(write_only=True, required=False)
+    category = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    skill_name = serializers.CharField(source='skill.name', read_only=True)
+    skill_category = serializers.CharField(source='skill.category', read_only=True)
+
+    class Meta:
+        model = CandidateSkill
         fields = [
             'id',
             # write-only inputs to create/resolve the Skill
@@ -1027,6 +1045,10 @@ class JobEntrySerializer(serializers.ModelSerializer):
             'salary_min', 'salary_max', 'salary_currency', 'salary_range',
             'posting_url', 'application_deadline',
             'description', 'industry', 'job_type',
+            'status', 'last_status_change', 'days_in_stage',
+            # UC-038 fields
+            'personal_notes',
+            'recruiter_name', 'recruiter_email', 'recruiter_phone',
             # UC-037 + UC-038 fields
             'status', 'last_status_change', 'days_in_stage',
             'personal_notes', 'recruiter_name', 'recruiter_email', 'recruiter_phone',
