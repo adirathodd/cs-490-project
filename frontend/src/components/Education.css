@@ -153,6 +153,12 @@
   color: #374151;
 }
 .calendar-nav:hover { background: #f3f4f6; }
+.calendar-collapse-btn {
+  font-size: 14px !important;
+  padding: 8px 16px !important;
+  height: 36px !important;
+  min-width: 100px !important;
+}
 .calendar-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);

@@ -2585,6 +2585,44 @@ def jobs_bulk_archive(request):
         )
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def jobs_bulk_restore(request):
+    """Bulk restore multiple archived jobs. Body: { "ids": [1,2,3] }"""
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        ids = request.data.get('ids') or []
+        
+        if not ids or not isinstance(ids, list):
+            return Response(
+                {'error': {'code': 'validation_error', 'message': 'ids must be a non-empty list.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        jobs = JobEntry.objects.filter(id__in=ids, candidate=profile, is_archived=True)
+        count = jobs.update(
+            is_archived=False,
+            archived_at=None,
+            archive_reason=''
+        )
+        
+        return Response(
+            {'message': f'{count} job(s) restored successfully.', 'count': count},
+            status=status.HTTP_200_OK
+        )
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in jobs_bulk_restore: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to bulk restore jobs.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def job_delete(request, job_id):
