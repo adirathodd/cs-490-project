@@ -105,8 +105,10 @@ export default function DeadlineCalendar({ items = [], onSelectDate }) {
                   <div className="calendar-day-number">{d.getDate()}</div>
                   <div className="calendar-day-events">
                     {jobs.slice(0, 3).map((j) => {
+                      // If job has been progressed beyond 'interested', show a neutral/gray pill
+                      const isApplied = j.status && j.status !== 'interested';
                       const diff = daysDiff(j.application_deadline);
-                      const s = urgencyBg(diff);
+                      const s = isApplied ? { background: '#e5e7eb', color: '#374151', borderColor: '#e5e7eb' } : urgencyBg(diff);
                       return (
                         <div
                           key={j.id}

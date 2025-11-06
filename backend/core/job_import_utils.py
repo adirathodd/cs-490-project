@@ -469,16 +469,34 @@ def _fetch_job_soup(url: str, allow_proxy: bool = True) -> BeautifulSoup:
                 last_exc = requests.HTTPError(f'HTTP {response.status_code}', response=response)
                 continue
             response.raise_for_status()
-            if not response.encoding:
-                response.encoding = response.apparent_encoding or 'utf-8'
+            # Normalize text for BeautifulSoup and avoid relying on mocked attributes
+            text = None
+            try:
+                text = response.text if isinstance(response.text, str) else None
+            except Exception:
+                text = None
+            if not text:
+                try:
+                    raw = getattr(response, 'content', b'') or b''
+                    enc = getattr(response, 'encoding', None)
+                    if not isinstance(enc, str) or not enc:
+                        enc = 'utf-8'
+                    text = raw.decode(enc, errors='ignore')
+                except Exception:
+                    text = ''
+            try:
+                ct = (getattr(response, 'headers', {}) or {}).get('Content-Type')
+                ln = len(text or '')
+            except Exception:
+                ct, ln = None, 0
             logger.info(
                 "Import fetch: success for %s with agent %s (content-type=%s, len=%s)",
                 url,
                 agent,
-                response.headers.get('Content-Type'),
-                len(response.text),
+                ct,
+                ln,
             )
-            return BeautifulSoup(response.text, 'html.parser')
+            return BeautifulSoup(text, 'html.parser')
         except requests.RequestException as exc:
             last_exc = exc
             logger.debug("Import fetch: exception %s for %s with agent %s", exc, url, agent)
@@ -495,15 +513,32 @@ def _fetch_job_soup(url: str, allow_proxy: bool = True) -> BeautifulSoup:
             logger.info("Import fetch: attempting proxy fetch via %s", fallback_url)
             response = requests.get(fallback_url, headers=headers, timeout=10, allow_redirects=True)
             response.raise_for_status()
-            if not response.encoding:
-                response.encoding = response.apparent_encoding or 'utf-8'
+            text = None
+            try:
+                text = response.text if isinstance(response.text, str) else None
+            except Exception:
+                text = None
+            if not text:
+                try:
+                    raw = getattr(response, 'content', b'') or b''
+                    enc = getattr(response, 'encoding', None)
+                    if not isinstance(enc, str) or not enc:
+                        enc = 'utf-8'
+                    text = raw.decode(enc, errors='ignore')
+                except Exception:
+                    text = ''
+            try:
+                ct = (getattr(response, 'headers', {}) or {}).get('Content-Type')
+                ln = len(text or '')
+            except Exception:
+                ct, ln = None, 0
             logger.info(
                 "Import fetch: proxy success for %s (content-type=%s, len=%s)",
                 url,
-                response.headers.get('Content-Type'),
-                len(response.text),
+                ct,
+                ln,
             )
-            return BeautifulSoup(response.text, 'html.parser')
+            return BeautifulSoup(text, 'html.parser')
         except requests.RequestException as exc:
             last_exc = exc
             logger.warning("Import fetch: proxy fetch failed for %s with error: %s", url, exc)

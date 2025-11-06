@@ -41,9 +41,18 @@ export default function JobsCalendar() {
           <div key={g.date} style={{ marginBottom: 12 }}>
             <h4 style={{ marginBottom: 6 }}>{g.date}</h4>
             <ul style={{ margin: 0, paddingLeft: 18 }}>
-              {g.jobs.map((j) => (
-                <li key={j.id} style={{ marginBottom: 4 }}>{j.title} @ {j.company_name} {j.application_deadline ? `(${j.application_deadline})` : ''}</li>
-              ))}
+              {g.jobs.map((j) => {
+                const isApplied = j.status && j.status !== 'interested';
+                const pillStyle = isApplied
+                  ? { background: '#e5e7eb', color: '#374151', padding: '4px 8px', borderRadius: 6, display: 'inline-block' }
+                  : { background: '#60a5fa', color: '#ffffff', padding: '4px 8px', borderRadius: 6, display: 'inline-block' };
+                return (
+                  <li key={j.id} style={{ marginBottom: 6 }}>
+                    <span style={pillStyle}>{j.title}</span>
+                    <span style={{ marginLeft: 8, color: '#6b7280' }}>@ {j.company_name} {j.application_deadline ? `(${j.application_deadline})` : ''}</span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ))}

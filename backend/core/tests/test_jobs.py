@@ -188,10 +188,13 @@ class TestJobsAPI:
         stats_url = reverse('core:jobs-stats')
         resp = self.client.get(stats_url)
         assert resp.status_code == 200
+
         stats = resp.json()
-        assert stats['interested'] == 1
-        assert stats['applied'] == 1
-        assert stats['interview'] == 1
+        # API returns status counts under 'counts'
+        counts = stats.get('counts', {})
+        assert counts.get('interested') == 1
+        assert counts.get('applied') == 1
+        assert counts.get('interview') == 1
 
         bulk_status_url = reverse('core:jobs-bulk-status')
         ids = list(JobEntry.objects.values_list('id', flat=True))

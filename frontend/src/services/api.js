@@ -593,8 +593,8 @@ export const jobsAPI = {
   },
 
   // UC-037 additions
-  getJobStats: async () => {
-    const response = await api.get('/jobs/stats');
+  getJobStats: async (params = {}) => {
+    const response = await api.get('/jobs/stats', { params });
     return response.data; // { interested: n, applied: n, ... }
   },
 

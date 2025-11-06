@@ -61,3 +61,29 @@
   color: var(--on-primary);
   transform: translateX(-2px);
 }
+
+/* Calendar nav buttons used in JobStats */
+.calendar-nav {
+  background: transparent;
+  border: none;
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.calendar-nav:focus {
+  outline: 3px solid rgba(99,102,241,0.25);
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+}
+.back-button {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  cursor: pointer;
+}
+.back-button:focus {
+  outline: 3px solid rgba(99,102,241,0.25);
+}
