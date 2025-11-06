@@ -163,9 +163,9 @@ backend/scripts/run_deadline_reminder_loop.sh
 ```
 
 Behavior:
-- Executes the reminder command immediately on container start.
-- Sleeps for 24 hours (86400 seconds) before running again.
-- Interval can be customized via the `INTERVAL_SECONDS` environment variable.
+- Sleeps until the next 9:00 AM America/New_York occurrence (DST aware) then runs.
+- After each run computes sleep until the next day’s 9:00 AM.
+- Timezone and hour/minute are configurable via environment variables.
 
 #### Enable / Start
 If you've already updated your compose file:
@@ -173,13 +173,15 @@ If you've already updated your compose file:
 docker compose up -d reminders
 ```
 
-#### Adjust Frequency (e.g., every 6 hours)
+#### Adjust Target Time
 Edit the `reminders` service environment section in `docker-compose.yaml`:
 ```yaml
       environment:
-         INTERVAL_SECONDS: 21600  # 6 hours
+         REMINDERS_TZ: America/New_York   # Any valid IANA tz
+         REMINDERS_HOUR: 9                # 0-23
+         REMINDERS_MINUTE: 0              # 0-59
 ```
-Then restart:
+Then rebuild/restart:
 ```bash
 docker compose up -d --build reminders
 ```

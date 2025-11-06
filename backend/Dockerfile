@@ -1,10 +1,11 @@
 # Use an official Python image as a parent image
 FROM python:3.12-slim AS base
 
-# Install system dependencies (including Pillow dependencies)
+# Install system dependencies (including Pillow dependencies) and tzdata for timezone support
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     netcat-openbsd gcc postgresql-client build-essential \
-    libjpeg-dev zlib1g-dev libpng-dev \
+    libjpeg-dev zlib1g-dev libpng-dev tzdata \
  && rm -rf /var/lib/apt/lists/*
 
 # Set work directory
