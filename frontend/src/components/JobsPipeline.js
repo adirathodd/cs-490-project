@@ -96,6 +96,20 @@ const SortableJobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact
     zIndex: isDragging ? 10 : undefined,
     touchAction: 'none',
   };
+
+  // perform bulk deadline update for selected jobs
+  const performBulkDeadline = async (deadline) => {
+    const ids = Array.from(selected);
+    if (!ids.length) return;
+    try {
+      await jobsAPI.bulkUpdateDeadline(ids, deadline || null);
+      setSelected(new Set());
+      setShowDeadlineModal(false);
+      await load();
+    } catch (e) {
+      setError('Failed to update deadlines');
+    }
+  };
   const handle = (
     <span
       /* visual handle only; whole card is draggable */
