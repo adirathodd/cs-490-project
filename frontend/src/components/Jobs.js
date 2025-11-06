@@ -337,17 +337,37 @@ const Jobs = () => {
 
   const confirmDelete = async () => {
     if (!itemToDelete) return;
-    try {
-      await jobsAPI.deleteJob(itemToDelete);
-      setItems((prev) => prev.filter((i) => i.id !== itemToDelete));
-      setSuccess('Job deleted.');
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (e) {
-      const msg = e?.message || e?.error?.message || 'Failed to delete job';
-      setError(msg);
-    } finally {
-      setShowDeleteModal(false);
-      setItemToDelete(null);
+    
+    // Check if we're doing bulk delete
+    if (Array.isArray(itemToDelete)) {
+      try {
+        // Delete all selected jobs
+        await Promise.all(itemToDelete.map(id => jobsAPI.deleteJob(id)));
+        setItems((prev) => prev.filter((i) => !itemToDelete.includes(i.id)));
+        setSelectedJobs([]);
+        setSuccess(`${itemToDelete.length} job(s) deleted.`);
+        setTimeout(() => setSuccess(''), 3000);
+      } catch (e) {
+        const msg = e?.message || e?.error?.message || 'Failed to delete jobs';
+        setError(msg);
+      } finally {
+        setShowDeleteModal(false);
+        setItemToDelete(null);
+      }
+    } else {
+      // Single delete
+      try {
+        await jobsAPI.deleteJob(itemToDelete);
+        setItems((prev) => prev.filter((i) => i.id !== itemToDelete));
+        setSuccess('Job deleted.');
+        setTimeout(() => setSuccess(''), 3000);
+      } catch (e) {
+        const msg = e?.message || e?.error?.message || 'Failed to delete job';
+        setError(msg);
+      } finally {
+        setShowDeleteModal(false);
+        setItemToDelete(null);
+      }
     }
   };
 
@@ -397,6 +417,26 @@ const Jobs = () => {
   const onBulkArchive = async () => {
     if (selectedJobs.length === 0) return;
     setShowArchiveModal(true);
+  };
+
+  const onBulkRestore = async () => {
+    if (selectedJobs.length === 0) return;
+    try {
+      await jobsAPI.bulkRestoreJobs(selectedJobs);
+      setItems((prev) => prev.filter((i) => !selectedJobs.includes(i.id)));
+      setSelectedJobs([]);
+      setSuccess(`${selectedJobs.length} job(s) restored successfully.`);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (e) {
+      const msg = e?.message || e?.error?.message || 'Failed to bulk restore';
+      setError(msg);
+    }
+  };
+
+  const onBulkDelete = async () => {
+    if (selectedJobs.length === 0) return;
+    setItemToDelete(selectedJobs);
+    setShowDeleteModal(true);
   };
 
   const confirmBulkArchive = async () => {
@@ -625,17 +665,6 @@ const Jobs = () => {
             <Icon name={showArchived ? 'briefcase' : 'archive'} size="sm" />
             {showArchived ? 'Active Jobs' : 'Archived Jobs'}
           </button>
-          {/* UC-045: Bulk operations */}
-          {!showArchived && selectedJobs.length > 0 && (
-            <button
-              className="btn-secondary"
-              onClick={onBulkArchive}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f97316', color: 'white', border: 'none' }}
-            >
-              <Icon name="archive" size="sm" />
-              Archive Selected ({selectedJobs.length})
-            </button>
-          )}
           <a
             className="btn-secondary"
             href="/jobs/stats"
@@ -1244,7 +1273,7 @@ const Jobs = () => {
         </div>
       ) : (
         <div className="education-list">
-          {/* UC-045: Bulk select all checkbox */}
+          {/* UC-045: Bulk select all checkbox with action buttons - Active Jobs */}
           {!showArchived && items.length > 0 && (
             <div style={{ 
               padding: '12px 16px', 
@@ -1253,37 +1282,141 @@ const Jobs = () => {
               marginBottom: '12px',
               display: 'flex',
               alignItems: 'center',
-              gap: '8px'
+              justifyContent: 'space-between',
+              gap: '12px',
+              flexWrap: 'wrap'
             }}>
-              <input
-                type="checkbox"
-                checked={selectedJobs.length === items.length && items.length > 0}
-                onChange={toggleSelectAll}
-                style={{ cursor: 'pointer', width: '18px', height: '18px' }}
-              />
-              <label style={{ cursor: 'pointer', userSelect: 'none' }} onClick={toggleSelectAll}>
-                Select All ({items.length} jobs)
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedJobs.length === items.length && items.length > 0}
+                  onChange={toggleSelectAll}
+                  style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                />
+                <label style={{ cursor: 'pointer', userSelect: 'none', fontWeight: '600' }} onClick={toggleSelectAll}>
+                  Select All ({items.length} jobs)
+                </label>
+              </div>
+              {selectedJobs.length > 0 && (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    className="btn-secondary"
+                    onClick={onBulkArchive}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px', 
+                      background: '#f97316', 
+                      color: 'white', 
+                      border: 'none',
+                      padding: '8px 16px',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <Icon name="archive" size="sm" />
+                    Archive ({selectedJobs.length})
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    onClick={onBulkDelete}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px', 
+                      background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                      color: 'white', 
+                      border: 'none',
+                      padding: '8px 16px',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <Icon name="trash" size="sm" />
+                    Delete ({selectedJobs.length})
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {/* UC-045: Bulk select all checkbox with action buttons - Archived Jobs */}
+          {showArchived && items.length > 0 && (
+            <div style={{ 
+              padding: '12px 16px', 
+              background: '#fef3c7', 
+              borderRadius: '8px', 
+              marginBottom: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedJobs.length === items.length && items.length > 0}
+                  onChange={toggleSelectAll}
+                  style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                />
+                <label style={{ cursor: 'pointer', userSelect: 'none', fontWeight: '600' }} onClick={toggleSelectAll}>
+                  Select All ({items.length} archived jobs)
+                </label>
+              </div>
+              {selectedJobs.length > 0 && (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    className="btn-secondary"
+                    onClick={onBulkRestore}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px', 
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', 
+                      color: 'white', 
+                      border: 'none',
+                      padding: '8px 16px',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <Icon name="restore" size="sm" />
+                    Restore ({selectedJobs.length})
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    onClick={onBulkDelete}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px', 
+                      background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                      color: 'white', 
+                      border: 'none',
+                      padding: '8px 16px',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <Icon name="trash" size="sm" />
+                    Delete ({selectedJobs.length})
+                  </button>
+                </div>
+              )}
             </div>
           )}
           {(items || []).map((item) => (
             <div key={item.id} className="education-item">
               <div className="education-item-header">
-                {/* UC-045: Checkbox for bulk selection */}
-                {!showArchived && (
-                  <div style={{ paddingRight: '12px', display: 'flex', alignItems: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedJobs.includes(item.id)}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        toggleJobSelection(item.id);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ cursor: 'pointer', width: '18px', height: '18px' }}
-                    />
-                  </div>
-                )}
+                {/* UC-045: Checkbox for bulk selection - both active and archived */}
+                <div style={{ paddingRight: '12px', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedJobs.includes(item.id)}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      toggleJobSelection(item.id);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                  />
+                </div>
                 <div 
                   className="education-item-main" 
                   style={{ cursor: 'pointer' }}
@@ -1465,9 +1598,15 @@ const Jobs = () => {
       {showDeleteModal && (
         <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
           <div className="modal-content modal-danger" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
-            <h3 style={{ marginBottom: '16px' }}>Delete Job Permanently?</h3>
+            <h3 style={{ marginBottom: '16px' }}>
+              {Array.isArray(itemToDelete) 
+                ? `Delete ${itemToDelete.length} Job${itemToDelete.length > 1 ? 's' : ''} Permanently?`
+                : 'Delete Job Permanently?'}
+            </h3>
             <p style={{ marginBottom: '16px' }}>
-              This action cannot be undone. The job entry will be permanently deleted.
+              This action cannot be undone. {Array.isArray(itemToDelete) 
+                ? `The ${itemToDelete.length} selected job ${itemToDelete.length > 1 ? 'entries' : 'entry'} will be permanently deleted.`
+                : 'The job entry will be permanently deleted.'}
             </p>
             <p style={{ marginBottom: '20px', fontWeight: '600' }}>
               Are you sure you want to proceed?

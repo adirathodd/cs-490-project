@@ -16,6 +16,7 @@ const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 1);
 
 export default function DeadlineCalendar({ items = [], onSelectDate }) {
   const [current, setCurrent] = useState(startOfMonth(new Date()));
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const { weeks, monthLabel } = useMemo(() => {
     const start = startOfMonth(current);
@@ -67,22 +68,40 @@ export default function DeadlineCalendar({ items = [], onSelectDate }) {
   };
 
   return (
-    <div className="education-form-card" style={{ overflow: 'hidden' }}>
+    <div className="education-form-card" style={{ overflow: 'hidden', marginBottom: '20px' }}>
       <div className="calendar-header">
         <button className="calendar-nav" onClick={() => setCurrent(addMonths(current, -1))} title="Previous month" aria-label="Previous month">
           <Icon name="chevronLeft" size="sm" ariaLabel="Previous" />
         </button>
         <h3 className="calendar-title">{monthLabel}</h3>
-        <button className="calendar-nav" onClick={() => setCurrent(addMonths(current, 1))} title="Next month" aria-label="Next month">
-          <Icon name="chevronRight" size="sm" ariaLabel="Next" />
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button 
+            className="btn-secondary calendar-collapse-btn"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            title={isCollapsed ? "Expand Calendar" : "Collapse Calendar"}
+            aria-label={isCollapsed ? "Expand Calendar" : "Collapse Calendar"}
+            style={{ 
+              padding: '8px 16px',
+              fontSize: '14px',
+              minWidth: '100px',
+              height: '36px'
+            }}
+          >
+            {isCollapsed ? '▼ Show' : '▲ Hide'}
+          </button>
+          <button className="calendar-nav" onClick={() => setCurrent(addMonths(current, 1))} title="Next month" aria-label="Next month">
+            <Icon name="chevronRight" size="sm" ariaLabel="Next" />
+          </button>
+        </div>
       </div>
 
-      <div className="calendar-weekdays">
-        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d) => (
-          <div key={d} className="calendar-weekday">{d}</div>
-        ))}
-      </div>
+      {!isCollapsed && (
+        <>
+          <div className="calendar-weekdays">
+            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d) => (
+              <div key={d} className="calendar-weekday">{d}</div>
+            ))}
+          </div>
 
       <div className="calendar-grid">
         {weeks.map((week, wi) => (
@@ -127,9 +146,52 @@ export default function DeadlineCalendar({ items = [], onSelectDate }) {
                 </button>
               );
             })}
+          <div className="calendar-grid">
+            {weeks.map((week, wi) => (
+              <div key={wi} className="calendar-row">
+                {week.map((d, di) => {
+                  const key = fmt(d);
+                  const jobs = deadlinesByDate.get(key) || [];
+                  const isOtherMonth = d < monthStart || d > monthEnd;
+                  const isToday = key === todayStr;
+                  return (
+                    <button
+                      key={di}
+                      type="button"
+                      className={`calendar-day${isOtherMonth ? ' is-outside' : ''}${isToday ? ' is-today' : ''}`}
+                      onClick={() => {
+                        if (onSelectDate) onSelectDate(key, jobs);
+                      }}
+                      title={jobs.length ? `${jobs.length} deadline${jobs.length > 1 ? 's' : ''} on ${key}` : key}
+                    >
+                      <div className="calendar-day-number">{d.getDate()}</div>
+                      <div className="calendar-day-events">
+                        {jobs.slice(0, 3).map((j) => {
+                          const diff = daysDiff(j.application_deadline);
+                          const s = urgencyBg(diff);
+                          return (
+                            <div
+                              key={j.id}
+                              className="calendar-event-pill"
+                              title={`${j.title} @ ${j.company_name}`}
+                              style={{ background: s.background, color: s.color, borderColor: s.borderColor }}
+                            >
+                              {j.title}
+                            </div>
+                          );
+                        })}
+                        {jobs.length > 3 && (
+                          <div className="calendar-more">+{jobs.length - 3} more</div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
     </div>
   );
 }

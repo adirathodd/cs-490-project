@@ -96,4 +96,10 @@ urlpatterns = [
     path('jobs/<int:job_id>/restore', views.job_restore, name='job-restore'),
     path('jobs/<int:job_id>/delete', views.job_delete, name='job-delete'),
     path('jobs/bulk-archive', views.jobs_bulk_archive, name='jobs-bulk-archive'),
+    path('jobs/bulk-restore', views.jobs_bulk_restore, name='jobs-bulk-restore'),
+    
+    # UC-043: Company information endpoints
+    path('companies/<str:company_name>', views.company_info, name='company-info'),
+    path('jobs/<int:job_id>/company', views.job_company_info, name='job-company-info'),
 ]
+
