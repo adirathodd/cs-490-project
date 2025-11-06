@@ -10,29 +10,94 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RenameIndex(
-            model_name='jobentry',
-            new_name='core_jobent_candida_ca8b22_idx',
-            old_name='core_jobent_candida_b1e1c4_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='jobentry',
-            new_name='core_jobent_job_typ_4f5186_idx',
-            old_name='core_jobent_job_typ_7fffb9_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='jobentry',
-            new_name='core_jobent_industr_b37f74_idx',
-            old_name='core_jobent_industr_5a9f0b_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='jobentry',
-            new_name='core_jobent_candida_4e0dd2_idx',
-            old_name='core_jobentr_candida_6a6926_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='jobstatuschange',
-            new_name='core_jobsta_job_id_456425_idx',
-            old_name='core_jobstat_job_id__1a3daa_idx',
-        ),
+                migrations.RunSQL(
+                        sql="""
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'core_jobent_candida_b1e1c4_idx') THEN
+        ALTER INDEX core_jobent_candida_b1e1c4_idx RENAME TO core_jobent_candida_ca8b22_idx;
+    END IF;
+END$$;
+""",
+                        reverse_sql="""
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'core_jobent_candida_ca8b22_idx') THEN
+        ALTER INDEX core_jobent_candida_ca8b22_idx RENAME TO core_jobent_candida_b1e1c4_idx;
+    END IF;
+END$$;
+""",
+                ),
+                migrations.RunSQL(
+                        sql="""
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'core_jobent_job_typ_7fffb9_idx') THEN
+        ALTER INDEX core_jobent_job_typ_7fffb9_idx RENAME TO core_jobent_job_typ_4f5186_idx;
+    END IF;
+END$$;
+""",
+                        reverse_sql="""
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'core_jobent_job_typ_4f5186_idx') THEN
+        ALTER INDEX core_jobent_job_typ_4f5186_idx RENAME TO core_jobent_job_typ_7fffb9_idx;
+    END IF;
+END$$;
+""",
+                ),
+                migrations.RunSQL(
+                        sql="""
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'core_jobent_industr_5a9f0b_idx') THEN
+        ALTER INDEX core_jobent_industr_5a9f0b_idx RENAME TO core_jobent_industr_b37f74_idx;
+    END IF;
+END$$;
+""",
+                        reverse_sql="""
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'core_jobent_industr_b37f74_idx') THEN
+        ALTER INDEX core_jobent_industr_b37f74_idx RENAME TO core_jobent_industr_5a9f0b_idx;
+    END IF;
+END$$;
+""",
+                ),
+                migrations.RunSQL(
+                        sql="""
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'core_jobentr_candida_6a6926_idx') THEN
+        ALTER INDEX core_jobentr_candida_6a6926_idx RENAME TO core_jobent_candida_4e0dd2_idx;
+    END IF;
+END$$;
+""",
+                        reverse_sql="""
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'core_jobent_candida_4e0dd2_idx') THEN
+        ALTER INDEX core_jobent_candida_4e0dd2_idx RENAME TO core_jobentr_candida_6a6926_idx;
+    END IF;
+END$$;
+""",
+                ),
+                migrations.RunSQL(
+                        sql="""
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'core_jobstat_job_id__1a3daa_idx') THEN
+        ALTER INDEX core_jobstat_job_id__1a3daa_idx RENAME TO core_jobsta_job_id_456425_idx;
+    END IF;
+END$$;
+""",
+                        reverse_sql="""
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'core_jobsta_job_id_456425_idx') THEN
+        ALTER INDEX core_jobsta_job_id_456425_idx RENAME TO core_jobstat_job_id__1a3daa_idx;
+    END IF;
+END$$;
+""",
+                ),
     ]
