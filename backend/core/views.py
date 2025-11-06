@@ -2208,6 +2208,59 @@ def job_detail(request, job_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def jobs_bulk_deadline(request):
+    """Bulk set/clear application_deadline for a list of job IDs belonging to the current user.
+
+    Body: { "ids": [1,2,3], "deadline": "2025-11-10" } (deadline can be null to clear)
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        ids = request.data.get('ids') or []
+        raw_deadline = request.data.get('deadline')
+        if not ids or not isinstance(ids, list):
+            return Response({'error': {'code': 'validation_error', 'message': 'ids must be a non-empty list.'}}, status=status.HTTP_400_BAD_REQUEST)
+
+        from datetime import datetime
+        deadline_date = None
+        if raw_deadline:
+            try:
+                deadline_date = datetime.strptime(raw_deadline, '%Y-%m-%d').date()
+            except Exception:
+                return Response({'error': {'code': 'validation_error', 'message': 'Invalid deadline format (YYYY-MM-DD expected).'}}, status=status.HTTP_400_BAD_REQUEST)
+
+        jobs = JobEntry.objects.filter(candidate=profile, id__in=ids)
+        updated = 0
+        for job in jobs:
+            job.application_deadline = deadline_date
+            job.save(update_fields=['application_deadline', 'updated_at'])
+            updated += 1
+        return Response({'updated': updated}, status=status.HTTP_200_OK)
+    except CandidateProfile.DoesNotExist:
+        return Response({'updated': 0}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error in jobs_bulk_deadline: {e}")
+        return Response({'error': {'code': 'internal_error', 'message': 'Failed to update deadlines.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def jobs_upcoming_deadlines(request):
+    """Return upcoming jobs with deadlines ordered ascending. Optional ?limit=5"""
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        limit = int(request.GET.get('limit') or 5)
+        qs = JobEntry.objects.filter(candidate=profile, application_deadline__isnull=False).order_by('application_deadline')[:limit]
+        data = JobEntrySerializer(qs, many=True).data
+        return Response(data, status=status.HTTP_200_OK)
+    except CandidateProfile.DoesNotExist:
+        return Response([], status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error in jobs_upcoming_deadlines: {e}")
+        return Response({'error': {'code': 'internal_error', 'message': 'Failed to fetch upcoming deadlines.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def import_job_from_url(request):
     """
     SCRUM-39: Import job details from a job posting URL.

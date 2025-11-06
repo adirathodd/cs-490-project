@@ -87,6 +87,8 @@ urlpatterns = [
     path('jobs/<int:job_id>', views.job_detail, name='job-detail'),
     path('jobs/stats', views.jobs_stats, name='jobs-stats'),
     path('jobs/bulk-status', views.jobs_bulk_status, name='jobs-bulk-status'),
+    path('jobs/bulk-deadline', views.jobs_bulk_deadline, name='jobs-bulk-deadline'),
+    path('jobs/upcoming-deadlines', views.jobs_upcoming_deadlines, name='jobs-upcoming-deadlines'),
     # SCRUM-39: Job import from URL
     path('jobs/import-from-url', views.import_job_from_url, name='import-job-from-url'),
 ]

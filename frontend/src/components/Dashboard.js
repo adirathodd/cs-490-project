@@ -5,6 +5,7 @@ import { authAPI } from '../services/api';
 import './Dashboard.css';
 import LoadingSpinner from './LoadingSpinner';
 import Icon from './Icon';
+import DeadlinesWidget from './DeadlinesWidget';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -236,6 +237,9 @@ const Dashboard = () => {
             <h3>Jobs</h3>
             <p>Track opportunities you want to apply for</p>
             <button className="card-button" onClick={() => navigate('/jobs')}>Add Job Entry</button>
+          </div>
+          <div className="dashboard-card">
+            <div style={{ minHeight: 36 }}><DeadlinesWidget /></div>
           </div>
         </div>
       </div>
