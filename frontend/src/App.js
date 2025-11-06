@@ -17,8 +17,8 @@ import Employment from './components/Employment';
 import ProjectsPortfolio from './components/ProjectsPortfolio';
 import ProjectDetail from './components/ProjectDetail';
 import Jobs from './components/Jobs';
-import JobDetailView from './components/JobDetailView';
 import JobsPipeline from './components/JobsPipeline';
+import JobDetailView from './components/JobDetailView';
 import JobsCalendar from './components/JobsCalendar';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
@@ -187,23 +187,23 @@ function App() {
           />
 
           <Route
-            path="/jobs/:id"
-            element={
-              <PrivateRoute>
-                <NavBar />
-                <Breadcrumbs />
-                <JobDetailView />
-              </PrivateRoute>
-            }
-          />
-
-          <Route
             path="/jobs/pipeline"
             element={
               <PrivateRoute>
                 <NavBar />
                 <Breadcrumbs />
                 <JobsPipeline />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/jobs/:id"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <JobDetailView />
               </PrivateRoute>
             }
           />

@@ -48,6 +48,7 @@ import firebase_admin
 from firebase_admin import auth as firebase_auth
 import logging
 from django.conf import settings
+from core import job_import_utils
 
 
 # ------------------------------
@@ -2065,6 +2066,30 @@ def jobs_list_create(request):
                 qs = qs.order_by('company_name', '-updated_at')
             else:
                 qs = qs.order_by('-updated_at', '-id')
+            
+            results = JobEntrySerializer(qs, many=True).data
+            # Maintain backward compatibility: return list when default params used
+            default_request = (
+                not status_param and
+                not search_query and
+                not industry and
+                not location and
+                not job_type and
+                not salary_min and
+                not salary_max and
+                not deadline_from and
+                not deadline_to and
+                sort_by in (None, '', 'date_added')
+            )
+
+            if default_request:
+                return Response(results, status=status.HTTP_200_OK)
+
+            return Response({
+                'results': results,
+                'count': len(results),
+                'search_query': search_query
+            }, status=status.HTTP_200_OK)
 
             data = JobEntrySerializer(qs, many=True).data
 
@@ -2219,6 +2244,91 @@ def job_detail(request, job_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def import_job_from_url(request):
+    """
+    SCRUM-39: Import job details from a job posting URL.
+    
+    Supports LinkedIn, Indeed, and Glassdoor URLs.
+    
+    POST Request Body:
+    {
+        "url": "https://www.linkedin.com/jobs/view/123456"
+    }
+    
+    Response:
+    {
+        "status": "success|partial|failed",
+        "data": {
+            "title": "Software Engineer",
+            "company_name": "Acme Inc",
+            "description": "...",
+            "location": "New York, NY",
+            "job_type": "ft",
+            "posting_url": "..."
+        },
+        "fields_extracted": ["title", "company_name", "description", ...],
+        "error": "Error message if failed"
+    }
+    """
+    try:
+        from core.job_import_utils import import_job_from_url as do_import
+        
+        url = request.data.get('url', '').strip()
+        
+        if not url:
+            return Response(
+                {
+                    'error': {
+                        'code': 'missing_url',
+                        'message': 'URL is required',
+                        'messages': ['Please provide a job posting URL']
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Perform import
+        result = do_import(url)
+        
+        # Return result
+        response_data = result.to_dict()
+        
+        if result.status == 'failed':
+            logger.warning("Import job from URL failed (%s): %s", url, response_data.get('error'))
+            error_message = (response_data.get('error') or '').lower()
+            retryable = any(
+                phrase in error_message
+                for phrase in [
+                    'took too long to respond',
+                    'could not connect',
+                    'failed to fetch job posting',
+                    'rejected the request (http 403)',
+                    'rejected the request (http 429)',
+                ]
+            )
+            if retryable:
+                response_data['retryable'] = True
+                return Response(response_data, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.error(f"Error importing job from URL: {e}")
+        return Response(
+            {
+                'error': {
+                    'code': 'import_failed',
+                    'message': 'Failed to import job details from URL',
+                    'messages': [str(e)]
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def jobs_bulk_deadline(request):
     """Bulk set/clear application_deadline for a list of job IDs belonging to the current user.
 
@@ -2275,6 +2385,74 @@ def jobs_upcoming_deadlines(request):
     except Exception as e:
         logger.error(f"Error in jobs_upcoming_deadlines: {e}")
         return Response({'error': {'code': 'internal_error', 'message': 'Failed to fetch upcoming deadlines.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def import_job_from_url(request):
+    """
+    SCRUM-39: Import job details from a job posting URL.
+    
+    Supports LinkedIn, Indeed, and Glassdoor URLs.
+    
+    POST Request Body:
+    {
+        "url": "https://www.linkedin.com/jobs/view/123456"
+    }
+    
+    Response:
+    {
+        "status": "success|partial|failed",
+        "data": {
+            "title": "Software Engineer",
+            "company_name": "Acme Inc",
+            "description": "...",
+            "location": "New York, NY",
+            "job_type": "ft",
+            "posting_url": "..."
+        },
+        "fields_extracted": ["title", "company_name", "description", ...],
+        "error": "Error message if failed"
+    }
+    """
+    try:
+        url = request.data.get('url', '').strip()
+
+        if not url:
+            return Response(
+                {
+                    'error': {
+                        'code': 'missing_url',
+                        'message': 'URL is required',
+                        'messages': ['Please provide a job posting URL']
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Perform import using the job_import_utils module so test patches can reliably intercept
+        result = job_import_utils.import_job_from_url(url)
+
+        # Return result
+        response_data = result.to_dict()
+        
+        if result.status == 'failed':
+            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.error(f"Error importing job from URL: {e}")
+        return Response(
+            {
+                'error': {
+                    'code': 'import_failed',
+                    'message': 'Failed to import job details from URL',
+                    'messages': [str(e)]
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 # ======================
@@ -3236,4 +3414,3 @@ def employment_timeline(request):
                 'message': 'Failed to generate employment timeline.'
             }
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-

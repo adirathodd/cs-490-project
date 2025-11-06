@@ -560,8 +560,12 @@ export const jobsAPI = {
   },
 
   getJob: async (id) => {
-    const response = await api.get(`/jobs/${id}`);
-    return response.data;
+    try {
+      const response = await api.get(`/jobs/${id}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch job' };
+    }
   },
 
   addJob: async (data) => {
@@ -577,6 +581,15 @@ export const jobsAPI = {
   deleteJob: async (id) => {
     const response = await api.delete(`/jobs/${id}`);
     return response.data;
+  },
+
+  importFromUrl: async (url) => {
+    try {
+      const response = await api.post('/jobs/import-from-url', { url });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to import job from URL' };
+    }
   },
 
   // UC-037 additions
@@ -618,6 +631,15 @@ export const jobsAPI = {
   permanentlyDeleteJob: async (id) => {
     const response = await api.delete(`/jobs/${id}/delete`);
     return response.data;
+  },
+
+  importFromUrl: async (url) => {
+    try {
+      const response = await api.post('/jobs/import-from-url', { url });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to import job from URL' };
+    }
   },
 };
 

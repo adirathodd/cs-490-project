@@ -69,6 +69,12 @@ const Jobs = () => {
   const [itemToDelete, setItemToDelete] = useState(null);
   const [undoNotification, setUndoNotification] = useState(null);
 
+  // UC-041: Import from URL State
+  const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState(null);
+  const [importedFields, setImportedFields] = useState([]);
+
   // UC-039: Load saved search preferences from localStorage on mount
   useEffect(() => {
     try {
@@ -156,6 +162,10 @@ const Jobs = () => {
     setEditingId(null);
     setCharCount(0);
     setShowForm(false);
+    // UC-041: Clear import state
+    setImportUrl('');
+    setImportStatus(null);
+    setImportedFields([]);
   };
 
   // UC-039: Clear all filters and search
@@ -434,6 +444,57 @@ const Jobs = () => {
     } else {
       setSelectedJobs(items.map(i => i.id));
     }
+  };
+
+  // UC-041: Import from URL handler
+  const handleImportFromUrl = async () => {
+    if (!importUrl.trim()) {
+      setError('Please enter a job posting URL');
+      return;
+    }
+
+    setImporting(true);
+    setError('');
+    setSuccess('');
+    setImportStatus(null);
+    setImportedFields([]);
+
+    try {
+      const result = await jobsAPI.importFromUrl(importUrl);
+
+      if (result.status === 'success' || result.status === 'partial') {
+        setForm((prev) => ({ ...prev, ...result.data }));
+        if (result.data?.description) {
+          setCharCount(result.data.description.length);
+        }
+
+        setImportStatus(result.status);
+        setImportedFields(result.fields_extracted || []);
+
+        if (result.status === 'success') {
+          setSuccess('Job details imported successfully! Review and edit as needed.');
+        } else {
+          setSuccess('Job details partially imported. Please fill in the remaining fields.');
+        }
+        setTimeout(() => setSuccess(''), 5000);
+      } else {
+        setError(result.error || 'Failed to import job details');
+        setImportStatus('failed');
+      }
+    } catch (e) {
+      const message = e?.message || 'Failed to import job from URL';
+      setError(message);
+      setImportStatus('failed');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const isFieldImported = (field) => importedFields.includes(field);
+
+  const getFieldStyle = (field) => {
+    if (!isFieldImported(field)) return {};
+    return { background: 'rgba(16, 185, 129, 0.05)', borderColor: '#10b981' };
   };
 
   const mapServerFieldErrors = (details) => {
@@ -775,6 +836,151 @@ const Jobs = () => {
           </div>
 
           <form className="education-form" onSubmit={handleSubmit}>
+            {/* UC-041: Import from URL - Only show when adding new job */}
+            {!editingId && (
+              <div
+                className="form-section"
+                style={{
+                  padding: '20px',
+                  marginBottom: '24px',
+                  background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%)',
+                  borderRadius: '10px',
+                  border: '2px dashed #667eea'
+                }}
+              >
+                <h4
+                  style={{
+                    marginTop: 0,
+                    marginBottom: '12px',
+                    color: '#667eea',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <Icon name="link" size="sm" />
+                  Quick Import from Job Posting URL
+                </h4>
+                <p
+                  style={{
+                    fontSize: '14px',
+                    color: '#666',
+                    marginBottom: '16px',
+                    lineHeight: '1.5'
+                  }}
+                >
+                  Paste a job posting URL from <strong>LinkedIn</strong>, <strong>Indeed</strong>, or <strong>Glassdoor</strong> to automatically fill in details
+                </p>
+
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 260px' }}>
+                    <input
+                      type="url"
+                      placeholder="https://www.linkedin.com/jobs/view/..."
+                      value={importUrl}
+                      onChange={(e) => setImportUrl(e.target.value)}
+                      disabled={importing}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: '2px solid #d1d5db',
+                        borderRadius: '8px',
+                        fontSize: '15px',
+                        fontFamily: 'inherit'
+                      }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleImportFromUrl}
+                    disabled={importing || !importUrl.trim()}
+                    style={{
+                      padding: '12px 24px',
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: importing ? '#9ca3af' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      color: 'white',
+                      cursor: importing || !importUrl.trim() ? 'not-allowed' : 'pointer',
+                      whiteSpace: 'nowrap',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)'
+                    }}
+                  >
+                    {importing ? (
+                      <>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            width: '14px',
+                            height: '14px',
+                            border: '2px solid white',
+                            borderTopColor: 'transparent',
+                            borderRadius: '50%',
+                            animation: 'spin 0.6s linear infinite'
+                          }}
+                        />
+                        Importing...
+                      </>
+                    ) : (
+                      <>
+                        <Icon name="download" size="sm" />
+                        Import
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {importStatus && (
+                  <div
+                    style={{
+                      marginTop: '16px',
+                      padding: '12px 16px',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background:
+                        importStatus === 'success'
+                          ? '#ecfdf5'
+                          : importStatus === 'partial'
+                          ? '#fef3c7'
+                          : '#fee2e2',
+                      border:
+                        importStatus === 'success'
+                          ? '1px solid #10b981'
+                          : importStatus === 'partial'
+                          ? '1px solid #f59e0b'
+                          : '1px solid #ef4444',
+                      color:
+                        importStatus === 'success'
+                          ? '#065f46'
+                          : importStatus === 'partial'
+                          ? '#92400e'
+                          : '#991b1b'
+                    }}
+                  >
+                    {importStatus === 'success' && '✓ Successfully imported'}
+                    {importStatus === 'partial' && '⚠ Partially imported'}
+                    {importStatus === 'failed' && '✗ Import failed'}
+                    {importedFields.length > 0 && ` (${importedFields.length} field${importedFields.length > 1 ? 's' : ''})`}
+                  </div>
+                )}
+
+                <style>{`
+                  @keyframes spin {
+                    to { transform: rotate(360deg); }
+                  }
+                `}</style>
+              </div>
+            )}
+
             {/* Job Details */}
             <div className="form-row">
               <div className="form-group">
@@ -788,6 +994,7 @@ const Jobs = () => {
                   onChange={onChange}
                   placeholder="e.g., Software Engineer"
                   className={fieldErrors.title ? 'error' : ''}
+                  style={getFieldStyle('title')}
                 />
                 {fieldErrors.title && <div className="error-message">{fieldErrors.title}</div>}
               </div>
@@ -802,6 +1009,7 @@ const Jobs = () => {
                   onChange={onChange}
                   placeholder="e.g., Acme Inc"
                   className={fieldErrors.company_name ? 'error' : ''}
+                  style={getFieldStyle('company_name')}
                 />
                 {fieldErrors.company_name && <div className="error-message">{fieldErrors.company_name}</div>}
               </div>
@@ -817,6 +1025,7 @@ const Jobs = () => {
                   onChange={onChange} 
                   placeholder="City, State or Remote"
                   className={fieldErrors.location ? 'error' : ''}
+                  style={getFieldStyle('location')}
                 />
                 {fieldErrors.location && <div className="error-message">{fieldErrors.location}</div>}
               </div>
@@ -861,6 +1070,7 @@ const Jobs = () => {
                   onChange={onChange} 
                   placeholder="https://..."
                   className={fieldErrors.posting_url ? 'error' : ''}
+                  style={getFieldStyle('posting_url')}
                 />
                 {fieldErrors.posting_url && <div className="error-message">{fieldErrors.posting_url}</div>}
               </div>
@@ -876,6 +1086,7 @@ const Jobs = () => {
                   value={form.application_deadline} 
                   onChange={onChange}
                   className={fieldErrors.application_deadline ? 'error' : ''}
+                  style={getFieldStyle('application_deadline')}
                 />
                 {fieldErrors.application_deadline && <div className="error-message">{fieldErrors.application_deadline}</div>}
               </div>
@@ -945,6 +1156,7 @@ const Jobs = () => {
                 rows={6}
                 placeholder="Paste description or your notes (max 2000)"
                 className={fieldErrors.description ? 'error' : ''}
+                style={getFieldStyle('description')}
               />
               {fieldErrors.description && <div className="error-message">{fieldErrors.description}</div>}
             </div>

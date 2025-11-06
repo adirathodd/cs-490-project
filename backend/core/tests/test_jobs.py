@@ -1,6 +1,9 @@
 import pytest
+from datetime import timedelta
+
 from django.urls import reverse
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework.test import APIClient
 from core.models import CandidateProfile, JobEntry
 
@@ -85,3 +88,165 @@ class TestJobsAPI:
         resp = self.client.delete(detail_url)
         assert resp.status_code == 200
         assert JobEntry.objects.filter(id=job_id).count() == 0
+
+    def test_list_with_filters_and_search_returns_enhanced_payload(self):
+        list_url = reverse('core:jobs-list-create')
+
+        today = timezone.localdate()
+        JobEntry.objects.create(
+            candidate=self.profile,
+            title='Backend Engineer',
+            company_name='Foobar Corp',
+            location='Austin, TX',
+            job_type='ft',
+            industry='Software',
+            salary_min=90000,
+            salary_max=130000,
+            application_deadline=today + timedelta(days=40),
+            description='Django and APIs'
+        )
+        JobEntry.objects.create(
+            candidate=self.profile,
+            title='Frontend Engineer',
+            company_name='Foobar Corp',
+            location='Remote',
+            job_type='ft',
+            industry='Software',
+            salary_min=95000,
+            salary_max=140000,
+            application_deadline=today + timedelta(days=70),
+            description='React experience required'
+        )
+        JobEntry.objects.create(
+            candidate=self.profile,
+            title='Data Analyst',
+            company_name='Datafy',
+            location='New York, NY',
+            job_type='contract',
+            industry='Analytics',
+            salary_min=80000,
+            salary_max=90000,
+            application_deadline=today + timedelta(days=20),
+            description='SQL and dashboards'
+        )
+
+        params = {
+            'q': 'engineer',
+            'industry': 'software',
+            'job_type': 'ft',
+            'sort': 'salary',
+        }
+        resp = self.client.get(list_url, params)
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert set(payload.keys()) == {'results', 'count', 'search_query'}
+        assert payload['count'] == 2
+        titles = [item['title'] for item in payload['results']]
+        assert titles == ['Frontend Engineer', 'Backend Engineer']
+        assert payload['search_query'] == 'engineer'
+
+        params = {
+            'deadline_from': (today + timedelta(days=10)).isoformat(),
+            'deadline_to': (today + timedelta(days=60)).isoformat(),
+            'sort': 'deadline',
+        }
+        resp = self.client.get(list_url, params)
+        assert resp.status_code == 200
+        payload = resp.json()
+        deadlines = [item['application_deadline'] for item in payload['results']]
+        assert deadlines == [
+            (today + timedelta(days=20)).isoformat(),
+            (today + timedelta(days=40)).isoformat(),
+        ]
+        assert payload['count'] == 2
+
+    def test_bulk_status_updates_and_stats_endpoint(self):
+        JobEntry.objects.bulk_create([
+            JobEntry(
+                candidate=self.profile,
+                title='Job A',
+                company_name='A',
+                status='interested',
+                job_type='ft',
+            ),
+            JobEntry(
+                candidate=self.profile,
+                title='Job B',
+                company_name='B',
+                status='applied',
+                job_type='ft',
+            ),
+            JobEntry(
+                candidate=self.profile,
+                title='Job C',
+                company_name='C',
+                status='interview',
+                job_type='contract',
+            ),
+        ])
+
+        stats_url = reverse('core:jobs-stats')
+        resp = self.client.get(stats_url)
+        assert resp.status_code == 200
+        stats = resp.json()
+        assert stats['interested'] == 1
+        assert stats['applied'] == 1
+        assert stats['interview'] == 1
+
+        bulk_status_url = reverse('core:jobs-bulk-status')
+        ids = list(JobEntry.objects.values_list('id', flat=True))
+        resp = self.client.post(bulk_status_url, {'ids': ids[:2], 'status': 'applied'}, format='json')
+        assert resp.status_code == 200
+        assert resp.json()['updated'] == 1
+        refreshed = list(JobEntry.objects.order_by('title').values_list('status', flat=True))
+        assert refreshed.count('applied') == 2
+
+        resp = self.client.post(bulk_status_url, {'ids': ids, 'status': 'invalid'}, format='json')
+        assert resp.status_code == 400
+        assert 'error' in resp.json()
+
+    def test_jobs_bulk_deadline_and_upcoming_deadlines(self):
+        today = timezone.localdate()
+        job1 = JobEntry.objects.create(
+            candidate=self.profile,
+            title='Deadline Soon',
+            company_name='Soon Inc',
+            application_deadline=today + timedelta(days=15),
+            job_type='ft',
+        )
+        job2 = JobEntry.objects.create(
+            candidate=self.profile,
+            title='Deadline Later',
+            company_name='Later Inc',
+            application_deadline=today + timedelta(days=45),
+            job_type='ft',
+        )
+        job3 = JobEntry.objects.create(
+            candidate=self.profile,
+            title='No Deadline',
+            company_name='None Inc',
+            job_type='ft',
+        )
+
+        bulk_deadline_url = reverse('core:jobs-bulk-deadline')
+        new_deadline = (today + timedelta(days=90)).isoformat()
+        resp = self.client.post(bulk_deadline_url, {'ids': [job1.id, job3.id], 'deadline': new_deadline}, format='json')
+        assert resp.status_code == 200
+        assert resp.json()['updated'] == 2
+
+        job1.refresh_from_db()
+        job3.refresh_from_db()
+        assert job1.application_deadline.isoformat() == new_deadline
+        assert job3.application_deadline.isoformat() == new_deadline
+
+        resp = self.client.post(bulk_deadline_url, {'ids': [job2.id], 'deadline': 'invalid'}, format='json')
+        assert resp.status_code == 400
+
+        upcoming_url = reverse('core:jobs-upcoming-deadlines')
+        resp = self.client.get(upcoming_url)
+        assert resp.status_code == 200
+        upcoming = resp.json()
+        assert len(upcoming) >= 2
+        first = upcoming[0]['application_deadline']
+        second = upcoming[1]['application_deadline'] if len(upcoming) > 1 else None
+        assert first <= second if second else True
