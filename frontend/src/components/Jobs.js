@@ -792,33 +792,6 @@ const Jobs = () => {
                 `}</style>
               </div>
             )}
-    <div className="profile-form-container">
-      <div className="profile-form-card">
-        <div className="page-backbar">
-          <button
-            className="btn-back"
-            onClick={() => (window.location.href = '/dashboard')}
-            aria-label="Back to dashboard"
-            title="Back to dashboard"
-          >
-            ← Back to Dashboard
-          </button>
-        </div>
-        <div className="profile-header">
-          <div>
-            <h2 style={{ margin: 0 }}>Job Tracker</h2>
-            <p className="form-subtitle" style={{ marginTop: '6px' }}>Track roles you're interested in and keep key details handy.</p>
-            <a
-              className="btn-back"
-              href="/jobs/pipeline"
-              title="View Pipeline"
-              aria-label="View job status pipeline"
-              style={{ display: 'inline-block', marginTop: '6px' }}
-            >
-              View Pipeline →
-            </a>
-          </div>
-        </div>
 
         {error && (
           <div className="error-banner" role="alert">
