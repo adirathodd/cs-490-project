@@ -19,6 +19,7 @@ import ProjectDetail from './components/ProjectDetail';
 import Jobs from './components/Jobs';
 import JobDetailView from './components/JobDetailView';
 import JobsPipeline from './components/JobsPipeline';
+import JobsCalendar from './components/JobsCalendar';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
 import NavBar from './components/NavBar';
@@ -203,6 +204,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <JobsPipeline />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/jobs/deadlines"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <JobsCalendar />
               </PrivateRoute>
             }
           />

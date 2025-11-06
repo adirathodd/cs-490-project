@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jobsAPI } from '../services/api';
 import Icon from './Icon';
+import DeadlineCalendar from './DeadlineCalendar';
 import './Education.css';
 
 const defaultForm = {
@@ -121,6 +122,22 @@ const Jobs = () => {
     };
     init();
   }, [searchQuery, filters, sortBy]);
+
+  // Helper: days difference (deadline - today), and urgency color
+  const daysUntil = (dateStr) => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return null;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  };
+  const deadlineColor = (diff) => {
+    if (diff == null) return '#94a3b8';
+    if (diff < 0) return '#dc2626'; // overdue
+    if (diff <= 3) return '#f59e0b'; // urgent
+    return '#059669'; // safe
+  };
 
   const resetForm = () => {
     setForm(defaultForm);
@@ -385,11 +402,11 @@ const Jobs = () => {
           <a
             className="btn-back"
             href="/jobs/pipeline"
-            title="View Pipeline"
-            aria-label="View job status pipeline"
+            title="Open Pipeline"
+            aria-label="Open job status pipeline"
             style={{ textDecoration: 'none' }}
           >
-            View Pipeline →
+            Pipeline →
           </a>
           <button 
             className="add-education-button"
@@ -408,6 +425,9 @@ const Jobs = () => {
 
       {error && <div className="error-banner">{error}</div>}
       {success && <div className="success-banner">{success}</div>}
+
+      {/* Calendar: placed below the header and above the search box */}
+      <DeadlineCalendar items={items} />
 
       {/* UC-039: Search and Filter Section */}
       {!showForm && (
@@ -812,11 +832,22 @@ const Jobs = () => {
                       <span className="status">{item.salary_range}</span>
                     </div>
                   )}
-                  {item.application_deadline && (
-                    <div className="education-item-dates">
-                      <span className="status">Deadline: {item.application_deadline}</span>
-                    </div>
-                  )}
+                  {item.application_deadline && (() => {
+                    const diff = daysUntil(item.application_deadline);
+                    const color = deadlineColor(diff);
+                    return (
+                      <div className="education-item-dates" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 10, height: 10, borderRadius: 4, background: color }} aria-hidden />
+                        {/* Keep this exact text for existing tests */}
+                        <span className="status">Deadline: {item.application_deadline}</span>
+                        {diff != null && (
+                          <span style={{ fontSize: 12, color: '#444' }}>
+                            {diff < 0 ? `Overdue by ${Math.abs(diff)}d` : `${diff}d left`}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {item.description && searchQuery && item.description.toLowerCase().includes(searchQuery.toLowerCase()) && (
                     <div className="education-item-dates" style={{ marginTop: '4px' }}>
                       <span style={{ color: '#666', fontSize: '13px' }} dangerouslySetInnerHTML={{ 

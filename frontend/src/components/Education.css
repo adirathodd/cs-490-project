@@ -131,6 +131,80 @@
   border: 2px solid #667eea;
 }
 
+/* Calendar styles */
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.calendar-title { margin: 0; font-size: 18px; font-weight: 600; color: #111827; }
+.calendar-nav {
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  cursor: pointer;
+  color: #374151;
+}
+.calendar-nav:hover { background: #f3f4f6; }
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0;
+  padding: 8px 12px;
+  background: #ffffff;
+  color: #6b7280;
+  font-weight: 600;
+  font-size: 12px;
+}
+.calendar-weekday { text-align: center; }
+.calendar-grid {
+  display: grid;
+  grid-template-rows: repeat(6, 1fr);
+}
+.calendar-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-top: 1px solid #f3f4f6;
+}
+.calendar-day {
+  min-height: 92px;
+  padding: 8px;
+  text-align: left;
+  background: #ffffff;
+  border-right: 1px solid #f3f4f6;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
+  box-shadow: none;
+}
+.calendar-day:hover { background: #f8fafc; }
+.calendar-row .calendar-day:last-child { border-right: none; }
+.calendar-day.is-outside { background: #f8fafc; color: #94a3b8; }
+.calendar-day.is-today { outline: 2px solid #6366f1; outline-offset: -2px; }
+.calendar-day-number { font-size: 12px; font-weight: 700; color: #374151; }
+.calendar-day-events { margin-top: 6px; display: grid; gap: 4px; }
+.calendar-event-pill {
+  background: #f1f5f9; /* slate-100 */
+  color: #334155;      /* slate-700 */
+  border: 1px solid #e2e8f0; /* slate-200 */
+  border-radius: 8px;
+  font-size: 11px;
+  padding: 2px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.calendar-more { font-size: 11px; color: #6b7280; }
+
 .form-header {
   background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
   color: var(--on-primary);

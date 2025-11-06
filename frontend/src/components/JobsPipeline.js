@@ -64,6 +64,25 @@ const JobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact = false
       {job.location || '—'} • {job.job_type?.toUpperCase()}
     </div>
     <div style={{ color: '#555', fontSize: 12 }}>Days in stage: {daysInStage(job)}</div>
+    {job.application_deadline && (
+      (() => {
+        const d = new Date(job.application_deadline);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const diff = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        let color = '#059669'; // green
+        if (diff < 0) color = '#dc2626'; // red overdue
+        else if (diff <= 3) color = '#f59e0b'; // yellow/orange for urgent
+        return (
+          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 10, height: 10, borderRadius: 4, background: color }} aria-hidden="true" />
+            <div style={{ color: '#444', fontSize: 12 }} title={`Application deadline: ${job.application_deadline}`}>
+              {diff < 0 ? `Overdue by ${Math.abs(diff)}d` : `${diff}d left`}
+            </div>
+          </div>
+        );
+      })()
+    )}
   </div>
 );
 
@@ -331,6 +350,45 @@ export default function JobsPipeline() {
   // state for undo snackbar
   const [undoData, setUndoData] = useState(null);
   const [showUndo, setShowUndo] = useState(false);
+  const [showDeadlineModal, setShowDeadlineModal] = useState(false);
+  const [deadlineValue, setDeadlineValue] = useState(''); // YYYY-MM-DD
+
+  // Undo state for bulk-deadline operations
+  const [undoDeadlineData, setUndoDeadlineData] = useState(null);
+  const [showUndoDeadline, setShowUndoDeadline] = useState(false);
+
+  // perform bulk deadline update for selected jobs (properly scoped here)
+  const performBulkDeadline = async (deadline) => {
+    const ids = Array.from(selected);
+    if (!ids.length) return;
+    // capture previous deadlines to allow undo
+    const prevDeadlines = {};
+    ids.forEach((id) => { const j = findJobById(id); if (j) prevDeadlines[id] = j.application_deadline ?? null; });
+    try {
+      await jobsAPI.bulkUpdateDeadline(ids, deadline || null);
+      setUndoDeadlineData({ ids, prevDeadlines });
+      setShowUndoDeadline(true);
+      setSelected(new Set());
+      setShowDeadlineModal(false);
+      await load();
+      setTimeout(() => { setShowUndoDeadline(false); setUndoDeadlineData(null); }, 6000);
+    } catch (e) {
+      setError('Failed to update deadlines');
+    }
+  };
+
+  const handleUndoDeadline = async () => {
+    if (!undoDeadlineData) return;
+    const { ids, prevDeadlines } = undoDeadlineData;
+    try {
+      await Promise.all(ids.map((id) => jobsAPI.updateJob(id, { application_deadline: prevDeadlines[id] })));
+      setShowUndoDeadline(false);
+      setUndoDeadlineData(null);
+      await load();
+    } catch (e) {
+      setError('Undo failed');
+    }
+  };
 
   // start move flow; if large, request confirmation first
   const initiateMoveSelected = (target) => {
@@ -414,14 +472,29 @@ export default function JobsPipeline() {
               {STAGES.map(s => (<option key={s.key} value={s.key}>{s.label}</option>))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="form-group" style={{ ...(bulkMode ? { flex: '1 0 100%', maxWidth: '100%' } : {}) }}>
             <label>Bulk actions</label>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button className="back-button" onClick={() => setBulkMode(!bulkMode)}>{bulkMode ? 'Done Selecting' : 'Select Multiple'}</button>
-              {/* Removed the old select-based bulk mover; column checkboxes now handle bulk moves */}
+              {/* Bulk deadline management */}
+              {bulkMode && (
+                <>
+                  <button className="back-button" onClick={() => setShowDeadlineModal(true)} disabled={selected.size === 0}>Set deadline</button>
+                  <button className="back-button" onClick={async () => {
+                    // clear deadlines for selected
+                    if (selected.size === 0) return;
+                    try {
+                      const ids = Array.from(selected);
+                      await jobsAPI.bulkUpdateDeadline(ids, null);
+                      setSelected(new Set());
+                      await load();
+                    } catch (e) { setError('Failed to clear deadlines'); }
+                  }} disabled={selected.size === 0}>Clear deadlines</button>
+                </>
+              )}
             </div>
           </div>
-          <div className="form-group" style={{ alignSelf: 'flex-end' }}>
+          <div className="form-group" style={{ alignSelf: 'flex-end', flex: '0 0 auto' }}>
             <label>&nbsp;</label>
             <a className="back-button" href="/jobs" style={{ textDecoration: 'none' }}>+ Add Job</a>
           </div>
@@ -593,11 +666,37 @@ export default function JobsPipeline() {
           </>
         )}
 
+        {/* Bulk deadline modal */}
+        {showDeadlineModal && (
+          <>
+            <div onClick={() => setShowDeadlineModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.15)' }} />
+            <div role="dialog" aria-modal="true" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', background: '#fff', padding: 20, borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.15)', zIndex: 60, width: 'min(520px, 92vw)' }}>
+              <h3 style={{ marginTop: 0 }}>Set deadline for selected jobs</h3>
+              <p>Choose a date to apply to the selected jobs (or leave blank to cancel):</p>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input type="date" value={deadlineValue} onChange={(e) => setDeadlineValue(e.target.value)} />
+                <button className="back-button" onClick={() => { setDeadlineValue(''); setShowDeadlineModal(false); }}>Cancel</button>
+                <button className="back-button" onClick={() => performBulkDeadline(deadlineValue)} style={{ background: '#6366f1', color: '#fff' }}>Apply</button>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <small style={{ color: '#666' }}>Tip: To clear deadlines, use the "Clear deadlines" button in Bulk actions.</small>
+              </div>
+            </div>
+          </>
+        )}
+
         {/* Undo snackbar */}
       {showUndo && undoData && (
         <div data-testid="undo-snackbar" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', background: '#111827', color: '#fff', padding: '10px 14px', borderRadius: 8, zIndex: 70, display: 'flex', gap: 8, alignItems: 'center' }} role="status">
           <div>Moved {undoData.ids.length} jobs.</div>
           <button className="back-button" onClick={handleUndo}>Undo</button>
+        </div>
+      )}
+
+      {showUndoDeadline && undoDeadlineData && (
+        <div data-testid="undo-deadline-snackbar" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', background: '#111827', color: '#fff', padding: '10px 14px', borderRadius: 8, zIndex: 70, display: 'flex', gap: 8, alignItems: 'center' }} role="status">
+          <div>Updated deadlines for {undoDeadlineData.ids.length} jobs.</div>
+          <button className="back-button" onClick={handleUndoDeadline}>Undo</button>
         </div>
       )}
 

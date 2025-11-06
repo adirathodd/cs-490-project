@@ -5,6 +5,7 @@ import { authAPI } from '../services/api';
 import './Dashboard.css';
 import LoadingSpinner from './LoadingSpinner';
 import Icon from './Icon';
+import DeadlinesWidget from './DeadlinesWidget';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -189,6 +190,9 @@ const Dashboard = () => {
         </div>
 
         {/* Profile Overview (UC-033) */}
+
+        {/* Sidebar widget (left) — absolutely positioned so it doesn't shift the card grid */}
+        <div className="deadlines-sidebar"><DeadlinesWidget /></div>
 
         <div className="dashboard-grid">
           <div className="dashboard-card">

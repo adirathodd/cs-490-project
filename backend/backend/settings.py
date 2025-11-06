@@ -244,3 +244,6 @@ else:
 # Default sender email address for outgoing emails
 # Uses environment variable if provided; otherwise falls back to the desired sender address
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'resumerocket123@gmail.com')
+
+# Frontend base URL for links in emails (used by reminder emails)
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
