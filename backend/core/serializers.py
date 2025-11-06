@@ -1037,6 +1037,7 @@ class JobEntrySerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(read_only=True)
     salary_range = serializers.SerializerMethodField(read_only=True)
     days_in_stage = serializers.SerializerMethodField(read_only=True)
+    company_info = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = JobEntry
@@ -1057,8 +1058,10 @@ class JobEntrySerializer(serializers.ModelSerializer):
             # UC-045 archiving fields
             'is_archived', 'archived_at', 'archive_reason',
             'created_at', 'updated_at',
+            # UC-043 company information
+            'company_info',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'salary_range', 'last_status_change', 'days_in_stage', 'archived_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'salary_range', 'last_status_change', 'days_in_stage', 'archived_at', 'company_info']
 
     def get_salary_range(self, obj):
         if obj.salary_min is None and obj.salary_max is None:
@@ -1068,6 +1071,46 @@ class JobEntrySerializer(serializers.ModelSerializer):
         if obj.salary_min is not None:
             return f"{obj.salary_currency} {obj.salary_min}+"
         return f"Up to {obj.salary_currency} {obj.salary_max}"
+    
+    def get_company_info(self, obj):
+        """
+        UC-043: Include company information if requested via context.
+        
+        To include company info, pass include_company=True in serializer context:
+        serializer = JobEntrySerializer(job, context={'include_company': True})
+        """
+        # Only include company info if explicitly requested via context
+        if not self.context.get('include_company', False):
+            return None
+        
+        if not obj.company_name:
+            return None
+        
+        try:
+            from core.models import Company, CompanyResearch
+            
+            # Try to find existing company (case-insensitive)
+            company = Company.objects.filter(name__iexact=obj.company_name).first()
+            
+            if not company:
+                # Create new company with minimal info
+                domain = obj.company_name.lower().replace(' ', '').replace(',', '').replace('.', '')
+                domain = f"{domain}.com"
+                
+                company = Company.objects.create(
+                    name=obj.company_name,
+                    domain=domain
+                )
+                
+                # Create empty research record
+                CompanyResearch.objects.create(company=company)
+            
+            # Serialize company data
+            serializer = CompanySerializer(company)
+            return serializer.data
+        except Exception:
+            # Return None if there's any error fetching company info
+            return None
 
     def validate(self, attrs):
         data = super().validate(attrs)
@@ -1139,6 +1182,117 @@ class JobEntrySerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return res
+
+
+# ======================
+# UC-043: COMPANY INFORMATION SERIALIZERS
+# ======================
+
+class CompanyResearchSerializer(serializers.Serializer):
+    """Serializer for company research data."""
+    description = serializers.CharField(allow_blank=True, required=False)
+    mission_statement = serializers.CharField(allow_blank=True, required=False)
+    culture_keywords = serializers.ListField(child=serializers.CharField(), required=False)
+    recent_news = serializers.ListField(child=serializers.DictField(), required=False)
+    funding_info = serializers.DictField(required=False)
+    tech_stack = serializers.ListField(child=serializers.CharField(), required=False)
+    employee_count = serializers.IntegerField(required=False, allow_null=True)
+    growth_rate = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
+    glassdoor_rating = serializers.DecimalField(max_digits=2, decimal_places=1, required=False, allow_null=True)
+    last_updated = serializers.DateTimeField(read_only=True, required=False)
+
+
+class CompanySerializer(serializers.Serializer):
+    """
+    Serializer for company information display (UC-043).
+    
+    Includes basic company details and optional research data.
+    """
+    id = serializers.IntegerField(read_only=True, required=False)
+    name = serializers.CharField(max_length=180)
+    domain = serializers.CharField(max_length=180, required=False, allow_blank=True)
+    linkedin_url = serializers.URLField(required=False, allow_blank=True)
+    industry = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    size = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    hq_location = serializers.CharField(max_length=160, required=False, allow_blank=True)
+    website = serializers.URLField(required=False, allow_blank=True, source='domain')
+    logo_url = serializers.CharField(required=False, allow_blank=True, read_only=True)
+    
+    # Nested research data
+    research = CompanyResearchSerializer(required=False, allow_null=True)
+    
+    # Convenience fields for common access patterns
+    description = serializers.SerializerMethodField(read_only=True)
+    mission_statement = serializers.SerializerMethodField(read_only=True)
+    employee_count = serializers.SerializerMethodField(read_only=True)
+    glassdoor_rating = serializers.SerializerMethodField(read_only=True)
+    recent_news = serializers.SerializerMethodField(read_only=True)
+    
+    def get_description(self, obj):
+        """Get company description from research data if available."""
+        if isinstance(obj, dict):
+            research = obj.get('research', {})
+            if research:
+                return research.get('description', '')
+        elif hasattr(obj, 'research'):
+            try:
+                return obj.research.description
+            except Exception:
+                pass
+        return ''
+    
+    def get_mission_statement(self, obj):
+        """Get company mission statement from research data if available."""
+        if isinstance(obj, dict):
+            research = obj.get('research', {})
+            if research:
+                return research.get('mission_statement', '')
+        elif hasattr(obj, 'research'):
+            try:
+                return obj.research.mission_statement
+            except Exception:
+                pass
+        return ''
+    
+    def get_employee_count(self, obj):
+        """Get employee count from research data if available."""
+        if isinstance(obj, dict):
+            research = obj.get('research', {})
+            if research:
+                return research.get('employee_count')
+        elif hasattr(obj, 'research'):
+            try:
+                return obj.research.employee_count
+            except Exception:
+                pass
+        return None
+    
+    def get_glassdoor_rating(self, obj):
+        """Get Glassdoor rating from research data if available."""
+        if isinstance(obj, dict):
+            research = obj.get('research', {})
+            if research:
+                return research.get('glassdoor_rating')
+        elif hasattr(obj, 'research'):
+            try:
+                return obj.research.glassdoor_rating
+            except Exception:
+                pass
+        return None
+    
+    def get_recent_news(self, obj):
+        """Get recent news from research data if available."""
+        if isinstance(obj, dict):
+            research = obj.get('research', {})
+            if research:
+                return research.get('recent_news', [])
+        elif hasattr(obj, 'research'):
+            try:
+                return obj.research.recent_news or []
+            except Exception:
+                pass
+        return []
+
 
 
 

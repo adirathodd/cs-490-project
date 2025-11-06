@@ -2210,7 +2210,9 @@ def job_detail(request, job_id):
             )
 
         if request.method == 'GET':
-            return Response(JobEntrySerializer(job).data, status=status.HTTP_200_OK)
+            # UC-043: Include company information in job detail response
+            serializer = JobEntrySerializer(job, context={'include_company': True})
+            return Response(serializer.data, status=status.HTTP_200_OK)
 
         if request.method in ['PUT', 'PATCH']:
             partial = request.method == 'PATCH'
@@ -2229,7 +2231,9 @@ def job_detail(request, job_id):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            # Include company info in update response as well
+            response_serializer = JobEntrySerializer(job, context={'include_company': True})
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
 
         # DELETE
         job.delete()
@@ -3414,3 +3418,172 @@ def employment_timeline(request):
                 'message': 'Failed to generate employment timeline.'
             }
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ======================
+# UC-043: COMPANY INFORMATION DISPLAY
+# ======================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def company_info(request, company_name):
+    """
+    UC-043: Company Information Display
+    
+    GET: Retrieve or create company information by company name
+    
+    Returns company profile including:
+    - Basic information (size, industry, location, website)
+    - Company description and mission statement
+    - Recent news and updates
+    - Glassdoor rating (if available)
+    - Company logo
+    - Contact information
+    
+    Response:
+    {
+        "name": "Acme Inc",
+        "domain": "acme.com",
+        "industry": "Technology",
+        "size": "1001-5000 employees",
+        "hq_location": "San Francisco, CA",
+        "website": "https://acme.com",
+        "description": "Leading software company...",
+        "mission_statement": "To revolutionize...",
+        "glassdoor_rating": 4.2,
+        "employee_count": 2500,
+        "recent_news": [
+            {
+                "title": "Acme raises $50M Series B",
+                "url": "...",
+                "date": "2024-10-15",
+                "summary": "..."
+            }
+        ]
+    }
+    """
+    try:
+        from core.models import Company, CompanyResearch
+        from core.serializers import CompanySerializer
+        
+        # URL-decode company name
+        import urllib.parse
+        decoded_name = urllib.parse.unquote(company_name)
+        
+        # Try to find existing company (case-insensitive)
+        company = Company.objects.filter(name__iexact=decoded_name).first()
+        
+        if not company:
+            # Create new company with minimal info
+            # Extract domain from company name (simple heuristic)
+            domain = decoded_name.lower().replace(' ', '').replace(',', '').replace('.', '')
+            # Add .com as default - this would be enhanced with actual domain lookup in production
+            domain = f"{domain}.com"
+            
+            company = Company.objects.create(
+                name=decoded_name,
+                domain=domain
+            )
+            logger.info(f"Created new company: {decoded_name}")
+            
+            # Create empty research record for future enrichment
+            CompanyResearch.objects.create(company=company)
+        
+        # Serialize company data
+        serializer = CompanySerializer(company)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.error(f"Error fetching company info for {company_name}: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'Failed to fetch company information.'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def job_company_info(request, job_id):
+    """
+    UC-043: Get company information for a specific job
+    
+    GET: Retrieve company information for a job entry
+    
+    Returns the same company profile data as company_info endpoint,
+    but automatically derived from the job's company_name field.
+    """
+    try:
+        from core.models import JobEntry, Company, CompanyResearch
+        from core.serializers import CompanySerializer
+        
+        # Get the job entry
+        try:
+            profile = CandidateProfile.objects.get(user=request.user)
+        except CandidateProfile.DoesNotExist:
+            return Response(
+                {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        try:
+            job = JobEntry.objects.get(id=job_id, candidate=profile)
+        except JobEntry.DoesNotExist:
+            return Response(
+                {'error': {'code': 'job_not_found', 'message': 'Job entry not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        company_name = job.company_name
+        
+        if not company_name:
+            # Return minimal company info if no company name
+            return Response({
+                'name': '',
+                'domain': '',
+                'industry': '',
+                'size': '',
+                'hq_location': '',
+                'description': '',
+                'mission_statement': '',
+                'glassdoor_rating': None,
+                'employee_count': None,
+                'recent_news': []
+            }, status=status.HTTP_200_OK)
+        
+        # Try to find existing company (case-insensitive)
+        company = Company.objects.filter(name__iexact=company_name).first()
+        
+        if not company:
+            # Create new company with minimal info
+            domain = company_name.lower().replace(' ', '').replace(',', '').replace('.', '')
+            domain = f"{domain}.com"
+            
+            company = Company.objects.create(
+                name=company_name,
+                domain=domain
+            )
+            logger.info(f"Created new company for job {job_id}: {company_name}")
+            
+            # Create empty research record
+            CompanyResearch.objects.create(company=company)
+        
+        # Serialize company data
+        serializer = CompanySerializer(company)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.error(f"Error fetching company info for job {job_id}: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'Failed to fetch company information.'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

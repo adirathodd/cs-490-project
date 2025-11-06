@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { jobsAPI } from '../services/api';
 import Icon from './Icon';
+import CompanyInfo from './CompanyInfo';
 import './Education.css';
 
 const JobDetailView = () => {
@@ -807,6 +808,9 @@ const JobDetailView = () => {
           </div>
         )}
       </div>
+
+      {/* UC-043: Company Information Display */}
+      {job.company_info && <CompanyInfo companyInfo={job.company_info} />}
 
       {/* Metadata */}
       <div className="education-form-card">

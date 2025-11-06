@@ -1,0 +1,158 @@
+/* UC-043: Company Information Display Styles */
+/* Uses education-form-card class from Education.css for container styling */
+
+.company-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  padding: 32px;
+}
+
+.company-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.info-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.info-value {
+  font-size: 16px;
+  color: #111827;
+  margin-top: 4px;
+}
+
+.company-website-link {
+  color: #667eea;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.company-website-link:hover {
+  color: #764ba2;
+  text-decoration: underline;
+}
+
+.company-info-section {
+  padding: 0 32px 32px 32px;
+}
+
+.company-info-section:first-of-type {
+  padding-top: 0;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.company-description,
+.company-mission {
+  font-size: 15px;
+  line-height: 1.6;
+  color: #4b5563;
+  margin: 0;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.company-mission {
+  font-style: italic;
+  border-left: 4px solid #667eea;
+}
+
+.news-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.news-item {
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  border-left: 3px solid #667eea;
+}
+
+.news-item:hover {
+  background: #f3f4f6;
+  transform: translateX(4px);
+}
+
+.news-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.news-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+  flex: 1;
+}
+
+.news-link {
+  color: #667eea;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.news-link:hover {
+  color: #764ba2;
+  text-decoration: underline;
+}
+
+.news-date {
+  font-size: 13px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.news-summary {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #4b5563;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .company-info-grid {
+    grid-template-columns: 1fr;
+    padding: 20px;
+  }
+
+  .company-info-section {
+    padding: 0 20px 20px 20px;
+  }
+
+  .news-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .news-date {
+    align-self: flex-start;
+  }
+}
