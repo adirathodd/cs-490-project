@@ -912,6 +912,22 @@ class JobEntry(models.Model):
     three_day_notice_sent_at = models.DateTimeField(null=True, blank=True)
     day_of_notice_sent_at = models.DateTimeField(null=True, blank=True)
 
+    # Archiving fields (UC-045)
+    is_archived = models.BooleanField(default=False, db_index=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    archive_reason = models.CharField(
+        max_length=100,
+        blank=True,
+        choices=[
+            ("completed", "Position Filled/Completed"),
+            ("not_interested", "No Longer Interested"),
+            ("rejected", "Application Rejected"),
+            ("expired", "Posting Expired"),
+            ("auto", "Auto-archived"),
+            ("other", "Other"),
+        ],
+    )
+
     class Meta:
         ordering = ['-updated_at']
         indexes = [
@@ -919,6 +935,7 @@ class JobEntry(models.Model):
             models.Index(fields=["job_type"]),
             models.Index(fields=["industry"]),
             models.Index(fields=["candidate", "status"]),
+            models.Index(fields=["candidate", "is_archived"]),
         ]
 
     def __str__(self):

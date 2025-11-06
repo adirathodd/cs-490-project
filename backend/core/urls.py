@@ -89,4 +89,9 @@ urlpatterns = [
     path('jobs/bulk-status', views.jobs_bulk_status, name='jobs-bulk-status'),
     path('jobs/bulk-deadline', views.jobs_bulk_deadline, name='jobs-bulk-deadline'),
     path('jobs/upcoming-deadlines', views.jobs_upcoming_deadlines, name='jobs-upcoming-deadlines'),
+    # UC-045: Job archiving endpoints
+    path('jobs/<int:job_id>/archive', views.job_archive, name='job-archive'),
+    path('jobs/<int:job_id>/restore', views.job_restore, name='job-restore'),
+    path('jobs/<int:job_id>/delete', views.job_delete, name='job-delete'),
+    path('jobs/bulk-archive', views.jobs_bulk_archive, name='jobs-bulk-archive'),
 ]

@@ -1986,6 +1986,15 @@ def jobs_list_create(request):
             # Start with base queryset
             qs = JobEntry.objects.filter(candidate=profile)
 
+            # UC-045: Filter by archive status (default: show only non-archived)
+            show_archived = (request.GET.get('archived') or '').strip().lower()
+            if show_archived == 'true':
+                qs = qs.filter(is_archived=True)
+            elif show_archived == 'all':
+                pass  # Show all jobs regardless of archive status
+            else:
+                qs = qs.filter(is_archived=False)
+
             # Optional simple status filter (for pipeline and quick filters)
             status_param = (request.query_params.get('status') or request.GET.get('status') or '').strip()
             if status_param:
@@ -2266,6 +2275,166 @@ def jobs_upcoming_deadlines(request):
     except Exception as e:
         logger.error(f"Error in jobs_upcoming_deadlines: {e}")
         return Response({'error': {'code': 'internal_error', 'message': 'Failed to fetch upcoming deadlines.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ======================
+# UC-045: JOB ARCHIVING
+# ======================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def job_archive(request, job_id):
+    """Archive a single job entry. Body: { "reason": "completed" } (optional)"""
+    try:
+        from django.utils import timezone
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        
+        if job.is_archived:
+            return Response(
+                {'error': {'code': 'already_archived', 'message': 'Job is already archived.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        reason = request.data.get('reason', '').strip()
+        job.is_archived = True
+        job.archived_at = timezone.now()
+        job.archive_reason = reason if reason else 'other'
+        job.save(update_fields=['is_archived', 'archived_at', 'archive_reason'])
+        
+        data = JobEntrySerializer(job).data
+        data['message'] = 'Job archived successfully.'
+        return Response(data, status=status.HTTP_200_OK)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in job_archive: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to archive job.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def job_restore(request, job_id):
+    """Restore an archived job entry."""
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        
+        if not job.is_archived:
+            return Response(
+                {'error': {'code': 'not_archived', 'message': 'Job is not archived.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        job.is_archived = False
+        job.archived_at = None
+        job.archive_reason = ''
+        job.save(update_fields=['is_archived', 'archived_at', 'archive_reason'])
+        
+        data = JobEntrySerializer(job).data
+        data['message'] = 'Job restored successfully.'
+        return Response(data, status=status.HTTP_200_OK)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in job_restore: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to restore job.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def jobs_bulk_archive(request):
+    """Bulk archive multiple jobs. Body: { "ids": [1,2,3], "reason": "completed" }"""
+    try:
+        from django.utils import timezone
+        profile = CandidateProfile.objects.get(user=request.user)
+        ids = request.data.get('ids') or []
+        reason = request.data.get('reason', 'other').strip()
+        
+        if not ids or not isinstance(ids, list):
+            return Response(
+                {'error': {'code': 'validation_error', 'message': 'ids must be a non-empty list.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        jobs = JobEntry.objects.filter(id__in=ids, candidate=profile, is_archived=False)
+        count = jobs.update(
+            is_archived=True,
+            archived_at=timezone.now(),
+            archive_reason=reason if reason else 'other'
+        )
+        
+        return Response(
+            {'message': f'{count} job(s) archived successfully.', 'count': count},
+            status=status.HTTP_200_OK
+        )
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in jobs_bulk_archive: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to bulk archive jobs.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def job_delete(request, job_id):
+    """Permanently delete a job entry (requires confirmation from frontend)."""
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        
+        job_title = job.title
+        job_company = job.company_name
+        job.delete()
+        
+        return Response(
+            {'message': f'Job "{job_title}" at {job_company} deleted successfully.'},
+            status=status.HTTP_200_OK
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in job_delete: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to delete job.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 # ======================

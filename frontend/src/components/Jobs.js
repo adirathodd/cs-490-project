@@ -60,6 +60,15 @@ const Jobs = () => {
   const [sortBy, setSortBy] = useState('date_added');
   const [showFilters, setShowFilters] = useState(false);
 
+  // UC-045: Archive State
+  const [showArchived, setShowArchived] = useState(false);
+  const [selectedJobs, setSelectedJobs] = useState([]);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [archiveReason, setArchiveReason] = useState('other');
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [undoNotification, setUndoNotification] = useState(null);
+
   // UC-039: Load saved search preferences from localStorage on mount
   useEffect(() => {
     try {
@@ -91,6 +100,7 @@ const Jobs = () => {
       setLoading(true);
       try {
         // UC-039: Build query parameters for search and filtering
+        // UC-045: Include archived filter
         const params = {
           q: searchQuery,
           industry: filters.industry,
@@ -101,6 +111,7 @@ const Jobs = () => {
           deadline_from: filters.deadline_from,
           deadline_to: filters.deadline_to,
           sort: sortBy,
+          archived: showArchived ? 'true' : 'false',
         };
         
         const response = await jobsAPI.getJobs(params);
@@ -121,7 +132,7 @@ const Jobs = () => {
       }
     };
     init();
-  }, [searchQuery, filters, sortBy]);
+  }, [searchQuery, filters, sortBy, showArchived]);
 
   // Helper: days difference (deadline - today), and urgency color
   const daysUntil = (dateStr) => {
@@ -290,16 +301,138 @@ const Jobs = () => {
     return String(rounded.toFixed(2));
   };
   const onDelete = async (id) => {
-    const ok = window.confirm('Delete this job entry?');
-    if (!ok) return;
+    setItemToDelete(id);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      await jobsAPI.deleteJob(id);
-      setItems((prev) => prev.filter((i) => i.id !== id));
-      setSuccess('Job deleted.');
-      setTimeout(() => setSuccess(''), 2000);
+      await jobsAPI.permanentlyDeleteJob(itemToDelete);
+      setItems((prev) => prev.filter((i) => i.id !== itemToDelete));
+      setSuccess('Job permanently deleted.');
+      setTimeout(() => setSuccess(''), 3000);
     } catch (e) {
       const msg = e?.message || e?.error?.message || 'Failed to delete job';
       setError(msg);
+    } finally {
+      setShowDeleteModal(false);
+      setItemToDelete(null);
+    }
+  };
+
+  // UC-045: Archive handlers
+  const onArchive = async (id, reason = 'other') => {
+    try {
+      const result = await jobsAPI.archiveJob(id, reason);
+      setItems((prev) => prev.filter((i) => i.id !== id));
+      
+      // Show undo notification
+      setUndoNotification({
+        message: 'Job archived.',
+        jobId: id,
+        type: 'archive',
+      });
+      setTimeout(() => setUndoNotification(null), 5000);
+      
+      setSuccess('Job archived successfully.');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (e) {
+      const msg = e?.message || e?.error?.message || 'Failed to archive job';
+      setError(msg);
+    }
+  };
+
+  const onRestore = async (id) => {
+    try {
+      await jobsAPI.restoreJob(id);
+      setItems((prev) => prev.filter((i) => i.id !== id));
+      
+      // Show undo notification
+      setUndoNotification({
+        message: 'Job restored.',
+        jobId: id,
+        type: 'restore',
+      });
+      setTimeout(() => setUndoNotification(null), 5000);
+      
+      setSuccess('Job restored successfully.');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (e) {
+      const msg = e?.message || e?.error?.message || 'Failed to restore job';
+      setError(msg);
+    }
+  };
+
+  const onBulkArchive = async () => {
+    if (selectedJobs.length === 0) return;
+    setShowArchiveModal(true);
+  };
+
+  const confirmBulkArchive = async () => {
+    try {
+      await jobsAPI.bulkArchiveJobs(selectedJobs, archiveReason);
+      setItems((prev) => prev.filter((i) => !selectedJobs.includes(i.id)));
+      setSelectedJobs([]);
+      setSuccess(`${selectedJobs.length} job(s) archived successfully.`);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (e) {
+      const msg = e?.message || e?.error?.message || 'Failed to bulk archive';
+      setError(msg);
+    } finally {
+      setShowArchiveModal(false);
+      setArchiveReason('other');
+    }
+  };
+
+  const undoAction = async () => {
+    if (!undoNotification) return;
+    const { jobId, type } = undoNotification;
+    
+    try {
+      if (type === 'archive') {
+        await jobsAPI.restoreJob(jobId);
+      } else if (type === 'restore') {
+        await jobsAPI.archiveJob(jobId, 'other');
+      }
+      // Refresh the list
+      const params = {
+        q: searchQuery,
+        industry: filters.industry,
+        location: filters.location,
+        job_type: filters.job_type,
+        salary_min: filters.salary_min,
+        salary_max: filters.salary_max,
+        deadline_from: filters.deadline_from,
+        deadline_to: filters.deadline_to,
+        sort: sortBy,
+        archived: showArchived ? 'true' : 'false',
+      };
+      const response = await jobsAPI.getJobs(params);
+      const list = response.results || response || [];
+      setItems(Array.isArray(list) ? list : []);
+      
+      setSuccess('Action undone.');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (e) {
+      const msg = e?.message || e?.error?.message || 'Failed to undo';
+      setError(msg);
+    } finally {
+      setUndoNotification(null);
+    }
+  };
+
+  const toggleJobSelection = (id) => {
+    setSelectedJobs(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedJobs.length === items.length) {
+      setSelectedJobs([]);
+    } else {
+      setSelectedJobs(items.map(i => i.id));
     }
   };
 
@@ -398,9 +531,32 @@ const Jobs = () => {
       {/* 2. Job Tracker section name and description */}
       <div className="education-header">
         <h2><Icon name="briefcase" size="md" /> Your Job Entries</h2>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {/* UC-045: Archive view toggle */}
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              setShowArchived(!showArchived);
+              setSelectedJobs([]);
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: '150px' }}
+          >
+            <Icon name={showArchived ? 'briefcase' : 'archive'} size="sm" />
+            {showArchived ? 'Active Jobs' : 'Archived Jobs'}
+          </button>
+          {/* UC-045: Bulk operations */}
+          {!showArchived && selectedJobs.length > 0 && (
+            <button
+              className="btn-secondary"
+              onClick={onBulkArchive}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f97316', color: 'white', border: 'none' }}
+            >
+              <Icon name="archive" size="sm" />
+              Archive Selected ({selectedJobs.length})
+            </button>
+          )}
           <a
-            className="btn-back"
+            className="btn-secondary"
             href="/jobs/pipeline"
             title="Open Pipeline"
             aria-label="Open job status pipeline"
@@ -425,6 +581,38 @@ const Jobs = () => {
 
       {error && <div className="error-banner">{error}</div>}
       {success && <div className="success-banner">{success}</div>}
+
+      {/* UC-045: Undo Notification */}
+      {undoNotification && (
+        <div style={{ 
+          background: '#10b981', 
+          color: 'white', 
+          padding: '12px 16px', 
+          borderRadius: '8px', 
+          marginBottom: '16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          animation: 'slideIn 0.3s ease-out'
+        }}>
+          <span>{undoNotification.message}</span>
+          <button
+            onClick={undoAction}
+            style={{
+              background: 'white',
+              color: '#10b981',
+              border: 'none',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            Undo
+          </button>
+        </div>
+      )}
 
       {/* Calendar: placed below the header and above the search box */}
       <DeadlineCalendar items={items} />
@@ -803,9 +991,46 @@ const Jobs = () => {
         </div>
       ) : (
         <div className="education-list">
+          {/* UC-045: Bulk select all checkbox */}
+          {!showArchived && items.length > 0 && (
+            <div style={{ 
+              padding: '12px 16px', 
+              background: '#f9fafb', 
+              borderRadius: '8px', 
+              marginBottom: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <input
+                type="checkbox"
+                checked={selectedJobs.length === items.length && items.length > 0}
+                onChange={toggleSelectAll}
+                style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+              />
+              <label style={{ cursor: 'pointer', userSelect: 'none' }} onClick={toggleSelectAll}>
+                Select All ({items.length} jobs)
+              </label>
+            </div>
+          )}
           {(items || []).map((item) => (
             <div key={item.id} className="education-item">
               <div className="education-item-header">
+                {/* UC-045: Checkbox for bulk selection */}
+                {!showArchived && (
+                  <div style={{ paddingRight: '12px', display: 'flex', alignItems: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedJobs.includes(item.id)}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        toggleJobSelection(item.id);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                    />
+                  </div>
+                )}
                 <div 
                   className="education-item-main" 
                   style={{ cursor: 'pointer' }}
@@ -868,23 +1093,51 @@ const Jobs = () => {
                   >
                     <Icon name="eye" size="sm" ariaLabel="View" />
                   </button>
-                  <button 
-                    className="edit-button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      startEdit(item);
-                    }}
-                    title="Edit"
-                  >
-                    <Icon name="edit" size="sm" ariaLabel="Edit" />
-                  </button>
+                  {!showArchived && (
+                    <>
+                      <button 
+                        className="edit-button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startEdit(item);
+                        }}
+                        title="Edit"
+                      >
+                        <Icon name="edit" size="sm" ariaLabel="Edit" />
+                      </button>
+                      <button 
+                        className="view-button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onArchive(item.id, 'other');
+                        }}
+                        title="Archive"
+                        style={{ background: '#f97316', color: 'white' }}
+                      >
+                        <Icon name="archive" size="sm" ariaLabel="Archive" />
+                      </button>
+                    </>
+                  )}
+                  {showArchived && (
+                    <button 
+                      className="view-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRestore(item.id);
+                      }}
+                      title="Restore"
+                      style={{ background: '#10b981', color: 'white' }}
+                    >
+                      <Icon name="restore" size="sm" ariaLabel="Restore" />
+                    </button>
+                  )}
                   <button 
                     className="delete-button"
                     onClick={(e) => {
                       e.stopPropagation();
                       onDelete(item.id);
                     }}
-                    title="Delete"
+                    title="Delete Permanently"
                   >
                     <Icon name="trash" size="sm" ariaLabel="Delete" />
                   </button>
@@ -910,6 +1163,81 @@ const Jobs = () => {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* UC-045: Archive Reason Modal */}
+      {showArchiveModal && (
+        <div className="modal-overlay" onClick={() => setShowArchiveModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <h3 style={{ marginBottom: '16px' }}>Archive Jobs</h3>
+            <p style={{ marginBottom: '16px', color: '#666' }}>
+              Select a reason for archiving {selectedJobs.length} job(s):
+            </p>
+            <div className="form-group">
+              <label>Reason</label>
+              <select 
+                value={archiveReason} 
+                onChange={(e) => setArchiveReason(e.target.value)}
+                style={{ width: '100%' }}
+              >
+                <option value="completed">Position Filled/Completed</option>
+                <option value="not_interested">No Longer Interested</option>
+                <option value="rejected">Application Rejected</option>
+                <option value="expired">Posting Expired</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button 
+                className="cancel-button"
+                onClick={() => setShowArchiveModal(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="save-button"
+                onClick={confirmBulkArchive}
+                style={{ background: '#f97316' }}
+              >
+                Archive
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UC-045: Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
+          <div className="modal-content modal-danger" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <h3 style={{ marginBottom: '16px' }}>Delete Job Permanently?</h3>
+            <p style={{ marginBottom: '16px' }}>
+              This action cannot be undone. The job entry will be permanently deleted.
+            </p>
+            <p style={{ marginBottom: '20px', fontWeight: '600' }}>
+              Are you sure you want to proceed?
+            </p>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+              <button 
+                className="btn-secondary"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setItemToDelete(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn-danger-icon"
+                onClick={confirmDelete}
+                title="Delete Permanently"
+                aria-label="Delete Permanently"
+              >
+                <Icon name="trash" size="sm" ariaLabel="Delete Permanently" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

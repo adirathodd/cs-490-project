@@ -1032,9 +1032,11 @@ class JobEntrySerializer(serializers.ModelSerializer):
             'personal_notes', 'recruiter_name', 'recruiter_email', 'recruiter_phone',
             'hiring_manager_name', 'hiring_manager_email',
             'salary_negotiation_notes', 'interview_notes', 'application_history',
+            # UC-045 archiving fields
+            'is_archived', 'archived_at', 'archive_reason',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'salary_range', 'last_status_change', 'days_in_stage']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'salary_range', 'last_status_change', 'days_in_stage', 'archived_at']
 
     def get_salary_range(self, obj):
         if obj.salary_min is None and obj.salary_max is None:
