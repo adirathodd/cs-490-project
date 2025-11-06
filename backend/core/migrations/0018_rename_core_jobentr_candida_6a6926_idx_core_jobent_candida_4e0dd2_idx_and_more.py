@@ -10,16 +10,17 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RenameIndex(
-            model_name='jobentry',
-            new_name='core_jobent_candida_4e0dd2_idx',
-            old_name='core_jobentr_candida_6a6926_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='jobstatuschange',
-            new_name='core_jobsta_job_id_456425_idx',
-            old_name='core_jobstat_job_id__1a3daa_idx',
-        ),
+        # Index renames already applied in database - skip to avoid errors
+        # migrations.RenameIndex(
+        #     model_name='jobentry',
+        #     new_name='core_jobent_candida_4e0dd2_idx',
+        #     old_name='core_jobentr_candida_6a6926_idx',
+        # ),
+        # migrations.RenameIndex(
+        #     model_name='jobstatuschange',
+        #     new_name='core_jobsta_job_id_456425_idx',
+        #     old_name='core_jobstat_job_id__1a3daa_idx',
+        # ),
         migrations.AlterField(
             model_name='education',
             name='degree_type',
