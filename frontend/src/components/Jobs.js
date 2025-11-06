@@ -297,7 +297,10 @@ const Jobs = () => {
     setFieldErrors({});
     setCharCount((item.description || '').length);
     setShowForm(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Guard scrollTo for jsdom/test environments where it may be unimplemented
+    if (typeof window.scrollTo === 'function') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   // Format salary number for input display: remove unnecessary .00, keep two decimals otherwise
@@ -662,6 +665,15 @@ const Jobs = () => {
             <Icon name={showArchived ? 'briefcase' : 'archive'} size="sm" />
             {showArchived ? 'Active Jobs' : 'Archived Jobs'}
           </button>
+          <a
+            className="btn-secondary"
+            href="/jobs/stats"
+            title="Job statistics"
+            aria-label="Job statistics"
+            style={{ textDecoration: 'none' }}
+          >
+            Statistics
+          </a>
           <a
             className="btn-secondary"
             href="/jobs/pipeline"
@@ -1433,7 +1445,8 @@ const Jobs = () => {
                   )}
                   {item.application_deadline && (() => {
                     const diff = daysUntil(item.application_deadline);
-                    const color = deadlineColor(diff);
+                    // Only apply urgency colors when the job is still in 'interested'
+                    const color = item.status === 'interested' ? deadlineColor(diff) : '#94a3b8';
                     return (
                       <div className="education-item-dates" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{ width: 10, height: 10, borderRadius: 4, background: color }} aria-hidden />

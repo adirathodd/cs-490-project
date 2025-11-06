@@ -70,9 +70,13 @@ const JobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact = false
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const diff = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        let color = '#059669'; // green
-        if (diff < 0) color = '#dc2626'; // red overdue
-        else if (diff <= 3) color = '#f59e0b'; // yellow/orange for urgent
+        // Only color urgency when job is still 'interested'
+        let color = '#94a3b8'; // neutral gray by default
+        if (job.status === 'interested') {
+          color = '#059669'; // green
+          if (diff < 0) color = '#dc2626'; // red overdue
+          else if (diff <= 3) color = '#f59e0b'; // yellow/orange for urgent
+        }
         return (
           <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 10, height: 10, borderRadius: 4, background: color }} aria-hidden="true" />

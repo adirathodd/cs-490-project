@@ -18,6 +18,7 @@ import ProjectsPortfolio from './components/ProjectsPortfolio';
 import ProjectDetail from './components/ProjectDetail';
 import Jobs from './components/Jobs';
 import JobsPipeline from './components/JobsPipeline';
+import JobStats from './components/JobStats';
 import JobDetailView from './components/JobDetailView';
 import JobsCalendar from './components/JobsCalendar';
 import ForgotPassword from './components/ForgotPassword';
@@ -193,6 +194,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <JobsPipeline />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/jobs/stats"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <JobStats />
               </PrivateRoute>
             }
           />

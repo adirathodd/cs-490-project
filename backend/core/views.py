@@ -2131,19 +2131,316 @@ def jobs_list_create(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def jobs_stats(request):
-    """Return counts per status for the authenticated user's jobs."""
+    """Return job statistics and analytics for the authenticated user's jobs.
+
+    Provides:
+    - counts per status
+    - application response rate (percent of applied jobs that progressed to a response)
+    - average time in each pipeline stage (days)
+    - monthly application volume (last 12 months)
+    - application deadline adherence stats
+    - time-to-offer analytics (avg/median days)
+
+    Optional CSV export: ?export=csv will return a CSV file with per-job metrics.
+    """
     try:
         profile = CandidateProfile.objects.get(user=request.user)
         qs = JobEntry.objects.filter(candidate=profile)
+
+        # 1) Counts per status
         statuses = [s for (s, _label) in JobEntry.STATUS_CHOICES]
         counts = {s: 0 for s in statuses}
         for row in qs.values('status').annotate(c=models.Count('id')):
             counts[row['status']] = row['c']
-        return Response(counts, status=status.HTTP_200_OK)
+
+        # 2) Application response rate
+        # Consider "applied" pipeline as statuses where user has applied (applied + later stages)
+        applied_statuses = ['applied', 'phone_screen', 'interview', 'offer', 'rejected']
+        responded_statuses = ['phone_screen', 'interview', 'offer', 'rejected']
+        applied_count = qs.filter(status__in=applied_statuses).count()
+        responded_count = qs.filter(status__in=responded_statuses).count()
+        response_rate = round((responded_count / applied_count) * 100, 2) if applied_count > 0 else None
+
+        # 3) Average time in each pipeline stage (use JobStatusChange history where available)
+        from core.models import JobStatusChange
+        from django.utils import timezone as dj_timezone
+        import statistics
+        durations = {}  # seconds per status sum
+        occurrences = {}  # how many times status was accounted for
+        now = dj_timezone.now()
+
+        for job in qs.select_related().prefetch_related('status_changes'):
+            # Collect status changes in chronological order
+            changes = list(job.status_changes.all().order_by('changed_at'))
+            prev_time = job.created_at or job.updated_at or now
+            # If there are no status changes, attribute duration from created_at to now to current status
+            if not changes:
+                st = job.status or 'interested'
+                delta = (now - prev_time).total_seconds()
+                durations[st] = durations.get(st, 0) + delta
+                occurrences[st] = occurrences.get(st, 0) + 1
+                continue
+
+            for ch in changes:
+                old = ch.old_status
+                # duration for old status is from prev_time until this change
+                try:
+                    delta = (ch.changed_at - prev_time).total_seconds()
+                except Exception:
+                    delta = 0
+                durations[old] = durations.get(old, 0) + max(0, delta)
+                occurrences[old] = occurrences.get(old, 0) + 1
+                prev_time = ch.changed_at
+
+            # final segment: current status from last change until now
+            cur = job.status or (changes[-1].new_status if changes else 'interested')
+            try:
+                delta = (now - prev_time).total_seconds()
+            except Exception:
+                delta = 0
+            durations[cur] = durations.get(cur, 0) + max(0, delta)
+            occurrences[cur] = occurrences.get(cur, 0) + 1
+
+        avg_time_in_stage = {}
+        for st, total_seconds in durations.items():
+            cnt = occurrences.get(st, 1)
+            # convert to days with two decimals
+            avg_days = round((total_seconds / cnt) / 86400, 2)
+            avg_time_in_stage[st] = avg_days
+
+        # 4) Monthly application volume (last 12 months)
+        from django.db.models.functions import TruncMonth
+        from django.db.models import Count
+        import datetime
+        today = dj_timezone.now().date()
+        first_month = (today.replace(day=1) - datetime.timedelta(days=365)).replace(day=1)
+        monthly_qs = qs.filter(created_at__date__gte=first_month).annotate(month=TruncMonth('created_at')).values('month').annotate(count=Count('id')).order_by('month')
+        monthly = []
+        # build a 12-month series ending with current month
+        months = []
+        m = today.replace(day=1)
+        for i in range(11, -1, -1):
+            mm = (m - datetime.timedelta(days=30 * i)).replace(day=1)
+            # normalize to first of month
+            months.append(mm)
+        # convert query results to dict
+        month_map = {row['month'].date(): row['count'] for row in monthly_qs}
+        for mm in months:
+            c = month_map.get(mm, 0)
+            monthly.append({'month': mm.isoformat(), 'count': c})
+
+        # 5) Application deadline adherence
+        adhered = 0
+        missed = 0
+        total_with_deadline = 0
+
+        def _parse_applied_date_from_history(job):
+            # application_history format: list of dicts with keys 'action' and 'timestamp'
+            try:
+                hist = job.application_history or []
+                for item in hist:
+                    a = (item.get('action') or '').lower()
+                    if 'apply' in a:
+                        ts = item.get('timestamp') or item.get('at')
+                        if ts:
+                            try:
+                                return dj_timezone.datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                            except Exception:
+                                try:
+                                    # fallback to created_at
+                                    return dj_timezone.make_aware(dj_timezone.datetime.fromtimestamp(float(ts)))
+                                except Exception:
+                                    continue
+                # fallback to created_at
+                return job.created_at
+            except Exception:
+                return job.created_at
+
+        for job in qs.filter(application_deadline__isnull=False):
+            total_with_deadline += 1
+            applied_dt = _parse_applied_date_from_history(job) or job.created_at
+            try:
+                applied_date = applied_dt.date()
+            except Exception:
+                applied_date = (job.created_at.date() if job.created_at else None)
+            if applied_date and job.application_deadline:
+                if applied_date <= job.application_deadline:
+                    adhered += 1
+                else:
+                    missed += 1
+
+        adherence_pct = round((adhered / total_with_deadline) * 100, 2) if total_with_deadline > 0 else None
+
+        # 6) Time-to-offer analytics
+        tto_days = []
+        for job in qs:
+            # find offer change
+            offer_change = JobStatusChange.objects.filter(job=job, new_status='offer').order_by('changed_at').first()
+            if not offer_change:
+                # skip if job not offered
+                if job.status != 'offer':
+                    continue
+                # else use job.updated_at as offer time
+                offer_at = job.last_status_change or job.updated_at
+            else:
+                offer_at = offer_change.changed_at
+
+            applied_dt = _parse_applied_date_from_history(job) or job.created_at
+            if not applied_dt or not offer_at:
+                continue
+            try:
+                delta_days = (offer_at - applied_dt).total_seconds() / 86400
+                if delta_days >= 0:
+                    tto_days.append(round(delta_days, 2))
+            except Exception:
+                continue
+
+        tto_summary = None
+        if tto_days:
+            tto_summary = {
+                'count': len(tto_days),
+                'avg_days': round(statistics.mean(tto_days), 2),
+                'median_days': round(statistics.median(tto_days), 2),
+                'min_days': min(tto_days),
+                'max_days': max(tto_days),
+            }
+
+        payload = {
+            'counts': counts,
+            'response_rate_percent': response_rate,
+            'avg_time_in_stage_days': avg_time_in_stage,
+            'monthly_applications': monthly,
+            'deadline_adherence': {
+                'total_with_deadline': total_with_deadline,
+                'adhered': adhered,
+                'missed': missed,
+                'adherence_percent': adherence_pct,
+            },
+            'time_to_offer': tto_summary,
+        }
+
+        # Optional: daily breakdown for a specific month when ?month=YYYY-MM is provided
+        month_param = request.GET.get('month')
+        if month_param:
+            try:
+                # Accept formats like '2025-11' or '2025-11-01' or ISO month
+                import datetime as _dt
+                if len(month_param) == 7:
+                    month_date = _dt.datetime.strptime(month_param, '%Y-%m').date()
+                else:
+                    month_date = _dt.date.fromisoformat(month_param)
+                    month_date = month_date.replace(day=1)
+
+                # compute first day of next month
+                if month_date.month == 12:
+                    next_month = month_date.replace(year=month_date.year + 1, month=1, day=1)
+                else:
+                    next_month = month_date.replace(month=month_date.month + 1, day=1)
+
+                from django.db.models.functions import TruncDate
+                from django.db.models import Count
+
+                daily_qs = qs.filter(created_at__date__gte=month_date, created_at__date__lt=next_month)
+                daily_agg = daily_qs.annotate(day=TruncDate('created_at')).values('day').annotate(count=Count('id')).order_by('day')
+                # build full month days
+                days = []
+                cur = month_date
+                while cur < next_month:
+                    days.append(cur)
+                    cur = cur + _dt.timedelta(days=1)
+
+                # row['day'] may be a date or datetime depending on DB; normalize to date
+                day_map = {}
+                import datetime as _dt
+                for row in daily_agg:
+                    day_val = row.get('day')
+                    if hasattr(day_val, 'date'):
+                        d = day_val.date()
+                    elif isinstance(day_val, _dt.date):
+                        d = day_val
+                    else:
+                        try:
+                            d = _dt.date.fromisoformat(str(day_val))
+                        except Exception:
+                            continue
+                    day_map[d] = row['count']
+                daily = [{'date': d.isoformat(), 'count': day_map.get(d, 0)} for d in days]
+                payload['daily_applications'] = daily
+                payload['daily_month'] = month_date.isoformat()
+            except Exception:
+                # ignore and continue without daily breakdown
+                pass
+
+        # CSV export
+        if request.GET.get('export') == 'csv':
+            import csv, io
+            from django.http import HttpResponse
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(['id', 'title', 'company_name', 'status', 'created_at', 'applied_at', 'offer_at', 'time_to_offer_days', 'application_deadline', 'deadline_adhered'])
+            # If month param provided, scope CSV rows to that month
+            csv_qs = qs
+            month_param_csv = request.GET.get('month')
+            if month_param_csv:
+                try:
+                    import datetime as _dt
+                    if len(month_param_csv) == 7:
+                        month_date_csv = _dt.datetime.strptime(month_param_csv, '%Y-%m').date()
+                    else:
+                        month_date_csv = _dt.date.fromisoformat(month_param_csv)
+                        month_date_csv = month_date_csv.replace(day=1)
+
+                    if month_date_csv.month == 12:
+                        next_month_csv = month_date_csv.replace(year=month_date_csv.year + 1, month=1, day=1)
+                    else:
+                        next_month_csv = month_date_csv.replace(month=month_date_csv.month + 1, day=1)
+
+                    csv_qs = csv_qs.filter(created_at__date__gte=month_date_csv, created_at__date__lt=next_month_csv)
+                except Exception:
+                    pass
+
+            for job in csv_qs:
+                applied_dt = _parse_applied_date_from_history(job)
+                offer_change = JobStatusChange.objects.filter(job=job, new_status='offer').order_by('changed_at').first()
+                offer_at = None
+                if offer_change:
+                    offer_at = offer_change.changed_at
+                elif job.status == 'offer':
+                    offer_at = job.last_status_change or job.updated_at
+                tto = None
+                if applied_dt and offer_at:
+                    try:
+                        tto = round((offer_at - applied_dt).total_seconds() / 86400, 2)
+                    except Exception:
+                        tto = ''
+                writer.writerow([
+                    job.id,
+                    job.title,
+                    job.company_name,
+                    job.status,
+                    job.created_at.isoformat() if job.created_at else '',
+                    applied_dt.isoformat() if applied_dt else '',
+                    offer_at.isoformat() if offer_at else '',
+                    tto or '',
+                    job.application_deadline.isoformat() if job.application_deadline else '',
+                    (applied_dt.date() <= job.application_deadline) if (applied_dt and job.application_deadline) else '',
+                ])
+            resp = HttpResponse(output.getvalue(), content_type='text/csv')
+            resp['Content-Disposition'] = 'attachment; filename="job_statistics.csv"'
+            return resp
+
+        return Response(payload, status=status.HTTP_200_OK)
     except CandidateProfile.DoesNotExist:
-        return Response({s: 0 for (s, _l) in JobEntry.STATUS_CHOICES}, status=status.HTTP_200_OK)
+        return Response({
+            'counts': {s: 0 for (s, _l) in JobEntry.STATUS_CHOICES},
+            'response_rate_percent': None,
+            'avg_time_in_stage_days': {},
+            'monthly_applications': [],
+            'deadline_adherence': {'total_with_deadline': 0, 'adhered': 0, 'missed': 0, 'adherence_percent': None},
+            'time_to_offer': None,
+        }, status=status.HTTP_200_OK)
     except Exception as e:
-        logger.error(f"Error in jobs_stats: {e}")
+        logger.exception(f"Error in jobs_stats: {e}")
         return Response({'error': {'code': 'internal_error', 'message': 'Failed to compute job stats.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -2439,8 +2736,22 @@ def import_job_from_url(request):
 
         # Return result
         response_data = result.to_dict()
-        
+
         if result.status == 'failed':
+            # Map common transient errors to 503 so client can retry later
+            err = (response_data.get('error') or '').lower()
+            retryable = any(
+                phrase in err for phrase in [
+                    'took too long to respond',
+                    'could not connect',
+                    'failed to fetch job posting',
+                    'rejected the request (http 403)',
+                    'rejected the request (http 429)',
+                ]
+            )
+            if retryable:
+                response_data['retryable'] = True
+                return Response(response_data, status=status.HTTP_503_SERVICE_UNAVAILABLE)
             return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
         
         return Response(response_data, status=status.HTTP_200_OK)

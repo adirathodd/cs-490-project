@@ -103,6 +103,49 @@ export default function DeadlineCalendar({ items = [], onSelectDate }) {
             ))}
           </div>
 
+      <div className="calendar-grid">
+        {weeks.map((week, wi) => (
+          <div key={wi} className="calendar-row">
+            {week.map((d, di) => {
+              const key = fmt(d);
+              const jobs = deadlinesByDate.get(key) || [];
+              const isOtherMonth = d < monthStart || d > monthEnd;
+              const isToday = key === todayStr;
+              return (
+                <button
+                  key={di}
+                  type="button"
+                  className={`calendar-day${isOtherMonth ? ' is-outside' : ''}${isToday ? ' is-today' : ''}`}
+                  onClick={() => {
+                    if (onSelectDate) onSelectDate(key, jobs);
+                  }}
+                  title={jobs.length ? `${jobs.length} deadline${jobs.length > 1 ? 's' : ''} on ${key}` : key}
+                >
+                  <div className="calendar-day-number">{d.getDate()}</div>
+                  <div className="calendar-day-events">
+                    {jobs.slice(0, 3).map((j) => {
+                      // If job has been progressed beyond 'interested', show a neutral/gray pill
+                      const isApplied = j.status && j.status !== 'interested';
+                      const diff = daysDiff(j.application_deadline);
+                      const s = isApplied ? { background: '#e5e7eb', color: '#374151', borderColor: '#e5e7eb' } : urgencyBg(diff);
+                      return (
+                        <div
+                          key={j.id}
+                          className="calendar-event-pill"
+                          title={`${j.title} @ ${j.company_name}`}
+                          style={{ background: s.background, color: s.color, borderColor: s.borderColor }}
+                        >
+                          {j.title}
+                        </div>
+                      );
+                    })}
+                    {jobs.length > 3 && (
+                      <div className="calendar-more">+{jobs.length - 3} more</div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           <div className="calendar-grid">
             {weeks.map((week, wi) => (
               <div key={wi} className="calendar-row">
