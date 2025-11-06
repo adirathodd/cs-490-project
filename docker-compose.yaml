@@ -22,6 +22,27 @@ services:
       - db
       - redis
 
+  reminders:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ats_reminders
+    command: sh -c "sh /app/scripts/run_deadline_reminder_loop.sh"
+    volumes:
+      - ./backend/:/app/
+    env_file:
+      - ./backend/.env
+    environment:
+      DJANGO_SETTINGS_MODULE: backend.settings
+      DATABASE_URL: postgres://postgres:postgres@db:5432/yourdb
+      REDIS_URL: redis://redis:6379/0
+      REMINDERS_TZ: America/New_York
+      REMINDERS_HOUR: 9
+      REMINDERS_MINUTE: 0
+    depends_on:
+      - db
+      - redis
+
   frontend:
     build:
       context: ./frontend         # Points to your React app folder
