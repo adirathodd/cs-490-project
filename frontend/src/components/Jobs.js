@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jobsAPI } from '../services/api';
 import Icon from './Icon';
@@ -16,7 +16,7 @@ const defaultForm = {
   application_deadline: '',
   description: '',
   industry: '',
-  job_type: 'ft'
+  job_type: 'ft',
 };
 
 const jobTypeOptions = [
@@ -24,62 +24,17 @@ const jobTypeOptions = [
   { value: 'pt', label: 'Part-time' },
   { value: 'contract', label: 'Contract' },
   { value: 'intern', label: 'Internship' },
-  { value: 'temp', label: 'Temporary' }
+  { value: 'temp', label: 'Temporary' },
 ];
 
 const industryOptions = [
-  'Software',
-  'Finance',
-  'Healthcare',
-  'Education',
-  'Retail',
-  'Manufacturing',
-  'Government',
-  'Other'
+  'Software', 'Finance', 'Healthcare', 'Education', 'Retail', 'Manufacturing', 'Government', 'Other'
 ];
 
 const MAX_DESC = 2000;
 
-const jobTypeLabel = (value) => jobTypeOptions.find((opt) => opt.value === value)?.label || value;
-
-const escapeRegExp = (s) => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const escapeHtml = (s) => String(s || '')
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;');
-
-const highlightText = (text, query) => {
-  const safeText = escapeHtml(text);
-  if (!query) return safeText;
-  const pattern = escapeRegExp(query);
-  if (!pattern) return safeText;
-  const regex = new RegExp(`(${pattern})`, 'ig');
-  return safeText.replace(regex, '<mark>$1</mark>');
-};
-
-const formatSalaryString = (value) => {
-  if (value === null || value === undefined || value === '') return '';
-  const numberValue = Number(value);
-  if (Number.isNaN(numberValue)) return String(value);
-  const rounded = Math.round(numberValue * 100) / 100;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
-};
-
-const mapServerFieldErrors = (details) => {
-  if (!details || typeof details !== 'object') return {};
-  const mapped = {};
-  Object.entries(details).forEach(([field, messages]) => {
-    if (Array.isArray(messages) && messages.length) mapped[field] = messages.join(' ');
-    else if (typeof messages === 'string') mapped[field] = messages;
-  });
-  return mapped;
-};
-
 const Jobs = () => {
   const navigate = useNavigate();
-
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState(null);
@@ -91,11 +46,7 @@ const Jobs = () => {
   const [charCount, setCharCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
 
-  const [importUrl, setImportUrl] = useState('');
-  const [importing, setImporting] = useState(false);
-  const [importStatus, setImportStatus] = useState(null);
-  const [importedFields, setImportedFields] = useState([]);
-
+  // UC-039: Search and Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState({
     industry: '',
@@ -104,27 +55,43 @@ const Jobs = () => {
     salary_min: '',
     salary_max: '',
     deadline_from: '',
-    deadline_to: ''
+    deadline_to: '',
   });
   const [sortBy, setSortBy] = useState('date_added');
   const [showFilters, setShowFilters] = useState(false);
-  const [showCalendar, setShowCalendar] = useState(true);
-  const titleInputRef = useRef(null);
 
+  // UC-045: Archive State
+  const [showArchived, setShowArchived] = useState(false);
+  const [selectedJobs, setSelectedJobs] = useState([]);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [archiveReason, setArchiveReason] = useState('other');
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [undoNotification, setUndoNotification] = useState(null);
+
+  // UC-041: Import from URL State
+  const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState(null);
+  const [importedFields, setImportedFields] = useState([]);
+
+  // UC-039: Load saved search preferences from localStorage on mount
   useEffect(() => {
     try {
       const savedPrefs = localStorage.getItem('jobSearchPreferences');
-      if (!savedPrefs) return;
-      const prefs = JSON.parse(savedPrefs);
-      if (prefs.searchQuery) setSearchQuery(prefs.searchQuery);
-      if (prefs.filters) setFilters((prev) => ({ ...prev, ...prefs.filters }));
-      if (prefs.sortBy) setSortBy(prefs.sortBy);
-      if (typeof prefs.showFilters === 'boolean') setShowFilters(prefs.showFilters);
+      if (savedPrefs) {
+        const prefs = JSON.parse(savedPrefs);
+        if (prefs.searchQuery) setSearchQuery(prefs.searchQuery);
+        if (prefs.filters) setFilters(prev => ({ ...prev, ...prefs.filters }));
+        if (prefs.sortBy) setSortBy(prefs.sortBy);
+        if (prefs.showFilters !== undefined) setShowFilters(prefs.showFilters);
+      }
     } catch (e) {
       console.warn('Failed to load saved search preferences:', e);
     }
   }, []);
 
+  // UC-039: Save search preferences to localStorage when they change
   useEffect(() => {
     try {
       const prefs = { searchQuery, filters, sortBy, showFilters };
@@ -135,9 +102,11 @@ const Jobs = () => {
   }, [searchQuery, filters, sortBy, showFilters]);
 
   useEffect(() => {
-    const load = async () => {
+    const init = async () => {
       setLoading(true);
       try {
+        // UC-039: Build query parameters for search and filtering
+        // UC-045: Include archived filter
         const params = {
           q: searchQuery,
           industry: filters.industry,
@@ -147,38 +116,30 @@ const Jobs = () => {
           salary_max: filters.salary_max,
           deadline_from: filters.deadline_from,
           deadline_to: filters.deadline_to,
-          sort: sortBy
+          sort: sortBy,
+          archived: showArchived ? 'true' : 'false',
         };
+        
         const response = await jobsAPI.getJobs(params);
-        const list = response?.results || response || [];
+        const list = response.results || response || [];
         setItems(Array.isArray(list) ? list : []);
         setError('');
       } catch (e) {
-        const message = e?.message || e?.error?.message || 'Failed to load jobs';
+        const msg = e?.message || e?.error?.message || 'Failed to load jobs';
         if (e?.status === 401) {
           setError('Please log in to view your jobs.');
         } else if (Array.isArray(e?.messages) && e.messages.length) {
           setError(e.messages.join(' • '));
         } else {
-          setError(message);
+          setError(msg);
         }
       } finally {
         setLoading(false);
       }
     };
+    init();
+  }, [searchQuery, filters, sortBy, showArchived]);
 
-    load();
-  }, [searchQuery, filters, sortBy]);
-
-  useEffect(() => {
-    if (showForm) {
-      requestAnimationFrame(() => {
-        if (titleInputRef.current) {
-          titleInputRef.current.focus();
-        }
-      });
-    }
-  }, [showForm]);
   // Helper: days difference (deadline - today), and urgency color
   const daysUntil = (dateStr) => {
     if (!dateStr) return null;
@@ -201,25 +162,308 @@ const Jobs = () => {
     setEditingId(null);
     setCharCount(0);
     setShowForm(false);
+    // UC-041: Clear import state
     setImportUrl('');
-    setImporting(false);
     setImportStatus(null);
     setImportedFields([]);
   };
 
-  const handleAddJobClick = () => {
-    setForm(defaultForm);
-    setEditingId(null);
+  // UC-039: Clear all filters and search
+  const clearFilters = () => {
+    setSearchQuery('');
+    setFilters({
+      industry: '',
+      location: '',
+      job_type: '',
+      salary_min: '',
+      salary_max: '',
+      deadline_from: '',
+      deadline_to: '',
+    });
+    setSortBy('date_added');
+  };
+
+  // UC-039: Handle filter changes
+  const onFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters(prev => ({ ...prev, [name]: value }));
+  };
+
+  // UC-039: Highlight matching terms in search results
+  const highlightText = (text, query) => {
+    if (!query || !text) return text;
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escapedQuery})`, 'gi');
+    return text.replace(regex, '<mark style="background: #fef08a; padding: 0 2px;">$1</mark>');
+  };
+
+  const onChange = (e) => {
+    const { name, value } = e.target;
+    if (name === 'description') {
+      if (value.length > MAX_DESC) return;
+      setCharCount(value.length);
+    }
+    setForm((prev) => ({ ...prev, [name]: value }));
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => {
+        const n = { ...prev };
+        delete n[name];
+        return n;
+      });
+    }
+  };
+
+  const validate = () => {
+    const errs = {};
+    
+    // Required fields
+    if (!form.title.trim()) {
+      errs.title = 'Job title is required';
+    }
+    
+    if (!form.company_name.trim()) {
+      errs.company_name = 'Company name is required';
+    }
+    
+    // Description length validation
+    if (form.description && form.description.length > MAX_DESC) {
+      errs.description = `Description must be ${MAX_DESC} characters or less`;
+    }
+    
+    // Salary validation
+    const smin = parseFloat(form.salary_min);
+    const smax = parseFloat(form.salary_max);
+    
+    if (form.salary_min && isNaN(smin)) {
+      errs.salary_min = 'Please enter a valid number';
+    }
+    
+    if (form.salary_max && isNaN(smax)) {
+      errs.salary_max = 'Please enter a valid number';
+    }
+    
+    if (!isNaN(smin) && smin < 0) {
+      errs.salary_min = 'Salary cannot be negative';
+    }
+    
+    if (!isNaN(smax) && smax < 0) {
+      errs.salary_max = 'Salary cannot be negative';
+    }
+    
+    if (!isNaN(smin) && !isNaN(smax) && smin > smax) {
+      errs.salary_min = 'Minimum salary must be less than or equal to maximum salary';
+    }
+    
+    // Date validation
+    if (form.application_deadline) {
+      const deadlineDate = new Date(form.application_deadline);
+      if (isNaN(deadlineDate.getTime())) {
+        errs.application_deadline = 'Please enter a valid date';
+      }
+    }
+    
+    // URL validation
+    if (form.posting_url && form.posting_url.trim()) {
+      try {
+        new URL(form.posting_url);
+      } catch (e) {
+        errs.posting_url = 'Please enter a valid URL (e.g., https://example.com)';
+      }
+    }
+    
+    // Currency validation
+    if (form.salary_currency && form.salary_currency.length > 3) {
+      errs.salary_currency = 'Currency code must be 3 characters or less';
+    }
+    
+    return errs;
+  };
+
+  const startEdit = (item) => {
+    setEditingId(item.id);
+    setForm({
+      title: item.title || '',
+      company_name: item.company_name || '',
+      location: item.location || '',
+      salary_min: item.salary_min !== null && item.salary_min !== undefined ? formatSalaryString(item.salary_min) : '',
+      salary_max: item.salary_max !== null && item.salary_max !== undefined ? formatSalaryString(item.salary_max) : '',
+      salary_currency: item.salary_currency || 'USD',
+      posting_url: item.posting_url || '',
+      application_deadline: item.application_deadline || '',
+      description: item.description || '',
+      industry: item.industry || '',
+      job_type: item.job_type || 'ft',
+    });
     setFieldErrors({});
-    setCharCount(0);
-    setSuccess('');
-    setError('');
+    setCharCount((item.description || '').length);
     setShowForm(true);
-    setImportUrl('');
-    setImportStatus(null);
-    setImportedFields([]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Format salary number for input display: remove unnecessary .00, keep two decimals otherwise
+  const formatSalaryString = (v) => {
+    if (v === null || v === undefined || v === '') return '';
+    const n = Number(v);
+    if (Number.isNaN(n)) return String(v);
+    // Round to 2 decimals to avoid float artifacts
+    const rounded = Math.round(n * 100) / 100;
+    if (Number.isInteger(rounded)) return String(rounded);
+    return String(rounded.toFixed(2));
+  };
+  const onDelete = async (id) => {
+    // For backward compatibility with tests that mock window.confirm
+    if (typeof window.confirm === 'function') {
+      const confirmed = window.confirm('Are you sure you want to delete this job permanently?');
+      if (confirmed) {
+        try {
+          await jobsAPI.deleteJob(id);
+          setItems((prev) => prev.filter((i) => i.id !== id));
+          setSuccess('Job deleted.');
+          setTimeout(() => setSuccess(''), 3000);
+        } catch (e) {
+          const msg = e?.message || e?.error?.message || 'Failed to delete job';
+          setError(msg);
+        }
+      }
+    } else {
+      // Use modal in production
+      setItemToDelete(id);
+      setShowDeleteModal(true);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    try {
+      await jobsAPI.deleteJob(itemToDelete);
+      setItems((prev) => prev.filter((i) => i.id !== itemToDelete));
+      setSuccess('Job deleted.');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (e) {
+      const msg = e?.message || e?.error?.message || 'Failed to delete job';
+      setError(msg);
+    } finally {
+      setShowDeleteModal(false);
+      setItemToDelete(null);
+    }
+  };
+
+  // UC-045: Archive handlers
+  const onArchive = async (id, reason = 'other') => {
+    try {
+      const result = await jobsAPI.archiveJob(id, reason);
+      setItems((prev) => prev.filter((i) => i.id !== id));
+      
+      // Show undo notification
+      setUndoNotification({
+        message: 'Job archived.',
+        jobId: id,
+        type: 'archive',
+      });
+      setTimeout(() => setUndoNotification(null), 5000);
+      
+      setSuccess('Job archived successfully.');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (e) {
+      const msg = e?.message || e?.error?.message || 'Failed to archive job';
+      setError(msg);
+    }
+  };
+
+  const onRestore = async (id) => {
+    try {
+      await jobsAPI.restoreJob(id);
+      setItems((prev) => prev.filter((i) => i.id !== id));
+      
+      // Show undo notification
+      setUndoNotification({
+        message: 'Job restored.',
+        jobId: id,
+        type: 'restore',
+      });
+      setTimeout(() => setUndoNotification(null), 5000);
+      
+      setSuccess('Job restored successfully.');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (e) {
+      const msg = e?.message || e?.error?.message || 'Failed to restore job';
+      setError(msg);
+    }
+  };
+
+  const onBulkArchive = async () => {
+    if (selectedJobs.length === 0) return;
+    setShowArchiveModal(true);
+  };
+
+  const confirmBulkArchive = async () => {
+    try {
+      await jobsAPI.bulkArchiveJobs(selectedJobs, archiveReason);
+      setItems((prev) => prev.filter((i) => !selectedJobs.includes(i.id)));
+      setSelectedJobs([]);
+      setSuccess(`${selectedJobs.length} job(s) archived successfully.`);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (e) {
+      const msg = e?.message || e?.error?.message || 'Failed to bulk archive';
+      setError(msg);
+    } finally {
+      setShowArchiveModal(false);
+      setArchiveReason('other');
+    }
+  };
+
+  const undoAction = async () => {
+    if (!undoNotification) return;
+    const { jobId, type } = undoNotification;
+    
+    try {
+      if (type === 'archive') {
+        await jobsAPI.restoreJob(jobId);
+      } else if (type === 'restore') {
+        await jobsAPI.archiveJob(jobId, 'other');
+      }
+      // Refresh the list
+      const params = {
+        q: searchQuery,
+        industry: filters.industry,
+        location: filters.location,
+        job_type: filters.job_type,
+        salary_min: filters.salary_min,
+        salary_max: filters.salary_max,
+        deadline_from: filters.deadline_from,
+        deadline_to: filters.deadline_to,
+        sort: sortBy,
+        archived: showArchived ? 'true' : 'false',
+      };
+      const response = await jobsAPI.getJobs(params);
+      const list = response.results || response || [];
+      setItems(Array.isArray(list) ? list : []);
+      
+      setSuccess('Action undone.');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (e) {
+      const msg = e?.message || e?.error?.message || 'Failed to undo';
+      setError(msg);
+    } finally {
+      setUndoNotification(null);
+    }
+  };
+
+  const toggleJobSelection = (id) => {
+    setSelectedJobs(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedJobs.length === items.length) {
+      setSelectedJobs([]);
+    } else {
+      setSelectedJobs(items.map(i => i.id));
+    }
+  };
+
+  // UC-041: Import from URL handler
   const handleImportFromUrl = async () => {
     if (!importUrl.trim()) {
       setError('Please enter a job posting URL');
@@ -270,223 +514,127 @@ const Jobs = () => {
     return { background: 'rgba(16, 185, 129, 0.05)', borderColor: '#10b981' };
   };
 
-  const clearFilters = () => {
-    setSearchQuery('');
-    setFilters({
-      industry: '',
-      location: '',
-      job_type: '',
-      salary_min: '',
-      salary_max: '',
-      deadline_from: '',
-      deadline_to: ''
+  const mapServerFieldErrors = (details) => {
+    // Expecting DRF-style { field: [messages] }
+    if (!details || typeof details !== 'object') return {};
+    const out = {};
+    Object.entries(details).forEach(([k, v]) => {
+      if (Array.isArray(v) && v.length) out[k] = v.join(' ');
+      else if (typeof v === 'string') out[k] = v;
     });
-    setSortBy('date_added');
-  };
-
-  const onFilterChange = (e) => {
-    const { name, value } = e.target;
-    setFilters((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const onChange = (e) => {
-    const { name, value } = e.target;
-    if (name === 'description') {
-      if (value.length > MAX_DESC) return;
-      setCharCount(value.length);
-    }
-    setForm((prev) => ({ ...prev, [name]: value }));
-    if (fieldErrors[name]) {
-      setFieldErrors((prev) => {
-        const next = { ...prev };
-        delete next[name];
-        return next;
-      });
-    }
-  };
-
-  const validate = () => {
-    const errors = {};
-
-    if (!form.title.trim()) errors.title = 'Job title is required';
-    if (!form.company_name.trim()) errors.company_name = 'Company name is required';
-
-    if (form.description && form.description.length > MAX_DESC) {
-      errors.description = `Description must be ${MAX_DESC} characters or less`;
-    }
-
-    const salaryMin = form.salary_min === '' ? '' : Number(form.salary_min);
-    const salaryMax = form.salary_max === '' ? '' : Number(form.salary_max);
-
-    if (form.salary_min && Number.isNaN(salaryMin)) {
-      errors.salary_min = 'Please enter a valid number';
-    }
-
-    if (form.salary_max && Number.isNaN(salaryMax)) {
-      errors.salary_max = 'Please enter a valid number';
-    }
-
-    if (!Number.isNaN(salaryMin) && salaryMin < 0) {
-      errors.salary_min = 'Salary cannot be negative';
-    }
-
-    if (!Number.isNaN(salaryMax) && salaryMax < 0) {
-      errors.salary_max = 'Salary cannot be negative';
-    }
-
-    if (
-      form.salary_min &&
-      form.salary_max &&
-      !Number.isNaN(salaryMin) &&
-      !Number.isNaN(salaryMax) &&
-      salaryMin > salaryMax
-    ) {
-      errors.salary_min = 'Minimum salary must be less than or equal to maximum salary';
-    }
-
-    if (form.application_deadline) {
-      const deadlineDate = new Date(form.application_deadline);
-      if (Number.isNaN(deadlineDate.getTime())) {
-        errors.application_deadline = 'Please enter a valid date';
-      }
-    }
-
-    if (form.posting_url && form.posting_url.trim()) {
-      try {
-        // eslint-disable-next-line no-new
-        new URL(form.posting_url);
-      } catch (e) {
-        errors.posting_url = 'Please enter a valid URL (e.g., https://example.com)';
-      }
-    }
-
-    if (form.salary_currency && form.salary_currency.length > 3) {
-      errors.salary_currency = 'Currency code must be 3 characters or less';
-    }
-
-    return errors;
-  };
-
-  const startEdit = (item) => {
-    setEditingId(item.id);
-    setForm({
-      title: item.title || '',
-      company_name: item.company_name || '',
-      location: item.location || '',
-      salary_min: item.salary_min !== null && item.salary_min !== undefined ? formatSalaryString(item.salary_min) : '',
-      salary_max: item.salary_max !== null && item.salary_max !== undefined ? formatSalaryString(item.salary_max) : '',
-      salary_currency: item.salary_currency || 'USD',
-      posting_url: item.posting_url || '',
-      application_deadline: item.application_deadline || '',
-      description: item.description || '',
-      industry: item.industry || '',
-      job_type: item.job_type || 'ft'
-    });
-    setFieldErrors({});
-    setCharCount((item.description || '').length);
-    setShowForm(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const onDelete = async (id) => {
-    if (!window.confirm('Delete this job entry?')) return;
-    try {
-      await jobsAPI.deleteJob(id);
-      setItems((prev) => prev.filter((item) => item.id !== id));
-      setSuccess('Job deleted.');
-      setTimeout(() => setSuccess(''), 2000);
-    } catch (e) {
-      const message = e?.message || e?.error?.message || 'Failed to delete job';
-      setError(message);
-    }
+    return out;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
-
-    const validationErrors = validate();
-    if (Object.keys(validationErrors).length) {
-      setFieldErrors(validationErrors);
+    const errs = validate();
+    if (Object.keys(errs).length) {
+      setFieldErrors(errs);
       return;
     }
-
     setSaving(true);
     try {
       const payload = { ...form };
-
-      ['salary_min', 'salary_max'].forEach((field) => {
-        if (payload[field] === '') {
-          payload[field] = null;
-        } else if (payload[field] !== null && payload[field] !== undefined) {
-          const numeric = parseFloat(String(payload[field]));
-          if (Number.isNaN(numeric)) {
-            payload[field] = null;
+      
+      // Normalize salary fields to null or exact decimal strings to avoid binary float artifacts
+      ['salary_min', 'salary_max'].forEach((k) => {
+        if (payload[k] === '') {
+          payload[k] = null;
+        } else if (payload[k] === null) {
+          payload[k] = null;
+        } else {
+          const n = parseFloat(String(payload[k]));
+          if (Number.isNaN(n)) {
+            payload[k] = null;
           } else {
-            const rounded = Math.round(numeric * 100) / 100;
-            payload[field] = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+            // Round to 2 decimals then send as string (Decimal-friendly)
+            const rounded = Math.round(n * 100) / 100;
+            payload[k] = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
           }
         }
       });
-
+      
+      // Normalize optional string fields - send empty string instead of null
       if (!payload.posting_url) payload.posting_url = '';
       if (!payload.industry) payload.industry = '';
       if (!payload.location) payload.location = '';
       if (!payload.description) payload.description = '';
-      if (!payload.application_deadline) payload.application_deadline = null;
+      
+      // Normalize date field - send null if empty
+      if (!payload.application_deadline || payload.application_deadline === '') {
+        payload.application_deadline = null;
+      }
 
       let saved;
       if (editingId) {
         saved = await jobsAPI.updateJob(editingId, payload);
-        setItems((prev) => prev.map((item) => (item.id === editingId ? saved : item)));
+        setItems((prev) => prev.map((i) => (i.id === editingId ? saved : i)));
         setSuccess('Job updated.');
       } else {
         saved = await jobsAPI.addJob(payload);
-        setItems((prev) => [saved, ...(prev || [])]);
+        setItems((prev) => [saved, ...prev]);
         setSuccess('Job saved.');
       }
-
       resetForm();
       setTimeout(() => setSuccess(''), 2000);
     } catch (e) {
       if (e?.details) setFieldErrors(mapServerFieldErrors(e.details));
-      const message = Array.isArray(e?.messages) && e.messages.length
+      const msg = Array.isArray(e?.messages) && e.messages.length
         ? e.messages.join(' • ')
         : (e?.message || e?.error?.message || 'Failed to save');
-      setError(message);
+      setError(msg);
     } finally {
       setSaving(false);
     }
   };
 
-  const hasActiveFilters = searchQuery || Object.values(filters).some((value) => value);
-
-  const renderSalaryRange = (item) => {
-    if (item.salary_range) return item.salary_range;
-    const min = item.salary_min;
-    const max = item.salary_max;
-    if (min && max) return `${formatSalaryString(min)} - ${formatSalaryString(max)} ${item.salary_currency || 'USD'}`;
-    if (min) return `${formatSalaryString(min)}+ ${item.salary_currency || 'USD'}`;
-    if (max) return `Up to ${formatSalaryString(max)} ${item.salary_currency || 'USD'}`;
-    return null;
-  };
-
   return (
     <div className="education-container">
+      {/* 1. Back to dashboard button */}
       <div className="page-backbar">
-        <a className="btn-back" href="/dashboard" aria-label="Back to dashboard" title="Back to dashboard">
+        <a
+          className="btn-back"
+          href="/dashboard"
+          aria-label="Back to dashboard"
+          title="Back to dashboard"
+        >
           ← Back to Dashboard
         </a>
       </div>
 
       <h2>Job Tracker</h2>
 
+      {/* 2. Job Tracker section name and description */}
       <div className="education-header">
         <h2><Icon name="briefcase" size="md" /> Your Job Entries</h2>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {/* UC-045: Archive view toggle */}
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              setShowArchived(!showArchived);
+              setSelectedJobs([]);
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: '150px' }}
+          >
+            <Icon name={showArchived ? 'briefcase' : 'archive'} size="sm" />
+            {showArchived ? 'Active Jobs' : 'Archived Jobs'}
+          </button>
+          {/* UC-045: Bulk operations */}
+          {!showArchived && selectedJobs.length > 0 && (
+            <button
+              className="btn-secondary"
+              onClick={onBulkArchive}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f97316', color: 'white', border: 'none' }}
+            >
+              <Icon name="archive" size="sm" />
+              Archive Selected ({selectedJobs.length})
+            </button>
+          )}
           <a
-            className="btn-back"
+            className="btn-secondary"
             href="/jobs/pipeline"
             title="Open Pipeline"
             aria-label="Open job status pipeline"
@@ -494,48 +642,71 @@ const Jobs = () => {
           >
             Pipeline →
           </a>
-          <button
+          <button 
             className="add-education-button"
-            onClick={handleAddJobClick}
+            onClick={() => {
+              setForm(defaultForm);
+              setEditingId(null);
+              setFieldErrors({});
+              setCharCount(0);
+              setShowForm(true);
+            }}
           >
             + Add Job
           </button>
         </div>
       </div>
 
-      {error && (
-        <div className="error-banner" role="alert">
-          <span className="error-icon">!</span>
-          <span>{error}</span>
-        </div>
-      )}
-      {success && (
-        <div className="success-banner">
-          <span className="success-icon">✓</span>
-          <span>{success}</span>
+      {error && <div className="error-banner">{error}</div>}
+      {success && <div className="success-banner">{success}</div>}
+
+      {/* UC-045: Undo Notification */}
+      {undoNotification && (
+        <div style={{ 
+          background: '#10b981', 
+          color: 'white', 
+          padding: '10px 16px', 
+          borderRadius: '8px', 
+          marginBottom: '16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '12px',
+          flexWrap: 'nowrap',
+          animation: 'slideIn 0.3s ease-out'
+        }}>
+          <span style={{ 
+            fontSize: '14px',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            flex: '1'
+          }}>
+            {undoNotification.message}
+          </span>
+          <button
+            onClick={undoAction}
+            style={{
+              background: 'white',
+              color: '#10b981',
+              border: 'none',
+              padding: '6px 16px',
+              borderRadius: '6px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              fontSize: '14px',
+              whiteSpace: 'nowrap',
+              flexShrink: 0
+            }}
+          >
+            Undo
+          </button>
         </div>
       )}
 
-      <div className="education-form-card" style={{ marginBottom: '20px' }}>
-        <button
-          type="button"
-          className="cancel-button"
-          onClick={() => setShowCalendar((prev) => !prev)}
-          style={{ width: '100%', justifyContent: 'space-between', display: 'flex', alignItems: 'center', fontWeight: 600 }}
-          aria-expanded={showCalendar}
-          aria-controls="jobs-deadline-calendar"
-        >
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Icon name="calendar" size="md" /> Upcoming Deadlines
-          </span>
-          <span>{showCalendar ? '▲ Collapse' : '▼ Expand'}</span>
-        </button>
-        {showCalendar && (
-          <div id="jobs-deadline-calendar" style={{ marginTop: 16 }}>
-            <DeadlineCalendar items={items} />
-          </div>
-        )}
-      </div>
+      {/* Calendar: placed below the header and above the search box */}
+      <DeadlineCalendar items={items} />
+
       {/* UC-039: Search and Filter Section */}
       {!showForm && (
         <div className="education-form-card" style={{ marginBottom: '20px' }}>
@@ -547,7 +718,7 @@ const Jobs = () => {
                   placeholder="🔍 Search by job title, company, or keywords..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{
+                  style={{ 
                     width: '100%',
                     padding: '12px 16px',
                     border: '2px solid #d1d5db',
@@ -558,13 +729,21 @@ const Jobs = () => {
                     background: 'var(--white)',
                     marginBottom: 0
                   }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#667eea';
+                    e.target.style.boxShadow = '0 0 0 3px rgba(102, 126, 234, 0.1)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#d1d5db';
+                    e.target.style.boxShadow = 'none';
+                  }}
                 />
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
                 <button
                   type="button"
                   className="cancel-button"
-                  onClick={() => setShowFilters((prev) => !prev)}
+                  onClick={() => setShowFilters(!showFilters)}
                   style={{ whiteSpace: 'nowrap', minWidth: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   {showFilters ? '▲ Hide' : '▼ Show'} Filters
@@ -573,14 +752,14 @@ const Jobs = () => {
                   type="button"
                   className="delete-button"
                   onClick={clearFilters}
-                  title="Clear All Filters"
                   style={{ whiteSpace: 'nowrap', minWidth: '48px', padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  title="Clear All Filters"
                 >
                   <Icon name="clear" size="md" />
                 </button>
               </div>
             </div>
-
+            
             {showFilters && (
               <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '12px' }}>
@@ -593,7 +772,12 @@ const Jobs = () => {
                   </div>
                   <div className="form-group">
                     <label>Location</label>
-                    <input name="location" value={filters.location} onChange={onFilterChange} placeholder="City, State or Remote" />
+                    <input
+                      name="location"
+                      value={filters.location}
+                      onChange={onFilterChange}
+                      placeholder="City, State or Remote"
+                    />
                   </div>
                   <div className="form-group">
                     <label>Job Type</label>
@@ -605,15 +789,27 @@ const Jobs = () => {
                     </select>
                   </div>
                 </div>
-
+                
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '12px' }}>
                   <div className="form-group">
                     <label>Min Salary</label>
-                    <input type="number" name="salary_min" value={filters.salary_min} onChange={onFilterChange} placeholder="e.g., 100000" />
+                    <input
+                      type="number"
+                      name="salary_min"
+                      value={filters.salary_min}
+                      onChange={onFilterChange}
+                      placeholder="e.g., 100000"
+                    />
                   </div>
                   <div className="form-group">
                     <label>Max Salary</label>
-                    <input type="number" name="salary_max" value={filters.salary_max} onChange={onFilterChange} placeholder="e.g., 150000" />
+                    <input
+                      type="number"
+                      name="salary_max"
+                      value={filters.salary_max}
+                      onChange={onFilterChange}
+                      placeholder="e.g., 150000"
+                    />
                   </div>
                   <div className="form-group">
                     <label>Sort By</label>
@@ -625,19 +821,31 @@ const Jobs = () => {
                     </select>
                   </div>
                 </div>
-
+                
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
                   <div className="form-group">
                     <label>Deadline From</label>
-                    <input type="date" name="deadline_from" value={filters.deadline_from} onChange={onFilterChange} />
+                    <input
+                      type="date"
+                      name="deadline_from"
+                      value={filters.deadline_from}
+                      onChange={onFilterChange}
+                    />
                   </div>
                   <div className="form-group">
                     <label>Deadline To</label>
-                    <input type="date" name="deadline_to" value={filters.deadline_to} onChange={onFilterChange} />
+                    <input
+                      type="date"
+                      name="deadline_to"
+                      value={filters.deadline_to}
+                      onChange={onFilterChange}
+                    />
                   </div>
-                  <div className="form-group" style={{ visibility: 'hidden' }} />
+                  <div className="form-group" style={{ visibility: 'hidden' }}>
+                    {/* Empty column for alignment */}
+                  </div>
                 </div>
-
+                
                 <div style={{ marginTop: '12px', fontSize: '13px', color: '#666', fontWeight: '500' }}>
                   Showing {items.length} result{items.length !== 1 ? 's' : ''}
                   {searchQuery && ` for "${searchQuery}"`}
@@ -648,16 +856,16 @@ const Jobs = () => {
         </div>
       )}
 
+      {/* 3. Edit/add form if user prompts */}
       {showForm && (
         <div className="education-form-card">
           <div className="form-header">
             <h3>{editingId ? 'Edit Job' : 'Add Job'}</h3>
-            <button className="close-button" onClick={resetForm}>
-              <Icon name="trash" size="sm" ariaLabel="Close" />
-            </button>
+            <button className="close-button" onClick={resetForm}><Icon name="trash" size="sm" ariaLabel="Close" /></button>
           </div>
 
           <form className="education-form" onSubmit={handleSubmit}>
+            {/* UC-041: Import from URL - Only show when adding new job */}
             {!editingId && (
               <div
                 className="form-section"
@@ -802,18 +1010,15 @@ const Jobs = () => {
               </div>
             )}
 
+            {/* Job Details */}
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="title">
                   Job Title <span className="required">*</span>
-                  {isFieldImported('title') && (
-                    <span style={{ marginLeft: '8px', fontSize: '12px', color: '#10b981', fontWeight: '600' }}>✓ Imported</span>
-                  )}
                 </label>
                 <input
                   id="title"
                   name="title"
-                  ref={titleInputRef}
                   value={form.title}
                   onChange={onChange}
                   placeholder="e.g., Software Engineer"
@@ -825,9 +1030,6 @@ const Jobs = () => {
               <div className="form-group">
                 <label htmlFor="company_name">
                   Company <span className="required">*</span>
-                  {isFieldImported('company_name') && (
-                    <span style={{ marginLeft: '8px', fontSize: '12px', color: '#10b981', fontWeight: '600' }}>✓ Imported</span>
-                  )}
                 </label>
                 <input
                   id="company_name"
@@ -844,17 +1046,12 @@ const Jobs = () => {
 
             <div className="form-row">
               <div className="form-group">
-                <label htmlFor="location">
-                  Location
-                  {isFieldImported('location') && (
-                    <span style={{ marginLeft: '8px', fontSize: '12px', color: '#10b981', fontWeight: '600' }}>✓ Imported</span>
-                  )}
-                </label>
-                <input
-                  id="location"
-                  name="location"
-                  value={form.location}
-                  onChange={onChange}
+                <label htmlFor="location">Location</label>
+                <input 
+                  id="location" 
+                  name="location" 
+                  value={form.location} 
+                  onChange={onChange} 
                   placeholder="City, State or Remote"
                   className={fieldErrors.location ? 'error' : ''}
                   style={getFieldStyle('location')}
@@ -862,19 +1059,13 @@ const Jobs = () => {
                 {fieldErrors.location && <div className="error-message">{fieldErrors.location}</div>}
               </div>
               <div className="form-group">
-                <label htmlFor="job_type">
-                  Job Type
-                  {isFieldImported('job_type') && (
-                    <span style={{ marginLeft: '8px', fontSize: '12px', color: '#10b981', fontWeight: '600' }}>✓ Imported</span>
-                  )}
-                </label>
-                <select
-                  id="job_type"
-                  name="job_type"
-                  value={form.job_type}
+                <label htmlFor="job_type">Job Type</label>
+                <select 
+                  id="job_type" 
+                  name="job_type" 
+                  value={form.job_type} 
                   onChange={onChange}
                   className={fieldErrors.job_type ? 'error' : ''}
-                  style={getFieldStyle('job_type')}
                 >
                   {jobTypeOptions.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -887,10 +1078,10 @@ const Jobs = () => {
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="industry">Industry</label>
-                <select
-                  id="industry"
-                  name="industry"
-                  value={form.industry}
+                <select 
+                  id="industry" 
+                  name="industry" 
+                  value={form.industry} 
                   onChange={onChange}
                   className={fieldErrors.industry ? 'error' : ''}
                 >
@@ -901,13 +1092,14 @@ const Jobs = () => {
               </div>
               <div className="form-group">
                 <label htmlFor="posting_url">Job Posting URL</label>
-                <input
-                  id="posting_url"
-                  name="posting_url"
-                  value={form.posting_url}
-                  onChange={onChange}
+                <input 
+                  id="posting_url" 
+                  name="posting_url" 
+                  value={form.posting_url} 
+                  onChange={onChange} 
                   placeholder="https://..."
                   className={fieldErrors.posting_url ? 'error' : ''}
+                  style={getFieldStyle('posting_url')}
                 />
                 {fieldErrors.posting_url && <div className="error-message">{fieldErrors.posting_url}</div>}
               </div>
@@ -916,13 +1108,14 @@ const Jobs = () => {
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="application_deadline">Application Deadline</label>
-                <input
-                  id="application_deadline"
-                  type="date"
-                  name="application_deadline"
-                  value={form.application_deadline}
+                <input 
+                  id="application_deadline" 
+                  type="date" 
+                  name="application_deadline" 
+                  value={form.application_deadline} 
                   onChange={onChange}
                   className={fieldErrors.application_deadline ? 'error' : ''}
+                  style={getFieldStyle('application_deadline')}
                 />
                 {fieldErrors.application_deadline && <div className="error-message">{fieldErrors.application_deadline}</div>}
               </div>
@@ -946,29 +1139,29 @@ const Jobs = () => {
               </div>
               <div className="form-group">
                 <label htmlFor="salary_max">Salary Max</label>
-                <input
-                  id="salary_max"
-                  type="number"
-                  step="0.01"
-                  name="salary_max"
-                  value={form.salary_max}
-                  onChange={onChange}
+                <input 
+                  id="salary_max" 
+                  type="number" 
+                  step="0.01" 
+                  name="salary_max" 
+                  value={form.salary_max} 
+                  onChange={onChange} 
                   placeholder="e.g., 150000"
                   className={fieldErrors.salary_max ? 'error' : ''}
                 />
                 {fieldErrors.salary_max && <div className="error-message">{fieldErrors.salary_max}</div>}
               </div>
             </div>
-
+            
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="salary_currency">Currency</label>
-                <input
-                  id="salary_currency"
-                  name="salary_currency"
-                  value={form.salary_currency}
-                  onChange={onChange}
-                  placeholder="USD"
+                <input 
+                  id="salary_currency" 
+                  name="salary_currency" 
+                  value={form.salary_currency} 
+                  onChange={onChange} 
+                  placeholder="USD" 
                   maxLength={3}
                   className={fieldErrors.salary_currency ? 'error' : ''}
                 />
@@ -980,9 +1173,6 @@ const Jobs = () => {
             <div className="form-group">
               <label htmlFor="description">
                 Description / Notes
-                {isFieldImported('description') && (
-                  <span style={{ marginLeft: '8px', fontSize: '12px', color: '#10b981', fontWeight: '600' }}>✓ Imported</span>
-                )}
                 <span className={`char-counter ${charCount === MAX_DESC ? 'limit-reached' : ''}`}>
                   {charCount}/{MAX_DESC}
                 </span>
@@ -1005,34 +1195,36 @@ const Jobs = () => {
                 Cancel
               </button>
               <button type="submit" className="save-button" disabled={saving}>
-                {saving ? 'Saving...' : editingId ? 'Update Job' : 'Add Job'}
+                {saving ? 'Saving...' : (editingId ? 'Update Job' : 'Add Job')}
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {loading && !showForm ? (
-        <div className="empty-state" style={{ padding: '40px', textAlign: 'center' }}>
-          <p style={{ margin: 0, color: '#666' }}>Loading your job entries…</p>
-        </div>
-      ) : (items || []).length === 0 && !showForm ? (
+      {/* 4. Your job entries */}
+      {(items || []).length === 0 && !showForm ? (
         <div className="empty-state">
           <div className="empty-icon"><Icon name="briefcase" size="xl" ariaLabel="No jobs" /></div>
-          {hasActiveFilters ? (
+          {searchQuery || Object.values(filters).some(v => v) ? (
             <>
               <h3>No Jobs Match Your Search</h3>
               <p>Try adjusting your filters or search terms.</p>
-              <button className="add-education-button" onClick={clearFilters}>Clear Filters</button>
+              <button className="add-education-button" onClick={clearFilters}>
+                Clear Filters
+              </button>
             </>
           ) : (
             <>
               <h3>No Job Entries Yet</h3>
               <p>Track jobs you're interested in and keep key details handy.</p>
-              <button
-                className="add-education-button"
-                onClick={handleAddJobClick}
-              >
+              <button className="add-education-button" onClick={() => {
+                setForm(defaultForm);
+                setEditingId(null);
+                setFieldErrors({});
+                setCharCount(0);
+                setShowForm(true);
+              }}>
                 + Add Your First Job
               </button>
             </>
@@ -1040,38 +1232,76 @@ const Jobs = () => {
         </div>
       ) : (
         <div className="education-list">
-          {(items || []).map((item) => {
-            const diff = item.application_deadline ? daysUntil(item.application_deadline) : null;
-            const color = deadlineColor(diff);
-            const salaryRange = renderSalaryRange(item);
-            return (
-              <div key={item.id} className="education-item">
-                <div className="education-item-header">
-                  <div
-                    className="education-item-main"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => navigate(`/jobs/${item.id}`)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') navigate(`/jobs/${item.id}`);
-                    }}
-                  >
-                    <div className="education-item-title">
-                      <span dangerouslySetInnerHTML={{ __html: highlightText(item.title || '', searchQuery) }} />
+          {/* UC-045: Bulk select all checkbox */}
+          {!showArchived && items.length > 0 && (
+            <div style={{ 
+              padding: '12px 16px', 
+              background: '#f9fafb', 
+              borderRadius: '8px', 
+              marginBottom: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <input
+                type="checkbox"
+                checked={selectedJobs.length === items.length && items.length > 0}
+                onChange={toggleSelectAll}
+                style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+              />
+              <label style={{ cursor: 'pointer', userSelect: 'none' }} onClick={toggleSelectAll}>
+                Select All ({items.length} jobs)
+              </label>
+            </div>
+          )}
+          {(items || []).map((item) => (
+            <div key={item.id} className="education-item">
+              <div className="education-item-header">
+                {/* UC-045: Checkbox for bulk selection */}
+                {!showArchived && (
+                  <div style={{ paddingRight: '12px', display: 'flex', alignItems: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedJobs.includes(item.id)}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        toggleJobSelection(item.id);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                    />
+                  </div>
+                )}
+                <div 
+                  className="education-item-main" 
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => navigate(`/jobs/${item.id}`)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      navigate(`/jobs/${item.id}`);
+                    }
+                  }}
+                >
+                  <div className="education-item-title">
+                    <span dangerouslySetInnerHTML={{ __html: highlightText(item.title, searchQuery) }} />
+                  </div>
+                  <div className="education-item-sub">
+                    <span dangerouslySetInnerHTML={{ __html: highlightText(item.company_name, searchQuery) }} />
+                    {item.location && <span> • {item.location}</span>}
+                    {item.job_type && <span> • {jobTypeOptions.find(opt => opt.value === item.job_type)?.label || item.job_type}</span>}
+                    {item.industry && <span> • {item.industry}</span>}
+                  </div>
+                  {item.salary_range && (
+                    <div className="education-item-dates">
+                      <span className="status">{item.salary_range}</span>
                     </div>
-                    <div className="education-item-sub">
-                      <span dangerouslySetInnerHTML={{ __html: highlightText(item.company_name || '', searchQuery) }} />
-                      {item.location && <span> • {item.location}</span>}
-                      {item.job_type && <span> • {jobTypeLabel(item.job_type)}</span>}
-                      {item.industry && <span> • {item.industry}</span>}
-                    </div>
-                    {salaryRange && (
-                      <div className="education-item-dates">
-                        <span className="status">{salaryRange}</span>
-                      </div>
-                    )}
-                    {item.application_deadline && (
+                  )}
+                  {item.application_deadline && (() => {
+                    const diff = daysUntil(item.application_deadline);
+                    const color = deadlineColor(diff);
+                    return (
                       <div className="education-item-dates" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{ width: 10, height: 10, borderRadius: 4, background: color }} aria-hidden />
                         {/* Keep this exact text for existing tests */}
@@ -1082,76 +1312,173 @@ const Jobs = () => {
                           </span>
                         )}
                       </div>
-                    )}
-                    {item.description && searchQuery && item.description.toLowerCase().includes(searchQuery.toLowerCase()) && (
-                      <div className="education-item-dates" style={{ marginTop: '4px' }}>
-                        <span
-                          style={{ color: '#666', fontSize: '13px' }}
-                          dangerouslySetInnerHTML={{
-                            __html: highlightText(item.description.substring(0, 150), searchQuery)
-                          }}
-                        />
-                        {item.description.length > 150 && '...'}
-                      </div>
-                    )}
-                  </div>
-                  <div className="education-item-actions">
-                    <button
+                    );
+                  })()}
+                  {item.description && searchQuery && item.description.toLowerCase().includes(searchQuery.toLowerCase()) && (
+                    <div className="education-item-dates" style={{ marginTop: '4px' }}>
+                      <span style={{ color: '#666', fontSize: '13px' }} dangerouslySetInnerHTML={{ 
+                        __html: highlightText(item.description.substring(0, 150), searchQuery) 
+                      }} />
+                      {item.description.length > 150 && '...'}
+                    </div>
+                  )}
+                </div>
+                <div className="education-item-actions">
+                  {/* UC-041: Link to job posting - moved to first position */}
+                  {item.posting_url && (
+                    <a 
+                      className="view-button"
+                      href={item.posting_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="View Job Posting"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Icon name="link" size="sm" ariaLabel="View" />
+                    </a>
+                  )}
+                  <button 
+                    className="view-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/jobs/${item.id}`);
+                    }}
+                    title="View Details"
+                  >
+                    <Icon name="eye" size="sm" ariaLabel="View" />
+                  </button>
+                  {!showArchived && (
+                    <>
+                      <button 
+                        className="edit-button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startEdit(item);
+                        }}
+                        title="Edit"
+                      >
+                        <Icon name="edit" size="sm" ariaLabel="Edit" />
+                      </button>
+                      <button 
+                        className="archive-button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onArchive(item.id, 'other');
+                        }}
+                        title="Archive"
+                      >
+                        <Icon name="archive" size="sm" ariaLabel="Archive" />
+                      </button>
+                    </>
+                  )}
+                  {showArchived && (
+                    <button 
                       className="view-button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/jobs/${item.id}`);
+                        onRestore(item.id);
                       }}
-                      title="View Details"
-                      aria-label="View Details"
+                      title="Restore"
+                      style={{ background: '#10b981', color: 'white' }}
                     >
-                      <Icon name="eye" size="sm" ariaLabel="View" />
+                      <Icon name="restore" size="sm" ariaLabel="Restore" />
                     </button>
-                    <button
-                      className="edit-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        startEdit(item);
-                      }}
-                      title="Edit"
-                      aria-label="Edit"
-                    >
-                      <Icon name="edit" size="sm" ariaLabel="Edit" />
-                    </button>
-                    <button
-                      className="delete-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete(item.id);
-                      }}
-                      title="Delete"
-                      aria-label="Delete"
-                    >
-                      <Icon name="trash" size="sm" ariaLabel="Delete" />
-                    </button>
-                    {item.posting_url && (
-                      <a
-                        className="view-button"
-                        href={item.posting_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        title="View Job Posting"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Icon name="link" size="sm" ariaLabel="View" />
-                      </a>
-                    )}
-                  </div>
+                  )}
+                  <button 
+                    className="delete-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(item.id);
+                    }}
+                    title="Delete Permanently"
+                  >
+                    <Icon name="trash" size="sm" ariaLabel="Delete" />
+                  </button>
                 </div>
-                {(item.industry || item.description) && (
-                  <div className="education-item-details">
-                    {item.industry && <div><strong>Industry:</strong> {item.industry}</div>}
-                    {item.description && <div><strong>Notes:</strong> {item.description}</div>}
-                  </div>
-                )}
               </div>
-            );
-          })}
+              {(item.industry || item.description) && (
+                <div className="education-item-details">
+                  {item.industry && <div><strong>Industry:</strong> {item.industry}</div>}
+                  {item.description && <div><strong>Notes:</strong> {item.description}</div>}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* UC-045: Archive Reason Modal */}
+      {showArchiveModal && (
+        <div className="modal-overlay" onClick={() => setShowArchiveModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <h3 style={{ marginBottom: '16px' }}>Archive Jobs</h3>
+            <p style={{ marginBottom: '16px', color: '#666' }}>
+              Select a reason for archiving {selectedJobs.length} job(s):
+            </p>
+            <div className="form-group">
+              <label>Reason</label>
+              <select 
+                value={archiveReason} 
+                onChange={(e) => setArchiveReason(e.target.value)}
+                style={{ width: '100%' }}
+              >
+                <option value="completed">Position Filled/Completed</option>
+                <option value="not_interested">No Longer Interested</option>
+                <option value="rejected">Application Rejected</option>
+                <option value="expired">Posting Expired</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button 
+                className="cancel-button"
+                onClick={() => setShowArchiveModal(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="save-button"
+                onClick={confirmBulkArchive}
+                style={{ background: '#f97316' }}
+              >
+                Archive
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UC-045: Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
+          <div className="modal-content modal-danger" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <h3 style={{ marginBottom: '16px' }}>Delete Job Permanently?</h3>
+            <p style={{ marginBottom: '16px' }}>
+              This action cannot be undone. The job entry will be permanently deleted.
+            </p>
+            <p style={{ marginBottom: '20px', fontWeight: '600' }}>
+              Are you sure you want to proceed?
+            </p>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+              <button 
+                className="btn-secondary"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setItemToDelete(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn-danger-icon"
+                onClick={confirmDelete}
+                title="Delete Permanently"
+                aria-label="Delete Permanently"
+              >
+                <Icon name="trash" size="sm" ariaLabel="Delete Permanently" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

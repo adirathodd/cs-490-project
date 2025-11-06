@@ -612,6 +612,27 @@ export const jobsAPI = {
     return response.data;
   },
 
+  // UC-045: Job archiving methods
+  archiveJob: async (id, reason = 'other') => {
+    const response = await api.post(`/jobs/${id}/archive`, { reason });
+    return response.data;
+  },
+
+  restoreJob: async (id) => {
+    const response = await api.post(`/jobs/${id}/restore`);
+    return response.data;
+  },
+
+  bulkArchiveJobs: async (ids, reason = 'other') => {
+    const response = await api.post('/jobs/bulk-archive', { ids, reason });
+    return response.data;
+  },
+
+  permanentlyDeleteJob: async (id) => {
+    const response = await api.delete(`/jobs/${id}/delete`);
+    return response.data;
+  },
+
   importFromUrl: async (url) => {
     try {
       const response = await api.post('/jobs/import-from-url', { url });

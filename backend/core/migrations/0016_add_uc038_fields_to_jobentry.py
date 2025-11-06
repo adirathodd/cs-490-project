@@ -10,21 +10,22 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RenameIndex(
-            model_name='jobentry',
-            new_name='core_jobent_candida_ca8b22_idx',
-            old_name='core_jobent_candida_b1e1c4_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='jobentry',
-            new_name='core_jobent_job_typ_4f5186_idx',
-            old_name='core_jobent_job_typ_7fffb9_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='jobentry',
-            new_name='core_jobent_industr_b37f74_idx',
-            old_name='core_jobent_industr_5a9f0b_idx',
-        ),
+        # Index renames already applied in database - skip to avoid errors
+        # migrations.RenameIndex(
+        #     model_name='jobentry',
+        #     new_name='core_jobent_candida_ca8b22_idx',
+        #     old_name='core_jobent_candida_b1e1c4_idx',
+        # ),
+        # migrations.RenameIndex(
+        #     model_name='jobentry',
+        #     new_name='core_jobent_job_typ_4f5186_idx',
+        #     old_name='core_jobent_job_typ_7fffb9_idx',
+        # ),
+        # migrations.RenameIndex(
+        #     model_name='jobentry',
+        #     new_name='core_jobent_industr_b37f74_idx',
+        #     old_name='core_jobent_industr_5a9f0b_idx',
+        # ),
         migrations.AddField(
             model_name='jobentry',
             name='application_history',
