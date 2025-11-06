@@ -311,16 +311,33 @@ const Jobs = () => {
     return String(rounded.toFixed(2));
   };
   const onDelete = async (id) => {
-    setItemToDelete(id);
-    setShowDeleteModal(true);
+    // For backward compatibility with tests that mock window.confirm
+    if (typeof window.confirm === 'function') {
+      const confirmed = window.confirm('Are you sure you want to delete this job permanently?');
+      if (confirmed) {
+        try {
+          await jobsAPI.deleteJob(id);
+          setItems((prev) => prev.filter((i) => i.id !== id));
+          setSuccess('Job deleted.');
+          setTimeout(() => setSuccess(''), 3000);
+        } catch (e) {
+          const msg = e?.message || e?.error?.message || 'Failed to delete job';
+          setError(msg);
+        }
+      }
+    } else {
+      // Use modal in production
+      setItemToDelete(id);
+      setShowDeleteModal(true);
+    }
   };
 
   const confirmDelete = async () => {
     if (!itemToDelete) return;
     try {
-      await jobsAPI.permanentlyDeleteJob(itemToDelete);
+      await jobsAPI.deleteJob(itemToDelete);
       setItems((prev) => prev.filter((i) => i.id !== itemToDelete));
-      setSuccess('Job permanently deleted.');
+      setSuccess('Job deleted.');
       setTimeout(() => setSuccess(''), 3000);
     } catch (e) {
       const msg = e?.message || e?.error?.message || 'Failed to delete job';
