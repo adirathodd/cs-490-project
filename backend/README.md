@@ -152,6 +152,55 @@ docker compose exec backend python manage.py collectstatic
 docker compose exec backend python manage.py test
 ```
 
+### Scheduled Deadline Reminder Emails
+
+This project includes a lightweight daily scheduler service (`reminders`) that sends email notifications for job application deadlines (3-days-before and day-of) using the management command `send_deadline_reminders`.
+
+Service definition lives in `docker-compose.yaml` under `reminders` and uses the same backend image. It runs the script:
+
+```
+backend/scripts/run_deadline_reminder_loop.sh
+```
+
+Behavior:
+- Executes the reminder command immediately on container start.
+- Sleeps for 24 hours (86400 seconds) before running again.
+- Interval can be customized via the `INTERVAL_SECONDS` environment variable.
+
+#### Enable / Start
+If you've already updated your compose file:
+```bash
+docker compose up -d reminders
+```
+
+#### Adjust Frequency (e.g., every 6 hours)
+Edit the `reminders` service environment section in `docker-compose.yaml`:
+```yaml
+      environment:
+         INTERVAL_SECONDS: 21600  # 6 hours
+```
+Then restart:
+```bash
+docker compose up -d --build reminders
+```
+
+#### Manual Run / Test
+```bash
+docker compose exec backend python manage.py send_deadline_reminders
+```
+
+#### Logs
+```bash
+docker compose logs -f reminders
+```
+
+#### Disable
+```bash
+docker compose stop reminders
+```
+
+For more advanced scheduling (retry logic, precise cron expressions, distributed tasks), consider introducing Celery Beat or a dedicated cron container later.
+
 ### Inspect Important Tables
 Quickly list counts and sample rows from key tables:
 
