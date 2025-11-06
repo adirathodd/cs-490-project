@@ -203,6 +203,42 @@ docker compose stop reminders
 
 For more advanced scheduling (retry logic, precise cron expressions, distributed tasks), consider introducing Celery Beat or a dedicated cron container later.
 
+### Company Data Management
+
+Populate and manage company information for the job tracking system:
+
+```bash
+# Populate database with curated top tech companies (Google, Microsoft, Amazon, etc.)
+docker compose exec backend python manage.py populate_companies
+
+# Fetch real company data from free APIs (Clearbit + GitHub)
+docker compose exec backend python manage.py fetch_company_data --limit 50
+
+# View all companies in database
+docker compose exec backend python manage.py shell -c "from core.models import Company, CompanyResearch; print(f'Total Companies: {Company.objects.count()}'); [print(f'  - {c.name} ({c.domain})') for c in Company.objects.all()]"
+
+# View detailed company information
+docker compose exec backend python manage.py shell -c "
+from core.models import Company
+companies = Company.objects.all()
+for c in companies[:5]:  # Show first 5
+    print(f'\n{c.name}:')
+    print(f'  Industry: {c.industry}')
+    print(f'  Location: {c.hq_location}')
+    if hasattr(c, 'research'):
+        r = c.research
+        print(f'  Employees: {r.employee_count:,}' if r.employee_count else '  Employees: N/A')
+        print(f'  Rating: {r.glassdoor_rating}/5.0' if r.glassdoor_rating else '  Rating: N/A')
+        print(f'  Description: {r.description[:100]}...')
+"
+
+# Check specific company by name
+docker compose exec backend python manage.py shell -c "from core.models import Company; c = Company.objects.filter(name__icontains='Google').first(); print(f'{c.name}: {c.domain}') if c else print('Not found')"
+
+# Count companies by industry
+docker compose exec backend python manage.py shell -c "from core.models import Company; from django.db.models import Count; for item in Company.objects.values('industry').annotate(count=Count('id')).order_by('-count'): print(f'{item[\"industry\"]}: {item[\"count\"]}')"
+```
+
 ### Inspect Important Tables
 Quickly list counts and sample rows from key tables:
 

@@ -628,6 +628,11 @@ export const jobsAPI = {
     return response.data;
   },
 
+  bulkRestoreJobs: async (ids) => {
+    const response = await api.post('/jobs/bulk-restore', { ids });
+    return response.data;
+  },
+
   permanentlyDeleteJob: async (id) => {
     const response = await api.delete(`/jobs/${id}/delete`);
     return response.data;
