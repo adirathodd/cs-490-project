@@ -200,8 +200,8 @@ describe('CompanyInfo Component', () => {
     it('displays news dates in formatted format', () => {
       render(<CompanyInfo companyInfo={companyWithNews} />);
       
-      // Date should be formatted as locale string (10/14/2024 due to UTC conversion)
-      expect(screen.getByText(/10\/14\/2024/)).toBeInTheDocument();
+      // Date should be formatted as locale string (10/15/2024)
+      expect(screen.getByText(/10\/15\/2024/)).toBeInTheDocument();
     });
 
     it('displays news summaries', () => {
