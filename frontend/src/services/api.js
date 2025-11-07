@@ -648,6 +648,105 @@ export const jobsAPI = {
   },
 };
 
+// UC-042: Application Materials API calls
+export const materialsAPI = {
+  // List documents with optional type filter
+  listDocuments: async (type = '') => {
+    try {
+      const path = type ? `/documents/?type=${type}` : '/documents/';
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch documents' };
+    }
+  },
+
+  // Upload a new document
+  uploadDocument: async (data) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', data.file);
+      formData.append('document_type', data.document_type);
+      formData.append('document_name', data.document_name);
+      formData.append('version_number', data.version_number || '1');
+      
+      const response = await api.post('/documents/', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to upload document' };
+    }
+  },
+
+  // Delete a document
+  deleteDocument: async (docId) => {
+    try {
+      const response = await api.delete(`/documents/${docId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete document' };
+    }
+  },
+
+  // Download a document (returns the file URL)
+  getDownloadUrl: (docId) => {
+    return `${API_BASE_URL}/documents/${docId}/download/`;
+  },
+
+  // Get materials for a specific job
+  getJobMaterials: async (jobId) => {
+    try {
+      const response = await api.get(`/jobs/${jobId}/materials/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch job materials' };
+    }
+  },
+
+  // Update materials for a specific job
+  updateJobMaterials: async (jobId, data) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/materials/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to update job materials' };
+    }
+  },
+
+  // Get default materials
+  getDefaults: async () => {
+    try {
+      const response = await api.get('/materials/defaults/');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch defaults' };
+    }
+  },
+
+  // Set default materials
+  setDefaults: async (data) => {
+    try {
+      const response = await api.post('/materials/defaults/', data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to set defaults' };
+    }
+  },
+
+  // Get materials usage analytics
+  getAnalytics: async () => {
+    try {
+      const response = await api.get('/materials/analytics/');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch analytics' };
+    }
+  },
+};
+
 authAPI.getEmploymentTimeline = async () => {
   try {
     const response = await api.get('/employment/timeline');
@@ -708,6 +807,7 @@ const _defaultExport = {
   certificationsAPI,
   projectsAPI,
   jobsAPI,
+  materialsAPI,
 };
 
 export default _defaultExport;
@@ -721,6 +821,7 @@ try {
     module.exports.default = _defaultExport;
     module.exports.authAPI = authAPI;
     module.exports.jobsAPI = jobsAPI;
+    module.exports.materialsAPI = materialsAPI;
   }
 } catch (e) {
   // ignore in strict ESM environments
@@ -752,11 +853,13 @@ try {
     _defaultExport.getBasicProfile = authAPI.getBasicProfile;
     _defaultExport.getProfilePicture = authAPI.getProfilePicture;
     _defaultExport.jobsAPI = jobsAPI;
+    _defaultExport.materialsAPI = materialsAPI;
   }
   if (typeof module !== 'undefined' && module && module.exports) {
     module.exports = _defaultExport;
     module.exports.authAPI = authAPI;
     module.exports.jobsAPI = jobsAPI;
+    module.exports.materialsAPI = materialsAPI;
   }
 } catch (e) {
   // ignore any errors during best-effort compatibility wiring

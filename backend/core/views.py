@@ -26,7 +26,7 @@ from core.serializers import (
     WorkExperienceSerializer,
     JobEntrySerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (
@@ -2768,6 +2768,307 @@ def import_job_from_url(request):
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# ======================
+# UC-042: Application Materials
+# ======================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def documents_list(request):
+    """
+    GET: List candidate documents, optionally filtered by doc_type (?type=resume|cover_letter).
+    POST: Upload a new document (multipart/form-data with 'file', 'document_type', 'document_name', 'version_number').
+    """
+    try:
+        profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
+        
+        if request.method == 'GET':
+            doc_type = (request.GET.get('type') or '').strip()
+            qs = Document.objects.filter(candidate=profile)
+            if doc_type:
+                qs = qs.filter(doc_type=doc_type)
+            qs = qs.order_by('-created_at', '-version')
+            data = [
+                {
+                    'id': d.id,
+                    'document_type': d.doc_type,
+                    'document_name': d.document_name or f'{d.get_doc_type_display()} v{d.version}',
+                    'version_number': str(d.version),
+                    'document_url': d.document_url,
+                    'download_url': f'/api/documents/{d.id}/download/',
+                    'uploaded_at': d.created_at,
+                }
+                for d in qs
+            ]
+            return Response(data, status=status.HTTP_200_OK)
+        
+        # POST - Upload new document
+        if 'file' not in request.FILES:
+            return Response({'error': {'code': 'missing_file', 'message': 'No file provided'}}, status=status.HTTP_400_BAD_REQUEST)
+        
+        file = request.FILES['file']
+        document_type = request.data.get('document_type', 'resume')
+        document_name = request.data.get('document_name', file.name)
+        # Validate document type
+        if document_type not in ['resume', 'cover_letter', 'portfolio', 'cert']:
+            return Response({'error': {'code': 'invalid_type', 'message': 'document_type must be resume, cover_letter, portfolio, or cert'}}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate file size (10MB)
+        if file.size > 10 * 1024 * 1024:
+            return Response({'error': {'code': 'file_too_large', 'message': 'File size must be less than 10MB'}}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate file type
+        allowed_types = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+        if file.content_type not in allowed_types:
+            return Response({'error': {'code': 'invalid_file_type', 'message': 'Only PDF and Word documents are allowed'}}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Auto-increment version number for this candidate+doc_type
+        from django.db.models import Max
+        max_version = Document.objects.filter(
+            candidate=profile,
+            doc_type=document_type
+        ).aggregate(Max('version'))['version__max']
+        next_version = (max_version or 0) + 1
+        
+        # Create document record
+        doc = Document.objects.create(
+            candidate=profile,
+            doc_type=document_type,
+            document_name=document_name,
+            version=next_version,
+            file_upload=file,
+            content_type=file.content_type,  # Set the content type from uploaded file
+            file_size=file.size,  # Set the file size
+            name=document_name,  # Set name field
+        )
+        
+        return Response({
+            'id': doc.id,
+            'document_type': doc.doc_type,
+            'document_name': doc.document_name,
+            'version_number': str(doc.version),
+            'document_url': doc.document_url,
+            'download_url': f'/api/documents/{doc.id}/download/',
+            'uploaded_at': doc.created_at,
+            'message': 'Document uploaded successfully'
+        }, status=status.HTTP_201_CREATED)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': {'code': 'profile_not_found', 'message': 'Candidate profile not found'}}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"documents_list error: {e}", exc_info=True)
+        return Response({'error': {'code': 'internal_error', 'message': f'Failed to process request: {str(e)}'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def document_delete(request, doc_id: int):
+    """Delete a specific document."""
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        doc = Document.objects.get(id=doc_id, candidate=profile)
+        doc.delete()
+        return Response({'message': 'Document deleted successfully'}, status=status.HTTP_200_OK)
+    except Document.DoesNotExist:
+        return Response({'error': {'code': 'not_found', 'message': 'Document not found'}}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"document_delete error: {e}")
+        return Response({'error': {'code': 'internal_error', 'message': 'Failed to delete document'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def document_download(request, doc_id: int):
+    """Download a specific document file."""
+    from django.http import FileResponse, HttpResponse
+    import os
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        doc = Document.objects.get(id=doc_id, candidate=profile)
+        
+        if not doc.file_upload:
+            return Response({'error': {'code': 'no_file', 'message': 'Document has no file attached'}}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Open the file and prepare for download
+        file_path = doc.file_upload.path
+        if not os.path.exists(file_path):
+            return Response({'error': {'code': 'file_not_found', 'message': 'File not found on server'}}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Determine content type
+        content_type = 'application/octet-stream'
+        if file_path.lower().endswith('.pdf'):
+            content_type = 'application/pdf'
+        elif file_path.lower().endswith('.docx'):
+            content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        elif file_path.lower().endswith('.doc'):
+            content_type = 'application/msword'
+        
+        # Get original filename
+        filename = doc.document_name or os.path.basename(file_path)
+        
+        # Open and return the file
+        response = FileResponse(open(file_path, 'rb'), content_type=content_type)
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except Document.DoesNotExist:
+        return Response({'error': {'code': 'not_found', 'message': 'Document not found'}}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"document_download error: {e}", exc_info=True)
+        return Response({'error': {'code': 'internal_error', 'message': 'Failed to download document'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def job_materials(request, job_id: int):
+    """Get or update linked materials for a job entry; record history on update."""
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+
+        if request.method == 'GET':
+            history = [
+                {
+                    'id': h.id,
+                    'changed_at': h.changed_at,
+                    'resume_doc_name': h.resume_doc.document_name if h.resume_doc else None,
+                    'resume_version': h.resume_doc.version if h.resume_doc else None,
+                    'cover_letter_doc_name': h.cover_letter_doc.document_name if h.cover_letter_doc else None,
+                    'cover_letter_version': h.cover_letter_doc.version if h.cover_letter_doc else None,
+                }
+                for h in job.materials_history.all().order_by('-changed_at')
+            ]
+
+            # Build response with full document details
+            resume_doc_data = None
+            if job.resume_doc:
+                resume_doc_data = {
+                    'id': job.resume_doc.id,
+                    'document_name': job.resume_doc.document_name,
+                    'version_number': str(job.resume_doc.version),
+                    'document_url': job.resume_doc.document_url,
+                }
+            
+            cover_letter_doc_data = None
+            if job.cover_letter_doc:
+                cover_letter_doc_data = {
+                    'id': job.cover_letter_doc.id,
+                    'document_name': job.cover_letter_doc.document_name,
+                    'version_number': str(job.cover_letter_doc.version),
+                    'document_url': job.cover_letter_doc.document_url,
+                }
+
+            payload = {
+                'resume_doc': resume_doc_data,
+                'cover_letter_doc': cover_letter_doc_data,
+                'history': history,
+            }
+            return Response(payload, status=status.HTTP_200_OK)
+
+        # POST update
+        resume_doc_id = request.data.get('resume_doc_id')
+        cover_doc_id = request.data.get('cover_letter_doc_id')
+        changed = False
+        if 'resume_doc_id' in request.data:
+            job.resume_doc = Document.objects.filter(id=resume_doc_id, candidate=profile).first() if resume_doc_id else None
+            changed = True
+        if 'cover_letter_doc_id' in request.data:
+            job.cover_letter_doc = Document.objects.filter(id=cover_doc_id, candidate=profile).first() if cover_doc_id else None
+            changed = True
+        if changed:
+            job.save(update_fields=['resume_doc', 'cover_letter_doc', 'updated_at'])
+            JobMaterialsHistory.objects.create(job=job, resume_doc=job.resume_doc, cover_letter_doc=job.cover_letter_doc)
+        return Response(JobEntrySerializer(job).data, status=status.HTTP_200_OK)
+    except JobEntry.DoesNotExist:
+        return Response({'error': {'code': 'job_not_found', 'message': 'Job not found'}}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"job_materials error: {e}")
+        return Response({'error': {'code': 'internal_error', 'message': 'Failed to update materials'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def materials_analytics(request):
+    """Return usage analytics for materials (how often each version is linked)."""
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        qs = JobEntry.objects.filter(candidate=profile)
+        # Count current link usage by document and doc_type
+        from django.db.models import Count
+        resume_counts = (
+            qs.values('resume_doc').exclude(resume_doc__isnull=True)
+            .annotate(c=Count('id')).order_by('-c')
+        )
+        cover_counts = (
+            qs.values('cover_letter_doc').exclude(cover_letter_doc__isnull=True)
+            .annotate(c=Count('id')).order_by('-c')
+        )
+
+        def _expand(rows, field):
+            out = []
+            for r in rows:
+                doc = Document.objects.filter(id=r[field], candidate=profile).first()
+                if not doc:
+                    continue
+                out.append({
+                    'document': {
+                        'id': doc.id,
+                        'version': doc.version,
+                        'doc_type': doc.doc_type,
+                        'storage_url': doc.storage_url,
+                    },
+                    'count': r['c']
+                })
+            return out
+
+        data = {
+            'resume_usage': _expand(resume_counts, 'resume_doc'),
+            'cover_letter_usage': _expand(cover_counts, 'cover_letter_doc'),
+        }
+        return Response(data, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"materials_analytics error: {e}")
+        return Response({'error': {'code': 'internal_error', 'message': 'Failed to compute analytics'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def materials_defaults(request):
+    """Get or set default resume/cover letter documents for the user profile."""
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        if request.method == 'GET':
+            payload = {
+                'default_resume_doc': {
+                    'id': profile.default_resume_doc.id,
+                    'version': profile.default_resume_doc.version,
+                    'storage_url': profile.default_resume_doc.storage_url,
+                } if profile.default_resume_doc else None,
+                'default_cover_letter_doc': {
+                    'id': profile.default_cover_letter_doc.id,
+                    'version': profile.default_cover_letter_doc.version,
+                    'storage_url': profile.default_cover_letter_doc.storage_url,
+                } if profile.default_cover_letter_doc else None,
+            }
+            return Response(payload, status=status.HTTP_200_OK)
+
+        # POST set defaults
+        resume_doc_id = request.data.get('resume_doc_id')
+        cover_doc_id = request.data.get('cover_letter_doc_id')
+        if 'resume_doc_id' in request.data:
+            profile.default_resume_doc = Document.objects.filter(id=resume_doc_id, candidate=profile).first() if resume_doc_id else None
+        if 'cover_letter_doc_id' in request.data:
+            profile.default_cover_letter_doc = Document.objects.filter(id=cover_doc_id, candidate=profile).first() if cover_doc_id else None
+        profile.save(update_fields=['default_resume_doc', 'default_cover_letter_doc'])
+        return Response({'message': 'Defaults updated'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"materials_defaults error: {e}")
+        return Response({'error': {'code': 'internal_error', 'message': 'Failed to update defaults'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ======================

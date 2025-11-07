@@ -26,7 +26,9 @@ import {
   FaChevronLeft,
   FaChevronRight,
   FaArchive,
-  FaHistory
+  FaHistory,
+  FaFile,
+  FaFileAlt
 } from 'react-icons/fa';
 
 // Simple, centralized Icon wrapper used across the app.
@@ -71,6 +73,8 @@ const iconMap = {
   chevronRight: FaChevronRight,
   archive: FaArchive,
   restore: FaHistory,
+  file: FaFile,
+  'file-text': FaFileAlt,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {
