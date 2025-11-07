@@ -91,6 +91,14 @@ urlpatterns = [
     path('jobs/bulk-status', views.jobs_bulk_status, name='jobs-bulk-status'),
     path('jobs/bulk-deadline', views.jobs_bulk_deadline, name='jobs-bulk-deadline'),
     path('jobs/upcoming-deadlines', views.jobs_upcoming_deadlines, name='jobs-upcoming-deadlines'),
+    # UC-042: Application Materials endpoints
+    path('documents/', views.documents_list, name='documents-list'),
+    path('documents/<int:doc_id>/', views.document_delete, name='document-delete'),
+    path('documents/<int:doc_id>/download/', views.document_download, name='document-download'),
+    path('jobs/<int:job_id>/materials/', views.job_materials, name='job-materials'),
+    path('materials/defaults/', views.materials_defaults, name='materials-defaults'),
+    path('materials/analytics/', views.materials_analytics, name='materials-analytics'),
+    
     # UC-045: Job archiving endpoints
     path('jobs/<int:job_id>/archive', views.job_archive, name='job-archive'),
     path('jobs/<int:job_id>/restore', views.job_restore, name='job-restore'),

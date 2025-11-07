@@ -6,7 +6,7 @@ import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia, WorkExperience, JobEntry
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory
 
 User = get_user_model()
 
@@ -1039,6 +1039,16 @@ class JobEntrySerializer(serializers.ModelSerializer):
     days_in_stage = serializers.SerializerMethodField(read_only=True)
     company_info = serializers.SerializerMethodField(read_only=True)
 
+    # UC-042: expose linked materials (ids and read-only details)
+    resume_doc_id = serializers.PrimaryKeyRelatedField(
+        source='resume_doc', queryset=Document.objects.all(), allow_null=True, required=False, write_only=True
+    )
+    cover_letter_doc_id = serializers.PrimaryKeyRelatedField(
+        source='cover_letter_doc', queryset=Document.objects.all(), allow_null=True, required=False, write_only=True
+    )
+    resume_doc = serializers.SerializerMethodField(read_only=True)
+    cover_letter_doc = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = JobEntry
         fields = [
@@ -1060,6 +1070,8 @@ class JobEntrySerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
             # UC-043 company information
             'company_info',
+            # UC-042 materials
+            'resume_doc_id', 'cover_letter_doc_id', 'resume_doc', 'cover_letter_doc',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'salary_range', 'last_status_change', 'days_in_stage', 'archived_at', 'company_info']
 
@@ -1111,6 +1123,25 @@ class JobEntrySerializer(serializers.ModelSerializer):
         except Exception:
             # Return None if there's any error fetching company info
             return None
+
+    def _doc_payload(self, doc):
+        if not doc:
+            return None
+        return {
+            'id': doc.id,
+            'doc_type': doc.doc_type,
+            'version': doc.version,
+            'storage_url': getattr(doc, 'storage_url', ''),
+            'document_url': getattr(doc, 'document_url', None) if hasattr(doc, 'document_url') else None,
+            'document_name': getattr(doc, 'document_name', ''),
+            'created_at': getattr(doc, 'created_at', None),
+        }
+
+    def get_resume_doc(self, obj):
+        return self._doc_payload(getattr(obj, 'resume_doc', None))
+
+    def get_cover_letter_doc(self, obj):
+        return self._doc_payload(getattr(obj, 'cover_letter_doc', None))
 
     def validate(self, attrs):
         data = super().validate(attrs)

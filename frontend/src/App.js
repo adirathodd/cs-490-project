@@ -11,6 +11,7 @@ import ProfileForm from './components/ProfileForm';
 import Skills from './components/Skills';
 import SkillsOrganized from './components/SkillsOrganized';
 import Education from './components/Education';
+import Documents from './components/Documents';
 import Certifications from './components/Certifications';
 import Projects from './components/Projects';
 import Employment from './components/Employment';
@@ -122,6 +123,16 @@ function App() {
                 <NavBar />
               <Breadcrumbs />
                 <Education />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/documents"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <Documents />
               </PrivateRoute>
             }
           />

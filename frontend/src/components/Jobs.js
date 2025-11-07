@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { jobsAPI } from '../services/api';
+import { jobsAPI, materialsAPI } from '../services/api';
 import Icon from './Icon';
 import DeadlineCalendar from './DeadlineCalendar';
 import './Education.css';
@@ -75,6 +75,16 @@ const Jobs = () => {
   const [importStatus, setImportStatus] = useState(null);
   const [importedFields, setImportedFields] = useState([]);
 
+  // UC-042: Application Materials State
+  const [documents, setDocuments] = useState([]);
+  const [defaults, setDefaults] = useState({ default_resume_doc: null, default_cover_letter_doc: null });
+  const [showDefaultsModal, setShowDefaultsModal] = useState(false);
+  const [showMaterialsModal, setShowMaterialsModal] = useState(false);
+  const [selectedJobForMaterials, setSelectedJobForMaterials] = useState(null);
+  const [jobMaterials, setJobMaterials] = useState({ resume_doc: null, cover_letter_doc: null, history: [] });
+  const [materialsForm, setMaterialsForm] = useState({ resume_doc_id: null, cover_letter_doc_id: null });
+  const [savingMaterials, setSavingMaterials] = useState(false);
+
   // UC-039: Load saved search preferences from localStorage on mount
   useEffect(() => {
     try {
@@ -100,6 +110,23 @@ const Jobs = () => {
       console.warn('Failed to save search preferences:', e);
     }
   }, [searchQuery, filters, sortBy, showFilters]);
+
+  // UC-042: Load documents and defaults
+  useEffect(() => {
+    const loadMaterialsData = async () => {
+      try {
+        const [docsResponse, defaultsResponse] = await Promise.all([
+          materialsAPI.listDocuments(),
+          materialsAPI.getDefaults().catch(() => ({ default_resume_doc: null, default_cover_letter_doc: null }))
+        ]);
+        setDocuments(docsResponse);
+        setDefaults(defaultsResponse);
+      } catch (e) {
+        console.warn('Failed to load materials data:', e);
+      }
+    };
+    loadMaterialsData();
+  }, []);
 
   useEffect(() => {
     const init = async () => {
@@ -568,6 +595,115 @@ const Jobs = () => {
     return out;
   };
 
+  // UC-042: Materials Handlers
+  const handleSetDefaults = async (e) => {
+    e.preventDefault();
+    setSavingMaterials(true);
+    try {
+      await materialsAPI.setDefaults({
+        resume_doc_id: materialsForm.resume_doc_id || null,
+        cover_letter_doc_id: materialsForm.cover_letter_doc_id || null
+      });
+      const updatedDefaults = await materialsAPI.getDefaults();
+      setDefaults(updatedDefaults);
+      
+      // Update form with the actual saved values
+      setMaterialsForm({
+        resume_doc_id: updatedDefaults.default_resume_doc?.id || null,
+        cover_letter_doc_id: updatedDefaults.default_cover_letter_doc?.id || null
+      });
+      
+      setShowDefaultsModal(false);
+      setSuccess('Default materials updated successfully');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (e) {
+      setError(e?.message || 'Failed to update defaults');
+    } finally {
+      setSavingMaterials(false);
+    }
+  };
+
+  const openMaterialsModal = async (job) => {
+    setSelectedJobForMaterials(job);
+    setShowMaterialsModal(true);
+    try {
+      const materials = await materialsAPI.getJobMaterials(job.id);
+      setJobMaterials(materials);
+      setMaterialsForm({
+        resume_doc_id: materials.resume_doc?.id || null,
+        cover_letter_doc_id: materials.cover_letter_doc?.id || null
+      });
+    } catch (e) {
+      console.warn('Failed to load job materials:', e);
+      setJobMaterials({ resume_doc: null, cover_letter_doc: null, history: [] });
+      setMaterialsForm({ resume_doc_id: null, cover_letter_doc_id: null });
+    }
+  };
+
+  const handleSaveJobMaterials = async (e) => {
+    e.preventDefault();
+    if (!selectedJobForMaterials) return;
+    
+    setSavingMaterials(true);
+    try {
+      await materialsAPI.updateJobMaterials(selectedJobForMaterials.id, {
+        resume_doc_id: materialsForm.resume_doc_id || null,
+        cover_letter_doc_id: materialsForm.cover_letter_doc_id || null
+      });
+      
+      // Reload materials to show updated history
+      const updatedMaterials = await materialsAPI.getJobMaterials(selectedJobForMaterials.id);
+      setJobMaterials(updatedMaterials);
+      
+      // Update form with the actual saved values
+      setMaterialsForm({
+        resume_doc_id: updatedMaterials.resume_doc?.id || null,
+        cover_letter_doc_id: updatedMaterials.cover_letter_doc?.id || null
+      });
+      
+      setSuccess('Job materials updated successfully');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (e) {
+      setError(e?.message || 'Failed to update materials');
+    } finally {
+      setSavingMaterials(false);
+    }
+  };
+
+  const applyDefaultMaterials = () => {
+    setMaterialsForm({
+      resume_doc_id: defaults.default_resume_doc?.id || null,
+      cover_letter_doc_id: defaults.default_cover_letter_doc?.id || null
+    });
+  };
+
+  const handleDownloadMaterial = (docId, docName) => {
+    const url = materialsAPI.getDownloadUrl(docId);
+    const token = localStorage.getItem('firebaseToken');
+    if (token) {
+      fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      .then(response => response.blob())
+      .then(blob => {
+        const blobUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = docName || 'document';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+      })
+      .catch(err => {
+        setError('Failed to download document');
+        console.error('Download error:', err);
+      });
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -653,6 +789,22 @@ const Jobs = () => {
       <div className="education-header">
         <h2><Icon name="briefcase" size="md" /> Your Job Entries</h2>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {/* UC-042: Set Default Materials button */}
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              setMaterialsForm({
+                resume_doc_id: defaults.default_resume_doc?.id || null,
+                cover_letter_doc_id: defaults.default_cover_letter_doc?.id || null
+              });
+              setShowDefaultsModal(true);
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            title="Set default resume and cover letter for new jobs"
+          >
+            <Icon name="file-text" size="sm" />
+            Set Defaults
+          </button>
           {/* UC-045: Archive view toggle */}
           <button
             className="btn-secondary"
@@ -1493,6 +1645,19 @@ const Jobs = () => {
                   >
                     <Icon name="eye" size="sm" ariaLabel="View" />
                   </button>
+                  {/* UC-042: Materials button */}
+                  {!showArchived && (
+                    <button 
+                      className="materials-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openMaterialsModal(item);
+                      }}
+                      title="Manage Materials"
+                    >
+                      <Icon name="file-text" size="sm" ariaLabel="Materials" />
+                    </button>
+                  )}
                   {!showArchived && (
                     <>
                       <button 
@@ -1630,6 +1795,245 @@ const Jobs = () => {
                 <Icon name="trash" size="sm" ariaLabel="Delete Permanently" />
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* UC-042: Set Default Materials Modal */}
+      {showDefaultsModal && (
+        <div className="modal-overlay" onClick={() => setShowDefaultsModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <h3 style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Icon name="file-text" size="md" />
+              Set Default Materials
+            </h3>
+            <p style={{ marginBottom: '20px', color: '#666', fontSize: '14px' }}>
+              Select default resume and cover letter to automatically apply to new jobs.
+            </p>
+            
+            <form onSubmit={handleSetDefaults}>
+              <div className="form-group">
+                <label htmlFor="default-resume">Default Resume</label>
+                <select
+                  id="default-resume"
+                  value={materialsForm.resume_doc_id === null ? '' : materialsForm.resume_doc_id}
+                  onChange={(e) => setMaterialsForm(prev => ({ 
+                    ...prev, 
+                    resume_doc_id: e.target.value === '' ? null : parseInt(e.target.value) 
+                  }))}
+                  style={{ width: '100%' }}
+                >
+                  <option value="">None</option>
+                  {documents.filter(d => d.document_type === 'resume').map(doc => (
+                    <option key={doc.id} value={doc.id}>
+                      {doc.document_name} (v{doc.version_number})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="default-cover">Default Cover Letter</label>
+                <select
+                  id="default-cover"
+                  value={materialsForm.cover_letter_doc_id === null ? '' : materialsForm.cover_letter_doc_id}
+                  onChange={(e) => setMaterialsForm(prev => ({ 
+                    ...prev, 
+                    cover_letter_doc_id: e.target.value === '' ? null : parseInt(e.target.value) 
+                  }))}
+                  style={{ width: '100%' }}
+                >
+                  <option value="">None</option>
+                  {documents.filter(d => d.document_type === 'cover_letter').map(doc => (
+                    <option key={doc.id} value={doc.id}>
+                      {doc.document_name} (v{doc.version_number})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                <button 
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowDefaultsModal(false)}
+                  disabled={savingMaterials}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="btn-primary"
+                  disabled={savingMaterials}
+                >
+                  {savingMaterials ? 'Saving...' : 'Save Defaults'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* UC-042: Job Materials Modal */}
+      {showMaterialsModal && selectedJobForMaterials && (
+        <div className="modal-overlay" onClick={() => setShowMaterialsModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px', maxHeight: '80vh', overflow: 'auto' }}>
+            <h3 style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Icon name="file-text" size="md" />
+              Manage Materials
+            </h3>
+            <p style={{ marginBottom: '20px', color: '#666', fontSize: '14px' }}>
+              {selectedJobForMaterials.title} at {selectedJobForMaterials.company_name}
+            </p>
+            
+            <form onSubmit={handleSaveJobMaterials}>
+              <div className="form-group">
+                <label htmlFor="job-resume">Resume</label>
+                <select
+                  id="job-resume"
+                  value={materialsForm.resume_doc_id === null ? '' : materialsForm.resume_doc_id}
+                  onChange={(e) => setMaterialsForm(prev => ({ 
+                    ...prev, 
+                    resume_doc_id: e.target.value === '' ? null : parseInt(e.target.value) 
+                  }))}
+                  style={{ width: '100%' }}
+                >
+                  <option value="">None</option>
+                  {documents.filter(d => d.document_type === 'resume').map(doc => (
+                    <option key={doc.id} value={doc.id}>
+                      {doc.document_name} (v{doc.version_number})
+                    </option>
+                  ))}
+                </select>
+                {jobMaterials.resume_doc && (
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadMaterial(jobMaterials.resume_doc.id, jobMaterials.resume_doc.document_name)}
+                    style={{ 
+                      fontSize: '13px', 
+                      color: '#667eea', 
+                      marginTop: '4px', 
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      cursor: 'pointer',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    <Icon name="download" size="sm" /> Download current resume
+                  </button>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="job-cover">Cover Letter</label>
+                <select
+                  id="job-cover"
+                  value={materialsForm.cover_letter_doc_id === null ? '' : materialsForm.cover_letter_doc_id}
+                  onChange={(e) => setMaterialsForm(prev => ({ 
+                    ...prev, 
+                    cover_letter_doc_id: e.target.value === '' ? null : parseInt(e.target.value) 
+                  }))}
+                  style={{ width: '100%' }}
+                >
+                  <option value="">None</option>
+                  {documents.filter(d => d.document_type === 'cover_letter').map(doc => (
+                    <option key={doc.id} value={doc.id}>
+                      {doc.document_name} (v{doc.version_number})
+                    </option>
+                  ))}
+                </select>
+                {jobMaterials.cover_letter_doc && (
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadMaterial(jobMaterials.cover_letter_doc.id, jobMaterials.cover_letter_doc.document_name)}
+                    style={{ 
+                      fontSize: '13px', 
+                      color: '#667eea', 
+                      marginTop: '4px', 
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      cursor: 'pointer',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    <Icon name="download" size="sm" /> Download current cover letter
+                  </button>
+                )}
+              </div>
+
+              {(defaults.default_resume_doc || defaults.default_cover_letter_doc) && (
+                <div style={{ marginBottom: '16px' }}>
+                  <button 
+                    type="button"
+                    className="btn-secondary"
+                    onClick={applyDefaultMaterials}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  >
+                    <Icon name="upload" size="sm" />
+                    Apply Default Materials
+                  </button>
+                </div>
+              )}
+
+              {jobMaterials.history && jobMaterials.history.length > 0 && (
+                <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>
+                  <h4 style={{ marginBottom: '12px', fontSize: '14px', fontWeight: '600', color: '#4b5563' }}>
+                    <Icon name="restore" size="sm" /> History
+                  </h4>
+                  <div style={{ maxHeight: '200px', overflow: 'auto' }}>
+                    {jobMaterials.history.map((h) => (
+                      <div 
+                        key={h.id} 
+                        style={{ 
+                          padding: '8px 12px', 
+                          background: '#f9fafb', 
+                          borderRadius: '6px', 
+                          marginBottom: '8px',
+                          fontSize: '13px',
+                          color: '#6b7280'
+                        }}
+                      >
+                        <div style={{ fontWeight: '500', color: '#374151', marginBottom: '4px' }}>
+                          {new Date(h.changed_at).toLocaleString()}
+                        </div>
+                        <div>
+                          Resume: {h.resume_doc_name ? `${h.resume_doc_name} (v${h.resume_version})` : 'None'}
+                        </div>
+                        <div>
+                          Cover: {h.cover_letter_doc_name ? `${h.cover_letter_doc_name} (v${h.cover_letter_version})` : 'None'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                <button 
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowMaterialsModal(false)}
+                  disabled={savingMaterials}
+                >
+                  Close
+                </button>
+                <button 
+                  type="submit"
+                  className="btn-primary"
+                  disabled={savingMaterials}
+                >
+                  {savingMaterials ? 'Saving...' : 'Save Materials'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -67,6 +67,14 @@ class CandidateProfile(models.Model):
     preferred_roles = models.JSONField(default=list, blank=True)
     portfolio_url = models.URLField(blank=True)
     visibility = models.CharField(max_length=20, default="private")  # private|shared|public
+    # UC-042: Default materials selection
+    # Default resume/cover letter documents to prefill on new applications/jobs
+    default_resume_doc = models.ForeignKey(
+        'Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='default_resume_for'
+    )
+    default_cover_letter_doc = models.ForeignKey(
+        'Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='default_cover_letter_for'
+    )
 
     class Meta:
         indexes = [models.Index(fields=["user"])]
@@ -161,16 +169,47 @@ class Document(models.Model):
     DOC_TYPES = [("resume","Resume"), ("cover_letter","Cover Letter"), ("portfolio","Portfolio"), ("cert","Certification")]
     candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="documents")
     doc_type = models.CharField(max_length=20, choices=DOC_TYPES)
+    document_name = models.CharField(max_length=255, blank=True, default='')  # UC-042: Descriptive name
     version = models.PositiveIntegerField(default=1)
-    storage_url = models.URLField()
+    storage_url = models.URLField(blank=True, default='')
+    file_upload = models.FileField(upload_to='documents/%Y/%m/', blank=True, null=True)  # UC-042: Actual file storage
     file_hash = models.CharField(max_length=128, blank=True)
     generated_by_ai = models.BooleanField(default=False)
     source_job = models.ForeignKey(JobOpportunity, on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Additional fields that exist in the database
+    content_type = models.CharField(max_length=100, blank=True, default='')
+    file_size = models.PositiveIntegerField(default=0)
+    name = models.CharField(max_length=255, blank=True, default='')
+    file = models.FileField(upload_to='documents/%Y/%m/', blank=True, null=True)  # Legacy field
+    default_for_type = models.BooleanField(default=False)
+    notes = models.TextField(blank=True, default='')
 
     class Meta:
         unique_together = [("candidate", "doc_type", "version")]
         indexes = [models.Index(fields=["candidate", "doc_type", "-created_at"])]
+    
+    @property
+    def document_url(self):
+        """Return the URL for accessing the document."""
+        if self.file_upload:
+            return self.file_upload.url
+        return self.storage_url
+    
+    @property
+    def document_type(self):
+        """Alias for doc_type to match frontend API."""
+        return self.doc_type
+    
+    @property
+    def version_number(self):
+        """Alias for version to match frontend API."""
+        return self.version
+    
+    @property
+    def uploaded_at(self):
+        """Alias for created_at to match frontend API."""
+        return self.created_at
 
 class Application(models.Model):
     STATUS = [
@@ -892,6 +931,10 @@ class JobEntry(models.Model):
     # Format: [{"action": "Applied", "timestamp": "2024-11-04T10:30:00Z", "notes": "..."}, ...]
     application_history = models.JSONField(default=list, blank=True)
     
+    # UC-042: Linked application materials
+    resume_doc = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='used_as_resume_in')
+    cover_letter_doc = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='used_as_cover_letter_in')
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -936,6 +979,9 @@ class JobEntry(models.Model):
             models.Index(fields=["industry"]),
             models.Index(fields=["candidate", "status"]),
             models.Index(fields=["candidate", "is_archived"]),
+            # UC-042: quick lookups for analytics
+            models.Index(fields=["resume_doc"]),
+            models.Index(fields=["cover_letter_doc"]),
         ]
 
     def __str__(self):
@@ -957,3 +1003,23 @@ class JobStatusChange(models.Model):
 
     def __str__(self):
         return f"{self.job_id}: {self.old_status} -> {self.new_status} @ {self.changed_at}"
+
+
+class JobMaterialsHistory(models.Model):
+    """History of application materials linked to a JobEntry (UC-042).
+
+    Each record captures the pair of materials selected at a point in time.
+    """
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='materials_history')
+    resume_doc = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='materials_history_resume')
+    cover_letter_doc = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='materials_history_cover')
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-changed_at']
+        indexes = [
+            models.Index(fields=["job", "-changed_at"]),
+        ]
+
+    def __str__(self):
+        return f"Materials@{self.changed_at} for job {self.job_id}"

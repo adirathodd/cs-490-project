@@ -241,6 +241,13 @@ const Dashboard = () => {
             <p>Track opportunities you want to apply for</p>
             <button className="card-button" onClick={() => navigate('/jobs')}>Add Job Entry</button>
           </div>
+
+          <div className="dashboard-card">
+            <div className="card-icon" aria-label="Documents"><Icon name="file-text" size="lg" ariaLabel="Documents" /></div>
+            <h3>Documents</h3>
+            <p>Manage resumes, cover letters, and application materials</p>
+            <button className="card-button" onClick={() => navigate('/documents')}>Manage Documents</button>
+          </div>
         </div>
       </div>
     </div>
