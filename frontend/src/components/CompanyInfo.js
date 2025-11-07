@@ -175,9 +175,14 @@ const CompanyInfo = ({ companyInfo }) => {
                       news.title
                     )}
                   </h5>
-                  {news.date && (
-                    <span className="news-date">{new Date(news.date).toLocaleDateString()}</span>
-                  )}
+                  {news.date && (() => {
+                    const ds = news.date;
+                    const isDateOnly = typeof ds === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ds);
+                    const date = isDateOnly ? new Date(`${ds}T00:00:00`) : new Date(ds);
+                    return (
+                      <span className="news-date">{date.toLocaleDateString()}</span>
+                    );
+                  })()}
                 </div>
                 {news.summary && (
                   <p className="news-summary">{news.summary}</p>
