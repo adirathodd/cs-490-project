@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build:
@@ -48,10 +46,10 @@ services:
       context: ./frontend         # Points to your React app folder
       dockerfile: Dockerfile      # Uses frontend/Dockerfile
       args:
-        - REACT_APP_FIREBASE_API_KEY=${REACT_APP_FIREBASE_API_KEY}
-        - REACT_APP_FIREBASE_AUTH_DOMAIN=${REACT_APP_FIREBASE_AUTH_DOMAIN}
-        - REACT_APP_FIREBASE_PROJECT_ID=${REACT_APP_FIREBASE_PROJECT_ID}
-        - REACT_APP_API_URL=${REACT_APP_API_URL}
+        - REACT_APP_FIREBASE_API_KEY=${REACT_APP_FIREBASE_API_KEY:-}
+        - REACT_APP_FIREBASE_AUTH_DOMAIN=${REACT_APP_FIREBASE_AUTH_DOMAIN:-}
+        - REACT_APP_FIREBASE_PROJECT_ID=${REACT_APP_FIREBASE_PROJECT_ID:-}
+        - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:8000}
     container_name: ats_frontend
     env_file:
       - ./frontend/.env

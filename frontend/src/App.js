@@ -1,36 +1,39 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
-import PrivateRoute from './components/PrivateRoute';
-import Register from './components/Register';
-import Login from './components/Login';
-import Dashboard from './components/Dashboard';
-import Profile from './components/Profile';
-import DashboardOverview from './components/DashboardOverview';
-import ProfileForm from './components/ProfileForm';
-import Skills from './components/Skills';
-import SkillsOrganized from './components/SkillsOrganized';
-import Education from './components/Education';
-import Documents from './components/Documents';
-import Certifications from './components/Certifications';
-import Projects from './components/Projects';
-import Employment from './components/Employment';
-import ProjectsPortfolio from './components/ProjectsPortfolio';
-import ProjectDetail from './components/ProjectDetail';
-import Jobs from './components/Jobs';
-import JobsPipeline from './components/JobsPipeline';
-import JobStats from './components/JobStats';
-import JobDetailView from './components/JobDetailView';
-import JobsCalendar from './components/JobsCalendar';
-import ForgotPassword from './components/ForgotPassword';
-import ResetPassword from './components/ResetPassword';
-import NavBar from './components/NavBar';
-import Breadcrumbs from './components/Breadcrumbs';
+import PrivateRoute from './components/common/PrivateRoute';
+import Register from './components/auth/Register';
+import Login from './components/auth/Login';
+import Dashboard from './components/dashboard/Dashboard';
+import Profile from './components/profile/Profile';
+import DashboardOverview from './components/dashboard/DashboardOverview';
+import ProfileForm from './components/profile/ProfileForm';
+import Skills from './components/profile/Skills';
+import SkillsOrganized from './components/profile/SkillsOrganized';
+import Education from './components/profile/Education';
+import Documents from './components/profile/Documents';
+import Certifications from './components/profile/Certifications';
+import Projects from './components/profile/Projects';
+import Employment from './components/profile/Employment';
+import ProjectsPortfolio from './components/profile/ProjectsPortfolio';
+import ProjectDetail from './components/profile/ProjectDetail';
+import Jobs from './components/jobs/Jobs';
+import JobsPipeline from './components/jobs/JobsPipeline';
+import JobStats from './components/jobs/JobStats';
+import JobDetailView from './components/jobs/JobDetailView';
+import JobsCalendar from './components/jobs/JobsCalendar';
+import { CompanyInsights } from './features/company';
+import ScrollToTop from './components/common/ScrollToTop';
+import ForgotPassword from './components/auth/ForgotPassword';
+import ResetPassword from './components/auth/ResetPassword';
+import NavBar from './components/common/NavBar';
+import Breadcrumbs from './components/common/Breadcrumbs';
 import './App.css';
 
 function App() {
   return (
     <Router>
+      <ScrollToTop />
       <AuthProvider>
         <Routes>
           {/* public */}
@@ -227,6 +230,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <JobDetailView />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/jobs/:id/company"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <CompanyInsights />
               </PrivateRoute>
             }
           />

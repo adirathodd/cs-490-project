@@ -478,9 +478,6 @@ export const projectsAPI = {
         return response.data;
       }
       const payload = { ...data };
-      if (Array.isArray(payload.technologies)) {
-        payload.technologies = payload.technologies; // send as JSON by axios
-      }
       const response = await api.post('/projects', payload);
       return response.data;
     } catch (error) {
@@ -568,6 +565,15 @@ export const jobsAPI = {
     }
   },
 
+  getJobCompanyInsights: async (id) => {
+    try {
+      const response = await api.get(`/jobs/${id}/company`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch company insights' };
+    }
+  },
+
   addJob: async (data) => {
     const response = await api.post('/jobs', data);
     return response.data;
@@ -583,14 +589,7 @@ export const jobsAPI = {
     return response.data;
   },
 
-  importFromUrl: async (url) => {
-    try {
-      const response = await api.post('/jobs/import-from-url', { url });
-      return response.data;
-    } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to import job from URL' };
-    }
-  },
+  // importFromUrl defined below (keep a single implementation)
 
   // UC-037 additions
   getJobStats: async (params = {}) => {

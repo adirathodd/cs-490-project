@@ -365,40 +365,12 @@ code {
   font-size: var(--font-size-lg);
 }
 
-/* Back Button */
-.btn-back {
-  padding: var(--space-2) var(--space-4);
-  background: transparent;
-  color: var(--primary-color);
-  border: 2px solid var(--primary-color);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-  transition: all var(--transition-base);
-  white-space: nowrap;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.btn-back:hover {
-  background: var(--primary-color);
-  color: var(--on-primary);
-  transform: translateX(-4px);
-}
-
 /* Page Header */
 .page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: var(--space-6);
-}
-
-.page-backbar {
-  margin-bottom: var(--space-4);
 }
 
 /* Loading spinner removed per request (static placeholders may be used instead).
