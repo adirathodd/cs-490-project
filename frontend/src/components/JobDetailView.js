@@ -15,6 +15,7 @@ const JobDetailView = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [companyInfo, setCompanyInfo] = useState(null);
   const [formData, setFormData] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
   
@@ -35,12 +36,38 @@ const JobDetailView = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  const buildFallbackCompanyInfo = (jobData) => {
+    if (!jobData || !jobData.company_name) return null;
+    const inferredDomain = jobData.company_name
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '') || '';
+    return {
+      name: jobData.company_name,
+      industry: jobData.industry || '',
+      size: '',
+      hq_location: jobData.location || '',
+      domain: inferredDomain ? `${inferredDomain}.com` : '',
+      website: jobData.posting_url || '',
+      linkedin_url: '',
+      description: '',
+      mission_statement: '',
+      glassdoor_rating: null,
+      employee_count: null,
+      recent_news: [],
+    };
+  };
+
   const loadJob = async () => {
     setLoading(true);
     setError('');
     try {
       const data = await jobsAPI.getJob(id);
       setJob(data);
+      if (data.company_info && data.company_info.name) {
+        setCompanyInfo(data.company_info);
+      } else {
+        setCompanyInfo(buildFallbackCompanyInfo(data));
+      }
       setFormData({
         title: data.title || '',
         company_name: data.company_name || '',
@@ -191,6 +218,37 @@ const JobDetailView = () => {
       return isoStr;
     }
   };
+
+  useEffect(() => {
+    if (!job?.id || !job?.company_name) {
+      setCompanyInfo(null);
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchCompanyInfo = async () => {
+      try {
+        const info = await jobsAPI.getJobCompanyInsights(job.id);
+        if (isMounted && info && info.name) {
+          setCompanyInfo(info);
+        } else if (isMounted) {
+          setCompanyInfo((prev) => prev || buildFallbackCompanyInfo(job));
+        }
+      } catch (err) {
+        console.warn('Unable to load company profile', err);
+        if (isMounted) {
+          setCompanyInfo((prev) => prev || buildFallbackCompanyInfo(job));
+        }
+      }
+    };
+
+    fetchCompanyInfo();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [job?.id, job?.company_name]);
 
   if (loading) {
     return (
@@ -810,7 +868,7 @@ const JobDetailView = () => {
       </div>
 
       {/* UC-043: Company Information Display */}
-      {job.company_info && <CompanyInfo companyInfo={job.company_info} />}
+      {companyInfo && <CompanyInfo companyInfo={companyInfo} jobId={job.id} />}
 
       {/* Metadata */}
       <div className="education-form-card">

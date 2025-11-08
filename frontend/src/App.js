@@ -22,6 +22,8 @@ import JobsPipeline from './components/JobsPipeline';
 import JobStats from './components/JobStats';
 import JobDetailView from './components/JobDetailView';
 import JobsCalendar from './components/JobsCalendar';
+import CompanyInsights from './components/CompanyInsights';
+import ScrollToTop from './components/ScrollToTop';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
 import NavBar from './components/NavBar';
@@ -31,6 +33,7 @@ import './App.css';
 function App() {
   return (
     <Router>
+      <ScrollToTop />
       <AuthProvider>
         <Routes>
           {/* public */}
@@ -227,6 +230,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <JobDetailView />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/jobs/:id/company"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <CompanyInsights />
               </PrivateRoute>
             }
           />

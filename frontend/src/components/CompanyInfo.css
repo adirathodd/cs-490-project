@@ -136,6 +136,25 @@
   color: #4b5563;
 }
 
+.news-preview-note {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.company-card-footer {
+  padding: 0 32px 32px 32px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.view-company-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .company-info-grid {
@@ -154,5 +173,14 @@
 
   .news-date {
     align-self: flex-start;
+  }
+
+  .company-card-footer {
+    padding: 0 20px 20px 20px;
+  }
+
+  .view-company-button {
+    width: 100%;
+    justify-content: center;
   }
 }

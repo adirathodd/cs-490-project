@@ -1,6 +1,27 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import './CompanyInfo.css';
 import Icon from './Icon';
+
+const MAX_NEWS_PREVIEW = 3;
+
+const parseNewsDate = (value) => {
+  if (!value) return 0;
+  const date = new Date(value);
+  if (!Number.isNaN(date.getTime())) return date.getTime();
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const fallback = new Date(`${value}T00:00:00Z`);
+    return Number.isNaN(fallback.getTime()) ? 0 : fallback.getTime();
+  }
+  return 0;
+};
+
+const getLatestNews = (items = []) => {
+  if (!Array.isArray(items)) return [];
+  return [...items]
+    .sort((a, b) => parseNewsDate(b?.date) - parseNewsDate(a?.date))
+    .slice(0, MAX_NEWS_PREVIEW);
+};
 
 /**
  * UC-043: Company Information Display Component
@@ -13,7 +34,7 @@ import Icon from './Icon';
  * - Recent news and updates
  * - Company logo and contact information
  */
-const CompanyInfo = ({ companyInfo }) => {
+const CompanyInfo = ({ companyInfo, jobId }) => {
   if (!companyInfo || !companyInfo.name) {
     return null; // Don't show anything if no company info
   }
@@ -32,6 +53,9 @@ const CompanyInfo = ({ companyInfo }) => {
     employee_count,
     recent_news = []
   } = companyInfo;
+  const newsPreview = getLatestNews(recent_news);
+  const hiddenNewsCount = Math.max(0, (recent_news?.length || 0) - newsPreview.length);
+  const hasNews = newsPreview.length > 0;
 
   return (
     <div className="education-form-card">
@@ -152,13 +176,18 @@ const CompanyInfo = ({ companyInfo }) => {
       )}
 
       {/* Recent News */}
-      {recent_news && recent_news.length > 0 && (
+      {hasNews && (
         <div className="company-info-section">
           <h4 className="section-title">
             <Icon name="newspaper" size="sm" /> Recent News
           </h4>
+          {hiddenNewsCount > 0 && (
+            <p className="news-preview-note">
+              Showing the latest {newsPreview.length} of {recent_news.length} updates. Use View company insights for the full feed.
+            </p>
+          )}
           <div className="news-list">
-            {recent_news.map((news, index) => (
+            {newsPreview.map((news, index) => (
               <div key={index} className="news-item">
                 <div className="news-header">
                   <h5 className="news-title">
@@ -190,6 +219,18 @@ const CompanyInfo = ({ companyInfo }) => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {jobId && (
+        <div className="company-card-footer">
+          <Link
+            to={`/jobs/${jobId}/company`}
+            className="btn-secondary view-company-button"
+          >
+            <span>View company insights</span>
+            <Icon name="chevronRight" size="sm" />
+          </Link>
         </div>
       )}
     </div>

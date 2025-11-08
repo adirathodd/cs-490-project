@@ -5,19 +5,45 @@
 
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom';
 import CompanyInfo from './CompanyInfo';
+
+const renderCompanyInfo = (props) =>
+  render(
+    <MemoryRouter>
+      <CompanyInfo {...props} />
+    </MemoryRouter>
+  );
 
 describe('CompanyInfo Component', () => {
   describe('Empty State', () => {
     it('renders nothing when no company info provided', () => {
-      const { container } = render(<CompanyInfo companyInfo={null} />);
+      const { container } = renderCompanyInfo({ companyInfo: null });
       expect(container.firstChild).toBeNull();
     });
 
     it('renders nothing when company info has no name', () => {
-      const { container } = render(<CompanyInfo companyInfo={{ name: '' }} />);
+      const { container } = renderCompanyInfo({ companyInfo: { name: '' } });
       expect(container.firstChild).toBeNull();
+    });
+  });
+
+  describe('View more navigation', () => {
+    const companyInfo = {
+      name: 'Acme Inc',
+      industry: 'Technology',
+    };
+
+    it('renders view more link when jobId is provided', () => {
+      renderCompanyInfo({ companyInfo, jobId: 42 });
+      const link = screen.getByRole('link', { name: /View company insights/i });
+      expect(link).toHaveAttribute('href', '/jobs/42/company');
+    });
+
+    it('omits view more link when jobId is missing', () => {
+      renderCompanyInfo({ companyInfo });
+      expect(screen.queryByRole('link', { name: /View company insights/i })).toBeNull();
     });
   });
 
@@ -32,30 +58,30 @@ describe('CompanyInfo Component', () => {
     };
 
     it('renders company name in header', () => {
-      render(<CompanyInfo companyInfo={basicCompanyInfo} />);
+      renderCompanyInfo({ companyInfo: basicCompanyInfo });
       expect(screen.getByText('Acme Inc')).toBeInTheDocument();
     });
 
     it('displays industry information', () => {
-      render(<CompanyInfo companyInfo={basicCompanyInfo} />);
+      renderCompanyInfo({ companyInfo: basicCompanyInfo });
       expect(screen.getByText('Industry')).toBeInTheDocument();
       expect(screen.getByText('Technology')).toBeInTheDocument();
     });
 
     it('displays company size', () => {
-      render(<CompanyInfo companyInfo={basicCompanyInfo} />);
+      renderCompanyInfo({ companyInfo: basicCompanyInfo });
       expect(screen.getByText('Company Size')).toBeInTheDocument();
       expect(screen.getByText('1001-5000 employees')).toBeInTheDocument();
     });
 
     it('displays headquarters location', () => {
-      render(<CompanyInfo companyInfo={basicCompanyInfo} />);
+      renderCompanyInfo({ companyInfo: basicCompanyInfo });
       expect(screen.getByText('Headquarters')).toBeInTheDocument();
       expect(screen.getByText('San Francisco, CA')).toBeInTheDocument();
     });
 
     it('displays website with link', () => {
-      render(<CompanyInfo companyInfo={basicCompanyInfo} />);
+      renderCompanyInfo({ companyInfo: basicCompanyInfo });
       expect(screen.getByText('Website')).toBeInTheDocument();
       
       const link = screen.getByRole('link', { name: /acme\.com/i });
@@ -72,7 +98,7 @@ describe('CompanyInfo Component', () => {
         glassdoor_rating: 4.5
       };
 
-      render(<CompanyInfo companyInfo={companyWithRating} />);
+      renderCompanyInfo({ companyInfo: companyWithRating });
       expect(screen.getByText('4.5')).toBeInTheDocument();
       expect(screen.getByText('Glassdoor')).toBeInTheDocument();
     });
@@ -82,7 +108,7 @@ describe('CompanyInfo Component', () => {
         name: 'Tech Corp'
       };
 
-      render(<CompanyInfo companyInfo={companyWithoutRating} />);
+      renderCompanyInfo({ companyInfo: companyWithoutRating });
       expect(screen.queryByText('Glassdoor')).not.toBeInTheDocument();
     });
   });
@@ -94,7 +120,7 @@ describe('CompanyInfo Component', () => {
         employee_count: 2500
       };
 
-      render(<CompanyInfo companyInfo={companyWithEmployees} />);
+      renderCompanyInfo({ companyInfo: companyWithEmployees });
       expect(screen.getByText('Employees')).toBeInTheDocument();
       expect(screen.getByText('2,500')).toBeInTheDocument(); // Formatted with comma
     });
@@ -104,7 +130,7 @@ describe('CompanyInfo Component', () => {
         name: 'Small Corp'
       };
 
-      render(<CompanyInfo companyInfo={companyWithoutEmployees} />);
+      renderCompanyInfo({ companyInfo: companyWithoutEmployees });
       expect(screen.queryByText('Employees')).not.toBeInTheDocument();
     });
   });
@@ -116,7 +142,7 @@ describe('CompanyInfo Component', () => {
         description: 'Leading software company building innovative solutions for modern enterprises'
       };
 
-      render(<CompanyInfo companyInfo={companyWithDescription} />);
+      renderCompanyInfo({ companyInfo: companyWithDescription });
       expect(screen.getByText(/About Innovative Corp/i)).toBeInTheDocument();
       expect(screen.getByText(/Leading software company/i)).toBeInTheDocument();
     });
@@ -126,7 +152,7 @@ describe('CompanyInfo Component', () => {
         name: 'Basic Corp'
       };
 
-      render(<CompanyInfo companyInfo={companyWithoutDescription} />);
+      renderCompanyInfo({ companyInfo: companyWithoutDescription });
       expect(screen.queryByText(/About/i)).not.toBeInTheDocument();
     });
   });
@@ -138,7 +164,7 @@ describe('CompanyInfo Component', () => {
         mission_statement: 'To revolutionize how people work and collaborate'
       };
 
-      render(<CompanyInfo companyInfo={companyWithMission} />);
+      renderCompanyInfo({ companyInfo: companyWithMission });
       expect(screen.getByText('Mission Statement')).toBeInTheDocument();
       expect(screen.getByText(/To revolutionize how people work/i)).toBeInTheDocument();
     });
@@ -148,7 +174,7 @@ describe('CompanyInfo Component', () => {
         name: 'No Mission Corp'
       };
 
-      render(<CompanyInfo companyInfo={companyWithoutMission} />);
+      renderCompanyInfo({ companyInfo: companyWithoutMission });
       expect(screen.queryByText('Mission Statement')).not.toBeInTheDocument();
     });
   });
@@ -164,26 +190,41 @@ describe('CompanyInfo Component', () => {
           summary: 'Major funding round completed'
         },
         {
+          title: 'Partnership expansion announced',
+          date: '2024-10-10',
+          summary: 'Strategic alliance improves go-to-market motion.'
+        },
+        {
           title: 'New Product Launch',
-          date: '2024-09-01',
+          date: '2024-09-20',
           summary: 'Revolutionary new product released'
+        },
+        {
+          title: 'Older Market Update',
+          date: '2024-08-01',
+          summary: 'Quarterly market update'
         }
       ]
     };
 
     it('displays recent news section when news is available', () => {
-      render(<CompanyInfo companyInfo={companyWithNews} />);
+      renderCompanyInfo({ companyInfo: companyWithNews });
       expect(screen.getByText('Recent News')).toBeInTheDocument();
     });
 
-    it('displays all news items', () => {
-      render(<CompanyInfo companyInfo={companyWithNews} />);
-      expect(screen.getByText('Company raises $50M Series B')).toBeInTheDocument();
-      expect(screen.getByText('New Product Launch')).toBeInTheDocument();
+    it('renders only the latest three news items, ordered by recency', () => {
+      renderCompanyInfo({ companyInfo: companyWithNews });
+      const newsTitles = screen.getAllByRole('heading', { level: 5 }).map((node) => node.textContent);
+      expect(newsTitles).toEqual([
+        'Company raises $50M Series B',
+        'Partnership expansion announced',
+        'New Product Launch'
+      ]);
+      expect(screen.queryByText('Older Market Update')).toBeNull();
     });
 
     it('renders news titles as links when URL is provided', () => {
-      render(<CompanyInfo companyInfo={companyWithNews} />);
+      renderCompanyInfo({ companyInfo: companyWithNews });
       
       const link = screen.getByRole('link', { name: /Company raises \$50M Series B/i });
       expect(link).toHaveAttribute('href', 'https://news.example.com/funding');
@@ -191,23 +232,28 @@ describe('CompanyInfo Component', () => {
     });
 
     it('renders news titles as plain text when no URL provided', () => {
-      render(<CompanyInfo companyInfo={companyWithNews} />);
+      renderCompanyInfo({ companyInfo: companyWithNews });
       
       const title = screen.getByText('New Product Launch');
       expect(title.tagName).toBe('H5');
     });
 
     it('displays news dates in formatted format', () => {
-      render(<CompanyInfo companyInfo={companyWithNews} />);
+      renderCompanyInfo({ companyInfo: companyWithNews });
       
       // Date should be formatted as locale string (10/15/2024)
       expect(screen.getByText(/10\/15\/2024/)).toBeInTheDocument();
     });
 
     it('displays news summaries', () => {
-      render(<CompanyInfo companyInfo={companyWithNews} />);
+      renderCompanyInfo({ companyInfo: companyWithNews });
       expect(screen.getByText('Major funding round completed')).toBeInTheDocument();
       expect(screen.getByText('Revolutionary new product released')).toBeInTheDocument();
+    });
+
+    it('shows a preview note when more news is available', () => {
+      renderCompanyInfo({ companyInfo: companyWithNews });
+      expect(screen.getByText(/latest 3 of 4 updates/i)).toBeInTheDocument();
     });
 
     it('does not display news section when no news available', () => {
@@ -216,7 +262,7 @@ describe('CompanyInfo Component', () => {
         recent_news: []
       };
 
-      render(<CompanyInfo companyInfo={companyWithoutNews} />);
+      renderCompanyInfo({ companyInfo: companyWithoutNews });
       expect(screen.queryByText('Recent News')).not.toBeInTheDocument();
     });
   });
@@ -244,7 +290,7 @@ describe('CompanyInfo Component', () => {
     };
 
     it('renders all sections for a complete company profile', () => {
-      render(<CompanyInfo companyInfo={completeCompanyInfo} />);
+      renderCompanyInfo({ companyInfo: completeCompanyInfo });
 
       // Header and rating
       expect(screen.getByText('Complete Corp')).toBeInTheDocument();
@@ -274,7 +320,7 @@ describe('CompanyInfo Component', () => {
         recent_news: [{ title: 'News', date: '2024-01-01' }]
       };
 
-      const { container } = render(<CompanyInfo companyInfo={companyInfo} />);
+      const { container } = renderCompanyInfo({ companyInfo: companyInfo });
       
       const h3 = container.querySelector('h3');
       const h4s = container.querySelectorAll('h4');
@@ -296,7 +342,7 @@ describe('CompanyInfo Component', () => {
         ]
       };
 
-      render(<CompanyInfo companyInfo={companyInfo} />);
+      renderCompanyInfo({ companyInfo: companyInfo });
       
       const links = screen.getAllByRole('link');
       links.forEach(link => {

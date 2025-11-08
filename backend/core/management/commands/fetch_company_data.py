@@ -248,9 +248,9 @@ class Command(BaseCommand):
         """
         return {
             'Technology': [
-                'google', 'microsoft', 'apple', 'meta', 'amazon', 'netflix', 
+                'google', 'microsoft', 'apple', 'meta', 'amazon', 'netflix', 'lyft',
                 'adobe', 'salesforce', 'oracle', 'ibm', 'intel', 'nvidia',
-                'twitter', 'uber', 'airbnb', 'spotify', 'dropbox', 'slack'
+                'twitter', 'uber', 'airbnb', 'spotify', 'dropbox', 'slack', 'intuit'
             ],
             'Finance': [
                 'jpmorgan', 'goldman sachs', 'bank of america', 'wells fargo',
