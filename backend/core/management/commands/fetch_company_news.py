@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand
 from django.db.models import Q
 
 from core.models import Company, CompanyResearch
-from core.news_scraper import fetch_recent_company_news
+from core.research import fetch_recent_company_news
 
 logger = logging.getLogger(__name__)
 

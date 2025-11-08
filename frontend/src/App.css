@@ -40,28 +40,6 @@
 /* Shared page header and back button styles */
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 
-/* Match Skills page placement and styling */
-.page-backbar { margin-bottom: 16px; }
-.btn-back {
-  padding: 8px 16px;
-  background: transparent;
-  color: var(--primary-color);
-  border: 2px solid var(--primary-color);
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-  text-decoration: none;
-  display: inline-block;
-}
-.btn-back:hover {
-  background: var(--primary-color);
-  color: var(--on-primary);
-  transform: translateX(-2px);
-}
-
 /* Calendar nav buttons used in JobStats */
 .calendar-nav {
   background: transparent;

@@ -486,7 +486,7 @@ class SalaryData(models.Model):
 
 
 class CompanyResearch(models.Model):
-    """Automated company research and intelligence"""
+    """Automated company research and intelligence (UC-063)"""
     company = models.OneToOneField(Company, on_delete=models.CASCADE, related_name="research")
     description = models.TextField(blank=True)
     mission_statement = models.TextField(blank=True)
@@ -497,6 +497,14 @@ class CompanyResearch(models.Model):
     employee_count = models.IntegerField(null=True, blank=True)
     growth_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     glassdoor_rating = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)
+    
+    # UC-063: Additional automated research fields
+    executives = models.JSONField(default=list, blank=True)  # List of {name, title, linkedin_url}
+    products = models.JSONField(default=list, blank=True)  # List of {name, description}
+    competitors = models.JSONField(default=dict, blank=True)  # {industry, companies: [...], market_position}
+    social_media = models.JSONField(default=dict, blank=True)  # {linkedin, twitter, facebook, etc.}
+    company_values = models.JSONField(default=list, blank=True)  # List of company values
+    
     last_updated = models.DateTimeField(auto_now=True)
     
     class Meta:
