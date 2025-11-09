@@ -37,6 +37,8 @@ import {
   FaClipboard,
   FaCheck,
   FaGripVertical,
+  FaDollarSign,
+  FaChartLine,
 } from 'react-icons/fa';
 
 // Simple, centralized Icon wrapper used across the app.
@@ -91,6 +93,8 @@ const iconMap = {
   clipboard: FaClipboard,
   check: FaCheck,
   grip: FaGripVertical,
+  dollar: FaDollarSign,
+  chart: FaChartLine,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {

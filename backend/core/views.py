@@ -4672,3 +4672,303 @@ def refresh_company_research(request, company_name):
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# ==============================================
+# UC-067: SALARY RESEARCH AND BENCHMARKING
+# ==============================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def salary_research(request, job_id):
+    """
+    UC-067: Salary Research for Job Entry
+    
+    GET: Retrieve salary research data for a job
+    POST: Trigger new salary research / refresh data
+    
+    POST Request Body:
+    {
+        "force_refresh": false,
+        "experience_level": "mid",  // optional override
+        "company_size": "medium"    // optional override
+    }
+    
+    Response includes:
+    - Salary ranges (min/max/median)
+    - Total compensation breakdown
+    - Market insights
+    - Negotiation recommendations
+    - Historical trends
+    - Company comparisons
+    """
+    from core.models import SalaryResearch
+    from core.salary_scraper import salary_aggregator
+    from decimal import Decimal
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_required', 'message': 'Candidate profile required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if request.method == 'GET':
+        # Return existing research or indicate none exists
+        research = SalaryResearch.objects.filter(job=job).order_by('-created_at').first()
+        
+        if not research:
+            return Response({
+                'has_data': False,
+                'message': 'No salary research available. Trigger research to generate data.'
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            'has_data': True,
+            'id': research.id,
+            'position_title': research.position_title,
+            'location': research.location,
+            'experience_level': research.experience_level,
+            'company_size': research.company_size,
+            'salary_min': float(research.salary_min) if research.salary_min else None,
+            'salary_max': float(research.salary_max) if research.salary_max else None,
+            'salary_median': float(research.salary_median) if research.salary_median else None,
+            'salary_currency': research.salary_currency,
+            'base_salary': float(research.base_salary) if research.base_salary else None,
+            'bonus_avg': float(research.bonus_avg) if research.bonus_avg else None,
+            'stock_equity': float(research.stock_equity) if research.stock_equity else None,
+            'total_comp_min': float(research.total_comp_min) if research.total_comp_min else None,
+            'total_comp_max': float(research.total_comp_max) if research.total_comp_max else None,
+            'benefits': research.benefits,
+            'market_trend': research.market_trend,
+            'percentile_25': float(research.percentile_25) if research.percentile_25 else None,
+            'percentile_75': float(research.percentile_75) if research.percentile_75 else None,
+            'negotiation_leverage': research.negotiation_leverage,
+            'recommended_ask': float(research.recommended_ask) if research.recommended_ask else None,
+            'negotiation_tips': research.negotiation_tips,
+            'user_current_salary': float(research.user_current_salary) if research.user_current_salary else None,
+            'salary_change_percent': float(research.salary_change_percent) if research.salary_change_percent else None,
+            'data_source': research.data_source,
+            'source_url': research.source_url,
+            'sample_size': research.sample_size,
+            'confidence_score': float(research.confidence_score) if research.confidence_score else None,
+            'company_comparisons': research.company_comparisons,
+            'historical_data': research.historical_data,
+            'created_at': research.created_at.isoformat(),
+            'updated_at': research.updated_at.isoformat(),
+        }, status=status.HTTP_200_OK)
+    
+    # POST: Trigger new research
+    force_refresh = request.data.get('force_refresh', False)
+    experience_override = request.data.get('experience_level')
+    company_size_override = request.data.get('company_size')
+    
+    # Check if recent research exists (within last 7 days)
+    if not force_refresh:
+        recent_research = SalaryResearch.objects.filter(
+            job=job,
+            created_at__gte=timezone.now() - timezone.timedelta(days=7)
+        ).order_by('-created_at').first()
+        
+        if recent_research:
+            return Response({
+                'message': 'Recent salary research already exists. Use force_refresh=true to regenerate.',
+                'has_data': True,
+                'research_age_days': (timezone.now() - recent_research.created_at).days
+            }, status=status.HTTP_200_OK)
+    
+    # Gather salary data
+    experience_level = experience_override or profile.experience_level or 'mid'
+    company_size = company_size_override or 'medium'
+    
+    try:
+        # Aggregate salary data from multiple sources
+        salary_data = salary_aggregator.aggregate_salary_data(
+            job_title=job.title,
+            location=job.location or 'Remote',
+            experience_level=experience_level,
+            company_size=company_size
+        )
+        
+        # Generate company comparisons
+        company_comparisons = salary_aggregator.generate_company_comparisons(
+            job_title=job.title,
+            location=job.location or 'Remote'
+        )
+        
+        # Generate historical trends
+        historical_trends = salary_aggregator.generate_historical_trends(
+            job_title=job.title,
+            location=job.location or 'Remote'
+        )
+        
+        stats = salary_data.get('aggregated_stats', {})
+        insights = salary_data.get('market_insights', {})
+        negotiation = salary_data.get('negotiation_recommendations', {})
+        
+        # Calculate salary change if user has current salary
+        user_current_salary = None
+        salary_change_percent = None
+        if job.salary_min or profile.years_experience:
+            # Try to estimate current salary from profile or job expectations
+            if job.salary_min:
+                user_current_salary = job.salary_min
+                if stats.get('salary_median'):
+                    salary_change_percent = ((float(stats['salary_median']) - float(user_current_salary)) / float(user_current_salary)) * 100
+        
+        # Create or update research record
+        research, created = SalaryResearch.objects.update_or_create(
+            job=job,
+            defaults={
+                'position_title': job.title,
+                'location': job.location or 'Remote',
+                'experience_level': experience_level,
+                'company_size': company_size,
+                'salary_min': Decimal(str(stats.get('salary_min'))) if stats.get('salary_min') else None,
+                'salary_max': Decimal(str(stats.get('salary_max'))) if stats.get('salary_max') else None,
+                'salary_median': Decimal(str(stats.get('salary_median'))) if stats.get('salary_median') else None,
+                'salary_currency': 'USD',
+                'base_salary': Decimal(str(stats.get('base_salary'))) if stats.get('base_salary') else None,
+                'bonus_avg': Decimal(str(stats.get('bonus_avg'))) if stats.get('bonus_avg') else None,
+                'stock_equity': Decimal(str(stats.get('stock_equity'))) if stats.get('stock_equity') else None,
+                'total_comp_min': Decimal(str(stats.get('total_comp_min'))) if stats.get('total_comp_min') else None,
+                'total_comp_max': Decimal(str(stats.get('total_comp_max'))) if stats.get('total_comp_max') else None,
+                'benefits': {
+                    'health_insurance': 'Standard',
+                    'retirement_401k': 'Yes',
+                    'pto_days': '15-25',
+                    'remote_work': 'Varies'
+                },
+                'market_trend': insights.get('market_trend', 'stable'),
+                'percentile_25': Decimal(str(stats.get('percentile_25'))) if stats.get('percentile_25') else None,
+                'percentile_75': Decimal(str(stats.get('percentile_75'))) if stats.get('percentile_75') else None,
+                'negotiation_leverage': negotiation.get('negotiation_leverage', 'medium'),
+                'recommended_ask': Decimal(str(negotiation.get('recommended_ask'))) if negotiation.get('recommended_ask') else None,
+                'negotiation_tips': '\n\n'.join(negotiation.get('tips', [])),
+                'user_current_salary': Decimal(str(user_current_salary)) if user_current_salary else None,
+                'salary_change_percent': Decimal(str(salary_change_percent)) if salary_change_percent else None,
+                'data_source': 'aggregated',
+                'sample_size': stats.get('data_points', 0),
+                'confidence_score': Decimal('0.80'),
+                'company_comparisons': company_comparisons,
+                'historical_data': historical_trends,
+                'research_notes': f"Generated from {len(salary_data.get('salary_data', []))} data sources"
+            }
+        )
+        
+        return Response({
+            'success': True,
+            'message': f"Salary research {'created' if created else 'updated'} successfully.",
+            'research_id': research.id,
+            'has_data': True
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error generating salary research for job {job_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'research_failed', 'message': f'Failed to generate salary research: {str(e)}'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def salary_research_export(request, job_id):
+    """
+    UC-067: Export Salary Research Report
+    
+    GET: Export salary research as JSON or PDF report
+    Query params:
+    - format: 'json' (default) or 'pdf'
+    """
+    from core.models import SalaryResearch
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        research = SalaryResearch.objects.filter(job=job).order_by('-created_at').first()
+        
+        if not research:
+            return Response(
+                {'error': {'code': 'not_found', 'message': 'No salary research data available to export.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        export_format = request.query_params.get('format', 'json').lower()
+        
+        if export_format == 'json':
+            report_data = {
+                'job': {
+                    'title': job.title,
+                    'company': job.company_name,
+                    'location': job.location,
+                },
+                'salary_research': {
+                    'position_title': research.position_title,
+                    'location': research.location,
+                    'experience_level': research.experience_level,
+                    'company_size': research.company_size,
+                    'salary_range': {
+                        'min': float(research.salary_min) if research.salary_min else None,
+                        'max': float(research.salary_max) if research.salary_max else None,
+                        'median': float(research.salary_median) if research.salary_median else None,
+                        'currency': research.salary_currency,
+                    },
+                    'total_compensation': {
+                        'base_salary': float(research.base_salary) if research.base_salary else None,
+                        'bonus_avg': float(research.bonus_avg) if research.bonus_avg else None,
+                        'stock_equity': float(research.stock_equity) if research.stock_equity else None,
+                        'total_min': float(research.total_comp_min) if research.total_comp_min else None,
+                        'total_max': float(research.total_comp_max) if research.total_comp_max else None,
+                    },
+                    'market_insights': {
+                        'market_trend': research.market_trend,
+                        'percentile_25': float(research.percentile_25) if research.percentile_25 else None,
+                        'percentile_75': float(research.percentile_75) if research.percentile_75 else None,
+                    },
+                    'negotiation': {
+                        'leverage': research.negotiation_leverage,
+                        'recommended_ask': float(research.recommended_ask) if research.recommended_ask else None,
+                        'tips': research.negotiation_tips.split('\n\n') if research.negotiation_tips else [],
+                    },
+                    'benefits': research.benefits,
+                    'company_comparisons': research.company_comparisons,
+                    'historical_trends': research.historical_data,
+                },
+                'metadata': {
+                    'generated_at': research.created_at.isoformat(),
+                    'data_source': research.data_source,
+                    'sample_size': research.sample_size,
+                    'confidence_score': float(research.confidence_score) if research.confidence_score else None,
+                }
+            }
+            
+            from django.http import JsonResponse
+            response = JsonResponse(report_data, safe=False)
+            response['Content-Disposition'] = f'attachment; filename="salary_research_{job.title.replace(" ", "_")}.json"'
+            return response
+        
+        else:
+            return Response(
+                {'error': {'code': 'unsupported_format', 'message': 'Only JSON format is currently supported.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error exporting salary research for job {job_id}: {str(e)}")
+        return Response(
+            {'error': {'code': 'export_failed', 'message': f'Failed to export research: {str(e)}'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

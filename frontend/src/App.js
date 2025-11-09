@@ -22,6 +22,7 @@ import JobsPipeline from './components/jobs/JobsPipeline';
 import JobStats from './components/jobs/JobStats';
 import JobDetailView from './components/jobs/JobDetailView';
 import JobsCalendar from './components/jobs/JobsCalendar';
+import SalaryResearch from './components/jobs/SalaryResearch';
 import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
 import ScrollToTop from './components/common/ScrollToTop';
@@ -241,6 +242,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <CompanyInsights />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/jobs/:jobId/salary-research"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <SalaryResearch />
               </PrivateRoute>
             }
           />
