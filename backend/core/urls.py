@@ -104,6 +104,15 @@ urlpatterns = [
     path('jobs/<int:job_id>/restore', views.job_restore, name='job-restore'),
     path('jobs/<int:job_id>/delete', views.job_delete, name='job-delete'),
     path('jobs/bulk-archive', views.jobs_bulk_archive, name='jobs-bulk-archive'),
+    
+    # UC-055: Cover Letter Template Library endpoints
+    path('cover-letter-templates', views.cover_letter_template_list_create, name='cover-letter-template-list-create'),
+    path('cover-letter-templates/<uuid:pk>', views.cover_letter_template_detail, name='cover-letter-template-detail'),
+    path('cover-letter-templates/import', views.cover_letter_template_import, name='cover-letter-template-import'),
+    path('cover-letter-templates/<uuid:pk>/share', views.cover_letter_template_share, name='cover-letter-template-share'),
+    path('cover-letter-templates/<uuid:pk>/analytics', views.cover_letter_template_analytics, name='cover-letter-template-analytics'),
+    path('cover-letter-templates/<uuid:pk>/download/<str:format_type>', views.cover_letter_template_download, name='cover-letter-template-download'),
+    path('cover-letter-templates/stats', views.cover_letter_template_stats, name='cover-letter-template-stats'),
     path('jobs/bulk-restore', views.jobs_bulk_restore, name='jobs-bulk-restore'),
     
     # UC-043: Company information endpoints

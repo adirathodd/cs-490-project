@@ -792,6 +792,90 @@ authAPI.deleteEmployment = async (id) => {
   }
 };
 
+// Cover Letter Template API
+export const coverLetterTemplateAPI = {
+  // Get all templates (shared + user's custom)
+  getTemplates: async () => {
+    const response = await api.get('/cover-letter-templates');
+    return response.data;
+  },
+
+  // Get a specific template by ID
+  getTemplate: async (id) => {
+    const response = await api.get(`/cover-letter-templates/${id}`);
+    return response.data;
+  },
+
+  // Create a new template
+  createTemplate: async (templateData) => {
+    const response = await api.post('/cover-letter-templates', templateData);
+    return response.data;
+  },
+
+  // Update an existing template
+  updateTemplate: async (id, templateData) => {
+    const response = await api.put(`/cover-letter-templates/${id}`, templateData);
+    return response.data;
+  },
+
+  // Delete a template
+  deleteTemplate: async (id) => {
+    await api.delete(`/cover-letter-templates/${id}`);
+  },
+
+  // Import a custom template
+  importTemplate: async (templateData) => {
+    const response = await api.post('/cover-letter-templates/import', templateData);
+    return response.data;
+  },
+
+  // Share a template (make it public)
+  shareTemplate: async (id) => {
+    const response = await api.post(`/cover-letter-templates/${id}/share`);
+    return response.data;
+  },
+
+  // Track template usage analytics
+  trackUsage: async (id) => {
+    const response = await api.post(`/cover-letter-templates/${id}/analytics`);
+    return response.data;
+  },
+
+  // Get comprehensive template statistics
+  getStats: async () => {
+    const response = await api.get('/cover-letter-templates/stats');
+    return response.data;
+  },
+
+  // Download template in specified format (txt, docx, pdf)
+  downloadTemplate: async (id, format = 'txt') => {
+    const response = await api.get(`/cover-letter-templates/${id}/download/${format}`, {
+      responseType: 'blob', // Important for file downloads
+    });
+    
+    // Create download link
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    
+    // Get filename from response headers or create default
+    const contentDisposition = response.headers['content-disposition'];
+    let filename = `cover-letter-template.${format}`;
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="(.+)"/);
+      if (match) filename = match[1];
+    }
+    
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    
+    return { success: true, filename };
+  },
+};
+
 // Provide a forgiving default export that supports both
 // - `import authAPI from './services/api'` (legacy/default import)
 // - `import { authAPI } from './services/api'` (named import)
@@ -807,6 +891,7 @@ const _defaultExport = {
   certificationsAPI,
   projectsAPI,
   jobsAPI,
+  coverLetterTemplateAPI,
   materialsAPI,
 };
 

@@ -7,6 +7,201 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def create_default_cover_letter_templates(apps, schema_editor):
+    """Create default cover letter templates for different industries and styles."""
+    CoverLetterTemplate = apps.get_model('core', 'CoverLetterTemplate')
+    
+    templates = [
+        {
+            'name': 'Formal Business Template',
+            'description': 'Professional template suitable for corporate and traditional business environments.',
+            'template_type': 'formal',
+            'industry': 'Business',
+            'content': '''Dear [Hiring Manager's Name],
+
+I am writing to express my strong interest in the [Position Title] position at [Company Name]. With my background in [Relevant Experience], I am confident that I would be a valuable addition to your team.
+
+In my previous role at [Previous Company], I [Key Achievement 1] and [Key Achievement 2]. These experiences have equipped me with the skills necessary to excel in this position, particularly in [Relevant Skill Area].
+
+I am particularly drawn to [Company Name] because of [Company-Specific Reason]. Your commitment to [Company Value/Mission] aligns perfectly with my professional values and career goals.
+
+I would welcome the opportunity to discuss how my experience and enthusiasm can contribute to your team's success. Thank you for your time and consideration.
+
+Sincerely,
+[Your Name]''',
+            'sample_content': '''Dear Ms. Johnson,
+
+I am writing to express my strong interest in the Marketing Manager position at ABC Corporation. With my background in digital marketing and brand management, I am confident that I would be a valuable addition to your team.
+
+In my previous role at XYZ Company, I increased social media engagement by 150% and launched three successful product campaigns. These experiences have equipped me with the skills necessary to excel in this position, particularly in strategic marketing planning.
+
+I am particularly drawn to ABC Corporation because of your innovative approach to sustainable business practices. Your commitment to environmental responsibility aligns perfectly with my professional values and career goals.
+
+I would welcome the opportunity to discuss how my experience and enthusiasm can contribute to your team's success. Thank you for your time and consideration.
+
+Sincerely,
+Jane Doe''',
+            'is_shared': True,
+            'customization_options': {
+                'placeholders': ['[Hiring Manager\'s Name]', '[Position Title]', '[Company Name]', '[Relevant Experience]', '[Previous Company]', '[Key Achievement 1]', '[Key Achievement 2]', '[Relevant Skill Area]', '[Company-Specific Reason]', '[Company Value/Mission]', '[Your Name]'],
+                'sections': ['greeting', 'introduction', 'experience', 'company_interest', 'closing']
+            }
+        },
+        {
+            'name': 'Creative Industry Template',
+            'description': 'Dynamic template for creative fields like design, marketing, and media.',
+            'template_type': 'creative',
+            'industry': 'Creative',
+            'content': '''Hello [Hiring Manager's Name],
+
+I'm excited to apply for the [Position Title] role at [Company Name]. As a passionate [Your Professional Identity], I believe my creative vision and [Relevant Skills] make me an ideal fit for your team.
+
+What sets me apart is my ability to [Unique Strength 1] while maintaining [Unique Strength 2]. At [Previous Company], I [Creative Achievement] that resulted in [Measurable Impact]. This project showcased my expertise in [Technical Skills] and my understanding of [Industry Knowledge].
+
+[Company Name]'s [Recent Project/Campaign] caught my attention because [Personal Connection/Opinion]. I'm particularly interested in how you [Company Innovation], and I'd love to contribute my [Relevant Skill] to help push these boundaries even further.
+
+I've attached my portfolio showcasing [Portfolio Highlights]. I'd be thrilled to discuss how my creative approach and technical skills can help [Company Name] continue to [Company Goal].
+
+Looking forward to hearing from you!
+
+Best regards,
+[Your Name]''',
+            'sample_content': '''Hello Alex,
+
+I'm excited to apply for the UX Designer role at InnovateDesign. As a passionate user experience designer, I believe my creative vision and human-centered design approach make me an ideal fit for your team.
+
+What sets me apart is my ability to balance aesthetics with functionality while maintaining accessibility standards. At DesignPro, I redesigned their mobile app interface that resulted in a 40% increase in user engagement. This project showcased my expertise in user research and my understanding of conversion optimization.
+
+InnovateDesign's recent accessibility initiative caught my attention because I'm passionate about inclusive design. I'm particularly interested in how you're pioneering voice UI interfaces, and I'd love to contribute my prototyping skills to help push these boundaries even further.
+
+I've attached my portfolio showcasing mobile app designs and user research studies. I'd be thrilled to discuss how my creative approach and technical skills can help InnovateDesign continue to lead in accessible technology.
+
+Looking forward to hearing from you!
+
+Best regards,
+Sarah Chen''',
+            'is_shared': True,
+            'customization_options': {
+                'placeholders': ['[Hiring Manager\'s Name]', '[Position Title]', '[Company Name]', '[Your Professional Identity]', '[Relevant Skills]', '[Unique Strength 1]', '[Unique Strength 2]', '[Previous Company]', '[Creative Achievement]', '[Measurable Impact]', '[Technical Skills]', '[Industry Knowledge]', '[Recent Project/Campaign]', '[Personal Connection/Opinion]', '[Company Innovation]', '[Relevant Skill]', '[Portfolio Highlights]', '[Company Goal]', '[Your Name]'],
+                'sections': ['greeting', 'introduction', 'differentiator', 'company_connection', 'portfolio_mention', 'closing']
+            }
+        },
+        {
+            'name': 'Technical Engineering Template',
+            'description': 'Structured template for software engineering and technical positions.',
+            'template_type': 'technical',
+            'industry': 'Technology',
+            'content': '''Dear [Hiring Manager's Name],
+
+I am writing to apply for the [Position Title] position at [Company Name]. With [Years of Experience] years of experience in [Technical Domain] and expertise in [Primary Technologies], I am excited about the opportunity to contribute to your engineering team.
+
+My technical background includes:
+• [Technical Skill 1] - [Brief Description/Achievement]
+• [Technical Skill 2] - [Brief Description/Achievement]
+• [Technical Skill 3] - [Brief Description/Achievement]
+
+In my current role at [Current Company], I [Major Technical Achievement] using [Technologies Used]. This project [Impact/Result] and demonstrated my ability to [Key Technical Competency].
+
+I am particularly interested in [Company Name] because of your work on [Technical Project/Product]. Your approach to [Technical Challenge] aligns with my experience in [Relevant Technical Area], and I would be excited to contribute to [Specific Technical Goal].
+
+I have attached my resume detailing my technical experience and would welcome the opportunity to discuss how my skills in [Key Technologies] can benefit your team.
+
+Thank you for your consideration.
+
+Best regards,
+[Your Name]''',
+            'sample_content': '''Dear Engineering Team,
+
+I am writing to apply for the Senior Software Engineer position at TechFlow Inc. With 5 years of experience in full-stack development and expertise in React, Node.js, and AWS, I am excited about the opportunity to contribute to your engineering team.
+
+My technical background includes:
+• React/TypeScript - Built scalable front-end applications serving 100k+ users
+• Node.js/Express - Designed RESTful APIs handling 1M+ requests daily
+• AWS/Docker - Implemented CI/CD pipelines reducing deployment time by 60%
+
+In my current role at DataSoft, I architected a microservices platform using Node.js and Docker that improved system reliability by 35%. This project handled real-time data processing and demonstrated my ability to design fault-tolerant systems.
+
+I am particularly interested in TechFlow Inc. because of your work on real-time analytics platforms. Your approach to handling large-scale data streams aligns with my experience in distributed systems, and I would be excited to contribute to your next-generation analytics engine.
+
+I have attached my resume detailing my technical experience and would welcome the opportunity to discuss how my skills in modern web technologies can benefit your team.
+
+Thank you for your consideration.
+
+Best regards,
+Michael Rodriguez''',
+            'is_shared': True,
+            'customization_options': {
+                'placeholders': ['[Hiring Manager\'s Name]', '[Position Title]', '[Company Name]', '[Years of Experience]', '[Technical Domain]', '[Primary Technologies]', '[Technical Skill 1]', '[Technical Skill 2]', '[Technical Skill 3]', '[Current Company]', '[Major Technical Achievement]', '[Technologies Used]', '[Impact/Result]', '[Key Technical Competency]', '[Technical Project/Product]', '[Technical Challenge]', '[Relevant Technical Area]', '[Specific Technical Goal]', '[Key Technologies]', '[Your Name]'],
+                'sections': ['introduction', 'technical_skills', 'achievement', 'company_interest', 'closing']
+            }
+        },
+        {
+            'name': 'Healthcare Industry Template',
+            'description': 'Professional template tailored for healthcare and medical positions.',
+            'template_type': 'industry',
+            'industry': 'Healthcare',
+            'content': '''Dear [Hiring Manager's Name],
+
+I am writing to express my interest in the [Position Title] position at [Healthcare Organization]. With my background in [Healthcare Specialization] and commitment to [Healthcare Value], I am eager to contribute to your team's mission of providing exceptional patient care.
+
+My healthcare experience includes:
+• [Healthcare Experience 1]
+• [Healthcare Experience 2]
+• [Healthcare Experience 3]
+
+In my previous role at [Previous Healthcare Facility], I [Healthcare Achievement] which [Patient Impact]. I am particularly skilled in [Clinical Skill] and have experience with [Healthcare Systems/Protocols].
+
+[Healthcare Organization]'s reputation for [Organization Strength] and commitment to [Healthcare Mission] strongly resonates with my professional values. I am excited about the opportunity to contribute to [Specific Healthcare Goal] and work with your team to [Healthcare Objective].
+
+I am licensed/certified in [Relevant Certifications] and committed to maintaining the highest standards of patient care and professional development.
+
+Thank you for considering my application. I look forward to discussing how I can contribute to your healthcare team.
+
+Sincerely,
+[Your Name]''',
+            'sample_content': '''Dear Dr. Williams,
+
+I am writing to express my interest in the Registered Nurse position at Mercy General Hospital. With my background in emergency care nursing and commitment to compassionate patient care, I am eager to contribute to your team's mission of providing exceptional patient care.
+
+My healthcare experience includes:
+• 3 years in emergency department nursing
+• BLS, ACLS, and PALS certifications
+• Experience with electronic health records (Epic)
+
+In my previous role at City Medical Center, I managed care for up to 12 patients per shift which improved patient satisfaction scores by 15%. I am particularly skilled in IV insertion and have experience with trauma protocols and emergency procedures.
+
+Mercy General Hospital's reputation for innovative emergency care and commitment to community health strongly resonates with my professional values. I am excited about the opportunity to contribute to your Level I trauma center and work with your team to provide life-saving care.
+
+I am licensed as an RN in the state and committed to maintaining the highest standards of patient care and professional development.
+
+Thank you for considering my application. I look forward to discussing how I can contribute to your healthcare team.
+
+Sincerely,
+Jennifer Martinez, RN''',
+            'is_shared': True,
+            'customization_options': {
+                'placeholders': ['[Hiring Manager\'s Name]', '[Position Title]', '[Healthcare Organization]', '[Healthcare Specialization]', '[Healthcare Value]', '[Healthcare Experience 1]', '[Healthcare Experience 2]', '[Healthcare Experience 3]', '[Previous Healthcare Facility]', '[Healthcare Achievement]', '[Patient Impact]', '[Clinical Skill]', '[Healthcare Systems/Protocols]', '[Organization Strength]', '[Healthcare Mission]', '[Specific Healthcare Goal]', '[Healthcare Objective]', '[Relevant Certifications]', '[Your Name]'],
+                'sections': ['introduction', 'experience', 'achievements', 'organization_alignment', 'credentials', 'closing']
+            }
+        }
+    ]
+    
+    for template_data in templates:
+        CoverLetterTemplate.objects.create(**template_data)
+
+
+def reverse_default_cover_letter_templates(apps, schema_editor):
+    """Remove default templates."""
+    CoverLetterTemplate = apps.get_model('core', 'CoverLetterTemplate')
+    template_names = [
+        'Formal Business Template',
+        'Creative Industry Template', 
+        'Technical Engineering Template',
+        'Healthcare Industry Template'
+    ]
+    CoverLetterTemplate.objects.filter(name__in=template_names, is_shared=True).delete()
+
+
 class Migration(migrations.Migration):
 
     initial = True
@@ -651,6 +846,34 @@ class Migration(migrations.Migration):
                 'indexes': [models.Index(fields=['application', '-at'], name='core_applic_applica_2d3256_idx')],
             },
         ),
+        migrations.CreateModel(
+            name='CoverLetterTemplate',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('name', models.CharField(max_length=200)),
+                ('description', models.TextField(blank=True)),
+                ('template_type', models.CharField(choices=[('formal', 'Formal'), ('creative', 'Creative'), ('technical', 'Technical'), ('industry', 'Industry-specific'), ('custom', 'Custom')], default='formal', max_length=20)),
+                ('industry', models.CharField(blank=True, max_length=100)),
+                ('content', models.TextField()),
+                ('sample_content', models.TextField(blank=True)),
+                ('is_shared', models.BooleanField(default=False)),
+                ('imported_from', models.CharField(blank=True, max_length=200)),
+                ('usage_count', models.PositiveIntegerField(default=0)),
+                ('last_used', models.DateTimeField(blank=True, null=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('customization_options', models.JSONField(blank=True, default=dict)),
+                ('owner', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='custom_templates', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'indexes': [
+                    models.Index(fields=['template_type'], name='core_coverl_templat_7b4c6b_idx'),
+                    models.Index(fields=['industry'], name='core_coverl_industr_2f8e9a_idx'),
+                    models.Index(fields=['owner'], name='core_coverl_owner_i_1a3c4d_idx'),
+                    models.Index(fields=['is_shared'], name='core_coverl_is_shar_5e6f7g_idx'),
+                ],
+            },
+        ),
         migrations.AddIndex(
             model_name='candidateprofile',
             index=models.Index(fields=['user'], name='core_candid_user_id_d5fe80_idx'),
@@ -851,4 +1074,5 @@ class Migration(migrations.Migration):
             model_name='workexperience',
             index=models.Index(fields=['candidate', '-start_date'], name='core_workex_candida_d7b808_idx'),
         ),
+        migrations.RunPython(create_default_cover_letter_templates, reverse_default_cover_letter_templates),
     ]

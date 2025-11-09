@@ -835,6 +835,15 @@ const Jobs = () => {
           >
             Pipeline →
           </a>
+          <a
+            className="btn-secondary"
+            href="/cover-letter-templates"
+            title="Cover Letter Templates"
+            aria-label="Browse cover letter templates"
+            style={{ textDecoration: 'none' }}
+          >
+            Cover Letters →
+          </a>
           <button 
             className="add-education-button"
             onClick={() => {

@@ -27,6 +27,204 @@ from core.serializers import (
     JobEntrySerializer,
 )
 from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_list_create(request):
+    """List all templates or create a new one."""
+    if request.method == "GET":
+        templates = CoverLetterTemplate.objects.filter(is_shared=True) | CoverLetterTemplate.objects.filter(owner=request.user)
+        serializer = CoverLetterTemplateSerializer(templates.distinct(), many=True)
+        return Response(serializer.data)
+    elif request.method == "POST":
+        serializer = CoverLetterTemplateSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(owner=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(["GET", "PUT", "DELETE"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_detail(request, pk):
+    """Retrieve, update, or delete a template."""
+    try:
+        template = CoverLetterTemplate.objects.get(pk=pk)
+    except CoverLetterTemplate.DoesNotExist:
+        return Response({"error": "Template not found."}, status=status.HTTP_404_NOT_FOUND)
+    if request.method == "GET":
+        serializer = CoverLetterTemplateSerializer(template)
+        return Response(serializer.data)
+    elif request.method == "PUT":
+        if template.owner != request.user:
+            return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = CoverLetterTemplateSerializer(template, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    elif request.method == "DELETE":
+        if template.owner != request.user:
+            return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+        template.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_import(request):
+    """Import a custom template."""
+    serializer = CoverLetterTemplateSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save(owner=request.user, imported_from="import")
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_share(request, pk):
+    """Share a template (make it public)."""
+    try:
+        template = CoverLetterTemplate.objects.get(pk=pk, owner=request.user)
+    except CoverLetterTemplate.DoesNotExist:
+        return Response({"error": "Template not found or permission denied."}, status=status.HTTP_404_NOT_FOUND)
+    template.is_shared = True
+    template.save(update_fields=["is_shared"])
+    return Response({"success": True})
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_analytics(request, pk):
+    """Track template usage analytics."""
+    try:
+        template = CoverLetterTemplate.objects.get(pk=pk)
+    except CoverLetterTemplate.DoesNotExist:
+        return Response({"error": "Template not found."}, status=status.HTTP_404_NOT_FOUND)
+    template.usage_count += 1
+    template.last_used = timezone.now()
+    template.save(update_fields=["usage_count", "last_used"])
+    return Response({"success": True, "usage_count": template.usage_count})
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_stats(request):
+    """Get comprehensive template usage statistics."""
+    from django.db.models import Count, Q, Avg
+    
+    # Overall stats
+    total_templates = CoverLetterTemplate.objects.count()
+    shared_templates = CoverLetterTemplate.objects.filter(is_shared=True).count()
+    user_custom_templates = CoverLetterTemplate.objects.filter(owner=request.user).count()
+    
+    # Most popular templates
+    popular_templates = CoverLetterTemplate.objects.filter(
+        usage_count__gt=0
+    ).order_by('-usage_count')[:5].values(
+        'id', 'name', 'template_type', 'usage_count'
+    )
+    
+    # Usage by template type
+    type_stats = CoverLetterTemplate.objects.values('template_type').annotate(
+        count=Count('id'),
+        total_usage=Count('usage_count')
+    ).order_by('-total_usage')
+    
+    # Usage by industry
+    industry_stats = CoverLetterTemplate.objects.exclude(
+        industry=''
+    ).values('industry').annotate(
+        count=Count('id'),
+        total_usage=Count('usage_count')
+    ).order_by('-total_usage')
+    
+    return Response({
+        'overview': {
+            'total_templates': total_templates,
+            'shared_templates': shared_templates,
+            'user_custom_templates': user_custom_templates,
+        },
+        'popular_templates': list(popular_templates),
+        'type_distribution': list(type_stats),
+        'industry_distribution': list(industry_stats),
+    })
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_download(request, pk, format_type):
+    """Download a template in the specified format (txt, docx, pdf)."""
+    try:
+        template = CoverLetterTemplate.objects.get(pk=pk)
+    except CoverLetterTemplate.DoesNotExist:
+        return Response({"error": "Template not found."}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Track download analytics
+    template.usage_count += 1
+    template.last_used = timezone.now()
+    template.save(update_fields=["usage_count", "last_used"])
+    
+    from django.http import HttpResponse
+    import io
+    
+    if format_type == 'txt':
+        # Plain text download
+        response = HttpResponse(template.content, content_type='text/plain')
+        response['Content-Disposition'] = f'attachment; filename="{template.name}.txt"'
+        return response
+    
+    elif format_type == 'docx':
+        # Word document download (requires python-docx)
+        try:
+            from docx import Document
+            doc = Document()
+            doc.add_heading(template.name, 0)
+            doc.add_paragraph(template.content)
+            
+            buffer = io.BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
+            
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{template.name}.docx"'
+            return response
+        except ImportError:
+            return Response({"error": "Word document generation not available."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    elif format_type == 'pdf':
+        # PDF download (requires reportlab)
+        try:
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import letter
+            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+            
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter)
+            styles = getSampleStyleSheet()
+            story = []
+            
+            # Add title
+            title = Paragraph(template.name, styles['Title'])
+            story.append(title)
+            story.append(Spacer(1, 12))
+            
+            # Add content (split by paragraphs)
+            for paragraph in template.content.split('\n\n'):
+                if paragraph.strip():
+                    p = Paragraph(paragraph.replace('\n', '<br/>'), styles['Normal'])
+                    story.append(p)
+                    story.append(Spacer(1, 12))
+            
+            doc.build(story)
+            buffer.seek(0)
+            
+            response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{template.name}.pdf"'
+            return response
+        except ImportError:
+            return Response({"error": "PDF generation not available."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    else:
+        return Response({"error": "Unsupported format. Use txt, docx, or pdf."}, status=status.HTTP_400_BAD_REQUEST)
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (

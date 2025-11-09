@@ -22,6 +22,7 @@ import JobsPipeline from './components/JobsPipeline';
 import JobStats from './components/JobStats';
 import JobDetailView from './components/JobDetailView';
 import JobsCalendar from './components/JobsCalendar';
+import CoverLetterTemplates from './components/CoverLetterTemplates';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
 import NavBar from './components/NavBar';
@@ -237,6 +238,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <JobsCalendar />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/cover-letter-templates"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <CoverLetterTemplates />
               </PrivateRoute>
             }
           />
