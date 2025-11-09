@@ -40,14 +40,18 @@ api.interceptors.response.use(
       return api.request(config);
     }
 
-    // Prefer backend error shape if present, but only surface minimal shape expected by tests/consumers
+    // Prefer backend error shape if present, preserving any details/messages for callers
     const backendErr = error?.response?.data?.error;
-    const code = (backendErr && backendErr.code) ? backendErr.code : 'network_error';
-    const message = (backendErr && backendErr.message) ? backendErr.message : 'Network error. Please try again.';
+    if (backendErr) {
+      return Promise.reject({ error: backendErr });
+    }
 
-    // Return minimal normalized error to satisfy existing tests and callers:
-    // { error: { code, message } }
-    return Promise.reject({ error: { code, message } });
+    return Promise.reject({
+      error: {
+        code: 'network_error',
+        message: 'Network error. Please try again.',
+      },
+    });
   }
 );
 
@@ -447,7 +451,7 @@ export const projectsAPI = {
       const response = await api.get(path);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to fetch projects' };
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch projects' };
     }
   },
 
@@ -456,7 +460,7 @@ export const projectsAPI = {
       const response = await api.get(`/projects/${id}`);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to fetch project' };
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch project' };
     }
   },
 
@@ -478,13 +482,10 @@ export const projectsAPI = {
         return response.data;
       }
       const payload = { ...data };
-      if (Array.isArray(payload.technologies)) {
-        payload.technologies = payload.technologies; // send as JSON by axios
-      }
       const response = await api.post('/projects', payload);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to add project' };
+      throw error.error || error.response?.data?.error || { message: 'Failed to add project' };
     }
   },
 
@@ -507,7 +508,7 @@ export const projectsAPI = {
       const response = await api.patch(`/projects/${id}`, data);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to update project' };
+      throw error.error || error.response?.data?.error || { message: 'Failed to update project' };
     }
   },
 
@@ -516,7 +517,7 @@ export const projectsAPI = {
       const response = await api.delete(`/projects/${id}`);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to delete project' };
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete project' };
     }
   },
 
@@ -525,7 +526,7 @@ export const projectsAPI = {
       const response = await api.delete(`/projects/${projectId}/media/${mediaId}`);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to delete media' };
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete media' };
     }
   },
 };
@@ -568,6 +569,15 @@ export const jobsAPI = {
     }
   },
 
+  getJobCompanyInsights: async (id) => {
+    try {
+      const response = await api.get(`/jobs/${id}/company`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch company insights' };
+    }
+  },
+
   addJob: async (data) => {
     const response = await api.post('/jobs', data);
     return response.data;
@@ -583,14 +593,7 @@ export const jobsAPI = {
     return response.data;
   },
 
-  importFromUrl: async (url) => {
-    try {
-      const response = await api.post('/jobs/import-from-url', { url });
-      return response.data;
-    } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to import job from URL' };
-    }
-  },
+  // importFromUrl defined below (keep a single implementation)
 
   // UC-037 additions
   getJobStats: async (params = {}) => {
@@ -747,6 +750,32 @@ export const materialsAPI = {
   },
 };
 
+// UC-047: AI Resume Generation API calls
+export const resumeAIAPI = {
+  generateForJob: async (jobId, options = {}) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/resume/generate`, {
+        tone: options.tone,
+        variation_count: options.variation_count,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to generate AI resume content' };
+    }
+  },
+  
+  compileLatex: async (latexContent) => {
+    try {
+      const response = await api.post('/resume/compile-latex/', {
+        latex_content: latexContent,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to compile LaTeX' };
+    }
+  },
+};
+
 authAPI.getEmploymentTimeline = async () => {
   try {
     const response = await api.get('/employment/timeline');
@@ -893,6 +922,7 @@ const _defaultExport = {
   jobsAPI,
   coverLetterTemplateAPI,
   materialsAPI,
+  resumeAIAPI,
 };
 
 export default _defaultExport;
@@ -907,6 +937,7 @@ try {
     module.exports.authAPI = authAPI;
     module.exports.jobsAPI = jobsAPI;
     module.exports.materialsAPI = materialsAPI;
+    module.exports.resumeAIAPI = resumeAIAPI;
   }
 } catch (e) {
   // ignore in strict ESM environments
@@ -939,12 +970,14 @@ try {
     _defaultExport.getProfilePicture = authAPI.getProfilePicture;
     _defaultExport.jobsAPI = jobsAPI;
     _defaultExport.materialsAPI = materialsAPI;
+    _defaultExport.resumeAIAPI = resumeAIAPI;
   }
   if (typeof module !== 'undefined' && module && module.exports) {
     module.exports = _defaultExport;
     module.exports.authAPI = authAPI;
     module.exports.jobsAPI = jobsAPI;
     module.exports.materialsAPI = materialsAPI;
+    module.exports.resumeAIAPI = resumeAIAPI;
   }
 } catch (e) {
   // ignore any errors during best-effort compatibility wiring

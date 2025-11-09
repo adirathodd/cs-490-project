@@ -7,12 +7,16 @@ Usage: python manage.py fetch_company_data
 or: docker-compose exec backend python manage.py fetch_company_data
 """
 
-import requests
 import random
 from datetime import datetime, timedelta
-from django.core.management.base import BaseCommand
-from core.models import Company, CompanyResearch
 from decimal import Decimal
+from urllib.parse import urlparse
+
+import requests
+import yfinance as yf
+from django.core.management.base import BaseCommand
+
+from core.models import Company, CompanyResearch
 
 
 class Command(BaseCommand):
@@ -24,6 +28,12 @@ class Command(BaseCommand):
             type=int,
             default=50,
             help='Maximum number of companies to fetch (default: 50)'
+        )
+        parser.add_argument(
+            '--tickers',
+            type=str,
+            default='',
+            help='Comma separated list of ticker symbols to ingest via yfinance (takes precedence over generated data).'
         )
 
     def generate_linkedin_url(self, company_name):
@@ -248,9 +258,9 @@ class Command(BaseCommand):
         """
         return {
             'Technology': [
-                'google', 'microsoft', 'apple', 'meta', 'amazon', 'netflix', 
+                'google', 'microsoft', 'apple', 'meta', 'amazon', 'netflix', 'lyft',
                 'adobe', 'salesforce', 'oracle', 'ibm', 'intel', 'nvidia',
-                'twitter', 'uber', 'airbnb', 'spotify', 'dropbox', 'slack'
+                'twitter', 'uber', 'airbnb', 'spotify', 'dropbox', 'slack', 'intuit'
             ],
             'Finance': [
                 'jpmorgan', 'goldman sachs', 'bank of america', 'wells fargo',
@@ -363,6 +373,16 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         limit = options['limit']
+        tickers_option = options.get('tickers') or ''
+        if tickers_option.strip():
+            symbols = [t.strip().upper() for t in tickers_option.split(',') if t.strip()]
+            if not symbols:
+                self.stdout.write(self.style.WARNING('No valid ticker symbols supplied.'))
+                return
+            self.stdout.write(self.style.WARNING(f'Fetching {min(len(symbols), limit)} ticker(s) via yfinance...'))
+            self._process_tickers(symbols, limit)
+            return
+
         self.stdout.write(self.style.WARNING(f'Fetching data for up to {limit} companies...'))
 
         companies_by_industry = self.get_industry_companies()
@@ -420,3 +440,79 @@ class Command(BaseCommand):
                 f'{"="*60}'
             )
         )
+
+    def _process_tickers(self, symbols, limit):
+        processed = 0
+        for symbol in symbols:
+            if processed >= limit:
+                break
+            try:
+                ticker = yf.Ticker(symbol)
+                info = ticker.get_info() or {}
+                if not info:
+                    self.stdout.write(self.style.WARNING(f'No yfinance data for {symbol}, skipping.'))
+                    continue
+
+                company_name = info.get('longName') or info.get('shortName') or symbol
+                domain = self._derive_domain(info.get('website'), company_name)
+                hq_location = self._format_location(info)
+                size = self._format_size(info.get('fullTimeEmployees'))
+
+                company, _ = Company.objects.get_or_create(domain=domain, defaults={'name': company_name})
+                company.name = company_name
+                company.industry = info.get('industry') or info.get('sector') or company.industry
+                company.hq_location = hq_location or company.hq_location
+                if size:
+                    company.size = size
+                company.save()
+
+                research, _ = CompanyResearch.objects.get_or_create(company=company)
+                description = info.get('longBusinessSummary') or research.description or ''
+                research.description = description
+                research.employee_count = info.get('fullTimeEmployees')
+                mission = description.split('. ')[0] if description else ''
+                if mission:
+                    research.mission_statement = mission
+                research.recent_news = []
+                research.save()
+
+                processed += 1
+                self.stdout.write(self.style.SUCCESS(f'✓ Processed {company_name} ({symbol}) via yfinance'))
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(f'✗ Failed to process {symbol}: {exc}'))
+
+    def _derive_domain(self, website, company_name):
+        if website:
+            try:
+                parsed = urlparse(website if website.startswith('http') else f'https://{website}')
+                host = parsed.netloc or parsed.path
+                host = host.lower()
+                if host.startswith('www.'):
+                    host = host[4:]
+                if host:
+                    return host
+            except Exception:
+                pass
+        slug = ''.join(ch for ch in company_name.lower() if ch.isalnum()) or 'company'
+        return f'{slug}.com'
+
+    def _format_location(self, info):
+        parts = [info.get('city'), info.get('state'), info.get('country')]
+        return ', '.join(part for part in parts if part)
+
+    def _format_size(self, employees):
+        if not employees:
+            return ''
+        if employees < 50:
+            return '1-50 employees'
+        if employees < 200:
+            return '51-200 employees'
+        if employees < 500:
+            return '201-500 employees'
+        if employees < 1000:
+            return '501-1000 employees'
+        if employees < 5000:
+            return '1001-5000 employees'
+        if employees < 10000:
+            return '5001-10000 employees'
+        return '10000+ employees'

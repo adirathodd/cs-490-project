@@ -216,6 +216,11 @@ LOGGING = {
     },
 }
 
+# Generative AI (Gemini) configuration for resume content (UC-047)
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-1.5-flash-latest')
+TECTONIC_BINARY = os.environ.get('TECTONIC_BINARY', 'tectonic')
+
 # Email configuration
 # Priority: Explicit DJANGO_EMAIL_BACKEND overrides DEBUG logic.
 EMAIL_BACKEND = os.environ.get('DJANGO_EMAIL_BACKEND')

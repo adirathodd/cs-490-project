@@ -246,7 +246,7 @@ import firebase_admin
 from firebase_admin import auth as firebase_auth
 import logging
 from django.conf import settings
-from core import job_import_utils
+from core import job_import_utils, resume_ai
 
 
 # ------------------------------
@@ -2315,6 +2315,68 @@ def jobs_list_create(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         instance = serializer.save(candidate=profile)
+        
+        # UC-063: Automatically research company if it's new or hasn't been researched recently
+        company_name = instance.company_name
+        if company_name and company_name.strip():
+            try:
+                from core.models import Company, CompanyResearch
+                from core.research import automated_company_research
+                from django.utils import timezone
+                from datetime import timedelta
+                
+                # Check if company exists and has recent research
+                company = Company.objects.filter(name__iexact=company_name).first()
+                should_research = False
+                
+                if not company:
+                    # New company - definitely research it
+                    should_research = True
+                    logger.info(f"New company detected: {company_name}. Triggering automated research.")
+                else:
+                    # Company exists - check if research is recent (< 7 days old)
+                    try:
+                        research = CompanyResearch.objects.get(company=company)
+                        if research.last_updated:
+                            age = timezone.now() - research.last_updated
+                            if age > timedelta(days=7):
+                                should_research = True
+                                logger.info(f"Company research is stale ({age.days} days old). Refreshing research for {company_name}.")
+                        else:
+                            should_research = True
+                    except CompanyResearch.DoesNotExist:
+                        should_research = True
+                        logger.info(f"No research found for {company_name}. Triggering automated research.")
+                
+                if should_research:
+                    # Trigger automated research asynchronously (in background)
+                    # Note: In production, use Celery or similar for true async processing
+                    try:
+                        from threading import Thread
+                        
+                        def research_company_async(company_name):
+                            try:
+                                automated_company_research(company_name, force_refresh=True)
+                                logger.info(f"Successfully researched company: {company_name}")
+                            except Exception as e:
+                                logger.error(f"Error researching company {company_name}: {e}")
+                        
+                        # Start research in background thread
+                        thread = Thread(target=research_company_async, args=(company_name,))
+                        thread.daemon = True
+                        thread.start()
+                        
+                        logger.info(f"Started background research for company: {company_name}")
+                    except Exception as e:
+                        logger.error(f"Error starting company research thread: {e}")
+                        # Don't fail the job creation if research fails
+                        pass
+                        
+            except Exception as e:
+                logger.error(f"Error in automatic company research for {company_name}: {e}")
+                # Don't fail the job creation if research fails
+                pass
+        
         data = JobEntrySerializer(instance).data
         data['message'] = 'Job entry saved successfully.'
         return Response(data, status=status.HTTP_201_CREATED)
@@ -4431,6 +4493,379 @@ def job_company_info(request, job_id):
                 'error': {
                     'code': 'internal_error',
                     'message': 'Failed to fetch company information.'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# ======================
+# UC-047: AI RESUME CONTENT GENERATION
+# ======================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_resume_for_job(request, job_id):
+    """
+    UC-047: Generate AI-tailored resume content for a specific job using Gemini.
+    """
+    profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
+    try:
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    api_key = getattr(settings, 'GEMINI_API_KEY', '')
+    if not api_key:
+        return Response(
+            {
+                'error': {
+                    'code': 'service_unavailable',
+                    'message': 'AI resume service is not configured. Set GEMINI_API_KEY in the backend environment.',
+                }
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+    tone = (request.data.get('tone') or 'balanced').strip().lower()
+    if tone not in resume_ai.TONE_DESCRIPTORS:
+        tone = 'balanced'
+
+    variation_count = request.data.get('variation_count', 2)
+    try:
+        variation_count = int(variation_count)
+    except (TypeError, ValueError):
+        variation_count = 2
+    variation_count = max(1, min(variation_count, 3))
+
+    candidate_snapshot = resume_ai.collect_candidate_snapshot(profile)
+    job_snapshot = resume_ai.build_job_snapshot(job)
+
+    try:
+        generation = resume_ai.run_resume_generation(
+            candidate_snapshot,
+            job_snapshot,
+            tone=tone,
+            variation_count=variation_count,
+            api_key=api_key,
+            model=getattr(settings, 'GEMINI_MODEL', None),
+        )
+    except resume_ai.ResumeAIError as exc:
+        logger.warning('AI resume generation failed for job %s: %s', job_id, exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': str(exc)}},
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected AI resume failure for job %s: %s', job_id, exc)
+        return Response(
+            {
+                'error': {
+                    'code': 'ai_generation_failed',
+                    'message': 'Unexpected error while generating resume content.',
+                }
+            },
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+
+    payload = {
+        'job': job_snapshot,
+        'profile': resume_ai.build_profile_preview(candidate_snapshot),
+        'generated_at': timezone.now().isoformat(),
+        'tone': tone,
+        'variation_count': generation.get('variation_count'),
+        'shared_analysis': generation.get('shared_analysis'),
+        'variations': generation.get('variations'),
+    }
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def compile_latex_to_pdf(request):
+    """
+    UC-047: Compile LaTeX source code to PDF for live preview.
+    
+    Request Body:
+    {
+        "latex_content": "\\documentclass{article}..."
+    }
+    
+    Response:
+    {
+        "pdf_document": "base64-encoded-pdf-data"
+    }
+    """
+    latex_content = request.data.get('latex_content', '').strip()
+    
+    if not latex_content:
+        return Response(
+            {'error': {'code': 'invalid_input', 'message': 'latex_content is required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        pdf_base64 = resume_ai.compile_latex_pdf(latex_content)
+        return Response({'pdf_document': pdf_base64}, status=status.HTTP_200_OK)
+    except resume_ai.ResumeAIError as exc:
+        logger.warning('LaTeX compilation failed: %s', exc)
+        return Response(
+            {'error': {'code': 'compilation_failed', 'message': str(exc)}},
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected error during LaTeX compilation: %s', exc)
+        return Response(
+            {'error': {'code': 'compilation_failed', 'message': 'Unexpected compilation error.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# ======================
+# UC-063: AUTOMATED COMPANY RESEARCH
+# ======================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def automated_company_research(request, company_name):
+    """
+    UC-063: Automated Company Research
+    
+    POST: Trigger automated comprehensive research for a company
+    
+    Request Body (optional):
+    {
+        "force_refresh": false,  // Set to true to force refresh cached data
+        "news_limit": 50         // Maximum number of news items to fetch (default: 50)
+    }
+    
+    Response:
+    {
+        "company": {
+            "id": 1,
+            "name": "Acme Inc",
+            "domain": "acme.com",
+            "industry": "Technology",
+            "size": "1001-5000 employees",
+            "hq_location": "San Francisco, CA"
+        },
+        "research": {
+            "description": "Company description...",
+            "mission_statement": "To revolutionize...",
+            "culture_keywords": ["innovation", "collaboration"],
+            "recent_news": [...],
+            "funding_info": {...},
+            "tech_stack": ["Python", "React"],
+            "employee_count": 2500,
+            "glassdoor_rating": 4.2,
+            "last_updated": "2024-11-08T10:30:00Z"
+        },
+        "executives": [...],
+        "products": [...],
+        "competitors": {...},
+        "social_media": {
+            "linkedin": "...",
+            "twitter": "..."
+        },
+        "summary": "Comprehensive research summary..."
+    }
+    """
+    try:
+        import urllib.parse
+        from core.research import automated_company_research as research_service
+        
+        # URL-decode company name
+        decoded_name = urllib.parse.unquote(company_name)
+        
+        # Get parameters from request body
+        force_refresh = request.data.get('force_refresh', False)
+        max_news_items = request.data.get('news_limit', 50)  # Default to 50 news items
+        
+        logger.info(f"Triggering automated research for {decoded_name} (force_refresh={force_refresh}, news_limit={max_news_items})")
+        
+        # Perform automated research
+        research_data = research_service(decoded_name, force_refresh=force_refresh, max_news_items=max_news_items)
+        
+        return Response(research_data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error performing automated research for {company_name}: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'research_failed',
+                    'message': f'Failed to perform automated company research: {str(e)}'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def company_research_report(request, company_name):
+    """
+    UC-063: Get Company Research Report
+    
+    GET: Retrieve existing research report for a company
+    
+    Returns the most recent research data without triggering new research.
+    Use the automated_company_research endpoint to refresh data.
+    
+    Query Parameters:
+        - include_summary: boolean (default: true) - Include generated summary
+        - news_limit: int (default: 10) - Maximum number of news items to return
+    """
+    try:
+        import urllib.parse
+        from core.models import Company, CompanyResearch
+        from core.research import CompanyResearchService
+        
+        # URL-decode company name
+        decoded_name = urllib.parse.unquote(company_name)
+        
+        # Get query parameters
+        include_summary = request.query_params.get('include_summary', 'true').lower() == 'true'
+        news_limit = int(request.query_params.get('news_limit', 10))
+        
+        # Find company
+        company = Company.objects.filter(name__iexact=decoded_name).first()
+        
+        if not company:
+            return Response(
+                {
+                    'error': {
+                        'code': 'company_not_found',
+                        'message': 'Company not found. Trigger research first using POST endpoint.'
+                    }
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get research data
+        try:
+            research = CompanyResearch.objects.get(company=company)
+        except CompanyResearch.DoesNotExist:
+            return Response(
+                {
+                    'error': {
+                        'code': 'research_not_found',
+                        'message': 'No research data available. Trigger research first using POST endpoint.'
+                    }
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Build response
+        response_data = {
+            'company': {
+                'id': company.id,
+                'name': company.name,
+                'domain': company.domain,
+                'industry': company.industry,
+                'size': company.size,
+                'hq_location': company.hq_location,
+                'linkedin_url': company.linkedin_url,
+            },
+            'research': {
+                'description': research.description,
+                'mission_statement': research.mission_statement,
+                'culture_keywords': research.culture_keywords,
+                'recent_news': research.recent_news[:news_limit],
+                'funding_info': research.funding_info,
+                'tech_stack': research.tech_stack,
+                'employee_count': research.employee_count,
+                'glassdoor_rating': research.glassdoor_rating,
+                'last_updated': research.last_updated.isoformat() if research.last_updated else None,
+            },
+        }
+        
+        # Add summary if requested
+        if include_summary:
+            # Generate summary from available data
+            service = CompanyResearchService(decoded_name)
+            service.company = company
+            service.research_data = {
+                'basic_info': {
+                    'industry': company.industry,
+                    'hq_location': company.hq_location,
+                    'employees': research.employee_count,
+                },
+                'mission_culture': {
+                    'mission_statement': research.mission_statement,
+                },
+                'recent_news': research.recent_news,
+                'products': [],
+                'social_media': {},
+            }
+            service._generate_summary()
+            response_data['summary'] = service.research_data.get('summary', '')
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error retrieving research report for {company_name}: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'Failed to retrieve company research report.'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def refresh_company_research(request, company_name):
+    """
+    UC-063: Refresh Company Research
+    
+    POST: Force refresh of company research data
+    
+    Request Body (optional):
+    {
+        "news_limit": 50  // Maximum number of news items to fetch (default: 50)
+    }
+    
+    This is a convenience endpoint that always forces a refresh.
+    Equivalent to calling automated_company_research with force_refresh=true.
+    """
+    try:
+        import urllib.parse
+        from core.research import automated_company_research as research_service
+        
+        # URL-decode company name
+        decoded_name = urllib.parse.unquote(company_name)
+        
+        # Get news limit parameter from request body
+        max_news_items = request.data.get('news_limit', 50)
+        
+        logger.info(f"Force refreshing research for {decoded_name} (news_limit={max_news_items})")
+        
+        # Perform automated research with force refresh
+        research_data = research_service(decoded_name, force_refresh=True, max_news_items=max_news_items)
+        
+        return Response(
+            {
+                **research_data,
+                'refreshed': True,
+                'message': 'Company research data has been refreshed.'
+            },
+            status=status.HTTP_200_OK
+        )
+        
+    except Exception as e:
+        logger.error(f"Error refreshing research for {company_name}: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'refresh_failed',
+                    'message': f'Failed to refresh company research: {str(e)}'
                 }
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
