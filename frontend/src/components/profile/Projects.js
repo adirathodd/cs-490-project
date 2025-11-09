@@ -3,6 +3,23 @@ import { projectsAPI } from '../../services/api';
 import './Projects.css';
 import Icon from '../common/Icon';
 
+const sanitizeDateInput = (value) => {
+  if (value === null || value === undefined) return '';
+  const str = String(value).trim();
+  if (!str || str.toLowerCase() === 'null' || str.toLowerCase() === 'undefined') {
+    return '';
+  }
+  return str;
+};
+
+const normalizeProjectDates = (project = {}) => ({
+  ...project,
+  start_date: sanitizeDateInput(project.start_date),
+  end_date: sanitizeDateInput(project.end_date),
+});
+
+const displayDate = (value) => sanitizeDateInput(value) || '—';
+
 const emptyForm = {
   name: '',
   description: '',
@@ -47,7 +64,7 @@ const Projects = () => {
       setLoading(true);
       try {
         const data = await projectsAPI.getProjects();
-        setItems(sortProjects(data));
+        setItems(sortProjects((data || []).map(normalizeProjectDates)));
       } catch (e) {
         setError(e?.message || 'Failed to load projects');
       } finally {
@@ -223,6 +240,11 @@ const Projects = () => {
     } else if (payload.status === 'ongoing') {
       delete payload.end_date;
     }
+    ['start_date', 'end_date'].forEach((field) => {
+      if (payload[field] === '') {
+        payload[field] = null;
+      }
+    });
     // Remove local-only fields
     delete payload.technologies_input;
     return payload;
@@ -237,10 +259,12 @@ const Projects = () => {
       const payload = toPayload(form);
       if (editingId) {
         const updated = await projectsAPI.updateProject(editingId, payload);
-        setItems((prev) => sortProjects((prev || []).map((i) => (i.id === editingId ? updated : i))));
+        setItems((prev) =>
+          sortProjects((prev || []).map((i) => (i.id === editingId ? normalizeProjectDates(updated) : i))),
+        );
       } else {
         const created = await projectsAPI.addProject(payload);
-        setItems((prev) => sortProjects([...(prev || []), created]));
+        setItems((prev) => sortProjects([...(prev || []), normalizeProjectDates(created)]));
       }
       resetForm();
     } catch (e) {
@@ -259,8 +283,8 @@ const Projects = () => {
       name: item.name || '',
       description: item.description || '',
       role: item.role || '',
-      start_date: item.start_date || '',
-      end_date: item.end_date || '',
+      start_date: sanitizeDateInput(item.start_date),
+      end_date: sanitizeDateInput(item.end_date),
       project_url: item.project_url || '',
       team_size: item.team_size ?? '',
       collaboration_details: item.collaboration_details || '',
@@ -543,9 +567,11 @@ const Projects = () => {
                     <h3>{item.name}</h3>
                     <div className="project-meta">
                       {item.role && <span><Icon name="users" size="sm" /> {item.role}</span>}
-                      {(item.start_date || item.end_date) && (
-                        <span className="dates"><Icon name="calendar" size="sm" /> {item.start_date || '—'} to {item.end_date || '—'}</span>
-                      )}
+                      {(sanitizeDateInput(item.start_date) || sanitizeDateInput(item.end_date)) ? (
+                        <span className="dates">
+                          <Icon name="calendar" size="sm" /> {displayDate(item.start_date)} to {displayDate(item.end_date)}
+                        </span>
+                      ) : null}
                       {item.status && <span className={`badge ${item.status}`}>{statusOptions.find(s => s.value === item.status)?.label || item.status}</span>}
                     </div>
                   </div>

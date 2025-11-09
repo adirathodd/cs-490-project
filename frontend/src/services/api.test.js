@@ -734,6 +734,16 @@ describe('api service', () => {
       await expect(projectsAPI.addProject({ title: 'T' })).rejects.toEqual({ message: 'Failed to add project' });
     });
 
+    test('addProject surfaces backend validation errors with details', async () => {
+      const backendError = {
+        code: 'validation_error',
+        message: 'Validation error',
+        details: { name: ['This field is required.'] },
+      };
+      mockAxios.post.mockRejectedValueOnce({ error: backendError });
+      await expect(projectsAPI.addProject({ title: '' })).rejects.toEqual(backendError);
+    });
+
     test('updateProject JSON error uses default when no response', async () => {
       mockAxios.patch.mockRejectedValueOnce(new Error('down'));
       await expect(projectsAPI.updateProject(1, { title: 'T' })).rejects.toEqual({ message: 'Failed to update project' });

@@ -40,14 +40,18 @@ api.interceptors.response.use(
       return api.request(config);
     }
 
-    // Prefer backend error shape if present, but only surface minimal shape expected by tests/consumers
+    // Prefer backend error shape if present, preserving any details/messages for callers
     const backendErr = error?.response?.data?.error;
-    const code = (backendErr && backendErr.code) ? backendErr.code : 'network_error';
-    const message = (backendErr && backendErr.message) ? backendErr.message : 'Network error. Please try again.';
+    if (backendErr) {
+      return Promise.reject({ error: backendErr });
+    }
 
-    // Return minimal normalized error to satisfy existing tests and callers:
-    // { error: { code, message } }
-    return Promise.reject({ error: { code, message } });
+    return Promise.reject({
+      error: {
+        code: 'network_error',
+        message: 'Network error. Please try again.',
+      },
+    });
   }
 );
 
@@ -447,7 +451,7 @@ export const projectsAPI = {
       const response = await api.get(path);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to fetch projects' };
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch projects' };
     }
   },
 
@@ -456,7 +460,7 @@ export const projectsAPI = {
       const response = await api.get(`/projects/${id}`);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to fetch project' };
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch project' };
     }
   },
 
@@ -481,7 +485,7 @@ export const projectsAPI = {
       const response = await api.post('/projects', payload);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to add project' };
+      throw error.error || error.response?.data?.error || { message: 'Failed to add project' };
     }
   },
 
@@ -504,7 +508,7 @@ export const projectsAPI = {
       const response = await api.patch(`/projects/${id}`, data);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to update project' };
+      throw error.error || error.response?.data?.error || { message: 'Failed to update project' };
     }
   },
 
@@ -513,7 +517,7 @@ export const projectsAPI = {
       const response = await api.delete(`/projects/${id}`);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to delete project' };
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete project' };
     }
   },
 
@@ -522,7 +526,7 @@ export const projectsAPI = {
       const response = await api.delete(`/projects/${projectId}/media/${mediaId}`);
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to delete media' };
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete media' };
     }
   },
 };
@@ -757,6 +761,17 @@ export const resumeAIAPI = {
       return response.data;
     } catch (error) {
       throw error.response?.data?.error || { message: 'Failed to generate AI resume content' };
+    }
+  },
+  
+  compileLatex: async (latexContent) => {
+    try {
+      const response = await api.post('/resume/compile-latex/', {
+        latex_content: latexContent,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to compile LaTeX' };
     }
   },
 };

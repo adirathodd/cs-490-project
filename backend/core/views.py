@@ -4385,6 +4385,47 @@ def generate_resume_for_job(request, job_id):
     return Response(payload, status=status.HTTP_200_OK)
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def compile_latex_to_pdf(request):
+    """
+    UC-047: Compile LaTeX source code to PDF for live preview.
+    
+    Request Body:
+    {
+        "latex_content": "\\documentclass{article}..."
+    }
+    
+    Response:
+    {
+        "pdf_document": "base64-encoded-pdf-data"
+    }
+    """
+    latex_content = request.data.get('latex_content', '').strip()
+    
+    if not latex_content:
+        return Response(
+            {'error': {'code': 'invalid_input', 'message': 'latex_content is required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        pdf_base64 = resume_ai.compile_latex_pdf(latex_content)
+        return Response({'pdf_document': pdf_base64}, status=status.HTTP_200_OK)
+    except resume_ai.ResumeAIError as exc:
+        logger.warning('LaTeX compilation failed: %s', exc)
+        return Response(
+            {'error': {'code': 'compilation_failed', 'message': str(exc)}},
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected error during LaTeX compilation: %s', exc)
+        return Response(
+            {'error': {'code': 'compilation_failed', 'message': 'Unexpected compilation error.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 # ======================
 # UC-063: AUTOMATED COMPANY RESEARCH
 # ======================

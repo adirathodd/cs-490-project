@@ -111,6 +111,7 @@ urlpatterns = [
     path('jobs/<int:job_id>/company', views.job_company_info, name='job-company-info'),
     # UC-047: AI resume generation
     path('jobs/<int:job_id>/resume/generate', views.generate_resume_for_job, name='job-resume-generate'),
+    path('resume/compile-latex/', views.compile_latex_to_pdf, name='compile-latex-to-pdf'),
     
     # UC-063: Automated Company Research endpoints
     path('companies/<str:company_name>/research', views.automated_company_research, name='automated-company-research'),
