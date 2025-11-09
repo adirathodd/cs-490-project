@@ -25,6 +25,7 @@ import JobsCalendar from './components/jobs/JobsCalendar';
 import SalaryResearch from './components/jobs/SalaryResearch';
 import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
+import { AiCoverLetterGenerator } from './features/cover-letter';
 import ScrollToTop from './components/common/ScrollToTop';
 import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
@@ -272,6 +273,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <AiResumeGenerator />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/cover-letter/ai"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <AiCoverLetterGenerator />
               </PrivateRoute>
             }
           />

@@ -112,6 +112,8 @@ urlpatterns = [
     # UC-047: AI resume generation
     path('jobs/<int:job_id>/resume/generate', views.generate_resume_for_job, name='job-resume-generate'),
     path('resume/compile-latex/', views.compile_latex_to_pdf, name='compile-latex-to-pdf'),
+    # UC-056: AI cover letter generation
+    path('jobs/<int:job_id>/cover-letter/generate', views.generate_cover_letter_for_job, name='job-cover-letter-generate'),
     
     # UC-063: Automated Company Research endpoints
     path('companies/<str:company_name>/research', views.automated_company_research, name='automated-company-research'),

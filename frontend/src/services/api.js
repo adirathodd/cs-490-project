@@ -820,6 +820,21 @@ export const resumeAIAPI = {
   },
 };
 
+// UC-056: AI Cover Letter Generation API calls
+export const coverLetterAIAPI = {
+  generateForJob: async (jobId, options = {}) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/cover-letter/generate`, {
+        tone: options.tone,
+        variation_count: options.variation_count,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to generate AI cover letter content' };
+    }
+  },
+};
+
 authAPI.getEmploymentTimeline = async () => {
   try {
     const response = await api.get('/employment/timeline');
