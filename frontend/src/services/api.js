@@ -750,6 +750,50 @@ export const materialsAPI = {
   },
 };
 
+// UC-067: Salary Research and Benchmarking API calls
+export const salaryAPI = {
+  // Get salary research data for a job
+  getSalaryResearch: async (jobId) => {
+    try {
+      const response = await api.get(`/jobs/${jobId}/salary-research/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch salary research' };
+    }
+  },
+
+  // Trigger new salary research or refresh existing data
+  triggerResearch: async (jobId, options = {}) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/salary-research/`, options);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to trigger salary research' };
+    }
+  },
+
+  // Export salary research report
+  exportResearch: async (jobId, format = 'json') => {
+    try {
+      const response = await api.get(`/jobs/${jobId}/salary-research/export/`, {
+        params: { format },
+        responseType: format === 'pdf' ? 'blob' : 'json'
+      });
+      
+      if (format === 'pdf') {
+        // Create blob URL for PDF download
+        const blob = new Blob([response.data], { type: 'application/pdf' });
+        const url = window.URL.createObjectURL(blob);
+        return { url, blob };
+      }
+      
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to export salary research' };
+    }
+  },
+};
+
 // UC-047: AI Resume Generation API calls
 export const resumeAIAPI = {
   generateForJob: async (jobId, options = {}) => {
@@ -852,6 +896,7 @@ try {
     module.exports.authAPI = authAPI;
     module.exports.jobsAPI = jobsAPI;
     module.exports.materialsAPI = materialsAPI;
+    module.exports.salaryAPI = salaryAPI;
     module.exports.resumeAIAPI = resumeAIAPI;
   }
 } catch (e) {
@@ -885,6 +930,7 @@ try {
     _defaultExport.getProfilePicture = authAPI.getProfilePicture;
     _defaultExport.jobsAPI = jobsAPI;
     _defaultExport.materialsAPI = materialsAPI;
+    _defaultExport.salaryAPI = salaryAPI;
     _defaultExport.resumeAIAPI = resumeAIAPI;
   }
   if (typeof module !== 'undefined' && module && module.exports) {
@@ -892,6 +938,7 @@ try {
     module.exports.authAPI = authAPI;
     module.exports.jobsAPI = jobsAPI;
     module.exports.materialsAPI = materialsAPI;
+    module.exports.salaryAPI = salaryAPI;
     module.exports.resumeAIAPI = resumeAIAPI;
   }
 } catch (e) {

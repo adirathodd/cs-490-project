@@ -40,7 +40,6 @@ def initialize_firebase() -> Optional[firebase_admin.App]:
     try:
         cred = credentials.Certificate(cred_path)
         _app = firebase_admin.initialize_app(cred)
-        logger.info("Firebase Admin SDK initialized successfully")
         return _app
     except Exception as e:
         logger.error(f"Failed to initialize Firebase: {e}")

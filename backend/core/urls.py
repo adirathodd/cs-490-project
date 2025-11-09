@@ -117,4 +117,8 @@ urlpatterns = [
     path('companies/<str:company_name>/research', views.automated_company_research, name='automated-company-research'),
     path('companies/<str:company_name>/research/report', views.company_research_report, name='company-research-report'),
     path('companies/<str:company_name>/research/refresh', views.refresh_company_research, name='refresh-company-research'),
+    
+    # UC-067: Salary Research and Benchmarking endpoints
+    path('jobs/<int:job_id>/salary-research/', views.salary_research, name='salary-research'),
+    path('jobs/<int:job_id>/salary-research/export/', views.salary_research_export, name='salary-research-export'),
 ]
