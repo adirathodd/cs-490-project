@@ -80,6 +80,12 @@ The application includes a comprehensive database design covering:
    pip install -r backend/requirements.txt
    ```
 
+3. **Install the Tectonic LaTeX engine** (required for AI resume PDFs):
+   ```bash
+   brew install tectonic  # macOS
+   # or download from https://tectonic-typesetting.github.io/ and ensure the binary is on PATH
+   ```
+
 3. **Set up environment variables:**
    ```bash
    cp .env.example .env

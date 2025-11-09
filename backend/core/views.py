@@ -48,7 +48,7 @@ import firebase_admin
 from firebase_admin import auth as firebase_auth
 import logging
 from django.conf import settings
-from core import job_import_utils
+from core import job_import_utils, resume_ai
 
 
 # ------------------------------
@@ -4299,6 +4299,90 @@ def job_company_info(request, job_id):
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# ======================
+# UC-047: AI RESUME CONTENT GENERATION
+# ======================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_resume_for_job(request, job_id):
+    """
+    UC-047: Generate AI-tailored resume content for a specific job using Gemini.
+    """
+    profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
+    try:
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    api_key = getattr(settings, 'GEMINI_API_KEY', '')
+    if not api_key:
+        return Response(
+            {
+                'error': {
+                    'code': 'service_unavailable',
+                    'message': 'AI resume service is not configured. Set GEMINI_API_KEY in the backend environment.',
+                }
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+    tone = (request.data.get('tone') or 'balanced').strip().lower()
+    if tone not in resume_ai.TONE_DESCRIPTORS:
+        tone = 'balanced'
+
+    variation_count = request.data.get('variation_count', 2)
+    try:
+        variation_count = int(variation_count)
+    except (TypeError, ValueError):
+        variation_count = 2
+    variation_count = max(1, min(variation_count, 3))
+
+    candidate_snapshot = resume_ai.collect_candidate_snapshot(profile)
+    job_snapshot = resume_ai.build_job_snapshot(job)
+
+    try:
+        generation = resume_ai.run_resume_generation(
+            candidate_snapshot,
+            job_snapshot,
+            tone=tone,
+            variation_count=variation_count,
+            api_key=api_key,
+            model=getattr(settings, 'GEMINI_MODEL', None),
+        )
+    except resume_ai.ResumeAIError as exc:
+        logger.warning('AI resume generation failed for job %s: %s', job_id, exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': str(exc)}},
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected AI resume failure for job %s: %s', job_id, exc)
+        return Response(
+            {
+                'error': {
+                    'code': 'ai_generation_failed',
+                    'message': 'Unexpected error while generating resume content.',
+                }
+            },
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+
+    payload = {
+        'job': job_snapshot,
+        'profile': resume_ai.build_profile_preview(candidate_snapshot),
+        'generated_at': timezone.now().isoformat(),
+        'tone': tone,
+        'variation_count': generation.get('variation_count'),
+        'shared_analysis': generation.get('shared_analysis'),
+        'variations': generation.get('variations'),
+    }
+    return Response(payload, status=status.HTTP_200_OK)
 
 
 # ======================

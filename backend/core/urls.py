@@ -109,10 +109,11 @@ urlpatterns = [
     # UC-043: Company information endpoints
     path('companies/<str:company_name>', views.company_info, name='company-info'),
     path('jobs/<int:job_id>/company', views.job_company_info, name='job-company-info'),
+    # UC-047: AI resume generation
+    path('jobs/<int:job_id>/resume/generate', views.generate_resume_for_job, name='job-resume-generate'),
     
     # UC-063: Automated Company Research endpoints
     path('companies/<str:company_name>/research', views.automated_company_research, name='automated-company-research'),
     path('companies/<str:company_name>/research/report', views.company_research_report, name='company-research-report'),
     path('companies/<str:company_name>/research/refresh', views.refresh_company_research, name='refresh-company-research'),
 ]
-
