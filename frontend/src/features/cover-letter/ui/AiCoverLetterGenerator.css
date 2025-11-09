@@ -1,0 +1,14 @@
+/* The cover letter page leverages base resume generator styles.
+	 This file adds small custom tweaks. */
+
+.ai-clr-page .ai-clr-variation + .ai-clr-variation { margin-top: var(--space-5); }
+.ai-clr-variation h3 { margin: 0 0 var(--space-3); font-size: var(--font-size-lg); }
+.ai-clr-section h4 { margin: var(--space-4) 0 var(--space-2); font-size: var(--font-size-sm); text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-500); }
+.ai-clr-section p { line-height: 1.5; margin: 0 0 var(--space-3); }
+.ai-clr-results { display: flex; flex-direction: column; gap: var(--space-6); margin-top: var(--space-4); }
+.ai-clr-results-card { display: flex; flex-direction: column; }
+.ai-clr-results-card header { margin-bottom: var(--space-4); }
+.ai-clr-results-card h2 { margin: 0; }
+@media (max-width: 900px){
+	.ai-clr-results { gap: var(--space-5); }
+}

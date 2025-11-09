@@ -7,6 +7,36 @@
 			"command": "git add backend/backend/settings.py backend/README.md && git commit -m \"updated sender email address for account deletion\" && git push origin main",
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "build-frontend",
+			"type": "shell",
+			"command": "cd frontend && npm run build",
+			"group": "build"
+		},
+		{
+			"label": "build-frontend",
+			"type": "shell",
+			"command": "cd frontend && npm run build",
+			"group": "build"
+		},
+		{
+			"label": "build-frontend",
+			"type": "shell",
+			"command": "cd frontend && npm run build",
+			"group": "build"
+		},
+		{
+			"label": "build-frontend",
+			"type": "shell",
+			"command": "cd frontend && npm run build",
+			"group": "build"
+		},
+		{
+			"label": "build-frontend",
+			"type": "shell",
+			"command": "cd frontend && npm run build",
+			"group": "build"
 		}
 	]
 }
