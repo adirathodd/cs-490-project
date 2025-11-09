@@ -4408,6 +4408,22 @@ def compile_latex_to_pdf(request):
             {'error': {'code': 'invalid_input', 'message': 'latex_content is required.'}},
             status=status.HTTP_400_BAD_REQUEST
         )
+    
+    try:
+        pdf_base64 = resume_ai.compile_latex_pdf(latex_content)
+        return Response({'pdf_document': pdf_base64}, status=status.HTTP_200_OK)
+    except resume_ai.ResumeAIError as exc:
+        logger.warning('LaTeX compilation failed: %s', exc)
+        return Response(
+            {'error': {'code': 'compilation_failed', 'message': str(exc)}},
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected error during LaTeX compilation: %s', exc)
+        return Response(
+            {'error': {'code': 'compilation_failed', 'message': 'Unexpected compilation error.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 # ======================
@@ -4499,22 +4515,6 @@ def generate_cover_letter_for_job(request, job_id):
         'variations': generation.get('variations'),
     }
     return Response(payload, status=status.HTTP_200_OK)
-    
-    try:
-        pdf_base64 = resume_ai.compile_latex_pdf(latex_content)
-        return Response({'pdf_document': pdf_base64}, status=status.HTTP_200_OK)
-    except resume_ai.ResumeAIError as exc:
-        logger.warning('LaTeX compilation failed: %s', exc)
-        return Response(
-            {'error': {'code': 'compilation_failed', 'message': str(exc)}},
-            status=status.HTTP_422_UNPROCESSABLE_ENTITY
-        )
-    except Exception as exc:
-        logger.exception('Unexpected error during LaTeX compilation: %s', exc)
-        return Response(
-            {'error': {'code': 'compilation_failed', 'message': 'Unexpected compilation error.'}},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
 
 
 # ======================
