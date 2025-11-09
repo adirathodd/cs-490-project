@@ -746,6 +746,21 @@ export const materialsAPI = {
   },
 };
 
+// UC-047: AI Resume Generation API calls
+export const resumeAIAPI = {
+  generateForJob: async (jobId, options = {}) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/resume/generate`, {
+        tone: options.tone,
+        variation_count: options.variation_count,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to generate AI resume content' };
+    }
+  },
+};
+
 authAPI.getEmploymentTimeline = async () => {
   try {
     const response = await api.get('/employment/timeline');
@@ -807,6 +822,7 @@ const _defaultExport = {
   projectsAPI,
   jobsAPI,
   materialsAPI,
+  resumeAIAPI,
 };
 
 export default _defaultExport;
@@ -821,6 +837,7 @@ try {
     module.exports.authAPI = authAPI;
     module.exports.jobsAPI = jobsAPI;
     module.exports.materialsAPI = materialsAPI;
+    module.exports.resumeAIAPI = resumeAIAPI;
   }
 } catch (e) {
   // ignore in strict ESM environments
@@ -853,12 +870,14 @@ try {
     _defaultExport.getProfilePicture = authAPI.getProfilePicture;
     _defaultExport.jobsAPI = jobsAPI;
     _defaultExport.materialsAPI = materialsAPI;
+    _defaultExport.resumeAIAPI = resumeAIAPI;
   }
   if (typeof module !== 'undefined' && module && module.exports) {
     module.exports = _defaultExport;
     module.exports.authAPI = authAPI;
     module.exports.jobsAPI = jobsAPI;
     module.exports.materialsAPI = materialsAPI;
+    module.exports.resumeAIAPI = resumeAIAPI;
   }
 } catch (e) {
   // ignore any errors during best-effort compatibility wiring

@@ -32,6 +32,10 @@ import {
   FaFile,
   FaFileAlt,
   FaFilter,
+  FaMagic,
+  FaSyncAlt,
+  FaClipboard,
+  FaCheck,
 } from 'react-icons/fa';
 
 // Simple, centralized Icon wrapper used across the app.
@@ -81,6 +85,10 @@ const iconMap = {
   file: FaFile,
   'file-text': FaFileAlt,
   filter: FaFilter,
+  sparkles: FaMagic,
+  refresh: FaSyncAlt,
+  clipboard: FaClipboard,
+  check: FaCheck,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {

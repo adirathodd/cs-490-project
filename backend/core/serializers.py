@@ -802,8 +802,15 @@ class WorkExperienceSerializer(serializers.ModelSerializer):
         required=False,
         help_text="List of skill names used in this role"
     )
-    # Accept IDs for input and serialize details for output
-    skills_used = serializers.PrimaryKeyRelatedField(many=True, required=False, queryset=Skill.objects.all())
+    # Serialize skill details for output, accept IDs for input
+    skills_used = SkillSerializer(many=True, read_only=True)
+    skills_used_ids = serializers.PrimaryKeyRelatedField(
+        many=True, 
+        required=False, 
+        queryset=Skill.objects.all(),
+        write_only=True,
+        source='skills_used'
+    )
     # Allow passing candidate id directly when using the serializer outside views
     candidate = serializers.PrimaryKeyRelatedField(queryset=CandidateProfile.objects.all(), write_only=True, required=False)
     
@@ -824,6 +831,7 @@ class WorkExperienceSerializer(serializers.ModelSerializer):
             'description',
             'achievements',
             'skills_used',
+            'skills_used_ids',
             'skills_used_names',
             'candidate',
             'duration',
@@ -927,7 +935,7 @@ class WorkExperienceSerializer(serializers.ModelSerializer):
         # Create work experience entry.
         # Pop both name-based and id-based skills inputs if present
         skills_names = validated_data.pop('skills_used_names', None)
-        skills_ids = validated_data.pop('skills_used', None)
+        skills_ids = validated_data.pop('skills_used', None)  # This comes from skills_used_ids source
         achievements = validated_data.get('achievements', [])
 
         # Ensure achievements is a list
@@ -947,15 +955,16 @@ class WorkExperienceSerializer(serializers.ModelSerializer):
             else:
                 work_experience.skills_used.clear()
 
-        # Handle name-based skills
-        self._sync_skills(work_experience, skills_names)
+        # Handle name-based skills (takes precedence if both provided)
+        if skills_names is not None:
+            self._sync_skills(work_experience, skills_names)
 
         return work_experience
     
     def update(self, instance, validated_data):
         # Update work experience entry (UC-024).
         skills_names = validated_data.pop('skills_used_names', None)
-        skills_ids = validated_data.pop('skills_used', None)
+        skills_ids = validated_data.pop('skills_used', None)  # This comes from skills_used_ids source
 
         # Update fields
         for attr, value in validated_data.items():
@@ -971,7 +980,7 @@ class WorkExperienceSerializer(serializers.ModelSerializer):
                 skills = list(Skill.objects.filter(id__in=list(skills_ids)))
             instance.skills_used.set(skills)
 
-        # Update name-based skills if provided
+        # Update name-based skills if provided (takes precedence)
         if skills_names is not None:
             self._sync_skills(instance, skills_names)
 

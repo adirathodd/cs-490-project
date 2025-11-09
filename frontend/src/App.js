@@ -23,6 +23,7 @@ import JobStats from './components/jobs/JobStats';
 import JobDetailView from './components/jobs/JobDetailView';
 import JobsCalendar from './components/jobs/JobsCalendar';
 import { CompanyInsights } from './features/company';
+import { AiResumeGenerator } from './features/resume';
 import ScrollToTop from './components/common/ScrollToTop';
 import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
@@ -250,6 +251,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <JobsCalendar />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/resume/ai"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <AiResumeGenerator />
               </PrivateRoute>
             }
           />
