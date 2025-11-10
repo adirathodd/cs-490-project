@@ -1363,3 +1363,79 @@ class SkillDevelopmentProgress(models.Model):
     
     def __str__(self):
         return f"{self.candidate.user.username} - {self.skill.name} ({self.activity_type})"
+
+
+class JobMatchAnalysis(models.Model):
+    """Store job matching analysis results with scores and breakdowns.
+    
+    Provides comprehensive match scoring for UC-065 Job Matching Algorithm:
+    - Overall match score (0-100)
+    - Component scores (skills, experience, education) 
+    - Detailed match breakdown and recommendations
+    - Personalized scoring weights
+    - Historical tracking capabilities
+    """
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='match_analysis')
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name='job_matches')
+    
+    # Overall match score (0-100)
+    overall_score = models.DecimalField(max_digits=5, decimal_places=2)
+    
+    # Component scores (0-100 each)
+    skills_score = models.DecimalField(max_digits=5, decimal_places=2)
+    experience_score = models.DecimalField(max_digits=5, decimal_places=2)
+    education_score = models.DecimalField(max_digits=5, decimal_places=2)
+    
+    # Detailed match breakdown
+    match_data = models.JSONField(help_text="Detailed analysis including strengths, gaps, and recommendations")
+    
+    # Personalized scoring weights
+    user_weights = models.JSONField(
+        default=dict, 
+        help_text="Custom category weights (skills, experience, education)"
+    )
+    
+    # Metadata
+    generated_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_valid = models.BooleanField(default=True, help_text="False if analysis is outdated due to profile changes")
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['candidate', '-overall_score']),
+            models.Index(fields=['job', '-overall_score']),
+            models.Index(fields=['candidate', '-generated_at']),
+            models.Index(fields=['-overall_score']),
+        ]
+        ordering = ['-overall_score', '-generated_at']
+        unique_together = ['job', 'candidate']
+    
+    def __str__(self):
+        return f"{self.candidate.user.username} - {self.job.title} at {self.job.company_name} ({self.overall_score}%)"
+    
+    def invalidate(self):
+        """Mark analysis as invalid when profile or job changes."""
+        self.is_valid = False
+        self.save(update_fields=['is_valid'])
+    
+    @property
+    def match_grade(self):
+        """Return letter grade based on overall score."""
+        if self.overall_score >= 90:
+            return 'A+'
+        elif self.overall_score >= 85:
+            return 'A'
+        elif self.overall_score >= 80:
+            return 'B+'
+        elif self.overall_score >= 75:
+            return 'B'
+        elif self.overall_score >= 70:
+            return 'C+'
+        elif self.overall_score >= 65:
+            return 'C'
+        elif self.overall_score >= 60:
+            return 'D+'
+        elif self.overall_score >= 55:
+            return 'D'
+        else:
+            return 'F'

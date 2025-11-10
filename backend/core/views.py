@@ -3,11 +3,13 @@ Authentication views for Firebase-based user registration and login.
 """
 from rest_framework import status, serializers
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes, authentication_classes
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
+from rest_framework.authentication import SessionAuthentication
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from core.authentication import FirebaseAuthentication
 from core.serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
@@ -6229,6 +6231,181 @@ def skill_progress(request, skill_id):
         )
 
 
+@api_view(['GET', 'POST'])
+@authentication_classes([SessionAuthentication, FirebaseAuthentication])
+@permission_classes([IsAuthenticated])
+def job_match_score(request, job_id):
+    """
+    UC-065: Job Matching Algorithm
+    
+    GET: Calculate comprehensive match score for a specific job
+    POST: Update user weights and recalculate match score
+    
+    GET Query Parameters:
+    - refresh: Set to 'true' to force regeneration (bypasses cache)
+    
+    POST Body:
+    {
+        "weights": {
+            "skills": 0.6,      // Custom weight for skills (0.0-1.0)
+            "experience": 0.3,  // Custom weight for experience (0.0-1.0)  
+            "education": 0.1    // Custom weight for education (0.0-1.0)
+        }
+    }
+    
+    Returns:
+    - Overall match score (0-100)
+    - Component scores (skills, experience, education)
+    - Detailed breakdown with strengths and gaps
+    - Improvement recommendations
+    - Comparison data and match grade
+    
+    Results are cached for performance optimization.
+    """
+    from core.job_matching import JobMatchingEngine
+    from core.models import JobMatchAnalysis
+    from django.utils import timezone
+    
+    try:
+        # Verify job ownership
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        
+        if request.method == 'GET':
+            # Check if user wants to force refresh
+            force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+            
+            # Try to get cached analysis first (unless force refresh)
+            if not force_refresh:
+                cached_analysis = JobMatchAnalysis.objects.filter(
+                    job=job,
+                    candidate=profile,
+                    is_valid=True
+                ).first()
+                
+                if cached_analysis:
+                    response_data = {
+                        'overall_score': float(cached_analysis.overall_score),
+                        'skills_score': float(cached_analysis.skills_score),
+                        'experience_score': float(cached_analysis.experience_score),
+                        'education_score': float(cached_analysis.education_score),
+                        'weights_used': cached_analysis.user_weights or JobMatchingEngine.DEFAULT_WEIGHTS,
+                        'breakdown': cached_analysis.match_data.get('breakdown', {}),
+                        'match_grade': cached_analysis.match_grade,
+                        'generated_at': cached_analysis.generated_at.isoformat(),
+                        'cached': True
+                    }
+                    
+                    logger.info(f"Returning cached match analysis for job {job_id}")
+                    return Response(response_data, status=status.HTTP_200_OK)
+            
+            # Generate new analysis
+            logger.info(f"Generating match score analysis for job {job_id}")
+            analysis = JobMatchingEngine.calculate_match_score(job, profile)
+            
+            # Cache the results
+            try:
+                # Invalidate old analysis for this job/candidate pair
+                JobMatchAnalysis.objects.filter(
+                    job=job, 
+                    candidate=profile
+                ).update(is_valid=False)
+                
+                # Create new analysis entry
+                match_analysis = JobMatchAnalysis.objects.create(
+                    job=job,
+                    candidate=profile,
+                    overall_score=analysis['overall_score'],
+                    skills_score=analysis['skills_score'],
+                    experience_score=analysis['experience_score'],
+                    education_score=analysis['education_score'],
+                    match_data={'breakdown': analysis['breakdown']},
+                    user_weights=analysis['weights_used']
+                )
+                
+                analysis['match_grade'] = match_analysis.match_grade
+                analysis['cached'] = False
+                
+                logger.info(f"Cached match analysis for job {job_id}")
+            except Exception as cache_error:
+                logger.warning(f"Failed to cache match analysis: {cache_error}")
+                # Continue anyway - caching failure shouldn't break the response
+                analysis['match_grade'] = 'N/A'
+                analysis['cached'] = False
+            
+            return Response(analysis, status=status.HTTP_200_OK)
+        
+        elif request.method == 'POST':
+            # Update user weights and recalculate
+            data = request.data
+            user_weights = data.get('weights', {})
+            
+            # Validate weights
+            if not isinstance(user_weights, dict):
+                return Response(
+                    {'error': {'code': 'invalid_weights', 'message': 'Weights must be a dictionary.'}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            required_keys = {'skills', 'experience', 'education'}
+            if not required_keys.issubset(user_weights.keys()):
+                return Response(
+                    {'error': {'code': 'missing_weights', 'message': f'Weights must include: {required_keys}'}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Generate analysis with custom weights
+            logger.info(f"Generating custom weighted match analysis for job {job_id}")
+            analysis = JobMatchingEngine.calculate_match_score(job, profile, user_weights)
+            
+            # Update cached analysis with new weights
+            try:
+                # Invalidate old analysis
+                JobMatchAnalysis.objects.filter(
+                    job=job, 
+                    candidate=profile
+                ).update(is_valid=False)
+                
+                # Create new analysis with custom weights
+                match_analysis = JobMatchAnalysis.objects.create(
+                    job=job,
+                    candidate=profile,
+                    overall_score=analysis['overall_score'],
+                    skills_score=analysis['skills_score'],
+                    experience_score=analysis['experience_score'],
+                    education_score=analysis['education_score'],
+                    match_data={'breakdown': analysis['breakdown']},
+                    user_weights=user_weights
+                )
+                
+                analysis['match_grade'] = match_analysis.match_grade
+                analysis['cached'] = False
+                
+                logger.info(f"Updated match analysis with custom weights for job {job_id}")
+            except Exception as cache_error:
+                logger.warning(f"Failed to update cached match analysis: {cache_error}")
+                analysis['match_grade'] = 'N/A'
+                analysis['cached'] = False
+            
+            return Response(analysis, status=status.HTTP_200_OK)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error generating match score for job {job_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to generate match score analysis.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
 # ======================
 # UC-051: RESUME EXPORT ENDPOINTS
 # ======================
@@ -6274,6 +6451,186 @@ def resume_export_themes(request):
 
 
 @api_view(['GET'])
+@authentication_classes([SessionAuthentication, FirebaseAuthentication])
+@permission_classes([IsAuthenticated])
+def bulk_job_match_scores(request):
+    """
+    UC-065: Bulk Job Matching Analysis
+    
+    GET: Calculate match scores for multiple jobs
+    
+    Query Parameters:
+    - job_ids: Comma-separated list of job IDs (optional, defaults to all user jobs)
+    - limit: Maximum number of jobs to analyze (default: 20)
+    - min_score: Minimum match score threshold (0-100)
+    - sort_by: Sort field ('score', 'date', 'title') - default: 'score'
+    - order: Sort order ('asc', 'desc') - default: 'desc'
+    
+    Returns:
+    - Array of jobs with match scores
+    - Summary statistics
+    - Top matched jobs
+    - Performance metrics
+    """
+    from core.job_matching import JobMatchingEngine
+    from core.models import JobMatchAnalysis
+    from django.db.models import Q
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        # Parse query parameters
+        job_ids_param = request.query_params.get('job_ids', '')
+        limit = min(int(request.query_params.get('limit', 20)), 50)  # Cap at 50
+        min_score = float(request.query_params.get('min_score', 0))
+        sort_by = request.query_params.get('sort_by', 'score')
+        order = request.query_params.get('order', 'desc')
+        
+        # Build job query
+        job_query = JobEntry.objects.filter(candidate=profile)
+        
+        if job_ids_param:
+            try:
+                job_ids = [int(id.strip()) for id in job_ids_param.split(',')]
+                job_query = job_query.filter(id__in=job_ids)
+            except ValueError:
+                return Response(
+                    {'error': {'code': 'invalid_job_ids', 'message': 'Invalid job IDs format.'}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        jobs = job_query[:limit]
+        
+        if not jobs:
+            return Response({
+                'jobs': [],
+                'summary': {
+                    'total_analyzed': 0,
+                    'average_score': 0,
+                    'top_score': 0,
+                    'jobs_above_threshold': 0
+                }
+            }, status=status.HTTP_200_OK)
+        
+        # Calculate match scores for all jobs
+        logger.info(f"Analyzing {len(jobs)} jobs for bulk match scoring")
+        
+        job_scores = []
+        total_score = 0
+        top_score = 0
+        above_threshold = 0
+        
+        for job in jobs:
+            try:
+                # Try to get cached analysis first
+                cached_analysis = JobMatchAnalysis.objects.filter(
+                    job=job,
+                    candidate=profile,
+                    is_valid=True
+                ).first()
+                
+                if cached_analysis:
+                    score_data = {
+                        'job_id': job.id,
+                        'title': job.title,
+                        'company_name': job.company_name,
+                        'overall_score': float(cached_analysis.overall_score),
+                        'skills_score': float(cached_analysis.skills_score),
+                        'experience_score': float(cached_analysis.experience_score),
+                        'education_score': float(cached_analysis.education_score),
+                        'match_grade': cached_analysis.match_grade,
+                        'generated_at': cached_analysis.generated_at.isoformat(),
+                        'cached': True
+                    }
+                else:
+                    # Generate new analysis
+                    analysis = JobMatchingEngine.calculate_match_score(job, profile)
+                    
+                    score_data = {
+                        'job_id': job.id,
+                        'title': job.title,
+                        'company_name': job.company_name,
+                        'overall_score': analysis['overall_score'],
+                        'skills_score': analysis['skills_score'],
+                        'experience_score': analysis['experience_score'],
+                        'education_score': analysis['education_score'],
+                        'match_grade': 'N/A',  # Will be set if cached
+                        'generated_at': analysis['generated_at'],
+                        'cached': False
+                    }
+                    
+                    # Try to cache the result
+                    try:
+                        match_analysis = JobMatchAnalysis.objects.create(
+                            job=job,
+                            candidate=profile,
+                            overall_score=analysis['overall_score'],
+                            skills_score=analysis['skills_score'],
+                            experience_score=analysis['experience_score'],
+                            education_score=analysis['education_score'],
+                            match_data={'breakdown': analysis['breakdown']},
+                            user_weights=analysis['weights_used']
+                        )
+                        score_data['match_grade'] = match_analysis.match_grade
+                    except:
+                        pass  # Don't fail on cache errors
+                
+                # Apply minimum score filter
+                if score_data['overall_score'] >= min_score:
+                    job_scores.append(score_data)
+                    total_score += score_data['overall_score']
+                    top_score = max(top_score, score_data['overall_score'])
+                    above_threshold += 1
+                
+            except Exception as job_error:
+                logger.warning(f"Failed to analyze job {job.id}: {job_error}")
+                continue
+        
+        # Sort results
+        reverse_order = (order.lower() == 'desc')
+        
+        if sort_by == 'score':
+            job_scores.sort(key=lambda x: x['overall_score'], reverse=reverse_order)
+        elif sort_by == 'date':
+            job_scores.sort(key=lambda x: x['generated_at'], reverse=reverse_order)
+        elif sort_by == 'title':
+            job_scores.sort(key=lambda x: x['title'].lower(), reverse=reverse_order)
+        
+        # Calculate summary statistics
+        summary = {
+            'total_analyzed': len(job_scores),
+            'average_score': round(total_score / len(job_scores), 2) if job_scores else 0,
+            'top_score': top_score,
+            'jobs_above_threshold': above_threshold
+        }
+        
+        return Response({
+            'jobs': job_scores,
+            'summary': summary,
+            'filters_applied': {
+                'min_score': min_score,
+                'limit': limit,
+                'sort_by': sort_by,
+                'order': order
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except ValueError as ve:
+        return Response(
+            {'error': {'code': 'invalid_parameters', 'message': str(ve)}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except Exception as e:
+        logger.error(f"Error in bulk job match analysis: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to generate bulk match analysis.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 @permission_classes([IsAuthenticated])
 def resume_export(request):
     """

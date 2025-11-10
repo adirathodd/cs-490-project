@@ -36,6 +36,24 @@ const JobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact = false
         {job.title} <span style={{ color: '#666', fontWeight: 400 }}>@ {job.company_name}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {/* Match Score Badge */}
+        {job.match_score && (
+          <div 
+            style={{
+              background: job.match_score >= 80 ? '#059669' : job.match_score >= 60 ? '#f59e0b' : '#dc2626',
+              color: 'white',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: '600',
+              minWidth: '35px',
+              textAlign: 'center'
+            }}
+            title={`Match Score: ${job.match_score}% - ${job.match_grade || 'N/A'}`}
+          >
+            {Math.round(job.match_score)}%
+          </div>
+        )}
         {dragHandle}
         {job.posting_url ? (
           <a

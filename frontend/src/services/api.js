@@ -690,6 +690,44 @@ export const jobsAPI = {
       throw error.response?.data?.error || { message: 'Failed to import job from URL' };
     }
   },
+
+  // UC-065: Job Matching Algorithm
+  getJobMatchScore: async (id, options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.refresh) params.append('refresh', 'true');
+      const path = params.toString() ? `/jobs/${id}/match-score/?${params.toString()}` : `/jobs/${id}/match-score/`;
+      const response = await api.get(path);
+      return response;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch job match score' };
+    }
+  },
+
+  updateJobMatchWeights: async (id, data) => {
+    try {
+      const response = await api.post(`/jobs/${id}/match-score/`, data);
+      return response;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to update match weights' };
+    }
+  },
+
+  getBulkJobMatchScores: async (options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.job_ids) params.append('job_ids', options.job_ids);
+      if (options.limit) params.append('limit', options.limit);
+      if (options.min_score) params.append('min_score', options.min_score);
+      if (options.sort_by) params.append('sort_by', options.sort_by);
+      if (options.order) params.append('order', options.order);
+      const path = params.toString() ? `/jobs/match-scores/?${params.toString()}` : `/jobs/match-scores/`;
+      const response = await api.get(path);
+      return response;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch bulk job match scores' };
+    }
+  },
 };
 
 // UC-042: Application Materials API calls
