@@ -130,6 +130,11 @@ urlpatterns = [
     # UC-061: Cover letter export
     path('cover-letter/export-docx/', views.export_cover_letter_docx, name='cover-letter-export-docx'),
     
+    # UC-051: Resume export endpoints
+    path('resume/export/themes', views.resume_export_themes, name='resume-export-themes'),
+    path('resume/export', views.resume_export, name='resume-export'),
+    path('resume/export/ai', views.export_ai_resume, name='export-ai-resume'),
+    
     # UC-063: Automated Company Research endpoints
     path('companies/<str:company_name>/research', views.automated_company_research, name='automated-company-research'),
     path('companies/<str:company_name>/research/report', views.company_research_report, name='company-research-report'),

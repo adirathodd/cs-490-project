@@ -6227,3 +6227,490 @@ def skill_progress(request, skill_id):
             {'error': {'code': 'internal_error', 'message': 'Failed to process skill progress.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# ======================
+# UC-051: RESUME EXPORT ENDPOINTS
+# ======================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def resume_export_themes(request):
+    """
+    UC-051: Get Available Resume Export Themes
+    
+    GET: Retrieve list of available themes for resume export
+    
+    Response:
+    {
+        "themes": [
+            {
+                "id": "professional",
+                "name": "Professional",
+                "description": "Classic business style with conservative formatting"
+            },
+            ...
+        ]
+    }
+    """
+    try:
+        from core import resume_export
+        
+        themes = resume_export.get_available_themes()
+        
+        return Response({'themes': themes}, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error retrieving export themes: {e}")
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'Failed to retrieve export themes.'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def resume_export(request):
+    """
+    UC-051: Export Resume in Multiple Formats
+    
+    Export user's resume in various formats with theme support.
+    
+    Query Parameters:
+    - format: Export format (required) - 'docx', 'html', 'txt'
+    - theme: Theme ID (optional, default: 'professional') - 'professional', 'modern', 'minimal', 'creative'
+    - watermark: Optional watermark text (default: '')
+    - filename: Optional custom filename without extension (default: auto-generated from name)
+    
+    Examples:
+    - GET /api/resume/export?format=docx&theme=modern
+    - GET /api/resume/export?format=html&theme=professional&watermark=DRAFT
+    - GET /api/resume/export?format=txt&filename=MyResume
+    
+    Returns: File download with appropriate MIME type
+    """
+    try:
+        from core import resume_export
+        from django.http import HttpResponse
+        
+        # Get or create authenticated user's profile
+        profile, created = CandidateProfile.objects.get_or_create(
+            user=request.user,
+            defaults={'email': request.user.email}
+        )
+        
+        # Get query parameters
+        format_type = request.GET.get('format', '').lower()
+        theme = request.GET.get('theme', 'professional')
+        watermark = request.GET.get('watermark', '')
+        filename = request.GET.get('filename', '')
+        
+        # Validate format
+        if not format_type:
+            return Response(
+                {
+                    'error': {
+                        'code': 'missing_parameter',
+                        'message': 'format parameter is required. Valid options: docx, html, txt'
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        valid_formats = ['docx', 'html', 'txt']
+        if format_type not in valid_formats:
+            return Response(
+                {
+                    'error': {
+                        'code': 'invalid_format',
+                        'message': f'Invalid format: {format_type}. Valid options: {", ".join(valid_formats)}'
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Log export request
+        logger.info(f"Resume export requested by user {request.user.id}: format={format_type}, theme={theme}")
+        
+        # Export resume
+        try:
+            result = resume_export.export_resume(
+                profile=profile,
+                format_type=format_type,
+                theme=theme,
+                watermark=watermark,
+                filename=filename or None
+            )
+        except resume_export.ResumeExportError as e:
+            logger.warning(f"Resume export error: {e}")
+            return Response(
+                {
+                    'error': {
+                        'code': 'export_failed',
+                        'message': str(e)
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create HTTP response with file download
+        response = HttpResponse(
+            result['content'],
+            content_type=result['content_type']
+        )
+        response['Content-Disposition'] = f'attachment; filename="{result["filename"]}"'
+        
+        # Add cache control headers
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        
+        return response
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {
+                'error': {
+                    'code': 'profile_not_found',
+                    'message': 'User profile not found.'
+                }
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.exception(f"Unexpected error during resume export: {e}")
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'An unexpected error occurred during export.'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def export_ai_resume(request):
+    """
+    UC-051: Export AI-generated resume content in multiple formats
+    
+    This endpoint takes AI-generated resume data and exports it in various formats.
+    Unlike the regular export endpoint, this works with AI-generated content that
+    includes LaTeX, not from the database profile.
+    
+    Request Body:
+    {
+        "latex_content": "\\documentclass{article}...",
+        "format": "docx|html|txt|pdf",
+        "theme": "professional|modern|minimal|creative" (optional, default: professional),
+        "watermark": "DRAFT" (optional),
+        "filename": "MyResume" (optional, without extension),
+        "profile_data": {  (optional, extracted from LaTeX if not provided)
+            "name": "John Doe",
+            "email": "john@example.com",
+            ...
+        }
+    }
+    
+    Returns: File download with appropriate MIME type
+    """
+    try:
+        from core import resume_export
+        from django.http import HttpResponse
+        import re
+        
+        # Get request parameters
+        latex_content = request.data.get('latex_content', '').strip()
+        format_type = request.data.get('format', '').lower()
+        theme = request.data.get('theme', 'professional')
+        watermark = request.data.get('watermark', '')
+        filename = request.data.get('filename', '')
+        profile_data = request.data.get('profile_data', {})
+        
+        logger.info(f"Export params - filename: '{filename}', watermark: '{watermark}', format: {format_type}")
+        
+        # Validate format
+        if not format_type:
+            return Response(
+                {
+                    'error': {
+                        'code': 'missing_parameter',
+                        'message': 'format parameter is required. Valid options: docx, html, txt, pdf'
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        valid_formats = ['docx', 'html', 'txt', 'pdf']
+        if format_type not in valid_formats:
+            return Response(
+                {
+                    'error': {
+                        'code': 'invalid_format',
+                        'message': f'Invalid format: {format_type}. Valid options: {", ".join(valid_formats)}'
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # For PDF, use the LaTeX compilation
+        if format_type == 'pdf':
+            if not latex_content:
+                return Response(
+                    {
+                        'error': {
+                            'code': 'missing_parameter',
+                            'message': 'latex_content is required for PDF export'
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                pdf_data = resume_ai.compile_latex_to_pdf(latex_content)
+                default_filename = filename or 'AI_Generated_Resume'
+                
+                response = HttpResponse(pdf_data, content_type='application/pdf')
+                response['Content-Disposition'] = f'attachment; filename="{default_filename}.pdf"'
+                response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                response['Pragma'] = 'no-cache'
+                response['Expires'] = '0'
+                
+                return response
+            except Exception as e:
+                logger.error(f"PDF compilation failed: {e}")
+                return Response(
+                    {
+                        'error': {
+                            'code': 'pdf_compilation_failed',
+                            'message': 'Failed to compile LaTeX to PDF'
+                        }
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        # For other formats, extract data from LaTeX or use provided profile_data
+        logger.info(f"Profile data received: {profile_data}")
+        logger.info(f"Profile data type: {type(profile_data)}, bool check: {bool(profile_data)}")
+        
+        if not profile_data:
+            # Try to extract basic info from LaTeX content
+            logger.info(f"Extracting profile from LaTeX (length: {len(latex_content)} chars)")
+            logger.debug(f"LaTeX preview (first 500 chars): {latex_content[:500]}")
+            profile_data = extract_profile_from_latex(latex_content)
+            logger.info(f"Extracted profile - Name: {profile_data.get('name')}, "
+                       f"Experiences: {len(profile_data.get('experiences', []))}, "
+                       f"Education: {len(profile_data.get('education', []))}, "
+                       f"Projects: {len(profile_data.get('projects', []))}, "
+                       f"Skills categories: {len(profile_data.get('skills', {}))}")
+        else:
+            logger.info(f"Using provided profile_data: {profile_data}")
+        
+        # Ensure we have at least basic profile data
+        if not profile_data.get('name'):
+            profile_data['name'] = 'Resume'
+        if not profile_data.get('email'):
+            profile_data['email'] = ''
+        
+        # Fill in default empty values for required fields
+        profile_data.setdefault('phone', '')
+        profile_data.setdefault('location', '')
+        profile_data.setdefault('headline', '')
+        profile_data.setdefault('summary', '')
+        profile_data.setdefault('portfolio_url', '')
+        profile_data.setdefault('skills', {})
+        profile_data.setdefault('experiences', [])
+        profile_data.setdefault('education', [])
+        profile_data.setdefault('certifications', [])
+        profile_data.setdefault('projects', [])
+        
+        # Log export request
+        logger.info(f"AI resume export requested by user {request.user.id}: format={format_type}, theme={theme}")
+        
+        # Export resume
+        try:
+            result = resume_export.export_resume(
+                profile=None,  # We're not using database profile
+                format_type=format_type,
+                theme=theme,
+                watermark=watermark,
+                filename=filename or None,
+                profile_data=profile_data  # Pass extracted/provided data directly
+            )
+            logger.info(f"Export successful - filename: '{result['filename']}', size: {len(result['content'])} bytes")
+        except resume_export.ResumeExportError as e:
+            logger.warning(f"AI resume export error: {e}")
+            return Response(
+                {
+                    'error': {
+                        'code': 'export_failed',
+                        'message': str(e)
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create HTTP response with file download
+        response = HttpResponse(
+            result['content'],
+            content_type=result['content_type']
+        )
+        response['Content-Disposition'] = f'attachment; filename="{result["filename"]}"'
+        
+        # Add cache control headers
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        
+        return response
+        
+    except Exception as e:
+        logger.exception(f"Unexpected error during AI resume export: {e}")
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'An unexpected error occurred during export.'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+def extract_profile_from_latex(latex_content):
+    """
+    Extract comprehensive profile information from LaTeX content
+    Parses AI-generated resume LaTeX using Jake's Resume template format
+    """
+    import re
+    
+    profile = {
+        'name': '',
+        'email': '',
+        'phone': '',
+        'location': '',
+        'headline': '',
+        'summary': '',
+        'portfolio_url': '',
+        'skills': {},
+        'experiences': [],
+        'education': [],
+        'certifications': [],
+        'projects': []
+    }
+    
+    def clean_latex(text):
+        """Remove LaTeX commands and clean text"""
+        text = re.sub(r'\\textbf\{([^}]*)\}', r'\1', text)
+        text = re.sub(r'\\textit\{([^}]*)\}', r'\1', text)
+        text = re.sub(r'\\emph\{([^}]*)\}', r'\1', text)
+        text = re.sub(r'\\underline\{([^}]*)\}', r'\1', text)
+        text = re.sub(r'\\href\{[^}]*\}\{([^}]*)\}', r'\1', text)
+        text = re.sub(r'\\scshape\s+', '', text)
+        text = re.sub(r'\\Huge\s+', '', text)
+        text = re.sub(r'\\Large\s+', '', text)
+        text = re.sub(r'\\large\s+', '', text)
+        text = re.sub(r'\\small\s+', '', text)
+        text = re.sub(r'\\\\\s*', ' ', text)
+        text = re.sub(r'\\vspace\{[^}]*\}', '', text)
+        text = re.sub(r'\$\|?\$', '|', text)
+        text = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\1', text)
+        text = re.sub(r'\\[a-zA-Z]+', '', text)
+        return text.strip()
+    
+    # Extract name
+    name_match = re.search(r'\\textbf\{\\Huge\s+\\scshape\s+([^}]+)\}', latex_content, re.IGNORECASE)
+    if name_match:
+        profile['name'] = clean_latex(name_match.group(1))
+    
+    # Extract contact info from {\small ...} line
+    contact_line_match = re.search(r'\{\\small\s+(.+?)\}', latex_content)
+    if contact_line_match:
+        contact_line = contact_line_match.group(1)
+        email_match = re.search(r'mailto:([^\}]+)\}', contact_line)
+        if email_match:
+            profile['email'] = email_match.group(1).strip()
+        phone_match = re.search(r'(\+?[\d\s\(\)\-\.]{10,})', contact_line)
+        if phone_match:
+            profile['phone'] = phone_match.group(1).strip()
+        parts = contact_line.split('$|$')
+        if parts:
+            first_part = clean_latex(parts[0])
+            if first_part and '@' not in first_part and 'http' not in first_part:
+                profile['location'] = first_part
+    
+    # Extract Summary
+    summary_match = re.search(r'\\section\{Summary\}(.+?)(?=\\section|\\end\{document\})', latex_content, re.DOTALL | re.IGNORECASE)
+    if summary_match:
+        item_match = re.search(r'\\resumeItem\{(.+?)\}', summary_match.group(1), re.DOTALL)
+        if item_match:
+            profile['summary'] = clean_latex(item_match.group(1))
+    
+    # Extract Education - Jake's template uses \resumeSubheading{institution}{dates}{degree}{location}
+    education_match = re.search(r'\\section\{Education\}(.+?)(?=\\section|\\end\{document\})', latex_content, re.DOTALL | re.IGNORECASE)
+    if education_match:
+        edu_entries = re.findall(r'\\resumeSubheading\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}', education_match.group(1))
+        for entry in edu_entries:
+            profile['education'].append({
+                'institution': clean_latex(entry[0]),
+                'date_range': clean_latex(entry[1]),  # Changed from 'graduation_date' to 'date_range'
+                'degree': clean_latex(entry[2]),
+                'location': clean_latex(entry[3]),
+                'honors': '',
+                'relevant_courses': []
+            })
+    
+    # Extract Experience - Jake's template uses \resumeSubheading{role}{dates}{company}{location}
+    experience_match = re.search(r'\\section\{Experience\}(.+?)(?=\\section|\\end\{document\})', latex_content, re.DOTALL | re.IGNORECASE)
+    if experience_match:
+        exp_blocks = re.findall(r'\\resumeSubheading\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}(.+?)(?=\\resumeSubheading|\\resumeSubHeadingListEnd)', experience_match.group(1), re.DOTALL)
+        for block in exp_blocks:
+            bullets = re.findall(r'\\resumeItem\{(.+?)\}', block[4], re.DOTALL)
+            clean_bullets = [clean_latex(b) for b in bullets]
+            profile['experiences'].append({
+                'job_title': clean_latex(block[0]),
+                'date_range': clean_latex(block[1]),  # Changed from 'dates' to 'date_range'
+                'company_name': clean_latex(block[2]),
+                'location': clean_latex(block[3]),
+                'description': '\n'.join(clean_bullets) if len(clean_bullets) <= 3 else '',
+                'achievements': clean_bullets if len(clean_bullets) > 3 else clean_bullets
+            })
+    
+    # Extract Projects - Jake's template uses \resumeProjectHeading{name}{timeline}
+    projects_match = re.search(r'\\section\{Projects\}(.+?)(?=\\section|\\end\{document\})', latex_content, re.DOTALL | re.IGNORECASE)
+    if projects_match:
+        proj_blocks = re.findall(r'\\resumeProjectHeading\{(.+?)\}\{([^}]*)\}(.+?)(?=\\resumeProjectHeading|\\resumeSubHeadingListEnd)', projects_match.group(1), re.DOTALL)
+        for block in proj_blocks:
+            bullets = re.findall(r'\\resumeItem\{(.+?)\}', block[2], re.DOTALL)
+            clean_bullets = [clean_latex(b) for b in bullets]
+            profile['projects'].append({
+                'name': clean_latex(block[0]),
+                'date_range': clean_latex(block[1]),  # Changed from 'timeline' to 'date_range'
+                'description': '\n'.join(clean_bullets),
+                'technologies': []
+            })
+    
+    # Extract Technical Skills
+    skills_match = re.search(r'\\section\{Technical\s+Skills\}(.+?)(?=\\section|\\end\{document\})', latex_content, re.DOTALL | re.IGNORECASE)
+    if skills_match:
+        skill_items = re.findall(r'\\resumeItem\{(.+?)\}', skills_match.group(1), re.DOTALL)
+        for item in skill_items:
+            clean_item = clean_latex(item)
+            if ':' in clean_item:
+                category, skills_list = clean_item.split(':', 1)
+                skills = [s.strip() for s in skills_list.split(',') if s.strip()]
+                profile['skills'][category.strip()] = skills
+            else:
+                if 'General' not in profile['skills']:
+                    profile['skills']['General'] = []
+                profile['skills']['General'].append(clean_item)
+    
+    return profile
+
