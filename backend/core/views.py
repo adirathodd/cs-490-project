@@ -4661,6 +4661,85 @@ def tailor_experience_bullet(request, job_id, experience_id):
         logger.exception('Unexpected bullet regeneration failure: %s', exc)
         return Response(
             {'error': {'code': 'ai_generation_failed', 'message': 'Unexpected error while regenerating bullet.'}},
+def export_cover_letter_docx(request):
+    """
+    UC-061: Export cover letter as Word document (.docx).
+    
+    Request Body:
+    {
+        "candidate_name": "John Doe",
+        "candidate_email": "john@example.com",
+        "candidate_phone": "555-1234",
+        "candidate_location": "San Francisco, CA",
+        "company_name": "Acme Corp",
+        "job_title": "Software Engineer",
+        "opening_paragraph": "...",
+        "body_paragraphs": ["...", "..."],
+        "closing_paragraph": "...",
+        "letterhead_config": {
+            "header_format": "centered",  // 'centered', 'left', 'right'
+            "font_name": "Calibri",
+            "font_size": 11,
+            "header_color": [102, 126, 234]  // RGB tuple (optional)
+        }
+    }
+    
+    Response: Binary Word document with Content-Disposition header
+    """
+    from django.http import HttpResponse
+    from core import cover_letter_ai
+    
+    # Extract required fields
+    candidate_name = request.data.get('candidate_name', '').strip()
+    candidate_email = request.data.get('candidate_email', '').strip()
+    candidate_phone = request.data.get('candidate_phone', '').strip()
+    candidate_location = request.data.get('candidate_location', '').strip()
+    company_name = request.data.get('company_name', '').strip()
+    job_title = request.data.get('job_title', '').strip()
+    opening_paragraph = request.data.get('opening_paragraph', '').strip()
+    body_paragraphs = request.data.get('body_paragraphs', [])
+    closing_paragraph = request.data.get('closing_paragraph', '').strip()
+    letterhead_config = request.data.get('letterhead_config', {})
+    
+    # Validate required fields
+    if not all([candidate_name, company_name, job_title]):
+        return Response(
+            {'error': {'code': 'invalid_input', 'message': 'candidate_name, company_name, and job_title are required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        docx_bytes = cover_letter_ai.generate_cover_letter_docx(
+            candidate_name=candidate_name,
+            candidate_email=candidate_email,
+            candidate_phone=candidate_phone,
+            candidate_location=candidate_location,
+            company_name=company_name,
+            job_title=job_title,
+            opening_paragraph=opening_paragraph,
+            body_paragraphs=body_paragraphs,
+            closing_paragraph=closing_paragraph,
+            letterhead_config=letterhead_config,
+        )
+        
+        # Generate filename
+        name_parts = candidate_name.split()
+        if len(name_parts) >= 2:
+            filename = f"{name_parts[0]}_{name_parts[-1]}_CoverLetter.docx"
+        else:
+            filename = f"{candidate_name.replace(' ', '_')}_CoverLetter.docx"
+        
+        response = HttpResponse(
+            docx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except Exception as exc:
+        logger.exception('Failed to generate Word document: %s', exc)
+        return Response(
+            {'error': {'code': 'generation_failed', 'message': 'Failed to generate Word document.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -5209,5 +5288,353 @@ def salary_research_export(request, job_id):
         logger.error(f"Error exporting salary research for job {job_id}: {str(e)}")
         return Response(
             {'error': {'code': 'export_failed', 'message': f'Failed to export research: {str(e)}'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def job_interview_insights(request, job_id):
+    """
+    UC-068: Interview Insights and Preparation
+    
+    GET: Retrieve AI-generated interview insights for a specific job
+    
+    Query Parameters:
+    - refresh: Set to 'true' to force regeneration (bypasses cache)
+    
+    Returns:
+    - Company-specific interview process and stages
+    - Common interview questions (technical and behavioral)
+    - Tailored preparation recommendations
+    - Timeline expectations
+    - Success tips based on company culture
+    - Interview preparation checklist
+    
+    Uses Gemini AI to generate company-specific insights when API key is available.
+    Falls back to template-based insights if AI generation fails.
+    Results are cached to reduce API costs.
+    """
+    from core.interview_insights import InterviewInsightsGenerator
+    from core.models import InterviewInsightsCache
+    
+    try:
+        # Verify job ownership
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        
+        # Check if user wants to force refresh
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        
+        # Try to get cached insights first (unless force refresh)
+        if not force_refresh:
+            cached = InterviewInsightsCache.objects.filter(
+                job=job,
+                is_valid=True
+            ).first()
+            
+            if cached:
+                logger.info(f"Returning cached interview insights for job {job_id}")
+                return Response(cached.insights_data, status=status.HTTP_200_OK)
+        
+        # Get Gemini API credentials
+        api_key = getattr(settings, 'GEMINI_API_KEY', '')
+        model = getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash-latest')
+        
+        # Generate insights based on job title and company
+        # Will use AI if api_key is available, otherwise falls back to templates
+        insights = InterviewInsightsGenerator.generate_for_job(
+            job_title=job.title,
+            company_name=job.company_name,
+            api_key=api_key if api_key else None,
+            model=model
+        )
+        
+        # Cache the results
+        try:
+            # Invalidate old cache entries for this job
+            InterviewInsightsCache.objects.filter(job=job).update(is_valid=False)
+            
+            # Create new cache entry
+            InterviewInsightsCache.objects.create(
+                job=job,
+                job_title=job.title,
+                company_name=job.company_name,
+                insights_data=insights,
+                generated_by=insights.get('generated_by', 'template')
+            )
+            logger.info(f"Cached interview insights for job {job_id}")
+        except Exception as cache_error:
+            logger.warning(f"Failed to cache insights: {cache_error}")
+            # Continue anyway - caching failure shouldn't break the response
+        
+        return Response(insights, status=status.HTTP_200_OK)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error generating interview insights for job {job_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to generate interview insights.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def job_skills_gap(request, job_id):
+    """
+    UC-066: Skills Gap Analysis
+    
+    GET: Analyze skills gap between candidate profile and job requirements
+    
+    Query Parameters:
+    - refresh: Set to 'true' to force regeneration (bypasses cache)
+    - include_similar: Set to 'true' to include trends across similar jobs
+    
+    Returns:
+    - Prioritized list of required skills with gap severity
+    - Candidate's current proficiency for each skill
+    - Learning resources and personalized learning paths
+    - Summary statistics and recommendations
+    - Optional: Skill gap trends across similar jobs
+    
+    Results are cached to improve performance.
+    """
+    from core.skills_gap_analysis import SkillsGapAnalyzer
+    from core.models import SkillGapAnalysisCache
+    from django.utils import timezone
+    
+    try:
+        # Verify job ownership
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        
+        # Check if user wants to force refresh or include trends
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        include_similar = request.query_params.get('include_similar', '').lower() == 'true'
+        
+        # Try to get cached analysis first (unless force refresh)
+        if not force_refresh:
+            cached = SkillGapAnalysisCache.objects.filter(
+                job=job,
+                is_valid=True
+            ).first()
+            
+            if cached:
+                analysis = cached.analysis_data
+                # Add trends if requested and not in cache
+                if include_similar and 'trends' not in analysis:
+                    trends = SkillsGapAnalyzer._analyze_similar_jobs(job, profile)
+                    analysis['trends'] = trends
+                
+                logger.info(f"Returning cached skills gap analysis for job {job_id}")
+                return Response(analysis, status=status.HTTP_200_OK)
+        
+        # Generate new analysis
+        logger.info(f"Generating skills gap analysis for job {job_id}")
+        analysis = SkillsGapAnalyzer.analyze_job(
+            job=job,
+            candidate_profile=profile,
+            include_similar_trends=include_similar
+        )
+        
+        # Add timestamp
+        analysis['generated_at'] = timezone.now().isoformat()
+        
+        # Cache the results
+        try:
+            # Invalidate old cache entries for this job
+            SkillGapAnalysisCache.objects.filter(job=job).update(is_valid=False)
+            
+            # Create new cache entry
+            SkillGapAnalysisCache.objects.create(
+                job=job,
+                job_title=job.title,
+                company_name=job.company_name,
+                analysis_data=analysis,
+                source=analysis.get('source', 'parsed')
+            )
+            logger.info(f"Cached skills gap analysis for job {job_id}")
+        except Exception as cache_error:
+            logger.warning(f"Failed to cache skills gap analysis: {cache_error}")
+            # Continue anyway - caching failure shouldn't break the response
+        
+        return Response(analysis, status=status.HTTP_200_OK)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error generating skills gap analysis for job {job_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to generate skills gap analysis.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def skill_progress(request, skill_id):
+    """
+    UC-066: Track Skill Development Progress
+    
+    GET: Retrieve progress records for a specific skill
+    POST: Log new practice/learning activity for a skill
+    
+    POST Request Body:
+    {
+        "activity_type": "practice|course|project|certification|review",
+        "hours_spent": 2.5,
+        "progress_percent": 50,
+        "notes": "Completed module 3",
+        "job_id": 123,  // Optional: link to specific job
+        "learning_resource_id": 456  // Optional: link to resource
+    }
+    """
+    from core.models import Skill, SkillDevelopmentProgress, LearningResource
+    from django.utils import timezone
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        # Verify skill exists
+        try:
+            skill = Skill.objects.get(id=skill_id)
+        except Skill.DoesNotExist:
+            return Response(
+                {'error': {'code': 'skill_not_found', 'message': 'Skill not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if request.method == 'GET':
+            # Get progress records for this skill
+            progress_records = SkillDevelopmentProgress.objects.filter(
+                candidate=profile,
+                skill=skill
+            ).order_by('-activity_date')
+            
+            data = []
+            for record in progress_records:
+                data.append({
+                    'id': record.id,
+                    'activity_type': record.activity_type,
+                    'hours_spent': float(record.hours_spent),
+                    'progress_percent': record.progress_percent,
+                    'notes': record.notes,
+                    'job_id': record.job.id if record.job else None,
+                    'learning_resource': {
+                        'id': record.learning_resource.id,
+                        'title': record.learning_resource.title,
+                    } if record.learning_resource else None,
+                    'activity_date': record.activity_date.isoformat(),
+                    'created_at': record.created_at.isoformat(),
+                })
+            
+            # Compute aggregate stats
+            total_hours = sum(r.hours_spent for r in progress_records)
+            latest_progress = progress_records.first().progress_percent if progress_records else 0
+            
+            return Response({
+                'skill': {
+                    'id': skill.id,
+                    'name': skill.name,
+                    'category': skill.category,
+                },
+                'total_hours': float(total_hours),
+                'current_progress_percent': latest_progress,
+                'activity_count': len(data),
+                'activities': data,
+            }, status=status.HTTP_200_OK)
+        
+        # POST: Log new activity
+        activity_type = request.data.get('activity_type', 'practice')
+        try:
+            hours_spent = float(request.data.get('hours_spent', 0))
+            progress_percent = int(request.data.get('progress_percent', 0))
+        except (ValueError, TypeError):
+            return Response(
+                {'error': {'code': 'invalid_data', 'message': 'Invalid hours_spent or progress_percent.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        notes = request.data.get('notes', '')
+        job_id = request.data.get('job_id')
+        resource_id = request.data.get('learning_resource_id')
+        
+        # Validate
+        if activity_type not in dict(SkillDevelopmentProgress.ACTIVITY_TYPES):
+            return Response(
+                {'error': {'code': 'invalid_activity_type', 'message': 'Invalid activity type.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not (0 <= progress_percent <= 100):
+            return Response(
+                {'error': {'code': 'invalid_progress', 'message': 'Progress must be between 0 and 100.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get optional related objects
+        job = None
+        if job_id:
+            try:
+                job = JobEntry.objects.get(id=job_id, candidate=profile)
+            except JobEntry.DoesNotExist:
+                pass
+        
+        resource = None
+        if resource_id:
+            try:
+                resource = LearningResource.objects.get(id=resource_id)
+            except LearningResource.DoesNotExist:
+                pass
+        
+        # Create progress record
+        record = SkillDevelopmentProgress.objects.create(
+            candidate=profile,
+            skill=skill,
+            job=job,
+            learning_resource=resource,
+            activity_type=activity_type,
+            hours_spent=hours_spent,
+            progress_percent=progress_percent,
+            notes=notes,
+            activity_date=timezone.now()
+        )
+        
+        return Response({
+            'id': record.id,
+            'message': 'Progress logged successfully.',
+            'activity_type': record.activity_type,
+            'hours_spent': float(record.hours_spent),
+            'progress_percent': record.progress_percent,
+            'activity_date': record.activity_date.isoformat(),
+        }, status=status.HTTP_201_CREATED)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in skill_progress for skill {skill_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to process skill progress.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

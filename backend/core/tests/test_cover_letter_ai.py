@@ -115,3 +115,70 @@ class TestAICoverLetterEndpoint:
         bad_url = reverse('core:job-cover-letter-generate', kwargs={'job_id': self.job.id + 1})
         resp = self.client.post(bad_url, {'tone': 'professional'}, format='json')
         assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestCoverLetterLatexGeneration:
+    """Test LaTeX generation for cover letters."""
+
+    def test_generate_cover_letter_latex(self):
+        """Test that LaTeX generation produces valid document structure."""
+        from core.cover_letter_ai import generate_cover_letter_latex
+
+        latex = generate_cover_letter_latex(
+            candidate_name='John Doe',
+            candidate_email='john@example.com',
+            candidate_phone='555-1234',
+            candidate_location='San Francisco, CA',
+            company_name='Acme Corp',
+            job_title='Software Engineer',
+            opening_paragraph='I am excited to apply for the Software Engineer position.',
+            body_paragraphs=[
+                'I have 5 years of experience in Python and Django.',
+                'My previous work includes building scalable APIs.'
+            ],
+            closing_paragraph='I look forward to discussing this opportunity with you.',
+        )
+
+        # Check document structure
+        assert '\\documentclass[letterpaper,11pt]{article}' in latex
+        assert '\\begin{document}' in latex
+        assert '\\end{document}' in latex
+        
+        # Check header
+        assert 'John Doe' in latex
+        assert 'john@example.com' in latex
+        assert '555-1234' in latex
+        assert 'San Francisco, CA' in latex
+        
+        # Check job info
+        assert 'Acme Corp' in latex
+        assert 'Software Engineer' in latex
+        
+        # Check content
+        assert 'I am excited to apply' in latex
+        assert '5 years of experience' in latex
+        assert 'I look forward to discussing' in latex
+        assert 'Sincerely,' in latex
+
+    def test_latex_escaping(self):
+        """Test that special LaTeX characters are properly escaped."""
+        from core.cover_letter_ai import generate_cover_letter_latex
+
+        latex = generate_cover_letter_latex(
+            candidate_name='Jane Smith & Co.',
+            candidate_email='jane@test.com',
+            candidate_phone='555-0000',
+            candidate_location='Test City',
+            company_name='Test & Associates',
+            job_title='Developer #1',
+            opening_paragraph='I have experience with C++ & Python.',
+            body_paragraphs=['I worked on projects worth $100K+'],
+            closing_paragraph='Looking forward to it!',
+        )
+
+        # Check that special characters are escaped
+        assert r'\&' in latex  # & should be escaped
+        assert r'\$' in latex  # $ should be escaped
+        assert r'\#' in latex  # # should be escaped
+        # The actual text should not contain unescaped special characters in content areas
