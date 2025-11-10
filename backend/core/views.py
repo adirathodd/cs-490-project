@@ -5159,3 +5159,255 @@ def job_interview_insights(request, job_id):
             {'error': {'code': 'internal_error', 'message': 'Failed to generate interview insights.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def job_skills_gap(request, job_id):
+    """
+    UC-066: Skills Gap Analysis
+    
+    GET: Analyze skills gap between candidate profile and job requirements
+    
+    Query Parameters:
+    - refresh: Set to 'true' to force regeneration (bypasses cache)
+    - include_similar: Set to 'true' to include trends across similar jobs
+    
+    Returns:
+    - Prioritized list of required skills with gap severity
+    - Candidate's current proficiency for each skill
+    - Learning resources and personalized learning paths
+    - Summary statistics and recommendations
+    - Optional: Skill gap trends across similar jobs
+    
+    Results are cached to improve performance.
+    """
+    from core.skills_gap_analysis import SkillsGapAnalyzer
+    from core.models import SkillGapAnalysisCache
+    from django.utils import timezone
+    
+    try:
+        # Verify job ownership
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        
+        # Check if user wants to force refresh or include trends
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        include_similar = request.query_params.get('include_similar', '').lower() == 'true'
+        
+        # Try to get cached analysis first (unless force refresh)
+        if not force_refresh:
+            cached = SkillGapAnalysisCache.objects.filter(
+                job=job,
+                is_valid=True
+            ).first()
+            
+            if cached:
+                analysis = cached.analysis_data
+                # Add trends if requested and not in cache
+                if include_similar and 'trends' not in analysis:
+                    trends = SkillsGapAnalyzer._analyze_similar_jobs(job, profile)
+                    analysis['trends'] = trends
+                
+                logger.info(f"Returning cached skills gap analysis for job {job_id}")
+                return Response(analysis, status=status.HTTP_200_OK)
+        
+        # Generate new analysis
+        logger.info(f"Generating skills gap analysis for job {job_id}")
+        analysis = SkillsGapAnalyzer.analyze_job(
+            job=job,
+            candidate_profile=profile,
+            include_similar_trends=include_similar
+        )
+        
+        # Add timestamp
+        analysis['generated_at'] = timezone.now().isoformat()
+        
+        # Cache the results
+        try:
+            # Invalidate old cache entries for this job
+            SkillGapAnalysisCache.objects.filter(job=job).update(is_valid=False)
+            
+            # Create new cache entry
+            SkillGapAnalysisCache.objects.create(
+                job=job,
+                job_title=job.title,
+                company_name=job.company_name,
+                analysis_data=analysis,
+                source=analysis.get('source', 'parsed')
+            )
+            logger.info(f"Cached skills gap analysis for job {job_id}")
+        except Exception as cache_error:
+            logger.warning(f"Failed to cache skills gap analysis: {cache_error}")
+            # Continue anyway - caching failure shouldn't break the response
+        
+        return Response(analysis, status=status.HTTP_200_OK)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error generating skills gap analysis for job {job_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to generate skills gap analysis.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def skill_progress(request, skill_id):
+    """
+    UC-066: Track Skill Development Progress
+    
+    GET: Retrieve progress records for a specific skill
+    POST: Log new practice/learning activity for a skill
+    
+    POST Request Body:
+    {
+        "activity_type": "practice|course|project|certification|review",
+        "hours_spent": 2.5,
+        "progress_percent": 50,
+        "notes": "Completed module 3",
+        "job_id": 123,  // Optional: link to specific job
+        "learning_resource_id": 456  // Optional: link to resource
+    }
+    """
+    from core.models import Skill, SkillDevelopmentProgress, LearningResource
+    from django.utils import timezone
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        # Verify skill exists
+        try:
+            skill = Skill.objects.get(id=skill_id)
+        except Skill.DoesNotExist:
+            return Response(
+                {'error': {'code': 'skill_not_found', 'message': 'Skill not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if request.method == 'GET':
+            # Get progress records for this skill
+            progress_records = SkillDevelopmentProgress.objects.filter(
+                candidate=profile,
+                skill=skill
+            ).order_by('-activity_date')
+            
+            data = []
+            for record in progress_records:
+                data.append({
+                    'id': record.id,
+                    'activity_type': record.activity_type,
+                    'hours_spent': float(record.hours_spent),
+                    'progress_percent': record.progress_percent,
+                    'notes': record.notes,
+                    'job_id': record.job.id if record.job else None,
+                    'learning_resource': {
+                        'id': record.learning_resource.id,
+                        'title': record.learning_resource.title,
+                    } if record.learning_resource else None,
+                    'activity_date': record.activity_date.isoformat(),
+                    'created_at': record.created_at.isoformat(),
+                })
+            
+            # Compute aggregate stats
+            total_hours = sum(r.hours_spent for r in progress_records)
+            latest_progress = progress_records.first().progress_percent if progress_records else 0
+            
+            return Response({
+                'skill': {
+                    'id': skill.id,
+                    'name': skill.name,
+                    'category': skill.category,
+                },
+                'total_hours': float(total_hours),
+                'current_progress_percent': latest_progress,
+                'activity_count': len(data),
+                'activities': data,
+            }, status=status.HTTP_200_OK)
+        
+        # POST: Log new activity
+        activity_type = request.data.get('activity_type', 'practice')
+        try:
+            hours_spent = float(request.data.get('hours_spent', 0))
+            progress_percent = int(request.data.get('progress_percent', 0))
+        except (ValueError, TypeError):
+            return Response(
+                {'error': {'code': 'invalid_data', 'message': 'Invalid hours_spent or progress_percent.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        notes = request.data.get('notes', '')
+        job_id = request.data.get('job_id')
+        resource_id = request.data.get('learning_resource_id')
+        
+        # Validate
+        if activity_type not in dict(SkillDevelopmentProgress.ACTIVITY_TYPES):
+            return Response(
+                {'error': {'code': 'invalid_activity_type', 'message': 'Invalid activity type.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not (0 <= progress_percent <= 100):
+            return Response(
+                {'error': {'code': 'invalid_progress', 'message': 'Progress must be between 0 and 100.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get optional related objects
+        job = None
+        if job_id:
+            try:
+                job = JobEntry.objects.get(id=job_id, candidate=profile)
+            except JobEntry.DoesNotExist:
+                pass
+        
+        resource = None
+        if resource_id:
+            try:
+                resource = LearningResource.objects.get(id=resource_id)
+            except LearningResource.DoesNotExist:
+                pass
+        
+        # Create progress record
+        record = SkillDevelopmentProgress.objects.create(
+            candidate=profile,
+            skill=skill,
+            job=job,
+            learning_resource=resource,
+            activity_type=activity_type,
+            hours_spent=hours_spent,
+            progress_percent=progress_percent,
+            notes=notes,
+            activity_date=timezone.now()
+        )
+        
+        return Response({
+            'id': record.id,
+            'message': 'Progress logged successfully.',
+            'activity_type': record.activity_type,
+            'hours_spent': float(record.hours_spent),
+            'progress_percent': record.progress_percent,
+            'activity_date': record.activity_date.isoformat(),
+        }, status=status.HTTP_201_CREATED)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in skill_progress for skill {skill_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to process skill progress.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
