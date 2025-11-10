@@ -9,6 +9,52 @@
 .ai-clr-results-card { display: flex; flex-direction: column; }
 .ai-clr-results-card header { margin-bottom: var(--space-4); }
 .ai-clr-results-card h2 { margin: 0; }
+
+/* Cover letter text preview */
+.cover-letter-text-preview {
+  background: var(--bg-secondary, #f9fafb);
+  border: 1px solid var(--gray-200, #e5e7eb);
+  border-radius: 8px;
+  padding: var(--space-5, 1.5rem);
+  max-height: 600px;
+  overflow-y: auto;
+  font-family: var(--font-family-body, 'Inter', sans-serif);
+  line-height: 1.6;
+}
+
+.cover-letter-text-preview .preview-section {
+  margin-bottom: var(--space-5, 1.5rem);
+}
+
+.cover-letter-text-preview .preview-section:last-child {
+  margin-bottom: 0;
+}
+
+.cover-letter-text-preview .preview-section h4 {
+  font-size: var(--font-size-sm, 0.875rem);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-600, #4b5563);
+  margin: 0 0 var(--space-3, 0.75rem);
+  border-bottom: 1px solid var(--gray-200, #e5e7eb);
+  padding-bottom: var(--space-2, 0.5rem);
+}
+
+.cover-letter-text-preview .preview-section p {
+  color: var(--gray-900, #111827);
+  margin: 0 0 var(--space-3, 0.75rem);
+  white-space: pre-wrap;
+}
+
+.cover-letter-text-preview .preview-section p.placeholder {
+  color: var(--gray-400, #9ca3af);
+  font-style: italic;
+}
+
 @media (max-width: 900px){
 	.ai-clr-results { gap: var(--space-5); }
+	.cover-letter-text-preview {
+	  max-height: 400px;
+	}
 }

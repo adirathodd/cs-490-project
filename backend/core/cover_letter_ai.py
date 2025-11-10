@@ -296,3 +296,120 @@ def run_cover_letter_generation(
         'variation_count': len(variations),
         'raw_text': raw_text,
     }
+
+
+def generate_cover_letter_latex(
+    candidate_name: str,
+    candidate_email: str,
+    candidate_phone: str,
+    candidate_location: str,
+    company_name: str,
+    job_title: str,
+    opening_paragraph: str,
+    body_paragraphs: List[str],
+    closing_paragraph: str,
+) -> str:
+    """
+    Generate a LaTeX document for a cover letter.
+    
+    Args:
+        candidate_name: Full name of the candidate
+        candidate_email: Email address
+        candidate_phone: Phone number
+        candidate_location: City, State or location
+        company_name: Name of the company
+        job_title: Position title
+        opening_paragraph: Opening paragraph text
+        body_paragraphs: List of body paragraph texts
+        closing_paragraph: Closing paragraph text
+    
+    Returns:
+        Complete LaTeX document as a string
+    """
+    from datetime import date
+    
+    # Escape special LaTeX characters
+    def latex_escape(text):
+        if not text:
+            return ''
+        text = str(text)
+        # Must escape backslash first, before other characters that produce backslashes
+        text = text.replace('\\', r'\textbackslash{}')
+        replacements = {
+            '&': r'\&',
+            '%': r'\%',
+            '$': r'\$',
+            '#': r'\#',
+            '_': r'\_',
+            '{': r'\{',
+            '}': r'\}',
+            '~': r'\textasciitilde{}',
+            '^': r'\textasciicircum{}',
+        }
+        for char, replacement in replacements.items():
+            text = text.replace(char, replacement)
+        return text
+    
+    # Escape all inputs
+    name = latex_escape(candidate_name)
+    email = latex_escape(candidate_email)
+    phone = latex_escape(candidate_phone)
+    location = latex_escape(candidate_location)
+    company = latex_escape(company_name)
+    title = latex_escape(job_title)
+    
+    # Current date
+    today = date.today().strftime('%B %d, %Y')
+    
+    # Build the LaTeX document
+    latex_lines = [
+        r'\documentclass[letterpaper,11pt]{article}',
+        r'\usepackage[empty]{fullpage}',
+        r'\usepackage[hidelinks]{hyperref}',
+        r'\usepackage{geometry}',
+        r'\geometry{margin=0.75in}',
+        r'\raggedright',
+        r'\setlength{\tabcolsep}{0in}',
+        r'\setlength{\parindent}{0pt}',
+        r'\setlength{\parskip}{0.5em}',
+        r'',
+        r'\begin{document}',
+        r'',
+        f'{today}',
+        r'',
+        f'Hiring Manager \\\\',
+        f'{company} \\\\',
+        f'{title}',
+        r'',
+        r'\vspace{1em}',
+        r'',
+        f'Dear Hiring Manager,',
+        r'',
+    ]
+    
+    # Add opening paragraph
+    if opening_paragraph:
+        latex_lines.append(latex_escape(opening_paragraph))
+        latex_lines.append('')
+    
+    # Add body paragraphs
+    for para in body_paragraphs:
+        if para and para.strip():
+            latex_lines.append(latex_escape(para.strip()))
+            latex_lines.append('')
+    
+    # Add closing paragraph
+    if closing_paragraph:
+        latex_lines.append(latex_escape(closing_paragraph))
+        latex_lines.append('')
+    
+    # Add signature
+    latex_lines.extend([
+        r'Sincerely,',
+        r'',
+        f'{name}',
+        r'',
+        r'\end{document}',
+    ])
+    
+    return '\n'.join(latex_lines)

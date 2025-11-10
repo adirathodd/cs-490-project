@@ -443,12 +443,29 @@ def _format_fetch_error(exc: requests.RequestException, site_name: str) -> str:
     status_code = None
     if hasattr(exc, 'response') and getattr(exc.response, 'status_code', None) is not None:
         status_code = exc.response.status_code
+    
+    if status_code == 404:
+        return (
+            'This job posting URL was not found or may have been removed. '
+            'Please verify the link is correct and try again.'
+        )
     if status_code in (403, 429):
         return (
             f'{site_name} rejected the request (HTTP {status_code}). '
             'Many job boards block automated imports. Try again later or paste details manually.'
         )
-    return f'Failed to fetch job posting: {str(exc)}'
+    if status_code == 451:
+        return (
+            'This job posting cannot be accessed due to legal restrictions. '
+            'Please copy the job details manually.'
+        )
+    
+    # Generic fallback that doesn't expose technical details
+    return (
+        'Unable to access this job posting. '
+        'The link may be invalid, the posting may have been removed, or the site is blocking access. '
+        'Please verify the link and try again, or copy the details manually.'
+    )
 
 
 def _fetch_job_soup(url: str, allow_proxy: bool = True) -> BeautifulSoup:
@@ -816,7 +833,11 @@ def import_job_from_url(url):
     if generic_result.status != JobImportResult.STATUS_FAILED:
         return generic_result
 
-    error_message = 'Unable to extract job details from the provided URL.'
+    error_message = (
+        'Unable to extract job details from this URL. '
+        'Make sure the URL is a valid job posting link, the posting hasn\'t been removed, '
+        'and the site is not blocking access. You can copy the details manually instead.'
+    )
     if job_board:
-        error_message = f'Unsupported job board: {job_board}'
+        error_message = f'The job board "{job_board}" is not yet supported. Please copy the job details manually.'
     return JobImportResult(JobImportResult.STATUS_FAILED, error=error_message)
