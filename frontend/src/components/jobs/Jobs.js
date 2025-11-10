@@ -98,6 +98,11 @@ const Jobs = () => {
   const [defaults, setDefaults] = useState({ default_resume_doc: null, default_cover_letter_doc: null });
   const [showDefaultsModal, setShowDefaultsModal] = useState(false);
   const [showMaterialsModal, setShowMaterialsModal] = useState(false);
+
+  // Job Match Ranking State
+  const [jobMatchScores, setJobMatchScores] = useState([]);
+  const [loadingMatchScores, setLoadingMatchScores] = useState(false);
+  const [showMatchRanking, setShowMatchRanking] = useState(false);
   const [selectedJobForMaterials, setSelectedJobForMaterials] = useState(null);
   const [jobMaterials, setJobMaterials] = useState({ resume_doc: null, cover_letter_doc: null, history: [] });
   const [materialsForm, setMaterialsForm] = useState({ resume_doc_id: null, cover_letter_doc_id: null });
@@ -543,6 +548,44 @@ const Jobs = () => {
     );
   };
 
+  // Fetch job match scores for ranking
+  const fetchJobMatchScores = async () => {
+    console.log('fetchJobMatchScores called');
+    setLoadingMatchScores(true);
+    try {
+      console.log('Calling getBulkJobMatchScores API...');
+      const response = await jobsAPI.getBulkJobMatchScores({
+        sort_by: 'score',
+        order: 'desc',
+        limit: 50
+      });
+      console.log('API response:', response);
+      console.log('API response.data:', response.data);
+      
+      // Handle different possible response structures
+      let scores = [];
+      if (response.data && Array.isArray(response.data.jobs)) {
+        scores = response.data.jobs;
+      } else if (Array.isArray(response.data)) {
+        scores = response.data;
+      } else if (Array.isArray(response)) {
+        scores = response;
+      } else if (response.data && Array.isArray(response.data.results)) {
+        scores = response.data.results;
+      } else {
+        console.warn('Unexpected response structure:', response);
+      }
+      
+      console.log('Final scores array:', scores);
+      setJobMatchScores(scores);
+    } catch (e) {
+      console.error('Failed to fetch match scores:', e);
+      setError('Failed to load job match rankings');
+    } finally {
+      setLoadingMatchScores(false);
+    }
+  };
+
   const toggleSelectAll = () => {
     if (selectedJobs.length === items.length) {
       setSelectedJobs([]);
@@ -841,6 +884,25 @@ const Jobs = () => {
             <Icon name="file-text" size="sm" />
             Set Defaults
           </button>
+          {/* Job Match Ranking button */}
+          <button
+            className="btn-secondary"
+            onClick={async () => {
+              console.log('Match Rankings button clicked');
+              console.log('Current showMatchRanking state:', showMatchRanking);
+              setShowMatchRanking(!showMatchRanking);
+              if (!showMatchRanking && jobMatchScores.length === 0) {
+                console.log('Fetching match scores...');
+                await fetchJobMatchScores();
+              }
+            }}
+            style={responsiveActionButtonStyle}
+            title="View jobs ranked by match percentage"
+            disabled={loadingMatchScores}
+          >
+            <Icon name="trending-up" size="sm" />
+            {loadingMatchScores ? 'Loading...' : (showMatchRanking ? 'Hide Rankings' : 'Match Rankings')}
+          </button>
           {/* UC-045: Archive view toggle */}
           <button
             className="btn-secondary"
@@ -945,6 +1007,154 @@ const Jobs = () => {
 
       {/* Calendar: placed below the header and above the search box */}
       <DeadlineCalendar items={items} />
+
+      {/* Job Match Rankings Section */}
+      {showMatchRanking && (
+        <div className="education-form-card" style={{ marginBottom: '20px' }}>
+          <div style={{ padding: '20px' }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '12px', 
+              marginBottom: '16px',
+              borderBottom: '2px solid #f1f5f9',
+              paddingBottom: '12px'
+            }}>
+              <Icon name="trending-up" size="md" style={{ color: '#667eea' }} />
+              <h3 style={{ 
+                margin: 0, 
+                color: '#1e293b',
+                fontSize: '18px',
+                fontWeight: '600'
+              }}>
+                Jobs Ranked by Match Percentage
+              </h3>
+              <button
+                onClick={fetchJobMatchScores}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  padding: '6px 12px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#64748b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  marginLeft: 'auto'
+                }}
+                disabled={loadingMatchScores}
+              >
+                <Icon name="refresh-cw" size="sm" />
+                {loadingMatchScores ? 'Loading...' : 'Refresh'}
+              </button>
+            </div>
+            
+            {loadingMatchScores ? (
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px', 
+                color: '#64748b',
+                fontSize: '14px',
+                justifyContent: 'center',
+                padding: '20px'
+              }}>
+                <Icon name="loader" size="sm" />
+                Loading match scores...
+              </div>
+            ) : !Array.isArray(jobMatchScores) || jobMatchScores.length === 0 ? (
+              <div style={{ 
+                textAlign: 'center', 
+                color: '#64748b', 
+                padding: '20px',
+                fontSize: '14px'
+              }}>
+                No match scores available. Make sure you have jobs and a complete profile.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {Array.isArray(jobMatchScores) && jobMatchScores.slice(0, 10).map((jobScore, index) => {
+                  const matchPercent = Math.round((jobScore.overall_score || 0));
+                  return (
+                    <div
+                      key={jobScore.job_id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '12px 16px',
+                        background: index < 3 ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(34, 197, 94, 0.05) 100%)' : '#f8fafc',
+                        borderRadius: '8px',
+                        border: `1px solid ${index < 3 ? '#10b981' : '#e2e8f0'}`,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onClick={() => navigate(`/jobs/${jobScore.job_id}`)}
+                    >
+                      <div style={{ 
+                        fontSize: '16px', 
+                        fontWeight: '600', 
+                        color: index < 3 ? '#10b981' : '#64748b',
+                        minWidth: '24px',
+                        textAlign: 'center',
+                        marginRight: '16px'
+                      }}>
+                        #{index + 1}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ 
+                          fontWeight: '600', 
+                          color: '#1e293b',
+                          marginBottom: '2px',
+                          fontSize: '15px'
+                        }}>
+                          {jobScore.title}
+                        </div>
+                        <div style={{ 
+                          fontSize: '13px', 
+                          color: '#64748b' 
+                        }}>
+                          {jobScore.company_name}
+                        </div>
+                      </div>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px' 
+                      }}>
+                        <div style={{
+                          background: `linear-gradient(135deg, ${matchPercent >= 70 ? '#10b981' : matchPercent >= 50 ? '#f59e0b' : '#ef4444'} 0%, ${matchPercent >= 70 ? '#059669' : matchPercent >= 50 ? '#d97706' : '#dc2626'} 100%)`,
+                          color: 'white',
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          fontWeight: '600',
+                          minWidth: '50px',
+                          textAlign: 'center'
+                        }}>
+                          {matchPercent}%
+                        </div>
+                        <Icon name="chevron-right" size="sm" style={{ color: '#94a3b8' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+                {Array.isArray(jobMatchScores) && jobMatchScores.length > 10 && (
+                  <div style={{ 
+                    textAlign: 'center', 
+                    color: '#64748b', 
+                    fontSize: '13px',
+                    marginTop: '8px'
+                  }}>
+                    Showing top 10 matches • {jobMatchScores.length} total jobs ranked
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* UC-039: Search and Filter Section */}
       {!showForm && (

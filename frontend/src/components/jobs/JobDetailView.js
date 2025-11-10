@@ -5,6 +5,7 @@ import Icon from '../common/Icon';
 import { CompanyInfo } from '../../features/company';
 import InterviewInsights from './InterviewInsights';
 import SkillGapAnalysis from './SkillGapAnalysis';
+import JobMatchAnalysis from './JobMatchAnalysis';
 
 const JobDetailView = () => {
   const { id } = useParams();
@@ -498,6 +499,24 @@ const JobDetailView = () => {
           }}
         >
           <Icon name="user-check" size="sm" /> Interview Insights
+        </button>
+        <button
+          onClick={() => setActiveTab('match')}
+          style={{
+            padding: '12px 24px',
+            fontSize: '15px',
+            fontWeight: '600',
+            border: 'none',
+            background: 'none',
+            color: activeTab === 'match' ? '#667eea' : '#6b7280',
+            borderBottom: activeTab === 'match' ? '3px solid #667eea' : '3px solid transparent',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            whiteSpace: 'nowrap',
+            marginBottom: '-2px',
+          }}
+        >
+          <Icon name="zap" size="sm" /> Match Analysis
         </button>
         <button
           onClick={() => setActiveTab('skills')}
@@ -1091,6 +1110,16 @@ const JobDetailView = () => {
               </div>
             </div>
           )}
+        </>
+      )}
+
+      {/* Tab Content - Match Analysis */}
+      {activeTab === 'match' && (
+        <>
+          <JobMatchAnalysis 
+            job={job} 
+            onError={setError}
+          />
         </>
       )}
 

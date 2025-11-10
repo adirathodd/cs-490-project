@@ -145,4 +145,8 @@ urlpatterns = [
     # UC-066: Skills Gap Analysis endpoints
     path('jobs/<int:job_id>/skills-gap/', views.job_skills_gap, name='job-skills-gap'),
     path('skills/<int:skill_id>/progress/', views.skill_progress, name='skill-progress'),
+    
+    # UC-065: Job Matching Algorithm endpoints
+    path('jobs/<int:job_id>/match-score/', views.job_match_score, name='job-match-score'),
+    path('jobs/match-scores/', views.bulk_job_match_scores, name='bulk-job-match-scores'),
 ]
