@@ -129,4 +129,8 @@ urlpatterns = [
     
     # UC-068: Interview Insights and Preparation endpoints
     path('jobs/<int:job_id>/interview-insights/', views.job_interview_insights, name='job-interview-insights'),
+    
+    # UC-066: Skills Gap Analysis endpoints
+    path('jobs/<int:job_id>/skills-gap/', views.job_skills_gap, name='job-skills-gap'),
+    path('skills/<int:skill_id>/progress/', views.skill_progress, name='skill-progress'),
 ]

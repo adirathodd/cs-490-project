@@ -587,6 +587,38 @@ export const jobsAPI = {
     }
   },
 
+  // UC-066: Skills Gap Analysis
+  getJobSkillsGap: async (id, options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.refresh) params.append('refresh', 'true');
+      if (options.include_similar) params.append('include_similar', 'true');
+      const path = params.toString() ? `/jobs/${id}/skills-gap/?${params.toString()}` : `/jobs/${id}/skills-gap/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch skills gap analysis' };
+    }
+  },
+
+  logSkillProgress: async (skillId, data) => {
+    try {
+      const response = await api.post(`/skills/${skillId}/progress/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to log skill progress' };
+    }
+  },
+
+  getSkillProgress: async (skillId) => {
+    try {
+      const response = await api.get(`/skills/${skillId}/progress/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch skill progress' };
+    }
+  },
+
   addJob: async (data) => {
     const response = await api.post('/jobs', data);
     return response.data;
