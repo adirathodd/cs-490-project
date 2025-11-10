@@ -578,6 +578,15 @@ export const jobsAPI = {
     }
   },
 
+  getJobInterviewInsights: async (id) => {
+    try {
+      const response = await api.get(`/jobs/${id}/interview-insights/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch interview insights' };
+    }
+  },
+
   addJob: async (data) => {
     const response = await api.post('/jobs', data);
     return response.data;

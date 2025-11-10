@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { jobsAPI } from '../../services/api';
 import Icon from '../common/Icon';
 import { CompanyInfo } from '../../features/company';
+import InterviewInsights from './InterviewInsights';
 
 const JobDetailView = () => {
   const { id } = useParams();
@@ -15,6 +16,7 @@ const JobDetailView = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [companyInfo, setCompanyInfo] = useState(null);
+  const [interviewInsights, setInterviewInsights] = useState(null);
   const [formData, setFormData] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
   
@@ -218,6 +220,16 @@ const JobDetailView = () => {
     }
   };
 
+  const fetchInterviewInsights = useCallback(async (jobId) => {
+    try {
+      const insights = await jobsAPI.getJobInterviewInsights(jobId);
+      setInterviewInsights(insights);
+    } catch (err) {
+      console.warn('Unable to load interview insights', err);
+      setInterviewInsights(null);
+    }
+  }, []);
+
   useEffect(() => {
     if (!job?.id || !job?.company_name) {
       setCompanyInfo(null);
@@ -248,6 +260,12 @@ const JobDetailView = () => {
       isMounted = false;
     };
   }, [job]);
+
+  useEffect(() => {
+    if (job?.id) {
+      fetchInterviewInsights(job.id);
+    }
+  }, [job?.id, fetchInterviewInsights]);
 
   if (loading) {
     return (
@@ -876,6 +894,9 @@ const JobDetailView = () => {
         )}
       </div>
 
+
+      {/* Interview Insights */}
+      {interviewInsights && <InterviewInsights insights={interviewInsights} />}
 
       {/* Metadata */}
       <div className="education-form-card">

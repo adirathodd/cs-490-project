@@ -1143,3 +1143,45 @@ class SalaryResearch(models.Model):
 
     def __str__(self):
         return f"Materials@{self.changed_at} for job {self.job_id}"
+
+
+class InterviewInsightsCache(models.Model):
+    """Cached AI-generated interview insights to reduce API costs (UC-068).
+    
+    Stores interview insights generated for specific job/company combinations
+    to avoid redundant Gemini API calls.
+    """
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='interview_insights_cache')
+    
+    # Job details used for generation
+    job_title = models.CharField(max_length=220)
+    company_name = models.CharField(max_length=220)
+    
+    # Generated insights stored as JSON
+    insights_data = models.JSONField(
+        help_text="Complete interview insights JSON including process, questions, tips, checklist"
+    )
+    
+    # Generation metadata
+    generated_by = models.CharField(
+        max_length=20,
+        choices=[('ai', 'AI Generated'), ('template', 'Template Based')],
+        default='ai'
+    )
+    generated_at = models.DateTimeField(auto_now_add=True)
+    
+    # Cache invalidation
+    is_valid = models.BooleanField(
+        default=True,
+        help_text="Set to False to force regeneration"
+    )
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['job', 'is_valid']),
+            models.Index(fields=['company_name', 'job_title']),
+        ]
+        ordering = ['-generated_at']
+    
+    def __str__(self):
+        return f"Interview Insights: {self.job_title} at {self.company_name}"

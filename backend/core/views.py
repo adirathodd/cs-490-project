@@ -5063,3 +5063,99 @@ def salary_research_export(request, job_id):
             {'error': {'code': 'export_failed', 'message': f'Failed to export research: {str(e)}'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def job_interview_insights(request, job_id):
+    """
+    UC-068: Interview Insights and Preparation
+    
+    GET: Retrieve AI-generated interview insights for a specific job
+    
+    Query Parameters:
+    - refresh: Set to 'true' to force regeneration (bypasses cache)
+    
+    Returns:
+    - Company-specific interview process and stages
+    - Common interview questions (technical and behavioral)
+    - Tailored preparation recommendations
+    - Timeline expectations
+    - Success tips based on company culture
+    - Interview preparation checklist
+    
+    Uses Gemini AI to generate company-specific insights when API key is available.
+    Falls back to template-based insights if AI generation fails.
+    Results are cached to reduce API costs.
+    """
+    from core.interview_insights import InterviewInsightsGenerator
+    from core.models import InterviewInsightsCache
+    
+    try:
+        # Verify job ownership
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        
+        # Check if user wants to force refresh
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        
+        # Try to get cached insights first (unless force refresh)
+        if not force_refresh:
+            cached = InterviewInsightsCache.objects.filter(
+                job=job,
+                is_valid=True
+            ).first()
+            
+            if cached:
+                logger.info(f"Returning cached interview insights for job {job_id}")
+                return Response(cached.insights_data, status=status.HTTP_200_OK)
+        
+        # Get Gemini API credentials
+        api_key = getattr(settings, 'GEMINI_API_KEY', '')
+        model = getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash-latest')
+        
+        # Generate insights based on job title and company
+        # Will use AI if api_key is available, otherwise falls back to templates
+        insights = InterviewInsightsGenerator.generate_for_job(
+            job_title=job.title,
+            company_name=job.company_name,
+            api_key=api_key if api_key else None,
+            model=model
+        )
+        
+        # Cache the results
+        try:
+            # Invalidate old cache entries for this job
+            InterviewInsightsCache.objects.filter(job=job).update(is_valid=False)
+            
+            # Create new cache entry
+            InterviewInsightsCache.objects.create(
+                job=job,
+                job_title=job.title,
+                company_name=job.company_name,
+                insights_data=insights,
+                generated_by=insights.get('generated_by', 'template')
+            )
+            logger.info(f"Cached interview insights for job {job_id}")
+        except Exception as cache_error:
+            logger.warning(f"Failed to cache insights: {cache_error}")
+            # Continue anyway - caching failure shouldn't break the response
+        
+        return Response(insights, status=status.HTTP_200_OK)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error generating interview insights for job {job_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to generate interview insights.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
