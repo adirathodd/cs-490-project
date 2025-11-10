@@ -842,6 +842,17 @@ export const coverLetterAIAPI = {
       throw error.response?.data?.error || { message: 'Failed to generate AI cover letter content' };
     }
   },
+  
+  compileLatex: async (latexContent) => {
+    try {
+      const response = await api.post('/cover-letter/compile-latex/', {
+        latex_content: latexContent,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to compile LaTeX' };
+    }
+  },
 };
 
 authAPI.getEmploymentTimeline = async () => {
