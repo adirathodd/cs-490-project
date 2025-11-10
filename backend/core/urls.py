@@ -109,6 +109,7 @@ urlpatterns = [
     path('cover-letter-templates', views.cover_letter_template_list_create, name='cover-letter-template-list-create'),
     path('cover-letter-templates/<uuid:pk>', views.cover_letter_template_detail, name='cover-letter-template-detail'),
     path('cover-letter-templates/import', views.cover_letter_template_import, name='cover-letter-template-import'),
+    path('cover-letter-templates/<uuid:pk>/customize', views.cover_letter_template_customize, name='cover-letter-template-customize'),
     path('cover-letter-templates/<uuid:pk>/share', views.cover_letter_template_share, name='cover-letter-template-share'),
     path('cover-letter-templates/<uuid:pk>/analytics', views.cover_letter_template_analytics, name='cover-letter-template-analytics'),
     path('cover-letter-templates/<uuid:pk>/download/<str:format_type>', views.cover_letter_template_download, name='cover-letter-template-download'),

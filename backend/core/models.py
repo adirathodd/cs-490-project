@@ -573,6 +573,10 @@ class CoverLetterTemplate(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     customization_options = models.JSONField(default=dict, blank=True)
+    # Fields for preserving original file content
+    original_file_content = models.BinaryField(null=True, blank=True, help_text="Original file content for Word documents")
+    original_file_type = models.CharField(max_length=10, blank=True, help_text="Original file extension (txt, docx)")
+    original_filename = models.CharField(max_length=255, blank=True, help_text="Original uploaded filename")
 
     class Meta:
         indexes = [

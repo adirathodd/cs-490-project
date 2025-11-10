@@ -854,8 +854,25 @@ export const coverLetterTemplateAPI = {
 
   // Import a custom template
   importTemplate: async (templateData) => {
-    const response = await api.post('/cover-letter-templates/import', templateData);
-    return response.data;
+    // For file uploads, create a new request without the default Content-Type header
+    if (templateData instanceof FormData) {
+      const token = localStorage.getItem('firebaseToken');
+      const response = await axios.post(
+        `${API_BASE_URL}/cover-letter-templates/import`, 
+        templateData,
+        {
+          headers: {
+            ...(token && { Authorization: `Bearer ${token}` }),
+            // Don't set Content-Type - let browser handle it for FormData
+          },
+        }
+      );
+      return response.data;
+    } else {
+      // For JSON data, use the normal api instance
+      const response = await api.post('/cover-letter-templates/import', templateData);
+      return response.data;
+    }
   },
 
   // Share a template (make it public)
@@ -902,6 +919,12 @@ export const coverLetterTemplateAPI = {
     window.URL.revokeObjectURL(url);
     
     return { success: true, filename };
+  },
+
+  // Customize template styling options
+  customize: async (id, customizationOptions) => {
+    const response = await api.post(`/cover-letter-templates/${id}/customize`, customizationOptions);
+    return response.data;
   },
 };
 
