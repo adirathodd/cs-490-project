@@ -4661,6 +4661,8 @@ def tailor_experience_bullet(request, job_id, experience_id):
         logger.exception('Unexpected bullet regeneration failure: %s', exc)
         return Response(
             {'error': {'code': 'ai_generation_failed', 'message': 'Unexpected error while regenerating bullet.'}},
+        )
+
 def export_cover_letter_docx(request):
     """
     UC-061: Export cover letter as Word document (.docx).
