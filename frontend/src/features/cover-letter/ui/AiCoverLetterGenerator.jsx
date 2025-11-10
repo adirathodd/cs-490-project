@@ -690,6 +690,28 @@ const AiCoverLetterGenerator = () => {
   const [livePreviewLoading, setLivePreviewLoading] = useState(false);
   const [livePreviewError, setLivePreviewError] = useState('');
   
+  // UC-061: Email and letterhead state
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showLetterheadSettings, setShowLetterheadSettings] = useState(false);
+  const [letterheadConfig, setLetterheadConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem('resumerocket_letterhead_config');
+      return saved ? JSON.parse(saved) : {
+        header_format: 'centered',
+        font_name: 'Calibri',
+        font_size: 11,
+        header_color: null,
+      };
+    } catch {
+      return {
+        header_format: 'centered',
+        font_name: 'Calibri',
+        font_size: 11,
+        header_color: null,
+      };
+    }
+  });
+  
   // Template management state
   const [customTemplates, setCustomTemplates] = useState(() => {
     try {
@@ -716,6 +738,11 @@ const AiCoverLetterGenerator = () => {
     setHasManualSectionOverrides(true);
     setLayoutSource((prev) => (prev.type === 'custom' ? prev : { type: 'custom', id: '', label: 'Custom layout' }));
   }, []);
+
+  // Save letterhead config to localStorage
+  useEffect(() => {
+    localStorage.setItem('resumerocket_letterhead_config', JSON.stringify(letterheadConfig));
+  }, [letterheadConfig]);
 
   // Load cached result on mount
   useEffect(() => {
@@ -1175,6 +1202,91 @@ const AiCoverLetterGenerator = () => {
       setTimeout(() => setCopiedVariationId(''), 1800);
     } catch {
       setGenerationError('Clipboard permissions blocked. Try downloading instead.');
+    }
+  };
+
+  const handleDownloadText = (variation) => {
+    if (!variation) return;
+    
+    // Combine all parts of the cover letter
+    const fullText = [
+      variation.opening_paragraph,
+      ...(variation.body_paragraphs || []),
+      variation.closing_paragraph,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    
+    // Generate filename from profile name and job info
+    let filename = 'cover_letter.txt';
+    if (result?.profile?.name) {
+      const name = result.profile.name.trim();
+      const nameParts = name.split(/\s+/);
+      if (nameParts.length >= 2) {
+        const firstName = nameParts[0];
+        const lastName = nameParts[nameParts.length - 1];
+        filename = `${firstName}_${lastName}_CoverLetter.txt`;
+      } else {
+        filename = `${name.replace(/\s+/g, '_')}_CoverLetter.txt`;
+      }
+    }
+    
+    const blob = new Blob([fullText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadDocx = async (variation) => {
+    if (!variation || !result?.profile || !result?.job) return;
+    
+    const profile = result.profile;
+    const job = result.job;
+    
+    try {
+      const blob = await coverLetterAIAPI.exportDocx({
+        candidate_name: profile.name || 'Candidate',
+        candidate_email: profile.contact?.email || '',
+        candidate_phone: profile.contact?.phone || '',
+        candidate_location: profile.location || profile.contact?.location || '',
+        company_name: job.company_name || 'Company',
+        job_title: job.title || 'Position',
+        opening_paragraph: variation.opening_paragraph || '',
+        body_paragraphs: variation.body_paragraphs || [],
+        closing_paragraph: variation.closing_paragraph || '',
+        letterhead_config: letterheadConfig,
+      });
+      
+      // Generate filename
+      let filename = 'cover_letter.docx';
+      if (profile.name) {
+        const name = profile.name.trim();
+        const nameParts = name.split(/\s+/);
+        if (nameParts.length >= 2) {
+          const firstName = nameParts[0];
+          const lastName = nameParts[nameParts.length - 1];
+          filename = `${firstName}_${lastName}_CoverLetter.docx`;
+        } else {
+          filename = `${name.replace(/\s+/g, '_')}_CoverLetter.docx`;
+        }
+      }
+      
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download Word document:', err);
+      setGenerationError('Failed to download Word document. Please try again.');
     }
   };
 
@@ -2253,6 +2365,12 @@ const AiCoverLetterGenerator = () => {
                       <button type="button" onClick={() => handleDownloadPdf(activeVariation)}>
                         <Icon name="download" size="sm" /> Download PDF
                       </button>
+                      <button type="button" onClick={() => handleDownloadDocx(activeVariation)}>
+                        <Icon name="download" size="sm" /> Download Word
+                      </button>
+                      <button type="button" onClick={() => handleDownloadText(activeVariation)}>
+                        <Icon name="download" size="sm" /> Download TXT
+                      </button>
                       <button type="button" onClick={() => handleCopyLatex(activeVariation)}>
                         {copiedVariationId === activeVariation.id ? (
                           <>
@@ -2266,6 +2384,16 @@ const AiCoverLetterGenerator = () => {
                       </button>
                       <button type="button" className="primary ghost" onClick={() => handleDownload(activeVariation)}>
                         <Icon name="download" size="sm" /> Download .tex
+                      </button>
+                      <button type="button" onClick={() => setShowEmailModal(true)}>
+                        <Icon name="mail" size="sm" /> Email
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => setShowLetterheadSettings(!showLetterheadSettings)}
+                      >
+                        <Icon name="settings" size="sm" /> Letterhead
                       </button>
                       <button
                         type="button"
@@ -2430,6 +2558,161 @@ const AiCoverLetterGenerator = () => {
             </div>
           </section>
         </>
+      )}
+
+      {/* UC-061: Letterhead Settings Modal */}
+      {showLetterheadSettings && (
+        <div className="modal-overlay" onClick={() => setShowLetterheadSettings(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Letterhead Settings</h3>
+              <button className="close-btn" onClick={() => setShowLetterheadSettings(false)}>
+                <Icon name="x" size="sm" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label htmlFor="header-format">Header Format</label>
+                <select
+                  id="header-format"
+                  value={letterheadConfig.header_format}
+                  onChange={(e) => setLetterheadConfig({ ...letterheadConfig, header_format: e.target.value })}
+                >
+                  <option value="centered">Centered</option>
+                  <option value="left">Left Aligned</option>
+                  <option value="right">Right Aligned</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label htmlFor="font-name">Font</label>
+                <select
+                  id="font-name"
+                  value={letterheadConfig.font_name}
+                  onChange={(e) => setLetterheadConfig({ ...letterheadConfig, font_name: e.target.value })}
+                >
+                  <option value="Calibri">Calibri</option>
+                  <option value="Arial">Arial</option>
+                  <option value="Times New Roman">Times New Roman</option>
+                  <option value="Georgia">Georgia</option>
+                  <option value="Helvetica">Helvetica</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label htmlFor="font-size">Font Size</label>
+                <input
+                  type="number"
+                  id="font-size"
+                  min="9"
+                  max="14"
+                  value={letterheadConfig.font_size}
+                  onChange={(e) => setLetterheadConfig({ ...letterheadConfig, font_size: parseInt(e.target.value) })}
+                />
+              </div>
+              <div className="form-group">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!!letterheadConfig.header_color}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setLetterheadConfig({ ...letterheadConfig, header_color: [102, 126, 234] });
+                      } else {
+                        setLetterheadConfig({ ...letterheadConfig, header_color: null });
+                      }
+                    }}
+                  />
+                  {' '}Use custom header color (brand purple)
+                </label>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowLetterheadSettings(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UC-061: Email Integration Modal */}
+      {showEmailModal && activeVariation && (
+        <div className="modal-overlay" onClick={() => setShowEmailModal(false)}>
+          <div className="modal-content email-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Email Cover Letter</h3>
+              <button className="close-btn" onClick={() => setShowEmailModal(false)}>
+                <Icon name="x" size="sm" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="hint">
+                <Icon name="info" size="sm" /> Copy the text below and paste it into your email client, or use the quick actions to open your default email app.
+              </p>
+              <div className="form-group">
+                <label>Email Subject</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={`Application for ${result?.job?.title || 'Position'} at ${result?.job?.company_name || 'Company'}`}
+                  onClick={(e) => e.target.select()}
+                />
+              </div>
+              <div className="form-group">
+                <label>Cover Letter Content</label>
+                <textarea
+                  readOnly
+                  rows="15"
+                  value={[
+                    activeVariation.opening_paragraph,
+                    ...(activeVariation.body_paragraphs || []),
+                    activeVariation.closing_paragraph,
+                  ]
+                    .filter(Boolean)
+                    .join('\n\n')}
+                  onClick={(e) => e.target.select()}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  const fullText = [
+                    activeVariation.opening_paragraph,
+                    ...(activeVariation.body_paragraphs || []),
+                    activeVariation.closing_paragraph,
+                  ]
+                    .filter(Boolean)
+                    .join('\n\n');
+                  navigator.clipboard.writeText(fullText);
+                  setShowEmailModal(false);
+                }}
+              >
+                <Icon name="clipboard" size="sm" /> Copy to Clipboard
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  const subject = encodeURIComponent(
+                    `Application for ${result?.job?.title || 'Position'} at ${result?.job?.company_name || 'Company'}`
+                  );
+                  const body = encodeURIComponent(
+                    [
+                      activeVariation.opening_paragraph,
+                      ...(activeVariation.body_paragraphs || []),
+                      activeVariation.closing_paragraph,
+                    ]
+                      .filter(Boolean)
+                      .join('\n\n')
+                  );
+                  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+                }}
+              >
+                <Icon name="mail" size="sm" /> Open in Email App
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

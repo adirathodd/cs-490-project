@@ -4517,6 +4517,91 @@ def generate_cover_letter_for_job(request, job_id):
     return Response(payload, status=status.HTTP_200_OK)
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def export_cover_letter_docx(request):
+    """
+    UC-061: Export cover letter as Word document (.docx).
+    
+    Request Body:
+    {
+        "candidate_name": "John Doe",
+        "candidate_email": "john@example.com",
+        "candidate_phone": "555-1234",
+        "candidate_location": "San Francisco, CA",
+        "company_name": "Acme Corp",
+        "job_title": "Software Engineer",
+        "opening_paragraph": "...",
+        "body_paragraphs": ["...", "..."],
+        "closing_paragraph": "...",
+        "letterhead_config": {
+            "header_format": "centered",  // 'centered', 'left', 'right'
+            "font_name": "Calibri",
+            "font_size": 11,
+            "header_color": [102, 126, 234]  // RGB tuple (optional)
+        }
+    }
+    
+    Response: Binary Word document with Content-Disposition header
+    """
+    from django.http import HttpResponse
+    from core import cover_letter_ai
+    
+    # Extract required fields
+    candidate_name = request.data.get('candidate_name', '').strip()
+    candidate_email = request.data.get('candidate_email', '').strip()
+    candidate_phone = request.data.get('candidate_phone', '').strip()
+    candidate_location = request.data.get('candidate_location', '').strip()
+    company_name = request.data.get('company_name', '').strip()
+    job_title = request.data.get('job_title', '').strip()
+    opening_paragraph = request.data.get('opening_paragraph', '').strip()
+    body_paragraphs = request.data.get('body_paragraphs', [])
+    closing_paragraph = request.data.get('closing_paragraph', '').strip()
+    letterhead_config = request.data.get('letterhead_config', {})
+    
+    # Validate required fields
+    if not all([candidate_name, company_name, job_title]):
+        return Response(
+            {'error': {'code': 'invalid_input', 'message': 'candidate_name, company_name, and job_title are required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        docx_bytes = cover_letter_ai.generate_cover_letter_docx(
+            candidate_name=candidate_name,
+            candidate_email=candidate_email,
+            candidate_phone=candidate_phone,
+            candidate_location=candidate_location,
+            company_name=company_name,
+            job_title=job_title,
+            opening_paragraph=opening_paragraph,
+            body_paragraphs=body_paragraphs,
+            closing_paragraph=closing_paragraph,
+            letterhead_config=letterhead_config,
+        )
+        
+        # Generate filename
+        name_parts = candidate_name.split()
+        if len(name_parts) >= 2:
+            filename = f"{name_parts[0]}_{name_parts[-1]}_CoverLetter.docx"
+        else:
+            filename = f"{candidate_name.replace(' ', '_')}_CoverLetter.docx"
+        
+        response = HttpResponse(
+            docx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except Exception as exc:
+        logger.exception('Failed to generate Word document: %s', exc)
+        return Response(
+            {'error': {'code': 'generation_failed', 'message': 'Failed to generate Word document.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 # ======================
 # UC-063: AUTOMATED COMPANY RESEARCH
 # ======================
