@@ -46,6 +46,24 @@ MAX_ACHIEVEMENTS = 10
 MAX_BULLETS_PER_EXP = 3
 MAX_PROJECT_BULLETS = 3
 MAX_KEYWORDS = 15
+MAX_VARIATIONS = 3
+MAX_EXPERIENCE_VARIATIONS = 3
+
+LEADERSHIP_REPLACEMENTS = [
+    (r'^led\b', 'Spearheaded'),
+    (r'^managed\b', 'Directed'),
+    (r'^responsible for\b', 'Accountable for'),
+    (r'^worked on\b', 'Delivered'),
+    (r'^improved\b', 'Elevated'),
+]
+
+TECHNICAL_REPLACEMENTS = [
+    (r'^built\b', 'Engineered'),
+    (r'^developed\b', 'Architected'),
+    (r'^implemented\b', 'Operationalized'),
+    (r'^designed\b', 'Systemized'),
+    (r'^maintained\b', 'Fortified'),
+]
 
 STOPWORDS = {
     'and', 'the', 'with', 'that', 'from', 'this', 'have', 'will', 'your',
@@ -136,6 +154,45 @@ SCHEMA_BLOCK = textwrap.dedent(
       ]
     }
   ]
+}"""
+)
+
+EXPERIENCE_VARIATION_SCHEMA = textwrap.dedent(
+    """{
+  "experience_id": 0,
+  "role": "Senior Software Engineer",
+  "company": "NVIDIA",
+  "location": "Remote",
+  "dates": "Jan 2021 – Present",
+  "variations": [
+    {
+      "id": "impact",
+      "label": "Impact-focused",
+      "description": "Lean on metrics and outcomes.",
+      "bullets": [
+        "Reduced infrastructure costs by 18% through optimized cloud spending.",
+        "Implemented automation to cut deployment time by 40%."
+      ]
+    },
+    {
+      "id": "technical",
+      "label": "Technical depth",
+      "description": "Highlight architecture or tooling.",
+      "bullets": [
+        "Orchestrated autoscaling across distributed storage, reducing cloud bills by 18%.",
+        "Instrumented IAM controls with AWS SDK to protect enterprise data."
+      ]
+    }
+  ]
+}"""
+)
+
+BULLET_REGEN_SCHEMA = textwrap.dedent(
+    """{
+  "experience_id": 0,
+  "variant_id": "impact",
+  "bullet_index": 0,
+  "bullet": "Rewritten bullet text"
 }"""
 )
 
@@ -496,6 +553,172 @@ def parse_resume_payload(raw_text: str) -> Dict[str, Any]:
         raise ResumeAIError('Gemini returned an unreadable response.') from exc
 
 
+def build_experience_tailor_prompt(
+    candidate_snapshot: Dict[str, Any],
+    job_snapshot: Dict[str, Any],
+    experience: Dict[str, Any],
+    tone: str,
+    variation_count: int,
+    bullet_index: int | None = None,
+) -> str:
+    tone_descriptor = TONE_DESCRIPTORS.get(tone, TONE_DESCRIPTORS['balanced'])
+    job_title = job_snapshot.get('title') or 'Target role'
+    company_name = job_snapshot.get('company_name') or 'Target company'
+    keywords = ', '.join(job_snapshot.get('derived_keywords', [])[:8]) or 'no specific keywords'
+    bullets = experience.get('achievements') or []
+    if not bullets:
+        bullets = [experience.get('description') or 'Describe measurable contributions for this role.']
+    selected_bullets = (
+        [bullets[bullet_index]] if bullet_index is not None and 0 <= bullet_index < len(bullets) else bullets[:MAX_BULLETS_PER_EXP]
+    )
+    bullet_block = '\n'.join(f"- {bullet}" for bullet in selected_bullets)
+    prompt = f"""
+You are ResumeRocket AI. Rewrite the experience below for the {job_title} role at {company_name}. Generate {variation_count} variations in JSON format.
+
+Tone: {tone} → {tone_descriptor}
+Keywords: {keywords}
+
+Critical rules:
+- Use only the provided experience and job context.
+- Keep each bullet under 24 words and surface measurable impact when possible.
+- If bullet_index is supplied, only rewrite that bullet and preserve the remaining bullets in their original form.
+- Output JSON only, no markdown fences.
+
+Experience:
+Role: {experience.get('title') or 'Unknown role'}
+Company: {experience.get('company') or company_name}
+Location: {experience.get('location', 'Remote')}
+Dates: {_format_date_range(experience)}
+Description: {experience.get('description') or 'No description provided.'}
+Bullets:
+{bullet_block}
+
+Schema:
+{EXPERIENCE_VARIATION_SCHEMA}
+""".strip()
+    return prompt
+
+
+def parse_experience_variation_payload(raw_text: str) -> Dict[str, Any]:
+    payload = parse_resume_payload(raw_text)
+    if not isinstance(payload, dict):
+        raise ResumeAIError('Gemini did not return a valid JSON object for experience variations.')
+    variations = []
+    for variant in payload.get('variations') or []:
+        variant_id = variant.get('id') or slugify(variant.get('label', 'variant'))
+        variations.append({
+            'id': variant_id,
+            'label': variant.get('label') or 'Variation',
+            'description': variant.get('description') or '',
+            'bullets': [str(bullet).strip() for bullet in variant.get('bullets') or []],
+        })
+    payload['variations'] = variations
+    return payload
+
+
+def generate_experience_variations(
+    candidate_snapshot: Dict[str, Any],
+    job_snapshot: Dict[str, Any],
+    experience_id: int,
+    tone: str = 'balanced',
+    variation_count: int = 2,
+    bullet_index: int | None = None,
+) -> Dict[str, Any]:
+    experiences = candidate_snapshot.get('experiences') or []
+    experience = next((exp for exp in experiences if exp.get('id') == experience_id), None)
+    if not experience:
+        raise ResumeAIError('Requested experience could not be found in your profile.')
+    target_count = max(1, min(variation_count, MAX_EXPERIENCE_VARIATIONS))
+    prompt = build_experience_tailor_prompt(candidate_snapshot, job_snapshot, experience, tone, variation_count, bullet_index)
+    raw = call_gemini_api(
+        prompt,
+        getattr(settings, 'GEMINI_API_KEY', ''),
+        model=getattr(settings, 'GEMINI_MODEL', None),
+    )
+    parsed = parse_experience_variation_payload(raw)
+    parsed['variations'] = _ensure_experience_variations(
+        parsed.get('variations') or [],
+        experience,
+        job_snapshot,
+        target_count,
+    )
+    # Always use the correct experience_id from the parameter, not from Gemini
+    parsed['experience_id'] = experience_id
+    parsed['role'] = experience.get('title') or ''
+    parsed['company'] = experience.get('company') or ''
+    parsed['location'] = experience.get('location') or ''
+    parsed['dates'] = _format_date_range(experience)
+    return parsed
+
+
+def build_bullet_regeneration_prompt(
+    candidate_snapshot: Dict[str, Any],
+    job_snapshot: Dict[str, Any],
+    experience: Dict[str, Any],
+    bullet_index: int,
+    tone: str,
+) -> str:
+    tone_descriptor = TONE_DESCRIPTORS.get(tone, TONE_DESCRIPTORS['balanced'])
+    job_title = job_snapshot.get('title') or 'Target role'
+    company_name = job_snapshot.get('company_name') or 'Target company'
+    keywords = ', '.join(job_snapshot.get('derived_keywords', [])[:8]) or 'no specific keywords'
+    bullets = experience.get('achievements') or []
+    if bullet_index < 0 or bullet_index >= len(bullets):
+        raise ResumeAIError('Bullet index is out of range.')
+    target_bullet = bullets[bullet_index]
+    prompt = f"""
+You are ResumeRocket AI. Rewrite the selected bullet for the {job_title} role at {company_name}. Output JSON only.
+
+Tone: {tone} → {tone_descriptor}
+Keywords: {keywords}
+
+Experience role: {experience.get('title') or 'Unknown role'}
+Company: {experience.get('company') or company_name}
+Original bullet:
+{target_bullet}
+
+Schema:
+{BULLET_REGEN_SCHEMA}
+""".strip()
+    return prompt
+
+
+def parse_bullet_regeneration_payload(raw_text: str) -> Dict[str, Any]:
+    payload = parse_resume_payload(raw_text)
+    if not isinstance(payload, dict):
+        raise ResumeAIError('Gemini did not return a valid JSON object for bullet regeneration.')
+    bullet = str(payload.get('bullet') or '').strip()
+    if not bullet:
+        raise ResumeAIError('Regenerated bullet is empty.')
+    return payload | {'bullet': bullet}
+
+
+def generate_experience_bullet(
+    candidate_snapshot: Dict[str, Any],
+    job_snapshot: Dict[str, Any],
+    experience_id: int,
+    bullet_index: int,
+    tone: str = 'balanced',
+) -> Dict[str, Any]:
+    experiences = candidate_snapshot.get('experiences') or []
+    experience = next((exp for exp in experiences if exp.get('id') == experience_id), None)
+    if not experience:
+        raise ResumeAIError('Requested experience could not be found in your profile.')
+    prompt = build_bullet_regeneration_prompt(candidate_snapshot, job_snapshot, experience, bullet_index, tone)
+    raw = call_gemini_api(
+        prompt,
+        getattr(settings, 'GEMINI_API_KEY', ''),
+        model=getattr(settings, 'GEMINI_MODEL', None),
+    )
+    parsed = parse_bullet_regeneration_payload(raw)
+    return {
+        'experience_id': experience_id,
+        'variant_id': parsed.get('variant_id'),
+        'bullet_index': parsed.get('bullet_index', bullet_index),
+        'bullet': parsed['bullet'],
+    }
+
+
 def _build_experience_lookup(snapshot: Dict[str, Any]) -> Dict[int, Dict[str, Any]]:
     lookup = {}
     for item in snapshot.get('experiences', []):
@@ -537,7 +760,266 @@ def _clean_bullets(bullets: Sequence[str], limit: int) -> List[str]:
     return cleaned
 
 
+def _normalize_bullet_list(bullets: Sequence[str]) -> List[str]:
+    normalized: List[str] = []
+    for bullet in bullets or []:
+        text = (bullet or '').strip()
+        if not text:
+            continue
+        if not text.endswith('.'):
+            text = f'{text}.'
+        normalized.append(text)
+        if len(normalized) >= MAX_BULLETS_PER_EXP:
+            break
+    return normalized
+
+
+def _rotate_sequence(items: Sequence[Any], shift: int) -> List[Any]:
+    snapshot = list(items or [])
+    if not snapshot:
+        return snapshot
+    shift = shift % len(snapshot)
+    if shift == 0:
+        return snapshot
+    return snapshot[shift:] + snapshot[:shift]
+
+
+def _order_bullets_by_metric(bullets: Sequence[str]) -> List[str]:
+    enumerated = list(enumerate(list(bullets or [])))
+    ordered = sorted(
+        enumerated,
+        key=lambda item: (not bool(re.search(r'\d', item[1])), item[0]),
+    )
+    return [text for _, text in ordered]
+
+
+def _apply_replacements(text: str, replacements: Sequence[tuple[str, str]]) -> str:
+    if not text:
+        return ''
+    result = text.strip()
+    for pattern, replacement in replacements:
+        if re.search(pattern, result, flags=re.IGNORECASE):
+            result = re.sub(pattern, replacement, result, count=1, flags=re.IGNORECASE)
+            break
+    return result
+
+
+def _leadership_bullets(bullets: Sequence[str]) -> List[str]:
+    return [_apply_replacements(bullet, LEADERSHIP_REPLACEMENTS) for bullet in bullets or []]
+
+
+def _technical_bullets(bullets: Sequence[str], keywords: Sequence[str]) -> List[str]:
+    keywords = [kw for kw in keywords if kw]
+    updated: List[str] = []
+    for idx, bullet in enumerate(bullets or []):
+        rewritten = _apply_replacements(bullet, TECHNICAL_REPLACEMENTS)
+        if keywords:
+            term = keywords[idx % len(keywords)]
+            if term.lower() not in rewritten.lower():
+                trimmed = rewritten.rstrip('. ')
+                rewritten = f"{trimmed} to advance {term}."
+        updated.append(rewritten)
+    return updated
+
+
+def _unique_signature(bullets: Sequence[str]) -> tuple:
+    return tuple((bullet or '').strip().lower() for bullet in bullets or [])
+
+
+def _ensure_experience_variations(
+    variations: Sequence[Dict[str, Any]],
+    experience: Dict[str, Any],
+    job_snapshot: Dict[str, Any],
+    target_count: int,
+) -> List[Dict[str, Any]]:
+    normalized: List[Dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    seen_signatures: set[tuple] = set()
+
+    for variant in variations or []:
+        bullets = _normalize_bullet_list(variant.get('bullets') or [])
+        if not bullets:
+            continue
+        signature = _unique_signature(bullets)
+        if signature in seen_signatures:
+            continue
+        variant_id = variant.get('id') or slugify(variant.get('label') or 'variant')
+        if not variant_id:
+            variant_id = f'variant-{len(normalized) + 1}'
+        counter = 2
+        base_id = variant_id
+        while variant_id in seen_ids:
+            variant_id = f'{base_id}-{counter}'
+            counter += 1
+        normalized.append({
+            'id': variant_id,
+            'label': variant.get('label') or variant_id.replace('-', ' ').title(),
+            'description': variant.get('description') or '',
+            'bullets': bullets,
+        })
+        seen_ids.add(variant_id)
+        seen_signatures.add(signature)
+
+    if len(normalized) >= target_count:
+        return normalized[:target_count]
+
+    base_bullets = _clean_bullets(experience.get('achievements') or [], MAX_BULLETS_PER_EXP)
+    if not base_bullets:
+        base_bullets = _clean_bullets(
+            _fallback_bullets_from_text(experience.get('description'), MAX_BULLETS_PER_EXP),
+            MAX_BULLETS_PER_EXP,
+        )
+    if not base_bullets:
+        return normalized[:target_count]
+
+    keyword_pool = job_snapshot.get('derived_keywords') or []
+
+    fallback_generators = [
+        (
+            'impact',
+            'Impact-focused',
+            'Prioritizes quantified achievements and measurable outcomes.',
+            lambda: _order_bullets_by_metric(base_bullets),
+        ),
+        (
+            'leadership',
+            'Leadership narrative',
+            'Highlights ownership and stakeholder coordination.',
+            lambda: _leadership_bullets(base_bullets),
+        ),
+        (
+            'technical',
+            'Technical deep-dive',
+            'Accentuates tooling and domain keywords.',
+            lambda: _technical_bullets(base_bullets, keyword_pool[:3]),
+        ),
+        (
+            'story',
+            'Story-driven sequencing',
+            'Rotates achievements to present a fresh narrative.',
+            lambda: _rotate_sequence(base_bullets, 1),
+        ),
+    ]
+
+    for slug, label, description, builder in fallback_generators:
+        if len(normalized) >= target_count:
+            break
+        bullets = _normalize_bullet_list(builder() or [])
+        if not bullets:
+            continue
+        signature = _unique_signature(bullets)
+        if signature in seen_signatures:
+            continue
+        variant_id = slug
+        counter = 2
+        while variant_id in seen_ids:
+            variant_id = f'{slug}-{counter}'
+            counter += 1
+        normalized.append({
+            'id': variant_id,
+            'label': label,
+            'description': description,
+            'bullets': bullets,
+        })
+        seen_ids.add(variant_id)
+        seen_signatures.add(signature)
+
+    if not normalized:
+        fallback_list = _normalize_bullet_list(base_bullets)
+        if fallback_list:
+            normalized.append({
+                'id': 'profile-source',
+                'label': 'Profile source',
+                'description': 'Profile achievements without AI adjustments.',
+                'bullets': fallback_list,
+            })
+
+    return normalized[:target_count]
+
+
+def _coerce_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        if stripped.lstrip('-').isdigit():
+            try:
+
+
+                return int(stripped)
+            except ValueError:
+                return None
+        match = re.search(r'(\d+)', stripped)
+        if match:
+            try:
+                return int(match.group(1))
+            except ValueError:
+
+
+                return None
+    return None
+
+
+def _resolve_experience_source(entry: Dict[str, Any], lookup: Dict[int, Dict[str, Any]]) -> tuple[int | None, Dict[str, Any]]:
+    source_id = _coerce_int(entry.get('source_experience_id'))
+    if source_id is None:
+        source_id = _coerce_int(entry.get('experience_id'))
+
+
+    if source_id is not None and source_id in lookup:
+        return source_id, lookup[source_id]
+
+    entry_role = (entry.get('role') or entry.get('title') or '').strip().lower()
+    entry_company = (entry.get('company') or '').strip().lower()
+    entry_dates = (entry.get('dates') or '').strip().lower()
+
+    best_id = None
+    best_score = 0
+
+
+    for exp_id, snapshot in lookup.items():
+        score = 0
+        snap_role = (snapshot.get('title') or '').strip().lower()
+        snap_company = (snapshot.get('company') or '').strip().lower()
+        snap_dates = (_format_date_range(snapshot) or '').strip().lower()
+
+
+
+        if entry_role and entry_role == snap_role:
+            score += 3
+        elif entry_role and entry_role in snap_role:
+            score += 1
+
+        if entry_company and entry_company == snap_company:
+            score += 3
+        elif entry_company and entry_company in snap_company:
+            score += 1
+
+        if entry_dates and entry_dates == snap_dates:
+            score += 2
+
+
+
+        if score > best_score:
+            best_id = exp_id
+
+
+            best_score = score
+
+    if best_id is not None and best_score >= 3:
+        return best_id, lookup.get(best_id, {})
+
+    return None, {}
+
+
 def _stringify_list(items: Sequence[Any]) -> List[str]:
+
     output = []
     for item in items or []:
         if item is None:
@@ -561,8 +1043,10 @@ def _build_fallback_variation(
         bullets = _clean_bullets(exp.get('achievements', []), MAX_BULLETS_PER_EXP)
         experience_sections.append({
             'source_experience_id': exp.get('id'),
+
             'role': exp.get('title'),
             'company': exp.get('company'),
+
             'location': exp.get('location'),
             'dates': _format_date_range(exp),
             'bullets': bullets,
@@ -571,7 +1055,9 @@ def _build_fallback_variation(
     for proj in projects:
         project_sections.append({
             'source_project_id': proj.get('id'),
+
             'name': proj.get('name'),
+
             'notes': _format_date_range(proj),
             'bullets': _clean_bullets(proj.get('impact', []), MAX_PROJECT_BULLETS),
         })
@@ -598,6 +1084,7 @@ def _build_fallback_variation(
         skill_highlights = [skill.get('name') for skill in candidate_snapshot.get('skills', [])[:10]]
     return {
         'id': 'fallback',
+
         'label': f"{tone.title()} Focus",
         'tone': tone,
         'summary_headline': summary_headline,
@@ -621,6 +1108,7 @@ def _derive_keywords(job_snapshot: Dict[str, Any], shared_analysis: Dict[str, An
 def _escape_tex(value: str | None) -> str:
     if not value:
         return ''
+
     replacements = {
         '&': r'\&',
         '%': r'\%',
@@ -630,7 +1118,9 @@ def _escape_tex(value: str | None) -> str:
         '{': r'\{',
         '}': r'\}',
         '~': r'\textasciitilde{}',
+
         '^': r'\textasciicircum{}',
+
         '\\': r'\textbackslash{}',
     }
     escaped = ''.join(replacements.get(char, char) for char in value)
@@ -928,8 +1418,7 @@ def run_resume_generation(
 
         exp_sections = []
         for entry in raw.get('experience_sections') or []:
-            source_id = entry.get('source_experience_id')
-            source = experience_lookup.get(source_id) or {}
+            source_id, source = _resolve_experience_source(entry, experience_lookup)
             bullets = entry.get('bullets') or source.get('achievements') or []
             
             # Ensure critical fields match source data exactly - no AI modifications
@@ -950,6 +1439,34 @@ def run_resume_generation(
             exp_sections = _build_fallback_variation(
                 candidate_snapshot, job_snapshot, tone, keywords_fallback, skill_fallback
             )['experience_sections']
+        else:
+            unmatched = [section for section in exp_sections if section.get('source_experience_id') is None]
+            if unmatched:
+                fallback_sections = _build_fallback_variation(
+                    candidate_snapshot, job_snapshot, tone, keywords_fallback, skill_fallback
+                )['experience_sections']
+                used_ids = {section['source_experience_id'] for section in exp_sections if section.get('source_experience_id')}
+                for section in unmatched:
+                    match = next(
+                        (
+                            item for item in fallback_sections
+                            if item.get('source_experience_id') not in used_ids
+                            and (item.get('role'), item.get('company')) == (section.get('role'), section.get('company'))
+                        ),
+                        None,
+                    )
+                    if match is None:
+                        match = next(
+                            (item for item in fallback_sections if item.get('source_experience_id') not in used_ids),
+                            None,
+                        )
+                    if match and match.get('source_experience_id'):
+                        section['source_experience_id'] = match['source_experience_id']
+                        if not section.get('location'):
+                            section['location'] = match.get('location')
+                        if not section.get('dates'):
+                            section['dates'] = match.get('dates')
+                        used_ids.add(match['source_experience_id'])
 
         proj_sections = []
         for entry in raw.get('project_sections') or []:

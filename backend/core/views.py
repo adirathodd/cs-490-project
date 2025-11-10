@@ -4519,6 +4519,148 @@ def generate_cover_letter_for_job(request, job_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def tailor_experience_variations(request, job_id, experience_id):
+    """
+    Generate Gemini-powered variations for a single work experience.
+    """
+    profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
+    try:
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    try:
+        WorkExperience.objects.get(id=experience_id, candidate=profile)
+    except WorkExperience.DoesNotExist:
+        return Response(
+            {'error': {'code': 'experience_not_found', 'message': 'Experience entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    tone = (request.data.get('tone') or 'balanced').strip().lower()
+    if tone not in resume_ai.TONE_DESCRIPTORS:
+        tone = 'balanced'
+
+    variation_count = request.data.get('variation_count', 2)
+    try:
+        variation_count = int(variation_count)
+    except (TypeError, ValueError):
+        variation_count = 2
+    variation_count = max(1, min(variation_count, 3))
+
+    bullet_index = request.data.get('bullet_index')
+    if bullet_index is not None:
+        try:
+            bullet_index = int(bullet_index)
+        except (TypeError, ValueError):
+            return Response(
+                {'error': {'code': 'invalid_input', 'message': 'bullet_index must be a number.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    candidate_snapshot = resume_ai.collect_candidate_snapshot(profile)
+    job_snapshot = resume_ai.build_job_snapshot(job)
+
+    try:
+        payload = resume_ai.generate_experience_variations(
+            candidate_snapshot,
+            job_snapshot,
+            experience_id,
+            tone=tone,
+            variation_count=variation_count,
+            bullet_index=bullet_index,
+        )
+        return Response(payload, status=status.HTTP_200_OK)
+    except resume_ai.ResumeAIError as exc:
+        logger.warning('Experience tailoring failed for job %s experience %s: %s', job_id, experience_id, exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': str(exc)}},
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected experience tailoring failure: %s', exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': 'Unexpected error while tailoring experience.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def tailor_experience_bullet(request, job_id, experience_id):
+    """
+    Regenerate a single experience bullet via Gemini.
+    """
+    profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
+    try:
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    try:
+        WorkExperience.objects.get(id=experience_id, candidate=profile)
+    except WorkExperience.DoesNotExist:
+        return Response(
+            {'error': {'code': 'experience_not_found', 'message': 'Experience entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    bullet_index = request.data.get('bullet_index')
+    if bullet_index is None:
+        return Response(
+            {'error': {'code': 'invalid_input', 'message': 'bullet_index is required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    try:
+        bullet_index = int(bullet_index)
+    except (TypeError, ValueError):
+        return Response(
+            {'error': {'code': 'invalid_input', 'message': 'bullet_index must be a number.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    tone = (request.data.get('tone') or 'balanced').strip().lower()
+    if tone not in resume_ai.TONE_DESCRIPTORS:
+        tone = 'balanced'
+
+    variant_id = request.data.get('variant_id')
+
+    candidate_snapshot = resume_ai.collect_candidate_snapshot(profile)
+    job_snapshot = resume_ai.build_job_snapshot(job)
+
+    try:
+        payload = resume_ai.generate_experience_bullet(
+            candidate_snapshot,
+            job_snapshot,
+            experience_id,
+            bullet_index,
+            tone,
+        )
+        return Response(
+            {
+                'experience_id': experience_id,
+                'variant_id': variant_id,
+                'bullet_index': payload.get('bullet_index', bullet_index),
+                'bullet': payload.get('bullet'),
+            },
+            status=status.HTTP_200_OK,
+        )
+    except resume_ai.ResumeAIError as exc:
+        logger.warning('Bullet regeneration failed for job %s experience %s: %s', job_id, experience_id, exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': str(exc)}},
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected bullet regeneration failure: %s', exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': 'Unexpected error while regenerating bullet.'}},
 def export_cover_letter_docx(request):
     """
     UC-061: Export cover letter as Word document (.docx).

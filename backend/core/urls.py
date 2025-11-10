@@ -111,6 +111,8 @@ urlpatterns = [
     path('jobs/<int:job_id>/company', views.job_company_info, name='job-company-info'),
     # UC-047: AI resume generation
     path('jobs/<int:job_id>/resume/generate', views.generate_resume_for_job, name='job-resume-generate'),
+    path('jobs/<int:job_id>/resume/tailor-experience/<int:experience_id>', views.tailor_experience_variations, name='tailor-experience'),
+    path('jobs/<int:job_id>/resume/tailor-experience/<int:experience_id>/bullet', views.tailor_experience_bullet, name='tailor-experience-bullet'),
     path('resume/compile-latex/', views.compile_latex_to_pdf, name='compile-latex-to-pdf'),
     # UC-056: AI cover letter generation
     path('jobs/<int:job_id>/cover-letter/generate', views.generate_cover_letter_for_job, name='job-cover-letter-generate'),
