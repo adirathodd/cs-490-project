@@ -1113,6 +1113,127 @@ export const coverLetterTemplateAPI = {
   },
 };
 
+// UC-051: Resume Export API
+export const resumeExportAPI = {
+  getThemes: async () => {
+    try {
+      const response = await api.get('/resume/export/themes');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { code: 'fetch_failed', message: 'Failed to fetch themes' };
+    }
+  },
+
+  exportResume: async (format, theme = 'professional', watermark = '', filename = '') => {
+    try {
+      const params = new URLSearchParams({ format });
+      if (theme) params.append('theme', theme);
+      if (watermark) params.append('watermark', watermark);
+      if (filename) params.append('filename', filename);
+
+      const response = await api.get(`/resume/export?${params.toString()}`, {
+        responseType: 'blob', // Important for file downloads
+      });
+
+      // Create a download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+
+      // Extract filename from Content-Disposition header or use default
+      const contentDisposition = response.headers['content-disposition'];
+      let downloadFilename = `resume.${format}`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+?)"?$/);
+        if (filenameMatch && filenameMatch[1]) {
+          downloadFilename = filenameMatch[1];
+        }
+      }
+
+      link.setAttribute('download', downloadFilename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      return { success: true, filename: downloadFilename };
+    } catch (error) {
+      // For blob responses, error.response.data is a Blob, need to parse it
+      if (error.response?.data instanceof Blob) {
+        const text = await error.response.data.text();
+        try {
+          const errorData = JSON.parse(text);
+          throw errorData.error || { code: 'export_failed', message: 'Export failed' };
+        } catch {
+          throw { code: 'export_failed', message: 'Export failed' };
+        }
+      }
+      throw error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+    }
+  },
+
+  // Export AI-generated resume with custom options
+  exportAIResume: async (latexContent, format, theme = 'professional', watermark = '', filename = '', profileData = null) => {
+    try {
+      const response = await api.post('/resume/export/ai', {
+        latex_content: latexContent,
+        format,
+        theme,
+        watermark,
+        filename,
+        profile_data: profileData
+      }, {
+        responseType: 'blob', // Important for file downloads
+      });
+
+      // Create a download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+
+      // Extract filename from Content-Disposition header or use default
+      const contentDisposition = response.headers['content-disposition'];
+      let downloadFilename = `resume.${format}`;
+      if (contentDisposition) {
+        // Try multiple patterns to extract filename
+        const patterns = [
+          /filename\*=UTF-8''([^;]+)/,  // RFC 5987 format
+          /filename="([^"]+)"/,           // Quoted filename
+          /filename=([^;]+)/              // Unquoted filename
+        ];
+        
+        for (const pattern of patterns) {
+          const match = contentDisposition.match(pattern);
+          if (match && match[1]) {
+            downloadFilename = decodeURIComponent(match[1].trim());
+            break;
+          }
+        }
+      }
+
+      link.setAttribute('download', downloadFilename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      return { success: true, filename: downloadFilename };
+    } catch (error) {
+      // For blob responses, error.response.data is a Blob, need to parse it
+      if (error.response?.data instanceof Blob) {
+        const text = await error.response.data.text();
+        try {
+          const errorData = JSON.parse(text);
+          throw errorData.error || { code: 'export_failed', message: 'Export failed' };
+        } catch {
+          throw { code: 'export_failed', message: 'Export failed' };
+        }
+      }
+      throw error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+    }
+  },
+};
+
 // Provide a forgiving default export that supports both
 // - `import authAPI from './services/api'` (legacy/default import)
 // - `import { authAPI } from './services/api'` (named import)
@@ -1131,6 +1252,7 @@ const _defaultExport = {
   coverLetterTemplateAPI,
   materialsAPI,
   resumeAIAPI,
+  resumeExportAPI,
 };
 
 export default _defaultExport;
@@ -1147,6 +1269,7 @@ try {
     module.exports.materialsAPI = materialsAPI;
     module.exports.salaryAPI = salaryAPI;
     module.exports.resumeAIAPI = resumeAIAPI;
+    module.exports.resumeExportAPI = resumeExportAPI;
   }
 } catch (e) {
   // ignore in strict ESM environments
@@ -1181,6 +1304,7 @@ try {
     _defaultExport.materialsAPI = materialsAPI;
     _defaultExport.salaryAPI = salaryAPI;
     _defaultExport.resumeAIAPI = resumeAIAPI;
+    _defaultExport.resumeExportAPI = resumeExportAPI;
   }
   if (typeof module !== 'undefined' && module && module.exports) {
     module.exports = _defaultExport;
@@ -1189,6 +1313,7 @@ try {
     module.exports.materialsAPI = materialsAPI;
     module.exports.salaryAPI = salaryAPI;
     module.exports.resumeAIAPI = resumeAIAPI;
+    module.exports.resumeExportAPI = resumeExportAPI;
   }
 } catch (e) {
   // ignore any errors during best-effort compatibility wiring

@@ -7,7 +7,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { jobsAPI, resumeAIAPI } from '../../../services/api';
+import { jobsAPI, resumeAIAPI, resumeExportAPI } from '../../../services/api';
 import Icon from '../../../components/common/Icon';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import './AiResumeGenerator.css';
@@ -1155,6 +1155,16 @@ const AiResumeGenerator = () => {
     }
   });
   
+  // Export options state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFormat, setExportFormat] = useState('docx');
+  const [exportTheme, setExportTheme] = useState('professional');
+  const [exportWatermark, setExportWatermark] = useState('');
+  const [exportFilename, setExportFilename] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const [availableThemes, setAvailableThemes] = useState([]);
+  
   // Template management state
   const [customTemplates, setCustomTemplates] = useState(() => {
     try {
@@ -1206,6 +1216,21 @@ const AiResumeGenerator = () => {
         }
       }, 500);
     }
+  }, []);
+
+  // Fetch available themes on mount
+  useEffect(() => {
+    const fetchThemes = async () => {
+      try {
+        const themes = await resumeExportAPI.getThemes();
+        setAvailableThemes(themes);
+      } catch (error) {
+        console.error('Failed to fetch themes:', error);
+        // Use default themes if fetch fails
+        setAvailableThemes(['professional', 'modern', 'minimal', 'creative']);
+      }
+    };
+    fetchThemes();
   }, []);
 
   // Save result to cache whenever it changes
@@ -1938,6 +1963,55 @@ const AiResumeGenerator = () => {
     } catch (err) {
       console.error('Failed to download PDF:', err);
       setGenerationError('Failed to download PDF. Please try again.');
+    }
+  };
+
+  const handleExportResume = async () => {
+    if (!liveLatexPreview || !activeVariation) {
+      setExportError('No resume content available to export');
+      return;
+    }
+
+    setIsExporting(true);
+    setExportError('');
+
+    try {
+      // Generate filename based on profile name
+      let filename = '';
+      if (result?.profile?.name) {
+        const name = result.profile.name.trim();
+        const nameParts = name.split(/\s+/);
+        if (nameParts.length >= 2) {
+          const firstName = nameParts[0];
+          const lastName = nameParts[nameParts.length - 1];
+          filename = `${firstName}_${lastName}_Resume`;
+        } else {
+          filename = `${name.replace(/\s+/g, '_')}_Resume`;
+        }
+      }
+
+      // Call the export API - browser will handle the filename from Content-Disposition header
+      await resumeExportAPI.exportAIResume(
+        liveLatexPreview,
+        exportFormat,
+        exportTheme,
+        exportWatermark.trim() || null,
+        filename,
+        null  // Let backend extract from LaTeX
+      );
+
+      // Success - close modal and reset
+      setShowExportModal(false);
+      setExportError('');
+      // Reset form for next time
+      setTimeout(() => {
+        setExportWatermark('');
+      }, 300);
+    } catch (error) {
+      console.error('Export failed:', error);
+      setExportError(error.response?.data?.error || 'Failed to export resume. Please try again.');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -2977,6 +3051,14 @@ const AiResumeGenerator = () => {
                       <button type="button" className="primary ghost" onClick={() => handleDownload(activeVariation)}>
                         <Icon name="download" size="sm" /> Download .tex
                       </button>
+                      <button 
+                        type="button" 
+                        className="export-modal-trigger"
+                        onClick={() => setShowExportModal(true)}
+                        disabled={!liveLatexPreview}
+                      >
+                        <Icon name="download" size="sm" /> Export Other Formats
+                      </button>
                       <button
                         type="button"
                         className="collapse-toggle"
@@ -3164,6 +3246,131 @@ const AiResumeGenerator = () => {
           </div>
         </section>
         </>
+      )}
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="export-modal-overlay" onClick={() => setShowExportModal(false)}>
+          <div className="export-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="export-modal-header">
+              <div>
+                <h3>
+                  <Icon name="download" size="sm" /> Export Resume
+                </h3>
+                <p className="hint">Choose format, theme, and customization options</p>
+              </div>
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setShowExportModal(false)}
+                aria-label="Close export dialog"
+              >
+                <Icon name="x" size="md" />
+              </button>
+            </div>
+
+            <div className="export-modal-body">
+              <div className="export-control-group">
+                <label htmlFor="export-format">
+                  <Icon name="fileText" size="sm" /> Format
+                </label>
+                <select
+                  id="export-format"
+                  value={exportFormat}
+                  onChange={(e) => setExportFormat(e.target.value)}
+                  disabled={isExporting}
+                >
+                  <option value="docx">Word Document (.docx)</option>
+                  <option value="html">HTML</option>
+                  <option value="txt">Plain Text</option>
+                </select>
+                <p className="field-hint">
+                  {exportFormat === 'docx' && 'Editable Microsoft Word format'}
+                  {exportFormat === 'html' && 'Web-ready HTML with inline styles'}
+                  {exportFormat === 'txt' && 'Simple plain text format'}
+                </p>
+              </div>
+
+              <div className="export-control-group">
+                <label htmlFor="export-theme">
+                  <Icon name="palette" size="sm" /> Theme
+                </label>
+                <select
+                  id="export-theme"
+                  value={exportTheme}
+                  onChange={(e) => setExportTheme(e.target.value)}
+                  disabled={isExporting}
+                >
+                  {availableThemes.length > 0 ? (
+                    availableThemes.map((theme) => (
+                      <option key={theme} value={theme}>
+                        {theme.charAt(0).toUpperCase() + theme.slice(1)}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="professional">Professional</option>
+                      <option value="modern">Modern</option>
+                      <option value="minimal">Minimal</option>
+                      <option value="creative">Creative</option>
+                    </>
+                  )}
+                </select>
+                <p className="field-hint">Visual style and formatting</p>
+              </div>
+
+              <div className="export-control-group">
+                <label htmlFor="export-watermark">
+                  <Icon name="droplet" size="sm" /> Watermark (optional)
+                </label>
+                <input
+                  id="export-watermark"
+                  type="text"
+                  placeholder="e.g., CONFIDENTIAL, DRAFT"
+                  value={exportWatermark}
+                  onChange={(e) => setExportWatermark(e.target.value)}
+                  disabled={isExporting}
+                  maxLength={50}
+                />
+                <p className="field-hint">Adds text overlay to the document</p>
+              </div>
+
+              {exportError && (
+                <div className="export-error-message" role="alert">
+                  <Icon name="alertCircle" size="sm" />
+                  {exportError}
+                </div>
+              )}
+            </div>
+
+            <div className="export-modal-footer">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setShowExportModal(false)}
+                disabled={isExporting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={handleExportResume}
+                disabled={isExporting || !liveLatexPreview}
+              >
+                {isExporting ? (
+                  <>
+                    <LoadingSpinner size="sm" /> Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="download" size="sm" /> Export Resume
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
