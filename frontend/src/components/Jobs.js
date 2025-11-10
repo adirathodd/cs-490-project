@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { jobsAPI, materialsAPI } from '../../services/api';
-import Icon from '../common/Icon';
-import DeadlineCalendar from '../common/DeadlineCalendar';
+import { jobsAPI, materialsAPI } from '../services/api';
+import Icon from './Icon';
+import DeadlineCalendar from './DeadlineCalendar';
+import './Education.css';
 
 const defaultForm = {
   title: '',
@@ -31,25 +32,6 @@ const industryOptions = [
 ];
 
 const MAX_DESC = 2000;
-
-const headerActionsWrapperStyle = {
-  display: 'flex',
-  gap: '12px',
-  alignItems: 'stretch',
-  flexWrap: 'wrap',
-  justifyContent: 'flex-start',
-  width: '100%',
-};
-
-const responsiveActionButtonStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '6px',
-  flex: '1 1 180px',
-  minWidth: '140px',
-  minHeight: '44px',
-};
 
 const Jobs = () => {
   const navigate = useNavigate();
@@ -419,7 +401,7 @@ const Jobs = () => {
   // UC-045: Archive handlers
   const onArchive = async (id, reason = 'other') => {
     try {
-      await jobsAPI.archiveJob(id, reason);
+      const result = await jobsAPI.archiveJob(id, reason);
       setItems((prev) => prev.filter((i) => i.id !== id));
       
       // Show undo notification
@@ -787,24 +769,6 @@ const Jobs = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="education-container">
-        <div className="page-backbar">
-          <a
-            className="btn-back"
-            href="/dashboard"
-            aria-label="Back to dashboard"
-            title="Back to dashboard"
-          >
-            ← Back to Dashboard
-          </a>
-        </div>
-        <p style={{ marginTop: '20px' }}>Loading jobs...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="education-container">
       {/* 1. Back to dashboard button */}
@@ -824,7 +788,7 @@ const Jobs = () => {
       {/* 2. Job Tracker section name and description */}
       <div className="education-header">
         <h2><Icon name="briefcase" size="md" /> Your Job Entries</h2>
-        <div style={headerActionsWrapperStyle}>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           {/* UC-042: Set Default Materials button */}
           <button
             className="btn-secondary"
@@ -835,7 +799,7 @@ const Jobs = () => {
               });
               setShowDefaultsModal(true);
             }}
-            style={responsiveActionButtonStyle}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
             title="Set default resume and cover letter for new jobs"
           >
             <Icon name="file-text" size="sm" />
@@ -848,7 +812,7 @@ const Jobs = () => {
               setShowArchived(!showArchived);
               setSelectedJobs([]);
             }}
-            style={{ ...responsiveActionButtonStyle, minWidth: '160px' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: '150px' }}
           >
             <Icon name={showArchived ? 'briefcase' : 'archive'} size="sm" />
             {showArchived ? 'Active Jobs' : 'Archived Jobs'}
@@ -858,7 +822,7 @@ const Jobs = () => {
             href="/jobs/stats"
             title="Job statistics"
             aria-label="Job statistics"
-            style={{ ...responsiveActionButtonStyle, textDecoration: 'none' }}
+            style={{ textDecoration: 'none' }}
           >
             Statistics
           </a>
@@ -867,7 +831,7 @@ const Jobs = () => {
             href="/jobs/pipeline"
             title="Open Pipeline"
             aria-label="Open job status pipeline"
-            style={{ ...responsiveActionButtonStyle, textDecoration: 'none' }}
+            style={{ textDecoration: 'none' }}
           >
             Pipeline →
           </a>
@@ -889,7 +853,6 @@ const Jobs = () => {
               setCharCount(0);
               setShowForm(true);
             }}
-            style={{ ...responsiveActionButtonStyle, flex: '1 1 150px' }}
           >
             + Add Job
           </button>
@@ -1702,19 +1665,6 @@ const Jobs = () => {
                       title="Manage Materials"
                     >
                       <Icon name="file-text" size="sm" ariaLabel="Materials" />
-                    </button>
-                  )}
-                  {/* UC-067: Salary Research button */}
-                  {!showArchived && (
-                    <button 
-                      className="salary-research-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/jobs/${item.id}/salary-research`);
-                      }}
-                      title="Salary Research"
-                    >
-                      <Icon name="dollar" size="sm" ariaLabel="Salary Research" />
                     </button>
                   )}
                   {!showArchived && (

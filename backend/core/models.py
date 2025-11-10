@@ -549,6 +549,47 @@ class Contact(models.Model):
         return f"{self.name} - {self.get_relationship_type_display()}"
 
 
+class CoverLetterTemplate(models.Model):
+    """Cover letter template for different industries and styles."""
+    TEMPLATE_TYPES = [
+        ("formal", "Formal"),
+        ("creative", "Creative"),
+        ("technical", "Technical"),
+        ("industry", "Industry-specific"),
+        ("custom", "Custom"),
+    ]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    template_type = models.CharField(max_length=20, choices=TEMPLATE_TYPES, default="formal")
+    industry = models.CharField(max_length=100, blank=True)
+    content = models.TextField()
+    sample_content = models.TextField(blank=True)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="custom_templates")
+    is_shared = models.BooleanField(default=False)
+    imported_from = models.CharField(max_length=200, blank=True)
+    usage_count = models.PositiveIntegerField(default=0)
+    last_used = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    customization_options = models.JSONField(default=dict, blank=True)
+    # Fields for preserving original file content
+    original_file_content = models.BinaryField(null=True, blank=True, help_text="Original file content for Word documents")
+    original_file_type = models.CharField(max_length=10, blank=True, help_text="Original file extension (txt, docx)")
+    original_filename = models.CharField(max_length=255, blank=True, help_text="Original uploaded filename")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["template_type"]),
+            models.Index(fields=["industry"]),
+            models.Index(fields=["owner"]),
+            models.Index(fields=["is_shared"]),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.get_template_type_display()})"
+
+
 class Referral(models.Model):
     """Track referral opportunities and warm introductions"""
     STATUS_CHOICES = [

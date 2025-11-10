@@ -6,7 +6,20 @@ import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate
+
+class CoverLetterTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CoverLetterTemplate
+        fields = [
+            "id", "name", "description", "template_type", "industry", "content", "sample_content",
+            "owner", "is_shared", "imported_from", "usage_count", "last_used", "created_at", "updated_at", 
+            "customization_options", "original_file_type", "original_filename"
+        ]
+        read_only_fields = [
+            "id", "owner", "usage_count", "last_used", "created_at", "updated_at", 
+            "original_file_content", "original_file_type", "original_filename"
+        ]
 
 User = get_user_model()
 

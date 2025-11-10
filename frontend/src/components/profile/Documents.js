@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { materialsAPI } from '../../services/api';
+import { useLocation } from 'react-router-dom';
+import { materialsAPI, coverLetterTemplateAPI } from '../../services/api';
 import Icon from '../common/Icon';
+import CoverLetterTemplates from '../CoverLetterTemplates';
 
 const defaultForm = {
   document_type: 'resume',
@@ -19,17 +21,31 @@ const Documents = () => {
   const [fieldErrors, setFieldErrors] = useState({});
   const [showForm, setShowForm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [filter, setFilter] = useState('all'); // 'all', 'resume', 'cover_letter'
+  const [filter, setFilter] = useState('all'); // 'all', 'resume', 'cover_letter', 'templates'
   const [dragActive, setDragActive] = useState(false);
+  const [activeTab, setActiveTab] = useState('documents'); // 'documents' or 'templates'
+  const location = useLocation();
 
   useEffect(() => {
     loadDocuments();
   }, []);
 
   useEffect(() => {
+    // Check URL parameters for tab
+    const searchParams = new URLSearchParams(location.search);
+    const tab = searchParams.get('tab');
+    if (tab === 'templates') {
+      setFilter('templates');
+    }
+  }, [location]);
+
+  useEffect(() => {
     // Apply filter
     if (filter === 'all') {
       setFilteredDocs(documents);
+    } else if (filter === 'templates') {
+      // Templates filter doesn't apply to documents - will be handled in render
+      setFilteredDocs([]);
     } else {
       setFilteredDocs(documents.filter(doc => doc.document_type === filter));
     }
@@ -238,14 +254,16 @@ const Documents = () => {
     <div className="education-container">
       <div className="education-header">
         <h1><Icon name="file-text" size="lg" /> Application Materials</h1>
-        <button
-          className="btn-primary"
-          onClick={() => setShowForm(!showForm)}
-          disabled={saving}
-        >
-          <Icon name={showForm ? 'clear' : 'upload'} />
-          {showForm ? 'Cancel' : 'Upload Document'}
-        </button>
+        {filter !== 'templates' && (
+          <button
+            className="btn-primary"
+            onClick={() => setShowForm(!showForm)}
+            disabled={saving}
+          >
+            <Icon name={showForm ? 'clear' : 'upload'} />
+            {showForm ? 'Cancel' : 'Upload Document'}
+          </button>
+        )}
       </div>
 
       {error && (
@@ -257,7 +275,7 @@ const Documents = () => {
         </div>
       )}
 
-      {showForm && (
+      {showForm && filter !== 'templates' && (
         <div className="education-form-card">
           <h2>Upload New Document</h2>
           <form onSubmit={handleSubmit}>
@@ -396,54 +414,64 @@ const Documents = () => {
         >
           Cover Letters ({documents.filter(d => d.document_type === 'cover_letter').length})
         </button>
+        <button
+          className={`filter-btn ${filter === 'templates' ? 'active' : ''}`}
+          onClick={() => setFilter('templates')}
+        >
+          Cover Letter Templates
+        </button>
       </div>
 
-      <div className="education-list">
-        {filteredDocs.length === 0 ? (
-          <div className="empty-state">
-            <Icon name="file-text" size="xl" />
-            <p>No {filter !== 'all' ? getTypeLabel(filter).toLowerCase() + 's' : 'documents'} yet</p>
-            <button className="btn-primary" onClick={() => setShowForm(true)}>
-              <Icon name="upload" /> Upload Your First Document
-            </button>
-          </div>
-        ) : (
-          filteredDocs.map((doc) => (
-            <div key={doc.id} className="education-item">
-              <div className="education-item-header">
-                <div className="education-title">
-                  <Icon name="file" size="md" />
-                  <h3>{doc.document_name}</h3>
-                  <span className={`badge ${getTypeBadgeClass(doc.document_type)}`}>
-                    {getTypeLabel(doc.document_type)} v{doc.version_number}
-                  </span>
-                </div>
-                <div className="education-actions">
-                  <button
-                    onClick={() => handleDownload(doc)}
-                    className="btn-icon"
-                    title="Download"
-                  >
-                    <Icon name="download" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(doc.id)}
-                    className={`btn-icon ${deleteConfirm === doc.id ? 'confirm-delete' : ''}`}
-                    title={deleteConfirm === doc.id ? 'Click again to confirm' : 'Delete'}
-                  >
-                    <Icon name="trash" />
-                  </button>
-                </div>
-              </div>
-              <div className="education-item-details">
-                <p className="education-date">
-                  <Icon name="calendar" size="sm" /> Uploaded {formatDate(doc.uploaded_at)}
-                </p>
-              </div>
+      {filter === 'templates' ? (
+        <CoverLetterTemplates />
+      ) : (
+        <div className="education-list">
+          {filteredDocs.length === 0 ? (
+            <div className="empty-state">
+              <Icon name="file-text" size="xl" />
+              <p>No {filter !== 'all' ? getTypeLabel(filter).toLowerCase() + 's' : 'documents'} yet</p>
+              <button className="btn-primary" onClick={() => setShowForm(true)}>
+                <Icon name="upload" /> Upload Your First Document
+              </button>
             </div>
-          ))
-        )}
-      </div>
+          ) : (
+            filteredDocs.map((doc) => (
+              <div key={doc.id} className="education-item">
+                <div className="education-item-header">
+                  <div className="education-title">
+                    <Icon name="file" size="md" />
+                    <h3>{doc.document_name}</h3>
+                    <span className={`badge ${getTypeBadgeClass(doc.document_type)}`}>
+                      {getTypeLabel(doc.document_type)} v{doc.version_number}
+                    </span>
+                  </div>
+                  <div className="education-actions">
+                    <button
+                      onClick={() => handleDownload(doc)}
+                      className="btn-icon"
+                      title="Download"
+                    >
+                      <Icon name="download" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(doc.id)}
+                      className={`btn-icon ${deleteConfirm === doc.id ? 'confirm-delete' : ''}`}
+                      title={deleteConfirm === doc.id ? 'Click again to confirm' : 'Delete'}
+                    >
+                      <Icon name="trash" />
+                    </button>
+                  </div>
+                </div>
+                <div className="education-item-details">
+                  <p className="education-date">
+                    <Icon name="calendar" size="sm" /> Uploaded {formatDate(doc.uploaded_at)}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 };
