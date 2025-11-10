@@ -807,6 +807,30 @@ export const resumeAIAPI = {
       throw error.response?.data?.error || { message: 'Failed to generate AI resume content' };
     }
   },
+  generateExperienceVariations: async (jobId, experienceId, options = {}) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/resume/tailor-experience/${experienceId}`, {
+        tone: options.tone,
+        variation_count: options.variation_count,
+        bullet_index: options.bullet_index,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to generate experience variations' };
+    }
+  },
+  regenerateExperienceBullet: async (jobId, experienceId, options = {}) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/resume/tailor-experience/${experienceId}/bullet`, {
+        tone: options.tone,
+        bullet_index: options.bullet_index,
+        variant_id: options.variant_id,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to regenerate bullet' };
+    }
+  },
   
   compileLatex: async (latexContent) => {
     try {
