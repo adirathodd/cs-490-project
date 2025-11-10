@@ -113,6 +113,11 @@ urlpatterns = [
     path('jobs/<int:job_id>/resume/generate', views.generate_resume_for_job, name='job-resume-generate'),
     path('resume/compile-latex/', views.compile_latex_to_pdf, name='compile-latex-to-pdf'),
     
+    # UC-051: Resume export endpoints
+    path('resume/export/themes', views.resume_export_themes, name='resume-export-themes'),
+    path('resume/export', views.resume_export, name='resume-export'),
+    path('resume/export/ai', views.export_ai_resume, name='export-ai-resume'),
+    
     # UC-063: Automated Company Research endpoints
     path('companies/<str:company_name>/research', views.automated_company_research, name='automated-company-research'),
     path('companies/<str:company_name>/research/report', views.company_research_report, name='company-research-report'),
