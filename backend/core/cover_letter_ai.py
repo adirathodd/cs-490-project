@@ -413,3 +413,167 @@ def generate_cover_letter_latex(
     ])
     
     return '\n'.join(latex_lines)
+
+
+def generate_cover_letter_docx(
+    candidate_name: str,
+    candidate_email: str,
+    candidate_phone: str,
+    candidate_location: str,
+    company_name: str,
+    job_title: str,
+    opening_paragraph: str,
+    body_paragraphs: List[str],
+    closing_paragraph: str,
+    letterhead_config: Dict[str, Any] | None = None,
+) -> bytes:
+    """
+    Generate a Word document (.docx) for a cover letter.
+    
+    Args:
+        candidate_name: Full name of the candidate
+        candidate_email: Email address
+        candidate_phone: Phone number
+        candidate_location: City, State or location
+        company_name: Name of the company
+        job_title: Position title
+        opening_paragraph: Opening paragraph text
+        body_paragraphs: List of body paragraph texts
+        closing_paragraph: Closing paragraph text
+        letterhead_config: Optional dict with formatting preferences
+    
+    Returns:
+        Bytes of the generated Word document
+    """
+    from docx import Document
+    from docx.shared import Pt, Inches, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from datetime import date
+    import io
+    
+    # Initialize letterhead config with defaults
+    config = letterhead_config or {}
+    header_format = config.get('header_format', 'centered')  # 'centered', 'left', 'right'
+    font_name = config.get('font_name', 'Calibri')
+    font_size = config.get('font_size', 11)
+    header_color = config.get('header_color', None)  # Tuple (R, G, B) or None
+    
+    doc = Document()
+    
+    # Set margins
+    sections = doc.sections
+    for section in sections:
+        section.top_margin = Inches(0.75)
+        section.bottom_margin = Inches(0.75)
+        section.left_margin = Inches(0.75)
+        section.right_margin = Inches(0.75)
+    
+    # Add candidate header
+    header_para = doc.add_paragraph()
+    header_run = header_para.add_run(candidate_name)
+    header_run.bold = True
+    header_run.font.size = Pt(font_size + 2)
+    header_run.font.name = font_name
+    if header_color:
+        header_run.font.color.rgb = RGBColor(*header_color)
+    
+    # Set header alignment based on config
+    if header_format == 'centered':
+        header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    elif header_format == 'right':
+        header_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    else:
+        header_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    
+    # Add contact info
+    contact_parts = []
+    if candidate_email:
+        contact_parts.append(candidate_email)
+    if candidate_phone:
+        contact_parts.append(candidate_phone)
+    if candidate_location:
+        contact_parts.append(candidate_location)
+    
+    if contact_parts:
+        contact_para = doc.add_paragraph(' | '.join(contact_parts))
+        contact_para.alignment = header_para.alignment
+        contact_run = contact_para.runs[0]
+        contact_run.font.size = Pt(font_size - 1)
+        contact_run.font.name = font_name
+    
+    # Add spacing
+    doc.add_paragraph()
+    
+    # Add date
+    today = date.today().strftime('%B %d, %Y')
+    date_para = doc.add_paragraph(today)
+    date_para.runs[0].font.size = Pt(font_size)
+    date_para.runs[0].font.name = font_name
+    
+    # Add recipient info
+    doc.add_paragraph()
+    recipient_para = doc.add_paragraph('Hiring Manager')
+    recipient_para.runs[0].font.size = Pt(font_size)
+    recipient_para.runs[0].font.name = font_name
+    
+    company_para = doc.add_paragraph(company_name)
+    company_para.runs[0].font.size = Pt(font_size)
+    company_para.runs[0].font.name = font_name
+    
+    title_para = doc.add_paragraph(job_title)
+    title_para.runs[0].font.size = Pt(font_size)
+    title_para.runs[0].font.name = font_name
+    
+    # Add spacing
+    doc.add_paragraph()
+    
+    # Add salutation
+    salutation_para = doc.add_paragraph('Dear Hiring Manager,')
+    salutation_para.runs[0].font.size = Pt(font_size)
+    salutation_para.runs[0].font.name = font_name
+    
+    # Add spacing
+    doc.add_paragraph()
+    
+    # Add opening paragraph
+    if opening_paragraph:
+        opening_para = doc.add_paragraph(opening_paragraph)
+        opening_para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        opening_para.runs[0].font.size = Pt(font_size)
+        opening_para.runs[0].font.name = font_name
+        doc.add_paragraph()
+    
+    # Add body paragraphs
+    for para_text in body_paragraphs:
+        if para_text and para_text.strip():
+            body_para = doc.add_paragraph(para_text.strip())
+            body_para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            body_para.runs[0].font.size = Pt(font_size)
+            body_para.runs[0].font.name = font_name
+            doc.add_paragraph()
+    
+    # Add closing paragraph
+    if closing_paragraph:
+        closing_para = doc.add_paragraph(closing_paragraph)
+        closing_para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        closing_para.runs[0].font.size = Pt(font_size)
+        closing_para.runs[0].font.name = font_name
+        doc.add_paragraph()
+    
+    # Add signature
+    signature_para = doc.add_paragraph('Sincerely,')
+    signature_para.runs[0].font.size = Pt(font_size)
+    signature_para.runs[0].font.name = font_name
+    
+    doc.add_paragraph()
+    doc.add_paragraph()
+    
+    name_para = doc.add_paragraph(candidate_name)
+    name_para.runs[0].font.size = Pt(font_size)
+    name_para.runs[0].font.name = font_name
+    
+    # Save to bytes
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()

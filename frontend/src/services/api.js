@@ -853,6 +853,18 @@ export const coverLetterAIAPI = {
       throw error.response?.data?.error || { message: 'Failed to compile LaTeX' };
     }
   },
+  
+  // UC-061: Export cover letter as Word document
+  exportDocx: async (coverLetterData) => {
+    try {
+      const response = await api.post('/cover-letter/export-docx/', coverLetterData, {
+        responseType: 'blob',
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to export Word document' };
+    }
+  },
 };
 
 authAPI.getEmploymentTimeline = async () => {
