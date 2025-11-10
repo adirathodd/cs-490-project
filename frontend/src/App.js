@@ -22,8 +22,10 @@ import JobsPipeline from './components/jobs/JobsPipeline';
 import JobStats from './components/jobs/JobStats';
 import JobDetailView from './components/jobs/JobDetailView';
 import JobsCalendar from './components/jobs/JobsCalendar';
+import SalaryResearch from './components/jobs/SalaryResearch';
 import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
+import { AiCoverLetterGenerator } from './features/cover-letter';
 import ScrollToTop from './components/common/ScrollToTop';
 import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
@@ -245,6 +247,16 @@ function App() {
             }
           />
           <Route
+            path="/jobs/:jobId/salary-research"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <SalaryResearch />
+              </PrivateRoute>
+            }
+          />
+          <Route
             path="/jobs/deadlines"
             element={
               <PrivateRoute>
@@ -261,6 +273,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <AiResumeGenerator />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/cover-letter/ai"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <AiCoverLetterGenerator />
               </PrivateRoute>
             }
           />

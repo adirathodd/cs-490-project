@@ -121,10 +121,28 @@ urlpatterns = [
     path('jobs/<int:job_id>/company', views.job_company_info, name='job-company-info'),
     # UC-047: AI resume generation
     path('jobs/<int:job_id>/resume/generate', views.generate_resume_for_job, name='job-resume-generate'),
+    path('jobs/<int:job_id>/resume/tailor-experience/<int:experience_id>', views.tailor_experience_variations, name='tailor-experience'),
+    path('jobs/<int:job_id>/resume/tailor-experience/<int:experience_id>/bullet', views.tailor_experience_bullet, name='tailor-experience-bullet'),
     path('resume/compile-latex/', views.compile_latex_to_pdf, name='compile-latex-to-pdf'),
+    # UC-056: AI cover letter generation
+    path('jobs/<int:job_id>/cover-letter/generate', views.generate_cover_letter_for_job, name='job-cover-letter-generate'),
+    path('cover-letter/compile-latex/', views.compile_latex_to_pdf, name='cover-letter-compile-latex-to-pdf'),
+    # UC-061: Cover letter export
+    path('cover-letter/export-docx/', views.export_cover_letter_docx, name='cover-letter-export-docx'),
     
     # UC-063: Automated Company Research endpoints
     path('companies/<str:company_name>/research', views.automated_company_research, name='automated-company-research'),
     path('companies/<str:company_name>/research/report', views.company_research_report, name='company-research-report'),
     path('companies/<str:company_name>/research/refresh', views.refresh_company_research, name='refresh-company-research'),
+    
+    # UC-067: Salary Research and Benchmarking endpoints
+    path('jobs/<int:job_id>/salary-research/', views.salary_research, name='salary-research'),
+    path('jobs/<int:job_id>/salary-research/export/', views.salary_research_export, name='salary-research-export'),
+    
+    # UC-068: Interview Insights and Preparation endpoints
+    path('jobs/<int:job_id>/interview-insights/', views.job_interview_insights, name='job-interview-insights'),
+    
+    # UC-066: Skills Gap Analysis endpoints
+    path('jobs/<int:job_id>/skills-gap/', views.job_skills_gap, name='job-skills-gap'),
+    path('skills/<int:skill_id>/progress/', views.skill_progress, name='skill-progress'),
 ]

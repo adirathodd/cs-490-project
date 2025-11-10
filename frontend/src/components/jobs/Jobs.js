@@ -1704,6 +1704,19 @@ const Jobs = () => {
                       <Icon name="file-text" size="sm" ariaLabel="Materials" />
                     </button>
                   )}
+                  {/* UC-067: Salary Research button */}
+                  {!showArchived && (
+                    <button 
+                      className="salary-research-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/jobs/${item.id}/salary-research`);
+                      }}
+                      title="Salary Research"
+                    >
+                      <Icon name="dollar" size="sm" ariaLabel="Salary Research" />
+                    </button>
+                  )}
                   {!showArchived && (
                     <>
                       <button 

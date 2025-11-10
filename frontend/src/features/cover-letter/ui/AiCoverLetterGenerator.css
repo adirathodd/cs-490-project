@@ -1,0 +1,234 @@
+/* The cover letter page leverages base resume generator styles.
+	 This file adds small custom tweaks. */
+
+.ai-clr-page .ai-clr-variation + .ai-clr-variation { margin-top: var(--space-5); }
+.ai-clr-variation h3 { margin: 0 0 var(--space-3); font-size: var(--font-size-lg); }
+.ai-clr-section h4 { margin: var(--space-4) 0 var(--space-2); font-size: var(--font-size-sm); text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-500); }
+.ai-clr-section p { line-height: 1.5; margin: 0 0 var(--space-3); }
+.ai-clr-results { display: flex; flex-direction: column; gap: var(--space-6); margin-top: var(--space-4); }
+.ai-clr-results-card { display: flex; flex-direction: column; }
+.ai-clr-results-card header { margin-bottom: var(--space-4); }
+.ai-clr-results-card h2 { margin: 0; }
+
+/* Cover letter text preview */
+.cover-letter-text-preview {
+  background: var(--bg-secondary, #f9fafb);
+  border: 1px solid var(--gray-200, #e5e7eb);
+  border-radius: 8px;
+  padding: var(--space-5, 1.5rem);
+  max-height: 600px;
+  overflow-y: auto;
+  font-family: var(--font-family-body, 'Inter', sans-serif);
+  line-height: 1.6;
+}
+
+.cover-letter-text-preview .preview-section {
+  margin-bottom: var(--space-5, 1.5rem);
+}
+
+.cover-letter-text-preview .preview-section:last-child {
+  margin-bottom: 0;
+}
+
+.cover-letter-text-preview .preview-section h4 {
+  font-size: var(--font-size-sm, 0.875rem);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-600, #4b5563);
+  margin: 0 0 var(--space-3, 0.75rem);
+  border-bottom: 1px solid var(--gray-200, #e5e7eb);
+  padding-bottom: var(--space-2, 0.5rem);
+}
+
+.cover-letter-text-preview .preview-section p {
+  color: var(--gray-900, #111827);
+  margin: 0 0 var(--space-3, 0.75rem);
+  white-space: pre-wrap;
+}
+
+.cover-letter-text-preview .preview-section p.placeholder {
+  color: var(--gray-400, #9ca3af);
+  font-style: italic;
+}
+
+/* UC-061: Modal styles for email and letterhead settings */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: var(--space-4, 1rem);
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-content.email-modal {
+  max-width: 700px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5, 1.5rem);
+  border-bottom: 1px solid var(--gray-200, #e5e7eb);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: var(--font-size-xl, 1.25rem);
+  font-weight: 600;
+  color: var(--gray-900, #111827);
+}
+
+.modal-header .close-btn {
+  background: none;
+  border: none;
+  padding: var(--space-2, 0.5rem);
+  cursor: pointer;
+  color: var(--gray-500, #6b7280);
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-header .close-btn:hover {
+  color: var(--gray-900, #111827);
+}
+
+.modal-body {
+  padding: var(--space-5, 1.5rem);
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-body .hint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-3, 0.75rem);
+  background: var(--blue-50, #eff6ff);
+  border: 1px solid var(--blue-200, #bfdbfe);
+  border-radius: 8px;
+  color: var(--blue-900, #1e3a8a);
+  font-size: var(--font-size-sm, 0.875rem);
+  margin-bottom: var(--space-4, 1rem);
+}
+
+.modal-body .form-group {
+  margin-bottom: var(--space-4, 1rem);
+}
+
+.modal-body .form-group:last-child {
+  margin-bottom: 0;
+}
+
+.modal-body .form-group label {
+  display: block;
+  font-weight: 500;
+  color: var(--gray-700, #374151);
+  margin-bottom: var(--space-2, 0.5rem);
+  font-size: var(--font-size-sm, 0.875rem);
+}
+
+.modal-body .form-group input[type="text"],
+.modal-body .form-group input[type="number"],
+.modal-body .form-group select,
+.modal-body .form-group textarea {
+  width: 100%;
+  padding: var(--space-3, 0.75rem);
+  border: 1px solid var(--gray-300, #d1d5db);
+  border-radius: 6px;
+  font-size: var(--font-size-base, 1rem);
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.modal-body .form-group input[type="text"]:focus,
+.modal-body .form-group input[type="number"]:focus,
+.modal-body .form-group select:focus,
+.modal-body .form-group textarea:focus {
+  outline: none;
+  border-color: var(--primary, #667eea);
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.modal-body .form-group textarea {
+  resize: vertical;
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-size: var(--font-size-sm, 0.875rem);
+}
+
+.modal-body .form-group input[type="checkbox"] {
+  margin-right: var(--space-2, 0.5rem);
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3, 0.75rem);
+  padding: var(--space-5, 1.5rem);
+  border-top: 1px solid var(--gray-200, #e5e7eb);
+}
+
+.modal-footer button {
+  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+}
+
+.modal-footer .btn-secondary {
+  background: white;
+  border: 1px solid var(--gray-300, #d1d5db);
+  color: var(--gray-700, #374151);
+}
+
+.modal-footer .btn-secondary:hover {
+  background: var(--gray-50, #f9fafb);
+}
+
+.modal-footer .btn-primary {
+  background: var(--primary, #667eea);
+  border: 1px solid var(--primary, #667eea);
+  color: white;
+}
+
+.modal-footer .btn-primary:hover {
+  background: var(--primary-dark, #5568d3);
+}
+
+@media (max-width: 900px){
+	.ai-clr-results { gap: var(--space-5); }
+	.cover-letter-text-preview {
+	  max-height: 400px;
+	}
+	
+	.modal-content {
+	  max-width: 95%;
+	  max-height: 95vh;
+	}
+}

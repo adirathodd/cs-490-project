@@ -66,6 +66,8 @@ class TestAIResumeEndpoint:
             industry='Software',
         )
         self.url = reverse('core:job-resume-generate', kwargs={'job_id': self.job.id})
+        self.tailor_url = reverse('core:tailor-experience', kwargs={'job_id': self.job.id, 'experience_id': self.work.id})
+        self.tailor_bullet_url = reverse('core:tailor-experience-bullet', kwargs={'job_id': self.job.id, 'experience_id': self.work.id})
         self.client.force_authenticate(user=self.user)
 
     def test_ai_resume_requires_api_key(self, settings):
@@ -147,3 +149,35 @@ class TestAIResumeEndpoint:
         bad_url = reverse('core:job-resume-generate', kwargs={'job_id': self.job.id + 1})
         resp = self.client.post(bad_url, {'tone': 'impact'}, format='json')
         assert resp.status_code == 404
+
+    def test_tailor_experience_variations_endpoint(self, monkeypatch, settings):
+        settings.GEMINI_API_KEY = 'test-key'
+        payload = {
+            'experience_id': self.work.id,
+            'variations': [
+                {
+                    'id': 'gem-impact',
+                    'label': 'Gemini impact',
+                    'description': 'Gemini rewrite',
+                    'bullets': ['Gemini bullet text'],
+                }
+            ],
+        }
+        monkeypatch.setattr('core.resume_ai.generate_experience_variations', lambda *args, **kwargs: payload)
+
+        resp = self.client.post(self.tailor_url, {'tone': 'impact', 'variation_count': 2}, format='json')
+        assert resp.status_code == 200
+        assert resp.json()['variations'][0]['bullets'][0] == 'Gemini bullet text'
+
+    def test_tailor_experience_bullet_endpoint(self, monkeypatch, settings):
+        settings.GEMINI_API_KEY = 'test-key'
+        payload = {
+            'experience_id': self.work.id,
+            'bullet_index': 0,
+            'bullet': 'Regenerated bullet text',
+        }
+        monkeypatch.setattr('core.resume_ai.generate_experience_bullet', lambda *args, **kwargs: payload)
+
+        resp = self.client.post(self.tailor_bullet_url, {'tone': 'impact', 'bullet_index': 0}, format='json')
+        assert resp.status_code == 200
+        assert resp.json()['bullet'] == 'Regenerated bullet text'

@@ -578,6 +578,47 @@ export const jobsAPI = {
     }
   },
 
+  getJobInterviewInsights: async (id) => {
+    try {
+      const response = await api.get(`/jobs/${id}/interview-insights/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch interview insights' };
+    }
+  },
+
+  // UC-066: Skills Gap Analysis
+  getJobSkillsGap: async (id, options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.refresh) params.append('refresh', 'true');
+      if (options.include_similar) params.append('include_similar', 'true');
+      const path = params.toString() ? `/jobs/${id}/skills-gap/?${params.toString()}` : `/jobs/${id}/skills-gap/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch skills gap analysis' };
+    }
+  },
+
+  logSkillProgress: async (skillId, data) => {
+    try {
+      const response = await api.post(`/skills/${skillId}/progress/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to log skill progress' };
+    }
+  },
+
+  getSkillProgress: async (skillId) => {
+    try {
+      const response = await api.get(`/skills/${skillId}/progress/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch skill progress' };
+    }
+  },
+
   addJob: async (data) => {
     const response = await api.post('/jobs', data);
     return response.data;
@@ -750,6 +791,50 @@ export const materialsAPI = {
   },
 };
 
+// UC-067: Salary Research and Benchmarking API calls
+export const salaryAPI = {
+  // Get salary research data for a job
+  getSalaryResearch: async (jobId) => {
+    try {
+      const response = await api.get(`/jobs/${jobId}/salary-research/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch salary research' };
+    }
+  },
+
+  // Trigger new salary research or refresh existing data
+  triggerResearch: async (jobId, options = {}) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/salary-research/`, options);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to trigger salary research' };
+    }
+  },
+
+  // Export salary research report
+  exportResearch: async (jobId, format = 'json') => {
+    try {
+      const response = await api.get(`/jobs/${jobId}/salary-research/export/`, {
+        params: { format },
+        responseType: format === 'pdf' ? 'blob' : 'json'
+      });
+      
+      if (format === 'pdf') {
+        // Create blob URL for PDF download
+        const blob = new Blob([response.data], { type: 'application/pdf' });
+        const url = window.URL.createObjectURL(blob);
+        return { url, blob };
+      }
+      
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to export salary research' };
+    }
+  },
+};
+
 // UC-047: AI Resume Generation API calls
 export const resumeAIAPI = {
   generateForJob: async (jobId, options = {}) => {
@@ -763,6 +848,30 @@ export const resumeAIAPI = {
       throw error.response?.data?.error || { message: 'Failed to generate AI resume content' };
     }
   },
+  generateExperienceVariations: async (jobId, experienceId, options = {}) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/resume/tailor-experience/${experienceId}`, {
+        tone: options.tone,
+        variation_count: options.variation_count,
+        bullet_index: options.bullet_index,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to generate experience variations' };
+    }
+  },
+  regenerateExperienceBullet: async (jobId, experienceId, options = {}) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/resume/tailor-experience/${experienceId}/bullet`, {
+        tone: options.tone,
+        bullet_index: options.bullet_index,
+        variant_id: options.variant_id,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to regenerate bullet' };
+    }
+  },
   
   compileLatex: async (latexContent) => {
     try {
@@ -772,6 +881,44 @@ export const resumeAIAPI = {
       return response.data;
     } catch (error) {
       throw error.response?.data?.error || { message: 'Failed to compile LaTeX' };
+    }
+  },
+};
+
+// UC-056: AI Cover Letter Generation API calls
+export const coverLetterAIAPI = {
+  generateForJob: async (jobId, options = {}) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/cover-letter/generate`, {
+        tone: options.tone,
+        variation_count: options.variation_count,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to generate AI cover letter content' };
+    }
+  },
+  
+  compileLatex: async (latexContent) => {
+    try {
+      const response = await api.post('/cover-letter/compile-latex/', {
+        latex_content: latexContent,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to compile LaTeX' };
+    }
+  },
+  
+  // UC-061: Export cover letter as Word document
+  exportDocx: async (coverLetterData) => {
+    try {
+      const response = await api.post('/cover-letter/export-docx/', coverLetterData, {
+        responseType: 'blob',
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to export Word document' };
     }
   },
 };
@@ -960,6 +1107,7 @@ try {
     module.exports.authAPI = authAPI;
     module.exports.jobsAPI = jobsAPI;
     module.exports.materialsAPI = materialsAPI;
+    module.exports.salaryAPI = salaryAPI;
     module.exports.resumeAIAPI = resumeAIAPI;
   }
 } catch (e) {
@@ -993,6 +1141,7 @@ try {
     _defaultExport.getProfilePicture = authAPI.getProfilePicture;
     _defaultExport.jobsAPI = jobsAPI;
     _defaultExport.materialsAPI = materialsAPI;
+    _defaultExport.salaryAPI = salaryAPI;
     _defaultExport.resumeAIAPI = resumeAIAPI;
   }
   if (typeof module !== 'undefined' && module && module.exports) {
@@ -1000,6 +1149,7 @@ try {
     module.exports.authAPI = authAPI;
     module.exports.jobsAPI = jobsAPI;
     module.exports.materialsAPI = materialsAPI;
+    module.exports.salaryAPI = salaryAPI;
     module.exports.resumeAIAPI = resumeAIAPI;
   }
 } catch (e) {

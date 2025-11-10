@@ -1070,5 +1070,296 @@ class JobMaterialsHistory(models.Model):
             models.Index(fields=["job", "-changed_at"]),
         ]
 
+
+class SalaryResearch(models.Model):
+    """Salary research and benchmarking data for job opportunities (UC-067).
+    
+    Stores salary information gathered from various sources including web scraping,
+    to help users understand compensation ranges and negotiate effectively.
+    """
+    EXPERIENCE_LEVELS = [
+        ('entry', 'Entry Level (0-2 years)'),
+        ('mid', 'Mid Level (3-5 years)'),
+        ('senior', 'Senior Level (6-10 years)'),
+        ('lead', 'Lead/Principal (10+ years)'),
+        ('executive', 'Executive'),
+    ]
+    
+    COMPANY_SIZES = [
+        ('startup', 'Startup (1-50)'),
+        ('small', 'Small (51-200)'),
+        ('medium', 'Medium (201-1000)'),
+        ('large', 'Large (1001-5000)'),
+        ('enterprise', 'Enterprise (5000+)'),
+    ]
+    
+    DATA_SOURCES = [
+        ('glassdoor', 'Glassdoor'),
+        ('payscale', 'PayScale'),
+        ('indeed', 'Indeed'),
+        ('linkedin', 'LinkedIn'),
+        ('levels_fyi', 'Levels.fyi'),
+        ('manual', 'Manual Entry'),
+        ('aggregated', 'Aggregated Data'),
+    ]
+
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='salary_research')
+    
+    # Job details for research context
+    position_title = models.CharField(max_length=220)
+    location = models.CharField(max_length=160)
+    experience_level = models.CharField(max_length=20, choices=EXPERIENCE_LEVELS, blank=True)
+    company_size = models.CharField(max_length=20, choices=COMPANY_SIZES, blank=True)
+    
+    # Salary data
+    salary_min = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    salary_max = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    salary_median = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    salary_currency = models.CharField(max_length=3, default="USD")
+    
+    # Total compensation breakdown
+    base_salary = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    bonus_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    stock_equity = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    total_comp_min = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    total_comp_max = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+    # Benefits and perks (JSON for flexibility)
+    benefits = models.JSONField(default=dict, blank=True, help_text="Benefits package details")
+    
+    # Market insights
+    market_trend = models.CharField(max_length=20, blank=True, help_text="up, down, stable")
+    percentile_25 = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    percentile_75 = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+    # Negotiation insights
+    negotiation_leverage = models.CharField(max_length=20, blank=True, help_text="high, medium, low")
+    recommended_ask = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    negotiation_tips = models.TextField(blank=True)
+    
+    # Comparison with user's current compensation
+    user_current_salary = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    salary_change_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    
+    # Data source and metadata
+    data_source = models.CharField(max_length=20, choices=DATA_SOURCES, default='aggregated')
+    source_url = models.URLField(blank=True)
+    sample_size = models.PositiveIntegerField(null=True, blank=True, help_text="Number of data points")
+    confidence_score = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True, help_text="0-1 confidence")
+    
+    # Additional market data (JSON for flexibility)
+    company_comparisons = models.JSONField(default=list, blank=True, help_text="List of company salary comparisons")
+    historical_data = models.JSONField(default=list, blank=True, help_text="Historical salary trends")
+    
+    # Metadata
+    research_notes = models.TextField(blank=True)
+    is_verified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=["job", "-created_at"]),
+            models.Index(fields=["position_title", "location"]),
+            models.Index(fields=["experience_level"]),
+        ]
+
+    def __str__(self):
+        return f"Salary Research: {self.position_title} in {self.location}"
+    
+    def get_salary_range_display(self):
+        """Return formatted salary range string"""
+        if self.salary_min and self.salary_max:
+            return f"${self.salary_min:,.0f} - ${self.salary_max:,.0f}"
+        elif self.salary_median:
+            return f"${self.salary_median:,.0f} (median)"
+        return "N/A"
+    
+    def get_total_comp_range_display(self):
+        """Return formatted total compensation range string"""
+        if self.total_comp_min and self.total_comp_max:
+            return f"${self.total_comp_min:,.0f} - ${self.total_comp_max:,.0f}"
+        return "N/A"
+
     def __str__(self):
         return f"Materials@{self.changed_at} for job {self.job_id}"
+
+
+class InterviewInsightsCache(models.Model):
+    """Cached AI-generated interview insights to reduce API costs (UC-068).
+    
+    Stores interview insights generated for specific job/company combinations
+    to avoid redundant Gemini API calls.
+    """
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='interview_insights_cache')
+    
+    # Job details used for generation
+    job_title = models.CharField(max_length=220)
+    company_name = models.CharField(max_length=220)
+    
+    # Generated insights stored as JSON
+    insights_data = models.JSONField(
+        help_text="Complete interview insights JSON including process, questions, tips, checklist"
+    )
+    
+    # Generation metadata
+    generated_by = models.CharField(
+        max_length=20,
+        choices=[('ai', 'AI Generated'), ('template', 'Template Based')],
+        default='ai'
+    )
+    generated_at = models.DateTimeField(auto_now_add=True)
+    
+    # Cache invalidation
+    is_valid = models.BooleanField(
+        default=True,
+        help_text="Set to False to force regeneration"
+    )
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['job', 'is_valid']),
+            models.Index(fields=['company_name', 'job_title']),
+        ]
+        ordering = ['-generated_at']
+    
+    def __str__(self):
+        return f"Interview Insights: {self.job_title} at {self.company_name}"
+
+
+class LearningResource(models.Model):
+    """Curated learning resources for skill development (UC-066).
+    
+    Stores links to courses, tutorials, and learning materials that can be
+    recommended for specific skills in the skills gap analysis.
+    """
+    RESOURCE_TYPES = [
+        ('course', 'Online Course'),
+        ('tutorial', 'Tutorial'),
+        ('documentation', 'Documentation'),
+        ('video', 'Video'),
+        ('book', 'Book'),
+        ('practice', 'Practice Platform'),
+        ('certification', 'Certification'),
+    ]
+    
+    COST_TYPES = [
+        ('free', 'Free'),
+        ('freemium', 'Freemium'),
+        ('paid', 'Paid'),
+    ]
+    
+    skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name='learning_resources')
+    title = models.CharField(max_length=300)
+    provider = models.CharField(max_length=200)  # e.g., Coursera, freeCodeCamp, YouTube
+    url = models.URLField()
+    resource_type = models.CharField(max_length=20, choices=RESOURCE_TYPES, default='course')
+    cost_type = models.CharField(max_length=20, choices=COST_TYPES, default='free')
+    duration_hours = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
+    difficulty_level = models.CharField(max_length=20, blank=True)  # beginner, intermediate, advanced
+    description = models.TextField(blank=True)
+    
+    # Quality indicators
+    rating = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)  # 0-5.0
+    credibility_score = models.IntegerField(default=50, help_text="0-100 internal quality score")
+    
+    # Metadata
+    tags = models.JSONField(default=list, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['skill', 'is_active', '-credibility_score']),
+            models.Index(fields=['difficulty_level']),
+        ]
+        ordering = ['-credibility_score', '-rating', 'title']
+    
+    def __str__(self):
+        return f"{self.title} ({self.provider}) - {self.skill.name}"
+
+
+class SkillGapAnalysisCache(models.Model):
+    """Cached skills gap analysis results (UC-066).
+    
+    Stores computed skill gap analysis for job entries to avoid repeated
+    computation and provide consistent results.
+    """
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='skills_gap_cache')
+    
+    # Job details used for analysis
+    job_title = models.CharField(max_length=220)
+    company_name = models.CharField(max_length=220)
+    
+    # Analysis results stored as JSON
+    analysis_data = models.JSONField(
+        help_text="Complete skills gap analysis including skills, gaps, resources, learning paths"
+    )
+    
+    # Generation metadata
+    source = models.CharField(
+        max_length=20,
+        choices=[
+            ('requirements', 'Job Requirements'),
+            ('parsed', 'Parsed Description'),
+            ('ai', 'AI Analysis'),
+        ],
+        default='parsed'
+    )
+    generated_at = models.DateTimeField(auto_now_add=True)
+    
+    # Cache invalidation
+    is_valid = models.BooleanField(
+        default=True,
+        help_text="Set to False to force regeneration"
+    )
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['job', 'is_valid']),
+            models.Index(fields=['job_title']),
+        ]
+        ordering = ['-generated_at']
+    
+    def __str__(self):
+        return f"Skills Gap: {self.job_title} at {self.company_name}"
+
+
+class SkillDevelopmentProgress(models.Model):
+    """Track user progress on developing specific skills (UC-066).
+    
+    Records practice sessions, course completions, and other activities
+    that contribute to skill development.
+    """
+    ACTIVITY_TYPES = [
+        ('practice', 'Practice Session'),
+        ('course', 'Course Progress'),
+        ('project', 'Project Work'),
+        ('certification', 'Certification Earned'),
+        ('review', 'Review/Refresh'),
+    ]
+    
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name='skill_progress')
+    skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name='progress_records')
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, null=True, blank=True, related_name='skill_progress')
+    learning_resource = models.ForeignKey(LearningResource, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPES, default='practice')
+    hours_spent = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    progress_percent = models.IntegerField(default=0, help_text="0-100 completion percentage")
+    notes = models.TextField(blank=True)
+    
+    activity_date = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['candidate', 'skill', '-activity_date']),
+            models.Index(fields=['job', '-activity_date']),
+        ]
+        ordering = ['-activity_date']
+    
+    def __str__(self):
+        return f"{self.candidate.user.username} - {self.skill.name} ({self.activity_type})"

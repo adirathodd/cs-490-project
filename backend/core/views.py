@@ -5014,6 +5014,326 @@ def compile_latex_to_pdf(request):
 
 
 # ======================
+# UC-056: AI COVER LETTER CONTENT GENERATION
+# ======================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_cover_letter_for_job(request, job_id):
+    """
+    UC-056: Generate AI-tailored cover letter content for a specific job using Gemini.
+
+    Body: { "tone": "professional|warm|innovative|customer_centric|data_driven|concise|balanced", "variation_count": 1-3 }
+    """
+    from core import cover_letter_ai
+
+    profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
+    try:
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    api_key = getattr(settings, 'GEMINI_API_KEY', '')
+    if not api_key:
+        return Response(
+            {
+                'error': {
+                    'code': 'service_unavailable',
+                    'message': 'AI cover letter service is not configured. Set GEMINI_API_KEY in the backend environment.',
+                }
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+    tone = (request.data.get('tone') or 'balanced').strip().lower()
+    if tone not in cover_letter_ai.TONE_STYLES:
+        tone = 'balanced'
+
+    variation_count = request.data.get('variation_count', 2)
+    try:
+        variation_count = int(variation_count)
+    except (TypeError, ValueError):
+        variation_count = 2
+    variation_count = max(1, min(variation_count, 3))
+
+    candidate_snapshot = resume_ai.collect_candidate_snapshot(profile)
+    job_snapshot = resume_ai.build_job_snapshot(job)
+    research_snapshot = cover_letter_ai.build_company_research_snapshot(job.company_name)
+
+    try:
+        generation = cover_letter_ai.run_cover_letter_generation(
+            candidate_snapshot,
+            job_snapshot,
+            research_snapshot,
+            tone=tone,
+            variation_count=variation_count,
+            api_key=api_key,
+            model=getattr(settings, 'GEMINI_MODEL', None),
+        )
+    except cover_letter_ai.CoverLetterAIError as exc:
+        logger.warning('AI cover letter generation failed for job %s: %s', job_id, exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': str(exc)}},
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected AI cover letter failure for job %s: %s', job_id, exc)
+        return Response(
+            {
+                'error': {
+                    'code': 'ai_generation_failed',
+                    'message': 'Unexpected error while generating cover letter content.',
+                }
+            },
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+
+    payload = {
+        'job': job_snapshot,
+        'profile': resume_ai.build_profile_preview(candidate_snapshot),
+        'research': research_snapshot,
+        'generated_at': timezone.now().isoformat(),
+        'tone': tone,
+        'variation_count': generation.get('variation_count'),
+        'shared_analysis': generation.get('shared_analysis'),
+        'variations': generation.get('variations'),
+    }
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def tailor_experience_variations(request, job_id, experience_id):
+    """
+    Generate Gemini-powered variations for a single work experience.
+    """
+    profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
+    try:
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    try:
+        WorkExperience.objects.get(id=experience_id, candidate=profile)
+    except WorkExperience.DoesNotExist:
+        return Response(
+            {'error': {'code': 'experience_not_found', 'message': 'Experience entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    tone = (request.data.get('tone') or 'balanced').strip().lower()
+    if tone not in resume_ai.TONE_DESCRIPTORS:
+        tone = 'balanced'
+
+    variation_count = request.data.get('variation_count', 2)
+    try:
+        variation_count = int(variation_count)
+    except (TypeError, ValueError):
+        variation_count = 2
+    variation_count = max(1, min(variation_count, 3))
+
+    bullet_index = request.data.get('bullet_index')
+    if bullet_index is not None:
+        try:
+            bullet_index = int(bullet_index)
+        except (TypeError, ValueError):
+            return Response(
+                {'error': {'code': 'invalid_input', 'message': 'bullet_index must be a number.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    candidate_snapshot = resume_ai.collect_candidate_snapshot(profile)
+    job_snapshot = resume_ai.build_job_snapshot(job)
+
+    try:
+        payload = resume_ai.generate_experience_variations(
+            candidate_snapshot,
+            job_snapshot,
+            experience_id,
+            tone=tone,
+            variation_count=variation_count,
+            bullet_index=bullet_index,
+        )
+        return Response(payload, status=status.HTTP_200_OK)
+    except resume_ai.ResumeAIError as exc:
+        logger.warning('Experience tailoring failed for job %s experience %s: %s', job_id, experience_id, exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': str(exc)}},
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected experience tailoring failure: %s', exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': 'Unexpected error while tailoring experience.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def tailor_experience_bullet(request, job_id, experience_id):
+    """
+    Regenerate a single experience bullet via Gemini.
+    """
+    profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
+    try:
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    try:
+        WorkExperience.objects.get(id=experience_id, candidate=profile)
+    except WorkExperience.DoesNotExist:
+        return Response(
+            {'error': {'code': 'experience_not_found', 'message': 'Experience entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    bullet_index = request.data.get('bullet_index')
+    if bullet_index is None:
+        return Response(
+            {'error': {'code': 'invalid_input', 'message': 'bullet_index is required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    try:
+        bullet_index = int(bullet_index)
+    except (TypeError, ValueError):
+        return Response(
+            {'error': {'code': 'invalid_input', 'message': 'bullet_index must be a number.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    tone = (request.data.get('tone') or 'balanced').strip().lower()
+    if tone not in resume_ai.TONE_DESCRIPTORS:
+        tone = 'balanced'
+
+    variant_id = request.data.get('variant_id')
+
+    candidate_snapshot = resume_ai.collect_candidate_snapshot(profile)
+    job_snapshot = resume_ai.build_job_snapshot(job)
+
+    try:
+        payload = resume_ai.generate_experience_bullet(
+            candidate_snapshot,
+            job_snapshot,
+            experience_id,
+            bullet_index,
+            tone,
+        )
+        return Response(
+            {
+                'experience_id': experience_id,
+                'variant_id': variant_id,
+                'bullet_index': payload.get('bullet_index', bullet_index),
+                'bullet': payload.get('bullet'),
+            },
+            status=status.HTTP_200_OK,
+        )
+    except resume_ai.ResumeAIError as exc:
+        logger.warning('Bullet regeneration failed for job %s experience %s: %s', job_id, experience_id, exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': str(exc)}},
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected bullet regeneration failure: %s', exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': 'Unexpected error while regenerating bullet.'}},
+        )
+
+def export_cover_letter_docx(request):
+    """
+    UC-061: Export cover letter as Word document (.docx).
+    
+    Request Body:
+    {
+        "candidate_name": "John Doe",
+        "candidate_email": "john@example.com",
+        "candidate_phone": "555-1234",
+        "candidate_location": "San Francisco, CA",
+        "company_name": "Acme Corp",
+        "job_title": "Software Engineer",
+        "opening_paragraph": "...",
+        "body_paragraphs": ["...", "..."],
+        "closing_paragraph": "...",
+        "letterhead_config": {
+            "header_format": "centered",  // 'centered', 'left', 'right'
+            "font_name": "Calibri",
+            "font_size": 11,
+            "header_color": [102, 126, 234]  // RGB tuple (optional)
+        }
+    }
+    
+    Response: Binary Word document with Content-Disposition header
+    """
+    from django.http import HttpResponse
+    from core import cover_letter_ai
+    
+    # Extract required fields
+    candidate_name = request.data.get('candidate_name', '').strip()
+    candidate_email = request.data.get('candidate_email', '').strip()
+    candidate_phone = request.data.get('candidate_phone', '').strip()
+    candidate_location = request.data.get('candidate_location', '').strip()
+    company_name = request.data.get('company_name', '').strip()
+    job_title = request.data.get('job_title', '').strip()
+    opening_paragraph = request.data.get('opening_paragraph', '').strip()
+    body_paragraphs = request.data.get('body_paragraphs', [])
+    closing_paragraph = request.data.get('closing_paragraph', '').strip()
+    letterhead_config = request.data.get('letterhead_config', {})
+    
+    # Validate required fields
+    if not all([candidate_name, company_name, job_title]):
+        return Response(
+            {'error': {'code': 'invalid_input', 'message': 'candidate_name, company_name, and job_title are required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        docx_bytes = cover_letter_ai.generate_cover_letter_docx(
+            candidate_name=candidate_name,
+            candidate_email=candidate_email,
+            candidate_phone=candidate_phone,
+            candidate_location=candidate_location,
+            company_name=company_name,
+            job_title=job_title,
+            opening_paragraph=opening_paragraph,
+            body_paragraphs=body_paragraphs,
+            closing_paragraph=closing_paragraph,
+            letterhead_config=letterhead_config,
+        )
+        
+        # Generate filename
+        name_parts = candidate_name.split()
+        if len(name_parts) >= 2:
+            filename = f"{name_parts[0]}_{name_parts[-1]}_CoverLetter.docx"
+        else:
+            filename = f"{candidate_name.replace(' ', '_')}_CoverLetter.docx"
+        
+        response = HttpResponse(
+            docx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except Exception as exc:
+        logger.exception('Failed to generate Word document: %s', exc)
+        return Response(
+            {'error': {'code': 'generation_failed', 'message': 'Failed to generate Word document.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# ======================
 # UC-063: AUTOMATED COMPANY RESEARCH
 # ======================
 
@@ -5257,5 +5577,653 @@ def refresh_company_research(request, company_name):
                     'message': f'Failed to refresh company research: {str(e)}'
                 }
             },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# ==============================================
+# UC-067: SALARY RESEARCH AND BENCHMARKING
+# ==============================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def salary_research(request, job_id):
+    """
+    UC-067: Salary Research for Job Entry
+    
+    GET: Retrieve salary research data for a job
+    POST: Trigger new salary research / refresh data
+    
+    POST Request Body:
+    {
+        "force_refresh": false,
+        "experience_level": "mid",  // optional override
+        "company_size": "medium"    // optional override
+    }
+    
+    Response includes:
+    - Salary ranges (min/max/median)
+    - Total compensation breakdown
+    - Market insights
+    - Negotiation recommendations
+    - Historical trends
+    - Company comparisons
+    """
+    from core.models import SalaryResearch
+    from core.salary_scraper import salary_aggregator
+    from decimal import Decimal
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_required', 'message': 'Candidate profile required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if request.method == 'GET':
+        # Return existing research or indicate none exists
+        research = SalaryResearch.objects.filter(job=job).order_by('-created_at').first()
+        
+        if not research:
+            return Response({
+                'has_data': False,
+                'message': 'No salary research available. Trigger research to generate data.'
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            'has_data': True,
+            'id': research.id,
+            'position_title': research.position_title,
+            'location': research.location,
+            'experience_level': research.experience_level,
+            'company_size': research.company_size,
+            'salary_min': float(research.salary_min) if research.salary_min else None,
+            'salary_max': float(research.salary_max) if research.salary_max else None,
+            'salary_median': float(research.salary_median) if research.salary_median else None,
+            'salary_currency': research.salary_currency,
+            'base_salary': float(research.base_salary) if research.base_salary else None,
+            'bonus_avg': float(research.bonus_avg) if research.bonus_avg else None,
+            'stock_equity': float(research.stock_equity) if research.stock_equity else None,
+            'total_comp_min': float(research.total_comp_min) if research.total_comp_min else None,
+            'total_comp_max': float(research.total_comp_max) if research.total_comp_max else None,
+            'benefits': research.benefits,
+            'market_trend': research.market_trend,
+            'percentile_25': float(research.percentile_25) if research.percentile_25 else None,
+            'percentile_75': float(research.percentile_75) if research.percentile_75 else None,
+            'negotiation_leverage': research.negotiation_leverage,
+            'recommended_ask': float(research.recommended_ask) if research.recommended_ask else None,
+            'negotiation_tips': research.negotiation_tips,
+            'user_current_salary': float(research.user_current_salary) if research.user_current_salary else None,
+            'salary_change_percent': float(research.salary_change_percent) if research.salary_change_percent else None,
+            'data_source': research.data_source,
+            'source_url': research.source_url,
+            'sample_size': research.sample_size,
+            'confidence_score': float(research.confidence_score) if research.confidence_score else None,
+            'company_comparisons': research.company_comparisons,
+            'historical_data': research.historical_data,
+            'created_at': research.created_at.isoformat(),
+            'updated_at': research.updated_at.isoformat(),
+        }, status=status.HTTP_200_OK)
+    
+    # POST: Trigger new research
+    force_refresh = request.data.get('force_refresh', False)
+    experience_override = request.data.get('experience_level')
+    company_size_override = request.data.get('company_size')
+    
+    # Check if recent research exists (within last 7 days)
+    if not force_refresh:
+        recent_research = SalaryResearch.objects.filter(
+            job=job,
+            created_at__gte=timezone.now() - timezone.timedelta(days=7)
+        ).order_by('-created_at').first()
+        
+        if recent_research:
+            return Response({
+                'message': 'Recent salary research already exists. Use force_refresh=true to regenerate.',
+                'has_data': True,
+                'research_age_days': (timezone.now() - recent_research.created_at).days
+            }, status=status.HTTP_200_OK)
+    
+    # Gather salary data
+    experience_level = experience_override or profile.experience_level or 'mid'
+    company_size = company_size_override or 'medium'
+    
+    try:
+        # Aggregate salary data from multiple sources
+        salary_data = salary_aggregator.aggregate_salary_data(
+            job_title=job.title,
+            location=job.location or 'Remote',
+            experience_level=experience_level,
+            company_size=company_size
+        )
+        
+        # Generate company comparisons
+        company_comparisons = salary_aggregator.generate_company_comparisons(
+            job_title=job.title,
+            location=job.location or 'Remote'
+        )
+        
+        # Generate historical trends
+        historical_trends = salary_aggregator.generate_historical_trends(
+            job_title=job.title,
+            location=job.location or 'Remote'
+        )
+        
+        stats = salary_data.get('aggregated_stats', {})
+        insights = salary_data.get('market_insights', {})
+        negotiation = salary_data.get('negotiation_recommendations', {})
+        
+        # Calculate salary change if user has current salary
+        user_current_salary = None
+        salary_change_percent = None
+        if job.salary_min or profile.years_experience:
+            # Try to estimate current salary from profile or job expectations
+            if job.salary_min:
+                user_current_salary = job.salary_min
+                if stats.get('salary_median'):
+                    salary_change_percent = ((float(stats['salary_median']) - float(user_current_salary)) / float(user_current_salary)) * 100
+        
+        # Create or update research record
+        research, created = SalaryResearch.objects.update_or_create(
+            job=job,
+            defaults={
+                'position_title': job.title,
+                'location': job.location or 'Remote',
+                'experience_level': experience_level,
+                'company_size': company_size,
+                'salary_min': Decimal(str(stats.get('salary_min'))) if stats.get('salary_min') else None,
+                'salary_max': Decimal(str(stats.get('salary_max'))) if stats.get('salary_max') else None,
+                'salary_median': Decimal(str(stats.get('salary_median'))) if stats.get('salary_median') else None,
+                'salary_currency': 'USD',
+                'base_salary': Decimal(str(stats.get('base_salary'))) if stats.get('base_salary') else None,
+                'bonus_avg': Decimal(str(stats.get('bonus_avg'))) if stats.get('bonus_avg') else None,
+                'stock_equity': Decimal(str(stats.get('stock_equity'))) if stats.get('stock_equity') else None,
+                'total_comp_min': Decimal(str(stats.get('total_comp_min'))) if stats.get('total_comp_min') else None,
+                'total_comp_max': Decimal(str(stats.get('total_comp_max'))) if stats.get('total_comp_max') else None,
+                'benefits': {
+                    'health_insurance': 'Standard',
+                    'retirement_401k': 'Yes',
+                    'pto_days': '15-25',
+                    'remote_work': 'Varies'
+                },
+                'market_trend': insights.get('market_trend', 'stable'),
+                'percentile_25': Decimal(str(stats.get('percentile_25'))) if stats.get('percentile_25') else None,
+                'percentile_75': Decimal(str(stats.get('percentile_75'))) if stats.get('percentile_75') else None,
+                'negotiation_leverage': negotiation.get('negotiation_leverage', 'medium'),
+                'recommended_ask': Decimal(str(negotiation.get('recommended_ask'))) if negotiation.get('recommended_ask') else None,
+                'negotiation_tips': '\n\n'.join(negotiation.get('tips', [])),
+                'user_current_salary': Decimal(str(user_current_salary)) if user_current_salary else None,
+                'salary_change_percent': Decimal(str(salary_change_percent)) if salary_change_percent else None,
+                'data_source': 'aggregated',
+                'sample_size': stats.get('data_points', 0),
+                'confidence_score': Decimal('0.80'),
+                'company_comparisons': company_comparisons,
+                'historical_data': historical_trends,
+                'research_notes': f"Generated from {len(salary_data.get('salary_data', []))} data sources"
+            }
+        )
+        
+        return Response({
+            'success': True,
+            'message': f"Salary research {'created' if created else 'updated'} successfully.",
+            'research_id': research.id,
+            'has_data': True
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error generating salary research for job {job_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'research_failed', 'message': f'Failed to generate salary research: {str(e)}'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def salary_research_export(request, job_id):
+    """
+    UC-067: Export Salary Research Report
+    
+    GET: Export salary research as JSON or PDF report
+    Query params:
+    - format: 'json' (default) or 'pdf'
+    """
+    from core.models import SalaryResearch
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        research = SalaryResearch.objects.filter(job=job).order_by('-created_at').first()
+        
+        if not research:
+            return Response(
+                {'error': {'code': 'not_found', 'message': 'No salary research data available to export.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        export_format = request.query_params.get('format', 'json').lower()
+        
+        if export_format == 'json':
+            report_data = {
+                'job': {
+                    'title': job.title,
+                    'company': job.company_name,
+                    'location': job.location,
+                },
+                'salary_research': {
+                    'position_title': research.position_title,
+                    'location': research.location,
+                    'experience_level': research.experience_level,
+                    'company_size': research.company_size,
+                    'salary_range': {
+                        'min': float(research.salary_min) if research.salary_min else None,
+                        'max': float(research.salary_max) if research.salary_max else None,
+                        'median': float(research.salary_median) if research.salary_median else None,
+                        'currency': research.salary_currency,
+                    },
+                    'total_compensation': {
+                        'base_salary': float(research.base_salary) if research.base_salary else None,
+                        'bonus_avg': float(research.bonus_avg) if research.bonus_avg else None,
+                        'stock_equity': float(research.stock_equity) if research.stock_equity else None,
+                        'total_min': float(research.total_comp_min) if research.total_comp_min else None,
+                        'total_max': float(research.total_comp_max) if research.total_comp_max else None,
+                    },
+                    'market_insights': {
+                        'market_trend': research.market_trend,
+                        'percentile_25': float(research.percentile_25) if research.percentile_25 else None,
+                        'percentile_75': float(research.percentile_75) if research.percentile_75 else None,
+                    },
+                    'negotiation': {
+                        'leverage': research.negotiation_leverage,
+                        'recommended_ask': float(research.recommended_ask) if research.recommended_ask else None,
+                        'tips': research.negotiation_tips.split('\n\n') if research.negotiation_tips else [],
+                    },
+                    'benefits': research.benefits,
+                    'company_comparisons': research.company_comparisons,
+                    'historical_trends': research.historical_data,
+                },
+                'metadata': {
+                    'generated_at': research.created_at.isoformat(),
+                    'data_source': research.data_source,
+                    'sample_size': research.sample_size,
+                    'confidence_score': float(research.confidence_score) if research.confidence_score else None,
+                }
+            }
+            
+            from django.http import JsonResponse
+            response = JsonResponse(report_data, safe=False)
+            response['Content-Disposition'] = f'attachment; filename="salary_research_{job.title.replace(" ", "_")}.json"'
+            return response
+        
+        else:
+            return Response(
+                {'error': {'code': 'unsupported_format', 'message': 'Only JSON format is currently supported.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error exporting salary research for job {job_id}: {str(e)}")
+        return Response(
+            {'error': {'code': 'export_failed', 'message': f'Failed to export research: {str(e)}'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def job_interview_insights(request, job_id):
+    """
+    UC-068: Interview Insights and Preparation
+    
+    GET: Retrieve AI-generated interview insights for a specific job
+    
+    Query Parameters:
+    - refresh: Set to 'true' to force regeneration (bypasses cache)
+    
+    Returns:
+    - Company-specific interview process and stages
+    - Common interview questions (technical and behavioral)
+    - Tailored preparation recommendations
+    - Timeline expectations
+    - Success tips based on company culture
+    - Interview preparation checklist
+    
+    Uses Gemini AI to generate company-specific insights when API key is available.
+    Falls back to template-based insights if AI generation fails.
+    Results are cached to reduce API costs.
+    """
+    from core.interview_insights import InterviewInsightsGenerator
+    from core.models import InterviewInsightsCache
+    
+    try:
+        # Verify job ownership
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        
+        # Check if user wants to force refresh
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        
+        # Try to get cached insights first (unless force refresh)
+        if not force_refresh:
+            cached = InterviewInsightsCache.objects.filter(
+                job=job,
+                is_valid=True
+            ).first()
+            
+            if cached:
+                logger.info(f"Returning cached interview insights for job {job_id}")
+                return Response(cached.insights_data, status=status.HTTP_200_OK)
+        
+        # Get Gemini API credentials
+        api_key = getattr(settings, 'GEMINI_API_KEY', '')
+        model = getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash-latest')
+        
+        # Generate insights based on job title and company
+        # Will use AI if api_key is available, otherwise falls back to templates
+        insights = InterviewInsightsGenerator.generate_for_job(
+            job_title=job.title,
+            company_name=job.company_name,
+            api_key=api_key if api_key else None,
+            model=model
+        )
+        
+        # Cache the results
+        try:
+            # Invalidate old cache entries for this job
+            InterviewInsightsCache.objects.filter(job=job).update(is_valid=False)
+            
+            # Create new cache entry
+            InterviewInsightsCache.objects.create(
+                job=job,
+                job_title=job.title,
+                company_name=job.company_name,
+                insights_data=insights,
+                generated_by=insights.get('generated_by', 'template')
+            )
+            logger.info(f"Cached interview insights for job {job_id}")
+        except Exception as cache_error:
+            logger.warning(f"Failed to cache insights: {cache_error}")
+            # Continue anyway - caching failure shouldn't break the response
+        
+        return Response(insights, status=status.HTTP_200_OK)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error generating interview insights for job {job_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to generate interview insights.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def job_skills_gap(request, job_id):
+    """
+    UC-066: Skills Gap Analysis
+    
+    GET: Analyze skills gap between candidate profile and job requirements
+    
+    Query Parameters:
+    - refresh: Set to 'true' to force regeneration (bypasses cache)
+    - include_similar: Set to 'true' to include trends across similar jobs
+    
+    Returns:
+    - Prioritized list of required skills with gap severity
+    - Candidate's current proficiency for each skill
+    - Learning resources and personalized learning paths
+    - Summary statistics and recommendations
+    - Optional: Skill gap trends across similar jobs
+    
+    Results are cached to improve performance.
+    """
+    from core.skills_gap_analysis import SkillsGapAnalyzer
+    from core.models import SkillGapAnalysisCache
+    from django.utils import timezone
+    
+    try:
+        # Verify job ownership
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        
+        # Check if user wants to force refresh or include trends
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        include_similar = request.query_params.get('include_similar', '').lower() == 'true'
+        
+        # Try to get cached analysis first (unless force refresh)
+        if not force_refresh:
+            cached = SkillGapAnalysisCache.objects.filter(
+                job=job,
+                is_valid=True
+            ).first()
+            
+            if cached:
+                analysis = cached.analysis_data
+                # Add trends if requested and not in cache
+                if include_similar and 'trends' not in analysis:
+                    trends = SkillsGapAnalyzer._analyze_similar_jobs(job, profile)
+                    analysis['trends'] = trends
+                
+                logger.info(f"Returning cached skills gap analysis for job {job_id}")
+                return Response(analysis, status=status.HTTP_200_OK)
+        
+        # Generate new analysis
+        logger.info(f"Generating skills gap analysis for job {job_id}")
+        analysis = SkillsGapAnalyzer.analyze_job(
+            job=job,
+            candidate_profile=profile,
+            include_similar_trends=include_similar
+        )
+        
+        # Add timestamp
+        analysis['generated_at'] = timezone.now().isoformat()
+        
+        # Cache the results
+        try:
+            # Invalidate old cache entries for this job
+            SkillGapAnalysisCache.objects.filter(job=job).update(is_valid=False)
+            
+            # Create new cache entry
+            SkillGapAnalysisCache.objects.create(
+                job=job,
+                job_title=job.title,
+                company_name=job.company_name,
+                analysis_data=analysis,
+                source=analysis.get('source', 'parsed')
+            )
+            logger.info(f"Cached skills gap analysis for job {job_id}")
+        except Exception as cache_error:
+            logger.warning(f"Failed to cache skills gap analysis: {cache_error}")
+            # Continue anyway - caching failure shouldn't break the response
+        
+        return Response(analysis, status=status.HTTP_200_OK)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error generating skills gap analysis for job {job_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to generate skills gap analysis.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def skill_progress(request, skill_id):
+    """
+    UC-066: Track Skill Development Progress
+    
+    GET: Retrieve progress records for a specific skill
+    POST: Log new practice/learning activity for a skill
+    
+    POST Request Body:
+    {
+        "activity_type": "practice|course|project|certification|review",
+        "hours_spent": 2.5,
+        "progress_percent": 50,
+        "notes": "Completed module 3",
+        "job_id": 123,  // Optional: link to specific job
+        "learning_resource_id": 456  // Optional: link to resource
+    }
+    """
+    from core.models import Skill, SkillDevelopmentProgress, LearningResource
+    from django.utils import timezone
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        # Verify skill exists
+        try:
+            skill = Skill.objects.get(id=skill_id)
+        except Skill.DoesNotExist:
+            return Response(
+                {'error': {'code': 'skill_not_found', 'message': 'Skill not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if request.method == 'GET':
+            # Get progress records for this skill
+            progress_records = SkillDevelopmentProgress.objects.filter(
+                candidate=profile,
+                skill=skill
+            ).order_by('-activity_date')
+            
+            data = []
+            for record in progress_records:
+                data.append({
+                    'id': record.id,
+                    'activity_type': record.activity_type,
+                    'hours_spent': float(record.hours_spent),
+                    'progress_percent': record.progress_percent,
+                    'notes': record.notes,
+                    'job_id': record.job.id if record.job else None,
+                    'learning_resource': {
+                        'id': record.learning_resource.id,
+                        'title': record.learning_resource.title,
+                    } if record.learning_resource else None,
+                    'activity_date': record.activity_date.isoformat(),
+                    'created_at': record.created_at.isoformat(),
+                })
+            
+            # Compute aggregate stats
+            total_hours = sum(r.hours_spent for r in progress_records)
+            latest_progress = progress_records.first().progress_percent if progress_records else 0
+            
+            return Response({
+                'skill': {
+                    'id': skill.id,
+                    'name': skill.name,
+                    'category': skill.category,
+                },
+                'total_hours': float(total_hours),
+                'current_progress_percent': latest_progress,
+                'activity_count': len(data),
+                'activities': data,
+            }, status=status.HTTP_200_OK)
+        
+        # POST: Log new activity
+        activity_type = request.data.get('activity_type', 'practice')
+        try:
+            hours_spent = float(request.data.get('hours_spent', 0))
+            progress_percent = int(request.data.get('progress_percent', 0))
+        except (ValueError, TypeError):
+            return Response(
+                {'error': {'code': 'invalid_data', 'message': 'Invalid hours_spent or progress_percent.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        notes = request.data.get('notes', '')
+        job_id = request.data.get('job_id')
+        resource_id = request.data.get('learning_resource_id')
+        
+        # Validate
+        if activity_type not in dict(SkillDevelopmentProgress.ACTIVITY_TYPES):
+            return Response(
+                {'error': {'code': 'invalid_activity_type', 'message': 'Invalid activity type.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not (0 <= progress_percent <= 100):
+            return Response(
+                {'error': {'code': 'invalid_progress', 'message': 'Progress must be between 0 and 100.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get optional related objects
+        job = None
+        if job_id:
+            try:
+                job = JobEntry.objects.get(id=job_id, candidate=profile)
+            except JobEntry.DoesNotExist:
+                pass
+        
+        resource = None
+        if resource_id:
+            try:
+                resource = LearningResource.objects.get(id=resource_id)
+            except LearningResource.DoesNotExist:
+                pass
+        
+        # Create progress record
+        record = SkillDevelopmentProgress.objects.create(
+            candidate=profile,
+            skill=skill,
+            job=job,
+            learning_resource=resource,
+            activity_type=activity_type,
+            hours_spent=hours_spent,
+            progress_percent=progress_percent,
+            notes=notes,
+            activity_date=timezone.now()
+        )
+        
+        return Response({
+            'id': record.id,
+            'message': 'Progress logged successfully.',
+            'activity_type': record.activity_type,
+            'hours_spent': float(record.hours_spent),
+            'progress_percent': record.progress_percent,
+            'activity_date': record.activity_date.isoformat(),
+        }, status=status.HTTP_201_CREATED)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in skill_progress for skill {skill_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to process skill progress.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
