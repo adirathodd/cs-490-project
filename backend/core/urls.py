@@ -104,6 +104,16 @@ urlpatterns = [
     path('jobs/<int:job_id>/restore', views.job_restore, name='job-restore'),
     path('jobs/<int:job_id>/delete', views.job_delete, name='job-delete'),
     path('jobs/bulk-archive', views.jobs_bulk_archive, name='jobs-bulk-archive'),
+    
+    # UC-055: Cover Letter Template Library endpoints
+    path('cover-letter-templates', views.cover_letter_template_list_create, name='cover-letter-template-list-create'),
+    path('cover-letter-templates/<uuid:pk>', views.cover_letter_template_detail, name='cover-letter-template-detail'),
+    path('cover-letter-templates/import', views.cover_letter_template_import, name='cover-letter-template-import'),
+    path('cover-letter-templates/<uuid:pk>/customize', views.cover_letter_template_customize, name='cover-letter-template-customize'),
+    path('cover-letter-templates/<uuid:pk>/share', views.cover_letter_template_share, name='cover-letter-template-share'),
+    path('cover-letter-templates/<uuid:pk>/analytics', views.cover_letter_template_analytics, name='cover-letter-template-analytics'),
+    path('cover-letter-templates/<uuid:pk>/download/<str:format_type>', views.cover_letter_template_download, name='cover-letter-template-download'),
+    path('cover-letter-templates/stats', views.cover_letter_template_stats, name='cover-letter-template-stats'),
     path('jobs/bulk-restore', views.jobs_bulk_restore, name='jobs-bulk-restore'),
     
     # UC-043: Company information endpoints
@@ -111,7 +121,14 @@ urlpatterns = [
     path('jobs/<int:job_id>/company', views.job_company_info, name='job-company-info'),
     # UC-047: AI resume generation
     path('jobs/<int:job_id>/resume/generate', views.generate_resume_for_job, name='job-resume-generate'),
+    path('jobs/<int:job_id>/resume/tailor-experience/<int:experience_id>', views.tailor_experience_variations, name='tailor-experience'),
+    path('jobs/<int:job_id>/resume/tailor-experience/<int:experience_id>/bullet', views.tailor_experience_bullet, name='tailor-experience-bullet'),
     path('resume/compile-latex/', views.compile_latex_to_pdf, name='compile-latex-to-pdf'),
+    # UC-056: AI cover letter generation
+    path('jobs/<int:job_id>/cover-letter/generate', views.generate_cover_letter_for_job, name='job-cover-letter-generate'),
+    path('cover-letter/compile-latex/', views.compile_latex_to_pdf, name='cover-letter-compile-latex-to-pdf'),
+    # UC-061: Cover letter export
+    path('cover-letter/export-docx/', views.export_cover_letter_docx, name='cover-letter-export-docx'),
     
     # UC-051: Resume export endpoints
     path('resume/export/themes', views.resume_export_themes, name='resume-export-themes'),
@@ -122,4 +139,15 @@ urlpatterns = [
     path('companies/<str:company_name>/research', views.automated_company_research, name='automated-company-research'),
     path('companies/<str:company_name>/research/report', views.company_research_report, name='company-research-report'),
     path('companies/<str:company_name>/research/refresh', views.refresh_company_research, name='refresh-company-research'),
+    
+    # UC-067: Salary Research and Benchmarking endpoints
+    path('jobs/<int:job_id>/salary-research/', views.salary_research, name='salary-research'),
+    path('jobs/<int:job_id>/salary-research/export/', views.salary_research_export, name='salary-research-export'),
+    
+    # UC-068: Interview Insights and Preparation endpoints
+    path('jobs/<int:job_id>/interview-insights/', views.job_interview_insights, name='job-interview-insights'),
+    
+    # UC-066: Skills Gap Analysis endpoints
+    path('jobs/<int:job_id>/skills-gap/', views.job_skills_gap, name='job-skills-gap'),
+    path('skills/<int:skill_id>/progress/', views.skill_progress, name='skill-progress'),
 ]

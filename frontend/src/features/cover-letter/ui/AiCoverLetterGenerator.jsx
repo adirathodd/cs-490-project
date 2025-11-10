@@ -7,10 +7,11 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { jobsAPI, resumeAIAPI, resumeExportAPI } from '../../../services/api';
+import { jobsAPI, coverLetterAIAPI } from '../../../services/api';
 import Icon from '../../../components/common/Icon';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
-import './AiResumeGenerator.css';
+import '../../resume/AiResumeGenerator/AiResumeGenerator.css';
+import './AiCoverLetterGenerator.css';
 
 const RequiredMark = () => (
   <span className="required-star" aria-hidden="true">
@@ -26,7 +27,6 @@ const toneOptions = [
 ];
 
 const variationChoices = [1, 2, 3];
-const EXPERIENCE_VARIATION_TARGET = 3;
 
 const SECTION_IDS = ['summary', 'skills', 'experience', 'projects', 'education', 'keywords', 'preview'];
 const rotateArray = (list = [], shift = 0) => {
@@ -34,82 +34,6 @@ const rotateArray = (list = [], shift = 0) => {
   const offset = ((shift % list.length) + list.length) % list.length;
   if (offset === 0) return list;
   return [...list.slice(offset), ...list.slice(0, offset)];
-};
-
-
-const ACTION_VERB_LIBRARY = {
-  default: ['Drove', 'Accelerated', 'Optimized', 'Championed', 'Delivered', 'Scaled'],
-  software: ['Shipped', 'Refactored', 'Scaled', 'Automated', 'Instrumented', 'Hardened'],
-  product: ['Launched', 'Prioritized', 'Roadmapped', 'Tested', 'Validated'],
-  marketing: ['Amplified', 'Orchestrated', 'Positioned', 'Activated'],
-  finance: ['Modeled', 'Audited', 'Forecasted', 'Balanced'],
-  operations: ['Streamlined', 'Standardized', 'Systematized'],
-  healthcare: ['Coordinated', 'Standardized', 'Improved compliance'],
-  education: ['Facilitated', 'Designed curriculum for', 'Assessed'],
-  sales: ['Negotiated', 'Accelerated', 'Expanded'],
-};
-
-const INDUSTRY_TERM_LIBRARY = {
-  software: ['platform reliability', 'latency budgets', 'CI/CD health'],
-  product: ['roadmap confidence', 'research-backed bets', 'launch criteria'],
-  marketing: ['funnel efficiency', 'campaign lift', 'brand resonance'],
-  finance: ['risk controls', 'audit readiness', 'portfolio hygiene'],
-  operations: ['throughput', 'capacity planning', 'SLA adherence'],
-  healthcare: ['clinical workflows', 'EMR compliance', 'patient safety'],
-  education: ['learning outcomes', 'assessment rigor', 'curriculum alignment'],
-  sales: ['pipeline velocity', 'win-rate uplift', 'account expansion'],
-  default: ['cross-functional alignment', 'stakeholder visibility', 'measurable impact'],
-};
-
-const EXPERIENCE_TAILOR_CACHE_KEY = 'resumerocket_experience_tailor_v1';
-
-const slugify = (value, fallback = 'entry') => {
-  if (!value) return fallback;
-  return value
-    .toString()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .substring(0, 48) || fallback;
-};
-
-const getIndustryBucket = (value = '') => {
-  const normalized = value.toLowerCase();
-  if (/software|engineer|developer|tech/.test(normalized)) return 'software';
-  if (/product/.test(normalized)) return 'product';
-  if (/marketing|brand|growth/.test(normalized)) return 'marketing';
-  if (/finance|bank|account/.test(normalized)) return 'finance';
-  if (/operation|supply|logistic/.test(normalized)) return 'operations';
-  if (/health|med|clinic|pharma/.test(normalized)) return 'healthcare';
-  if (/edu|school|learning/.test(normalized)) return 'education';
-  if (/sales|revenue|bizdev|business development/.test(normalized)) return 'sales';
-  return 'default';
-};
-
-const getExperienceGroupId = (exp = {}, fallbackIndex = 0) => {
-  if (exp.source_experience_id) return `experience-${exp.source_experience_id}`;
-  const slug = slugify(`${exp.role || 'experience'}-${exp.company || fallbackIndex}`);
-  return `experience-${slug}-${fallbackIndex}`;
-};
-
-const getExperienceUniqueId = (exp = {}, fallbackIndex = 0) => {
-  if (exp.source_experience_id) return `experience-${exp.source_experience_id}`;
-  const slug = slugify(`${exp.role || 'role'}-${exp.company || fallbackIndex}`);
-  return `experience-${slug}-${fallbackIndex}`;
-};
-
-const escapeRegExp = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const parseYearRange = (dates) => {
-  if (!dates) {
-    return { startYear: null, endYear: null, ongoing: false };
-  }
-  const normalized = dates.toString();
-  const matches = normalized.match(/(20\d{2}|19\d{2})/g) || [];
-  const startYear = matches.length ? Number(matches[0]) : null;
-  const ongoing = /present/i.test(normalized);
-  const endYear = ongoing ? new Date().getFullYear() : matches.length > 1 ? Number(matches[1]) : startYear;
-  return { startYear, endYear, ongoing };
 };
 
 const getBulletOrderKey = (sectionId, groupId) => `${sectionId}::${groupId}`;
@@ -154,13 +78,8 @@ const generateBulletRewrite = (text, jobTitle, companyName) => {
   return `Refined${context}: ${base}`;
 };
 
-const normalizeBulletText = (text = '') => {
-  const candidate = text == null ? '' : text;
-  return candidate.toString().replace(/\*\*(.*?)\*\*/g, '$1');
-};
-
 const latexEscape = (text = '') =>
-  normalizeBulletText(text)
+  text
     .replace(/\\/g, '\\textbackslash{}')
     .replace(/([%#$&_{}])/g, '\\$1')
     .replace(/\^/g, '\\^{}')
@@ -686,384 +605,13 @@ const chipify = (items) =>
     .map((item) => sanitizeText(item))
     .filter(Boolean);
 
-const buildTerminologySuggestions = (industryBucket, keywords = []) => {
-  const base = INDUSTRY_TERM_LIBRARY[industryBucket] || INDUSTRY_TERM_LIBRARY.default;
-  const normalizedKeywords = keywords.slice(0, 4).map((keyword) => keyword?.toLowerCase()).filter(Boolean);
-  const merged = [...new Set([...normalizedKeywords, ...base])];
-  return merged.slice(0, 5).map((term) => term.replace(/\b([a-z])/g, (match) => match.toUpperCase()));
-};
-
-const computeRelevanceScore = (experience = {}, keywords = []) => {
-  if (!experience) return 50;
-  const haystack = `${experience.role || ''} ${experience.company || ''} ${(experience.bullets || []).join(' ')}`.toLowerCase();
-  if (!haystack.trim()) return 45;
-  const trimmedKeywords = keywords.slice(0, 8).map((keyword) => keyword.toLowerCase());
-  const matches = new Set();
-  trimmedKeywords.forEach((keyword) => {
-    if (keyword && haystack.includes(keyword)) {
-      matches.add(keyword);
-    }
-  });
-  const keywordFactor = trimmedKeywords.length ? matches.size / Math.min(trimmedKeywords.length, 6) : 0.4;
-  const metricFactor = (experience.bullets || []).some((bullet) => /\d/.test(bullet)) ? 0.25 : 0;
-  const score = Math.round((0.55 * keywordFactor + metricFactor + 0.25) * 100);
-  return Math.max(35, Math.min(100, score));
-};
-
-const computeMetricCoverage = (bullets = []) => {
-  if (!bullets.length) return 0;
-  const numeric = bullets.filter((bullet) => /\d/.test(bullet)).length;
-  return Math.round((numeric / bullets.length) * 100);
-};
-
-const buildExperienceInsight = (experience = {}, idx = 0, jobContext = {}) => {
-  const keywords = chipify(jobContext.keywords || []);
-  const industryBucket = getIndustryBucket(jobContext.industry || jobContext.jobTitle || '');
-  const experienceId = getExperienceUniqueId(experience, idx);
-  const groupId = getExperienceGroupId(experience, idx);
-  const chronology = parseYearRange(experience.dates);
-  const relevanceScore = computeRelevanceScore(experience, keywords);
-  const metricCoverage = computeMetricCoverage(experience.bullets);
-  const actionVerbs = (ACTION_VERB_LIBRARY[industryBucket] || ACTION_VERB_LIBRARY.default).slice(0, 3);
-  const terminology = buildTerminologySuggestions(industryBucket, keywords);
-  return {
-    experience,
-    experienceId,
-    groupId,
-    variations: [],
-    chronology: { ...chronology, label: experience.dates || 'Timeline TBD' },
-    relevanceScore,
-    metricCoverage,
-    actionVerbs,
-    terminology,
-  };
-};
-
-export const ExperienceTailoringLab = ({
-  experiences = [],
-  jobContext = {},
-  selectedJobId = '',
-  onApply,
-  onSave,
-  onDeleteSaved,
-  savedVariants = {},
-  onApplySaved,
-  onNotify,
-  externalVariations = {},
-  isLoading = false,
-  loadingError = '',
-  onRegenerateBullet,
-  regeneratingBullet = null,
-}) => {
-  const insights = useMemo(
-    () => experiences.map((experience, idx) => buildExperienceInsight(experience, idx, jobContext)),
-    [experiences, jobContext],
-  );
-  const [selectedVariants, setSelectedVariants] = useState({});
-  useEffect(() => {
-    setSelectedVariants((prev) => {
-      const next = {};
-      insights.forEach((insight) => {
-        const experienceKey = insight.experienceId;
-        const serverEntry =
-          externalVariations[experienceKey] ||
-          externalVariations[insight.experience?.source_experience_id];
-        const fallbackId = `profile-${experienceKey}`;
-        const defaultVariant = serverEntry?.variations?.[0]?.id || fallbackId;
-        next[experienceKey] = prev[experienceKey] || defaultVariant;
-      });
-      return next;
-    });
-  }, [insights, externalVariations]);
-
-  const savedList = useMemo(() => {
-    return Object.entries(savedVariants || {})
-      .flatMap(([experienceId, versions = []]) =>
-        versions.map((entry) => ({ ...entry, experienceId })),
-      )
-      .sort((a, b) => new Date(b.savedAt || 0) - new Date(a.savedAt || 0));
-  }, [savedVariants]);
-
-  if (!insights.length) return null;
-
-  const keywords = chipify(jobContext.keywords || []);
-
-  const handleApply = (insight, variant) => {
-    if (!variant?.bullets?.length) {
-      onNotify?.('No tailored bullets available yet.');
-      return;
-    }
-    onApply?.(insight.experience, variant, insight);
-  };
-
-  const handleSave = (insight, variant) => {
-    if (!selectedJobId) {
-      onNotify?.('Select a job to save tailored versions.');
-      return;
-    }
-    if (!variant?.bullets?.length) {
-      onNotify?.('Generate a variation before saving.');
-      return;
-    }
-    onSave?.(insight, variant);
-  };
-
-  const handleVariationChange = (experienceId, variantId) => {
-    setSelectedVariants((prev) => ({ ...prev, [experienceId]: variantId }));
-  };
-
-  return (
-    <section className="ai-resume-card experience-tailor-lab">
-      <div className="tailor-header">
-        <div>
-          <h2>Fine-tune your work experience for this job</h2>
-          <p className="customizer-subtitle">
-            Compare AI-authored variations for each role, reinforce metrics, and apply the most relevant bullets directly into the resume preview.
-          </p>
-        </div>
-      </div>
-      {isLoading && <p className="placeholder">Generating Gemini rewrites for each experience…</p>}
-      {loadingError && <p className="inline-error">{loadingError}</p>}
-      {isLoading && <p className="placeholder">Generating Gemini rewrites for each experience…</p>}
-      {loadingError && <p className="inline-error">{loadingError}</p>}
-
-      <div className="tailor-context-grid">
-        <div className="context-card">
-          <strong>Target company</strong>
-          <p>{sanitizeText(jobContext.company) || '—'}</p>
-        </div>
-        <div className="context-card">
-          <strong>Keywords emphasized</strong>
-          {keywords.length ? (
-            <div className="chip-row compact">
-              {keywords.slice(0, 6).map((keyword) => (
-                <span key={`keyword-${keyword}`} className="chip">
-                  {keyword}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className="placeholder">Job keywords will appear after selecting a job posting.</p>
-          )}
-        </div>
-        <div className="context-card timeline-card">
-          <strong>Chronological timeline</strong>
-          <div className="experience-timeline" aria-label="Experience timeline">
-            {insights.map((insight, idx) => (
-              <div key={insight.experienceId} className="timeline-item">
-                <span className="timeline-dot" />
-                <div>
-                  <p>{insight.experience.role || `Experience ${idx + 1}`}</p>
-                  <small>{insight.chronology.label}</small>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="experience-tailor-list">
-        {insights.map((insight) => {
-          const experienceKey = insight.experienceId;
-          const sourceId = insight.experience?.source_experience_id;
-          console.log('[ExperienceTailoringLab] Looking up variations:', {
-            experienceKey,
-            sourceId,
-            hasKeyLookup: !!externalVariations[experienceKey],
-            hasSourceLookup: !!externalVariations[sourceId],
-            allKeys: Object.keys(externalVariations),
-          });
-          const serverEntry =
-            externalVariations[experienceKey] ||
-            externalVariations[sourceId] ||
-            externalVariations[`experience-${sourceId}`];
-          const serverVariations = serverEntry?.variations;
-          const fallbackVariantId = `profile-${experienceKey}`;
-          const fallbackVariant = {
-            id: fallbackVariantId,
-            label: 'Profile bullets',
-            description: 'Bullets pulled directly from your saved experience.',
-            bullets: insight.experience.bullets || [],
-          };
-          const variationList = [
-            ...(fallbackVariant.bullets.length ? [fallbackVariant] : []),
-            ...(serverVariations?.length ? serverVariations : []),
-          ];
-          const hasVariants = variationList.length > 0;
-          const selectedVariantId = hasVariants
-            ? selectedVariants[experienceKey] || variationList[0]?.id
-            : '';
-          const currentVariant = hasVariants
-            ? variationList.find((variant) => variant.id === selectedVariantId) || variationList[0]
-            : null;
-          const serverVariantIds = new Set((serverVariations || []).map((variant) => variant.id));
-          const isServerVariant = currentVariant ? serverVariantIds.has(currentVariant.id) : false;
-          const canRegenerate = Boolean(onRegenerateBullet && isServerVariant);
-          const showLoadingState = isLoading && !serverVariations?.length;
-          const scoreClass = insight.relevanceScore >= 75 ? 'high' : insight.relevanceScore >= 55 ? 'medium' : 'low';
-          return (
-            <article key={insight.experienceId} className="experience-tailor-card">
-              <header>
-                <div>
-                  <h4>{insight.experience.role}</h4>
-                  <p>{insight.experience.company}</p>
-                  <small>{insight.chronology.label}</small>
-                </div>
-                <div className="relevance-pill-wrapper">
-                  <span className={`relevance-pill ${scoreClass}`}>{insight.relevanceScore}% match</span>
-                  <div className="relevance-bar">
-                    <span style={{ width: `${insight.relevanceScore}%` }} />
-                  </div>
-                  <small>Metric coverage: {insight.metricCoverage}%</small>
-                </div>
-              </header>
-
-              {hasVariants ? (
-                <div className="variation-tabs-row">
-                  {variationList.map((variant) => (
-                    <button
-                      key={variant.id}
-                      type="button"
-                      className={variant.id === selectedVariantId ? 'active' : ''}
-                      onClick={() => handleVariationChange(insight.experienceId, variant.id)}
-                    >
-                      <span>{variant.label}</span>
-                      <small>{variant.tags?.length ? variant.tags.join(' · ') : 'Profile source'}</small>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="variation-tabs-row">
-                  <p className="placeholder">Add at least one bullet to unlock tailored variations.</p>
-                </div>
-              )}
-
-              <div className="variation-body">
-                <p>
-                  {currentVariant?.description ||
-                    (serverVariations?.length
-                      ? 'Gemini variation'
-                      : fallbackVariant.bullets.length
-                        ? 'Bullets from your saved profile.'
-                        : 'Provide achievements so tailoring can begin.')}
-                </p>
-                {showLoadingState ? (
-                  <p className="placeholder">Fetching tailored bullets…</p>
-                ) : currentVariant?.bullets?.length ? (
-                  <ul>
-                    {currentVariant.bullets.map((bullet, idx) => {
-                      const isRegenerating =
-                        regeneratingBullet &&
-                        regeneratingBullet.experienceId === insight.experienceId &&
-                        regeneratingBullet.variantId === currentVariant?.id &&
-                        regeneratingBullet.bulletIndex === idx;
-                      const displayBullet = normalizeBulletText(bullet);
-                      return (
-                        <li key={`${currentVariant.id}-${idx}`} className="bullet-with-action">
-                          <span>{displayBullet}</span>
-                          {canRegenerate && (
-                            <button
-                              type="button"
-                              className="ghost regen-button"
-                              onClick={() => onRegenerateBullet(insight.experienceId, currentVariant.id, idx)}
-                              disabled={isRegenerating}
-                              title="Regenerate this bullet"
-                            >
-                              <Icon name="refresh" size={12} className="regen-icon" />
-                              <span>Regenerate</span>
-                            </button>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p className="placeholder">This experience is missing bullet points. Add bullets to enable tailoring.</p>
-                )}
-              </div>
-
-              <div className="experience-tailor-actions">
-                <button type="button" className="primary" onClick={() => handleApply(insight, currentVariant)}>
-                  <Icon name="sparkles" size="sm" /> Apply to resume preview
-                </button>
-                <button
-                  type="button"
-                  className="ghost"
-                  disabled={!selectedJobId || !currentVariant?.bullets?.length}
-                  onClick={() => handleSave(insight, currentVariant)}
-                >
-                  <Icon name="clipboard" size="sm" /> Save tailored version
-                </button>
-              </div>
-
-              <div className="suggestion-row">
-                <div>
-                  <strong>Action verbs to try</strong>
-                  <div className="chip-row compact">
-                    {insight.actionVerbs.map((verb) => (
-                      <span key={`verb-${verb}`} className="chip neutral">
-                        {verb}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <strong>Industry terminology</strong>
-                  <div className="chip-row compact">
-                    {insight.terminology.map((term) => (
-                      <span key={`term-${term}`} className="chip accent">
-                        {term}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </article>
-          );
-        })}
-      </div>
-
-      {savedList.length > 0 && (
-        <div className="saved-tailored-panel">
-          <div className="saved-header">
-            <h3>Saved tailored versions</h3>
-            <p>Reuse previously approved bullets for this job without regenerating content.</p>
-          </div>
-          <div className="saved-list">
-            {savedList.map((entry) => (
-              <div key={entry.id} className="saved-row">
-                <div>
-                  <strong>
-                    {entry.role}
-                    <span> · {entry.company}</span>
-                  </strong>
-                  <p>{entry.label}</p>
-                  <small>Saved {formatDate(entry.savedAt)} · {entry.relevanceScore}% match</small>
-                </div>
-                <div className="saved-actions">
-                  <button type="button" onClick={() => onApplySaved?.(entry.experienceId, entry)}>
-                    <Icon name="sparkles" size="sm" /> Apply
-                  </button>
-                  <button type="button" className="ghost" onClick={() => onDeleteSaved?.(entry.experienceId, entry.id)}>
-                    <Icon name="trash" size="sm" /> Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </section>
-  );
-};
-
 const generationHints = [
   'Analyzing the job description and keywords…',
   'Matching verified achievements from your profile…',
   'Authoring succinct ATS-ready bullet points…',
 ];
 
-const CACHE_KEY = 'resumerocket_ai_resume_cache';
+const CACHE_KEY = 'resumerocket_ai_cover_letter_cache';
 const CACHE_VERSION = 2;
 
 const loadCachedResult = () => {
@@ -1103,7 +651,7 @@ const clearCachedResult = () => {
   }
 };
 
-const AiResumeGenerator = () => {
+const AiCoverLetterGenerator = () => {
   const [jobs, setJobs] = useState([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsError, setJobsError] = useState('');
@@ -1141,29 +689,28 @@ const AiResumeGenerator = () => {
   const [livePreviewPdfUrl, setLivePreviewPdfUrl] = useState('');
   const [livePreviewLoading, setLivePreviewLoading] = useState(false);
   const [livePreviewError, setLivePreviewError] = useState('');
-  const [experienceVariations, setExperienceVariations] = useState({});
-  const [experienceVariationsLoading, setExperienceVariationsLoading] = useState(false);
-  const [experienceVariationsError, setExperienceVariationsError] = useState('');
-  const [regeneratingBullet, setRegeneratingBullet] = useState(null);
-  const [savedExperienceVersions, setSavedExperienceVersions] = useState(() => {
-    if (typeof window === 'undefined') return {};
+  
+  // UC-061: Email and letterhead state
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showLetterheadSettings, setShowLetterheadSettings] = useState(false);
+  const [letterheadConfig, setLetterheadConfig] = useState(() => {
     try {
-      const stored = localStorage.getItem(EXPERIENCE_TAILOR_CACHE_KEY);
-      return stored ? JSON.parse(stored) : {};
+      const saved = localStorage.getItem('resumerocket_letterhead_config');
+      return saved ? JSON.parse(saved) : {
+        header_format: 'centered',
+        font_name: 'Calibri',
+        font_size: 11,
+        header_color: null,
+      };
     } catch {
-      return {};
+      return {
+        header_format: 'centered',
+        font_name: 'Calibri',
+        font_size: 11,
+        header_color: null,
+      };
     }
   });
-  
-  // Export options state
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [exportFormat, setExportFormat] = useState('docx');
-  const [exportTheme, setExportTheme] = useState('professional');
-  const [exportWatermark, setExportWatermark] = useState('');
-  const [exportFilename, setExportFilename] = useState('');
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportError, setExportError] = useState('');
-  const [availableThemes, setAvailableThemes] = useState([]);
   
   // Template management state
   const [customTemplates, setCustomTemplates] = useState(() => {
@@ -1192,6 +739,11 @@ const AiResumeGenerator = () => {
     setLayoutSource((prev) => (prev.type === 'custom' ? prev : { type: 'custom', id: '', label: 'Custom layout' }));
   }, []);
 
+  // Save letterhead config to localStorage
+  useEffect(() => {
+    localStorage.setItem('resumerocket_letterhead_config', JSON.stringify(letterheadConfig));
+  }, [letterheadConfig]);
+
   // Load cached result on mount
   useEffect(() => {
     const cached = loadCachedResult();
@@ -1208,7 +760,7 @@ const AiResumeGenerator = () => {
         setLayoutSource(cached.layoutSource);
         setHasManualSectionOverrides(cached.layoutSource?.type === 'custom');
       }
-      setStatusMessage('✓ Restored your previous resume session');
+      setStatusMessage('✓ Restored your previous cover letter session');
       // Scroll to variations after a short delay
       setTimeout(() => {
         if (variationSectionRef.current) {
@@ -1216,21 +768,6 @@ const AiResumeGenerator = () => {
         }
       }, 500);
     }
-  }, []);
-
-  // Fetch available themes on mount
-  useEffect(() => {
-    const fetchThemes = async () => {
-      try {
-        const themes = await resumeExportAPI.getThemes();
-        setAvailableThemes(themes);
-      } catch (error) {
-        console.error('Failed to fetch themes:', error);
-        // Use default themes if fetch fails
-        setAvailableThemes(['professional', 'modern', 'minimal', 'creative']);
-      }
-    };
-    fetchThemes();
   }, []);
 
   // Save result to cache whenever it changes
@@ -1265,15 +802,6 @@ const AiResumeGenerator = () => {
   }, [sectionConfig.order]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      localStorage.setItem(EXPERIENCE_TAILOR_CACHE_KEY, JSON.stringify(savedExperienceVersions));
-    } catch {
-      // ignore storage failures
-    }
-  }, [savedExperienceVersions]);
-
-  useEffect(() => {
     const loadJobs = async () => {
       setJobsLoading(true);
       setJobsError('');
@@ -1282,7 +810,7 @@ const AiResumeGenerator = () => {
         const list = Array.isArray(response) ? response : response?.results || [];
         setJobs(list);
         if (!list.length) {
-          setJobsError('Add a job inside the Jobs workspace to unlock AI resumes.');
+          setJobsError('Add a job inside the Jobs workspace to unlock AI cover letters.');
         }
       } catch (err) {
         const message = err?.message || err?.code || 'Unable to load your jobs.';
@@ -1363,103 +891,6 @@ const AiResumeGenerator = () => {
       result.variations[0]
     );
   }, [result, activeVariationId]);
-
-  useEffect(() => {
-    console.log('[ExperienceVariations] useEffect triggered:', {
-      selectedJobId,
-      hasActiveVariation: !!activeVariation,
-      experienceSections: activeVariation?.experience_sections,
-      experienceCount: activeVariation?.experience_sections?.length
-    });
-    
-    if (!selectedJobId || !activeVariation) {
-      console.log('[ExperienceVariations] Skipping - no job or variation');
-      setExperienceVariations({});
-      setExperienceVariationsError('');
-      return;
-    }
-    const experiences = (activeVariation.experience_sections || [])
-      .filter((exp) => exp.source_experience_id);
-    console.log('[ExperienceVariations] Filtered experiences:', {
-      total: activeVariation.experience_sections?.length,
-      withSourceId: experiences.length,
-      experiences: experiences.map(exp => ({
-        source_experience_id: exp.source_experience_id,
-        role: exp.role,
-        company: exp.company
-      }))
-    });
-    
-    if (!experiences.length) {
-      console.log('[ExperienceVariations] Skipping - no experiences with source_experience_id');
-      setExperienceVariations({});
-      setExperienceVariationsError('');
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadExperienceVariations = async () => {
-      console.log('[ExperienceVariations] Starting to load variations for experiences:', experiences.map(e => e.source_experience_id));
-      setExperienceVariationsLoading(true);
-      setExperienceVariationsError('');
-      try {
-        console.log('[ExperienceVariations] Making API calls...');
-        const results = await Promise.all(
-          experiences.map(async (exp, idx) => {
-            console.log(`[ExperienceVariations] Calling API for experience ${idx}:`, exp.source_experience_id);
-            try {
-              const result = await resumeAIAPI.generateExperienceVariations(selectedJobId, exp.source_experience_id, {
-                tone,
-                variation_count: EXPERIENCE_VARIATION_TARGET,
-              });
-              console.log(`[ExperienceVariations] API call ${idx} completed:`, result);
-              return result;
-            } catch (err) {
-              console.error(`[ExperienceVariations] API call ${idx} failed:`, err);
-              throw err;
-            }
-          }),
-        );
-        console.log('[ExperienceVariations] All API calls completed');
-        if (cancelled) return;
-        console.log('[ExperienceVariations] Raw API results:', results);
-        const map = {};
-        results.forEach((entry, idx) => {
-          console.log(`[ExperienceVariations] Processing result ${idx}:`, {
-            experience_id: entry?.experience_id,
-            variations_count: entry?.variations?.length,
-            entry
-          });
-          if (entry?.experience_id) {
-            const key = `experience-${entry.experience_id}`;
-            map[entry.experience_id] = entry;
-            map[key] = entry;
-            console.log(`[ExperienceVariations] Stored variation with keys: ${entry.experience_id} and ${key}`);
-          }
-        });
-        console.log('[ExperienceVariations] Final map keys:', Object.keys(map));
-        console.log('[ExperienceVariations] Loaded variations:', { experiences: experiences.length, results: results.length, map });
-        setExperienceVariations(map);
-      } catch (err) {
-        console.error('[ExperienceVariations] Error loading variations:', err);
-        if (!cancelled) {
-          setExperienceVariationsError(err?.message || 'Unable to fetch tailored variations.');
-        }
-      } finally {
-        if (!cancelled) {
-          setExperienceVariationsLoading(false);
-        }
-      }
-    };
-
-    loadExperienceVariations();
-
-    return () => {
-      cancelled = true;
-      setExperienceVariationsLoading(false);
-    };
-  }, [selectedJobId, activeVariation, tone]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -1633,129 +1064,6 @@ const AiResumeGenerator = () => {
     }));
   };
 
-  const applyTailoredBulletsToExperience = (experience, tailoredBullets = []) => {
-    if (!experience) return;
-    const experiencesList = activeVariation?.experience_sections || [];
-    const fallbackIndex = Math.max(0, experiencesList.indexOf(experience));
-    const groupId = getExperienceGroupId(experience, fallbackIndex);
-    const baseBullets = experience.bullets || [];
-    const nextBullets = tailoredBullets?.length ? tailoredBullets : baseBullets;
-    baseBullets.forEach((original, idx) => {
-      const bulletKey = buildBulletKey('experience', groupId, idx);
-      handleBulletOverride(bulletKey, nextBullets[idx] || original);
-    });
-  };
-
-  const handleApplyExperienceVariant = (experience, variant) => {
-    if (!experience || !variant) return;
-    applyTailoredBulletsToExperience(experience, variant.bullets);
-    setLayoutHint(`Applied ${variant.label} variation to ${experience.role || 'experience'}`);
-  };
-
-  const handleSaveExperienceVariant = (insight, variant) => {
-    if (!insight || !variant || !selectedJobId) return;
-    setSavedExperienceVersions((prev) => {
-      const jobEntry = prev[selectedJobId] || {};
-      const existing = jobEntry[insight.experienceId] || [];
-      const nextVersion = {
-        id: `tailored_${Date.now()}`,
-        label: variant.label,
-        variationId: variant.id,
-        bullets: variant.bullets,
-        savedAt: new Date().toISOString(),
-        role: insight.experience.role,
-        company: insight.experience.company,
-        relevanceScore: insight.relevanceScore,
-      };
-      const nextJobEntry = {
-        ...jobEntry,
-        [insight.experienceId]: [nextVersion, ...existing].slice(0, 5),
-      };
-      return {
-        ...prev,
-        [selectedJobId]: nextJobEntry,
-      };
-    });
-    setLayoutHint(`Saved ${variant.label} for ${insight.experience.role || 'experience'}`);
-  };
-
-  const handleRegenerateBullet = async (experienceId, variantId, bulletIndex) => {
-    if (!selectedJobId) return;
-    setRegeneratingBullet({ experienceId, variantId, bulletIndex });
-    try {
-      // Extract numeric ID from "experience-X" format
-      const numericId = experienceId.startsWith('experience-') 
-        ? experienceId.split('-')[1] 
-        : experienceId;
-      
-      const payload = await resumeAIAPI.regenerateExperienceBullet(selectedJobId, numericId, {
-        tone,
-        variant_id: variantId,
-        bullet_index: bulletIndex,
-      });
-      const nextBullet = payload?.bullet;
-      if (nextBullet) {
-        setExperienceVariations((prev) => {
-          const entry = prev[experienceId];
-          if (!entry) return prev;
-          const nextVariations = entry.variations.map((variant) => {
-            if (variant.id !== variantId) return variant;
-            const updatedBullets = variant.bullets.map((text, idx) => (idx === bulletIndex ? nextBullet : text));
-            return { ...variant, bullets: updatedBullets };
-          });
-          return {
-            ...prev,
-            [experienceId]: {
-              ...entry,
-              variations: nextVariations,
-            },
-          };
-        });
-        setLayoutHint('Regenerated a tailored bullet with Gemini.');
-      }
-    } catch (err) {
-      setLayoutHint(err?.message || 'Unable to regenerate bullet.');
-    } finally {
-      setRegeneratingBullet(null);
-    }
-  };
-
-  const handleDeleteSavedExperienceVariant = (experienceId, versionId) => {
-    if (!selectedJobId) return;
-    setSavedExperienceVersions((prev) => {
-      const jobEntry = prev[selectedJobId];
-      if (!jobEntry || !jobEntry[experienceId]) return prev;
-      const remaining = jobEntry[experienceId].filter((entry) => entry.id !== versionId);
-      if (remaining.length === jobEntry[experienceId].length) return prev;
-      const nextJobEntry = { ...jobEntry };
-      if (remaining.length) {
-        nextJobEntry[experienceId] = remaining;
-      } else {
-        delete nextJobEntry[experienceId];
-      }
-      const nextState = { ...prev };
-      if (Object.keys(nextJobEntry).length) {
-        nextState[selectedJobId] = nextJobEntry;
-      } else {
-        delete nextState[selectedJobId];
-      }
-      return nextState;
-    });
-    setLayoutHint('Removed saved tailored version');
-  };
-
-  const handleApplySavedExperienceVariant = (experienceId, version) => {
-    if (!version) return;
-    const experiencesList = activeVariation?.experience_sections || [];
-    const target = experiencesList.find((experience, idx) => getExperienceUniqueId(experience, idx) === experienceId);
-    if (!target) {
-      setLayoutHint('Saved experience is not part of this variation.');
-      return;
-    }
-    applyTailoredBulletsToExperience(target, version.bullets);
-    setLayoutHint(`Applied saved version “${version.label}”.`);
-  };
-
   const handleBulletRegenerate = (sectionId, bulletKey, originalText) => {
     const suggestion = generateBulletRewrite(
       originalText,
@@ -1827,19 +1135,19 @@ const AiResumeGenerator = () => {
 
   const handleGenerate = async () => {
     if (!selectedJobId) {
-      setGenerationError('Select a job before generating a resume.');
+      setGenerationError('Select a job before generating a cover letter.');
       return;
     }
     setGenerating(true);
     setGenerationError('');
-    setStatusMessage('Generating a tailored resume for this role…');
+    setStatusMessage('Generating a tailored cover letter for this role…');
     setHintIndex(0);
     try {
-      const data = await resumeAIAPI.generateForJob(selectedJobId, {
+      const data = await coverLetterAIAPI.generateForJob(selectedJobId, {
         tone,
         variation_count: variationCount,
       });
-      console.log('Received resume data:', {
+      console.log('Received cover letter data:', {
         variation_count: data?.variation_count,
         variations_length: data?.variations?.length,
         variation_labels: data?.variations?.map(v => v.label),
@@ -1847,12 +1155,12 @@ const AiResumeGenerator = () => {
       setResult(data);
       const firstVariation = data?.variations?.[0];
       setActiveVariationId(firstVariation?.id || '');
-      setStatusMessage('Resume ready! Scroll down to preview.');
+      setStatusMessage('Cover letter ready! Scroll down to preview.');
       setTimeout(() => {
         variationSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 200);
     } catch (err) {
-      const message = err?.message || err?.code || 'Failed to generate resume.';
+      const message = err?.message || err?.code || 'Failed to generate cover letter.';
       setGenerationError(message);
       setStatusMessage('Something went wrong. Please try again.');
     } finally {
@@ -1897,21 +1205,106 @@ const AiResumeGenerator = () => {
     }
   };
 
-  const handleDownload = (variation) => {
-    if (!variation?.latex_document) return;
+  const handleDownloadText = (variation) => {
+    if (!variation) return;
     
-    // Generate filename from profile name
-    let filename = 'resume.tex';
+    // Combine all parts of the cover letter
+    const fullText = [
+      variation.opening_paragraph,
+      ...(variation.body_paragraphs || []),
+      variation.closing_paragraph,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    
+    // Generate filename from profile name and job info
+    let filename = 'cover_letter.txt';
     if (result?.profile?.name) {
       const name = result.profile.name.trim();
       const nameParts = name.split(/\s+/);
       if (nameParts.length >= 2) {
         const firstName = nameParts[0];
         const lastName = nameParts[nameParts.length - 1];
-        filename = `${firstName}_${lastName}_Resume.tex`;
+        filename = `${firstName}_${lastName}_CoverLetter.txt`;
+      } else {
+        filename = `${name.replace(/\s+/g, '_')}_CoverLetter.txt`;
+      }
+    }
+    
+    const blob = new Blob([fullText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadDocx = async (variation) => {
+    if (!variation || !result?.profile || !result?.job) return;
+    
+    const profile = result.profile;
+    const job = result.job;
+    
+    try {
+      const blob = await coverLetterAIAPI.exportDocx({
+        candidate_name: profile.name || 'Candidate',
+        candidate_email: profile.contact?.email || '',
+        candidate_phone: profile.contact?.phone || '',
+        candidate_location: profile.location || profile.contact?.location || '',
+        company_name: job.company_name || 'Company',
+        job_title: job.title || 'Position',
+        opening_paragraph: variation.opening_paragraph || '',
+        body_paragraphs: variation.body_paragraphs || [],
+        closing_paragraph: variation.closing_paragraph || '',
+        letterhead_config: letterheadConfig,
+      });
+      
+      // Generate filename
+      let filename = 'cover_letter.docx';
+      if (profile.name) {
+        const name = profile.name.trim();
+        const nameParts = name.split(/\s+/);
+        if (nameParts.length >= 2) {
+          const firstName = nameParts[0];
+          const lastName = nameParts[nameParts.length - 1];
+          filename = `${firstName}_${lastName}_CoverLetter.docx`;
+        } else {
+          filename = `${name.replace(/\s+/g, '_')}_CoverLetter.docx`;
+        }
+      }
+      
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download Word document:', err);
+      setGenerationError('Failed to download Word document. Please try again.');
+    }
+  };
+
+  const handleDownload = (variation) => {
+    if (!variation?.latex_document) return;
+    
+    // Generate filename from profile name
+    let filename = 'cover_letter.tex';
+    if (result?.profile?.name) {
+      const name = result.profile.name.trim();
+      const nameParts = name.split(/\s+/);
+      if (nameParts.length >= 2) {
+        const firstName = nameParts[0];
+        const lastName = nameParts[nameParts.length - 1];
+        filename = `${firstName}_${lastName}_CoverLetter.tex`;
       } else {
         // If only one name part, use it
-        filename = `${name.replace(/\s+/g, '_')}_Resume.tex`;
+        filename = `${name.replace(/\s+/g, '_')}_CoverLetter.tex`;
       }
     }
     
@@ -1930,17 +1323,17 @@ const AiResumeGenerator = () => {
     if (!variation?.pdf_document) return;
     
     // Generate filename from profile name
-    let filename = 'resume.pdf';
+    let filename = 'cover_letter.pdf';
     if (result?.profile?.name) {
       const name = result.profile.name.trim();
       const nameParts = name.split(/\s+/);
       if (nameParts.length >= 2) {
         const firstName = nameParts[0];
         const lastName = nameParts[nameParts.length - 1];
-        filename = `${firstName}_${lastName}_Resume.pdf`;
+        filename = `${firstName}_${lastName}_CoverLetter.pdf`;
       } else {
         // If only one name part, use it
-        filename = `${name.replace(/\s+/g, '_')}_Resume.pdf`;
+        filename = `${name.replace(/\s+/g, '_')}_CoverLetter.pdf`;
       }
     }
     
@@ -1963,55 +1356,6 @@ const AiResumeGenerator = () => {
     } catch (err) {
       console.error('Failed to download PDF:', err);
       setGenerationError('Failed to download PDF. Please try again.');
-    }
-  };
-
-  const handleExportResume = async () => {
-    if (!liveLatexPreview || !activeVariation) {
-      setExportError('No resume content available to export');
-      return;
-    }
-
-    setIsExporting(true);
-    setExportError('');
-
-    try {
-      // Generate filename based on profile name
-      let filename = '';
-      if (result?.profile?.name) {
-        const name = result.profile.name.trim();
-        const nameParts = name.split(/\s+/);
-        if (nameParts.length >= 2) {
-          const firstName = nameParts[0];
-          const lastName = nameParts[nameParts.length - 1];
-          filename = `${firstName}_${lastName}_Resume`;
-        } else {
-          filename = `${name.replace(/\s+/g, '_')}_Resume`;
-        }
-      }
-
-      // Call the export API - browser will handle the filename from Content-Disposition header
-      await resumeExportAPI.exportAIResume(
-        liveLatexPreview,
-        exportFormat,
-        exportTheme,
-        exportWatermark.trim() || null,
-        filename,
-        null  // Let backend extract from LaTeX
-      );
-
-      // Success - close modal and reset
-      setShowExportModal(false);
-      setExportError('');
-      // Reset form for next time
-      setTimeout(() => {
-        setExportWatermark('');
-      }, 300);
-    } catch (error) {
-      console.error('Export failed:', error);
-      setExportError(error.response?.data?.error || 'Failed to export resume. Please try again.');
-    } finally {
-      setIsExporting(false);
     }
   };
 
@@ -2076,194 +1420,109 @@ const AiResumeGenerator = () => {
   const renderSectionById = (sectionId) => sectionSnapshots[sectionId]?.jsx || null;
 
   const liveLatexPreview = useMemo(() => {
-    if (!activeVariation) return '% Generate a resume to view the LaTeX preview.';
+    if (!activeVariation) return '% Generate a cover letter to view the LaTeX preview.';
     
-    // Build a custom LaTeX document that reflects user changes
-    if (!activeVariation.latex_document) {
-      return '% LaTeX document will be available after generation.';
+    // Cover letters don't have latex_document like resumes - we need to generate it from paragraphs
+    if (!result?.profile) {
+      return '% Candidate profile information is required.';
     }
     
-    // Parse the original latex document to extract the header (template)
-    const originalLatex = activeVariation.latex_document;
+    const profile = result.profile;
+    const job = result.job || {};
     
-    // Extract everything up to and including \begin{document}
-    const headerMatch = originalLatex.match(/([\s\S]*?\\begin\{document\})/);
-    if (!headerMatch) {
-      return originalLatex; // Fallback to original if we can't parse it
-    }
+    // Extract candidate info
+    const name = profile.name || 'Candidate';
+    const email = profile.contact?.email || '';
+    const phone = profile.contact?.phone || '';
+    const location = profile.location || profile.contact?.location || '';
     
-    const header = headerMatch[1];
-    const lines = [header.trim()];
-    lines.push('');
+    // Extract job info
+    const companyName = job.company_name || 'Company';
+    const jobTitle = job.title || 'Position';
     
-    // Build contact header from the result profile data
-    if (result?.profile) {
-      const profile = result.profile;
-      const name = latexEscape(profile.name || 'Candidate');
-      const contactBits = [];
-      
-      if (profile.contact?.phone) contactBits.push(latexEscape(profile.contact.phone));
-      if (profile.contact?.email) {
-        const email = profile.contact.email;
-        contactBits.push(`\\href{mailto:${email}}{\\underline{${latexEscape(email)}}}`);
-      }
-      if (profile.contact?.portfolio_url) {
-        const url = profile.contact.portfolio_url;
-        contactBits.push(`\\href{${url}}{\\underline{Portfolio}}`);
-      }
-      
-      const location = profile.location || profile.contact?.location;
-      if (location) contactBits.unshift(latexEscape(location));
-      
-      lines.push('\\begin{center}');
-      lines.push(`    \\textbf{\\Huge \\scshape ${name}} \\\\ \\vspace{1pt}`);
-      if (contactBits.length) {
-        lines.push(`    {\\small ${contactBits.join(' $|$ ')} }`);
-      }
-      lines.push('\\end{center}');
+    // Get paragraphs from active variation
+    const opening = activeVariation.opening_paragraph || '';
+    const bodies = activeVariation.body_paragraphs || [];
+    const closing = activeVariation.closing_paragraph || '';
+    
+    // Helper to escape LaTeX special characters
+    const latexEscape = (text) => {
+      if (!text) return '';
+      return String(text)
+        .replace(/\\/g, '\\textbackslash{}')
+        .replace(/&/g, '\\&')
+        .replace(/%/g, '\\%')
+        .replace(/\$/g, '\\$')
+        .replace(/#/g, '\\#')
+        .replace(/_/g, '\\_')
+        .replace(/\{/g, '\\{')
+        .replace(/\}/g, '\\}')
+        .replace(/~/g, '\\textasciitilde{}')
+        .replace(/\^/g, '\\textasciicircum{}');
+    };
+    
+    // Get current date
+    const today = new Date().toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    
+    // Build LaTeX document
+    const lines = [
+      '\\documentclass[letterpaper,11pt]{article}',
+      '\\usepackage[empty]{fullpage}',
+      '\\usepackage[hidelinks]{hyperref}',
+      '\\usepackage{geometry}',
+      '\\geometry{margin=0.75in}',
+      '\\raggedright',
+      '\\setlength{\\tabcolsep}{0in}',
+      '\\setlength{\\parindent}{0pt}',
+      '\\setlength{\\parskip}{0.5em}',
+      '',
+      '\\begin{document}',
+      '',
+      latexEscape(today),
+      '',
+      'Hiring Manager \\\\',
+      `${latexEscape(companyName)} \\\\`,
+      latexEscape(jobTitle),
+      '',
+      '\\vspace{1em}',
+      '',
+      'Dear Hiring Manager,',
+      '',
+    ];
+    
+    // Add opening paragraph
+    if (opening) {
+      lines.push(latexEscape(opening));
       lines.push('');
     }
     
-    // Map section IDs to proper LaTeX section rendering
-    visibleSections.forEach((sectionId) => {
-      switch (sectionId) {
-        case 'summary': {
-          const summary = activeVariation.summary;
-          if (summary) {
-            lines.push('\\section{Summary}');
-            lines.push('\\resumeSubHeadingListStart');
-            const summaryHeadline = activeVariation.summary_headline;
-            let summaryBody = latexEscape(summary);
-            if (summaryHeadline) {
-              summaryBody = `\\textbf{${latexEscape(summaryHeadline)}} -- ${summaryBody}`;
-            }
-            lines.push(`\\resumeItem{${summaryBody}}`);
-            lines.push('\\resumeSubHeadingListEnd');
-            lines.push('');
-          }
-          break;
-        }
-        case 'education': {
-          const education = activeVariation.education_highlights || [];
-          if (education.length > 0) {
-            const educationGroupId = 'education-main';
-            const bulletItems = education.map((edu, idx) => ({
-              key: buildBulletKey('education', educationGroupId, idx),
-              text: bulletOverrides[buildBulletKey('education', educationGroupId, idx)] ?? edu.notes,
-            }));
-            
-            const orderedBullets = getOrderedBulletItems('education', educationGroupId, bulletItems, bulletOrderOverrides);
-            
-            lines.push('\\section{Education}');
-            lines.push('\\resumeSubHeadingListStart');
-            orderedBullets.forEach((item, idx) => {
-              lines.push(`\\resumeItem{${latexEscape(item.text || '')}}`);
-              // Add negative vertical space between items to reduce gaps
-              if (idx < orderedBullets.length - 1) {
-                lines.push('\\vspace{-2pt}');
-              }
-            });
-            lines.push('\\resumeSubHeadingListEnd');
-            lines.push('');
-          }
-          break;
-        }
-        case 'experience': {
-          const experiences = activeVariation.experience_sections || [];
-          const density = sectionConfig.formatting.experience?.density || 'detailed';
-          if (experiences.length > 0) {
-            lines.push('\\section{Experience}');
-            lines.push('\\resumeSubHeadingListStart');
-            experiences.slice(0, 5).forEach((exp, idx) => {
-              const role = latexEscape(exp.role || '');
-              const company = latexEscape(exp.company || '');
-              const location = latexEscape(exp.location || '');
-              const dates = latexEscape(exp.dates || '');
-              
-              lines.push(`\\resumeSubheading{${role}}{${dates}}{${company}}{${location}}`);
-              
-              const bullets = density === 'compact' ? (exp.bullets || []).slice(0, 1) : (exp.bullets || []);
-              const groupId = getExperienceGroupId(exp, idx);
-              const bulletItems = bullets.map((bullet, bulletIdx) => {
-                const key = buildBulletKey('experience', groupId, bulletIdx);
-                return {
-                  key,
-                  text: bulletOverrides[key] ?? bullet,
-                };
-              });
-              
-              const ordered = getOrderedBulletItems('experience', groupId, bulletItems, bulletOrderOverrides);
-              
-              if (ordered.length > 0) {
-                lines.push('\\resumeItemListStart');
-                ordered.forEach((item) => {
-                  lines.push(`\\resumeItem{${latexEscape(item.text)}}`);
-                });
-                lines.push('\\resumeItemListEnd');
-              }
-            });
-            lines.push('\\resumeSubHeadingListEnd');
-            lines.push('');
-          }
-          break;
-        }
-        case 'projects': {
-          const projects = activeVariation.project_sections || [];
-          if (projects.length > 0) {
-            lines.push('\\section{Projects}');
-            lines.push('\\resumeSubHeadingListStart');
-            projects.slice(0, 2).forEach((proj) => {
-              const name = latexEscape(proj.name || '');
-              const dates = latexEscape(proj.dates || '');
-              lines.push(`\\resumeProjectHeading{\\textbf{${name}}}{${dates}}`);
-              
-              const groupId = proj.source_project_id || proj.name;
-              const bulletItems = (proj.bullets || []).map((bullet, idx) => {
-                const key = buildBulletKey('projects', groupId, idx);
-                return {
-                  key,
-                  text: bulletOverrides[key] ?? bullet,
-                };
-              });
-              
-              const ordered = getOrderedBulletItems('projects', groupId, bulletItems, bulletOrderOverrides);
-              
-              if (ordered.length > 0) {
-                lines.push('\\resumeItemListStart');
-                ordered.slice(0, 3).forEach((item) => {
-                  lines.push(`\\resumeItem{${latexEscape(item.text)}}`);
-                });
-                lines.push('\\resumeItemListEnd');
-              }
-            });
-            lines.push('\\resumeSubHeadingListEnd');
-            lines.push('');
-          }
-          break;
-        }
-        case 'skills': {
-          const skills = chipify(activeVariation.skills_to_highlight);
-          if (skills.length > 0) {
-            lines.push('\\section{Technical Skills}');
-            lines.push('\\begin{itemize}[leftmargin=0.15in, label={}]');
-            lines.push('    \\small{\\item{');
-            lines.push(`     \\textbf{Skills}{: ${skills.map(latexEscape).join(', ')}} \\\\`);
-            lines.push('    }}');
-            lines.push('\\end{itemize}');
-            lines.push('');
-          }
-          break;
-        }
-        default:
-          // Skip sections like keywords and preview
-          break;
+    // Add body paragraphs
+    bodies.forEach((para) => {
+      if (para && para.trim()) {
+        lines.push(latexEscape(para.trim()));
+        lines.push('');
       }
     });
     
+    // Add closing paragraph
+    if (closing) {
+      lines.push(latexEscape(closing));
+      lines.push('');
+    }
+    
+    // Add signature
+    lines.push('Sincerely,');
+    lines.push('');
+    lines.push(latexEscape(name));
+    lines.push('');
     lines.push('\\end{document}');
     
     return lines.join('\n');
-  }, [activeVariation, visibleSections, bulletOrderOverrides, bulletOverrides, sectionConfig, result]);
+  }, [activeVariation, result]);
 
   const handleCopyLiveLatex = async () => {
     if (!liveLatexPreview) return;
@@ -2283,7 +1542,7 @@ const AiResumeGenerator = () => {
     setLivePreviewError('');
     
     try {
-      const data = await resumeAIAPI.compileLatex(liveLatexPreview);
+      const data = await coverLetterAIAPI.compileLatex(liveLatexPreview);
       
       if (data.pdf_document) {
         // Convert base64 to blob and create URL
@@ -2315,9 +1574,8 @@ const AiResumeGenerator = () => {
   // Auto-compile when liveLatexPreview changes
   useEffect(() => {
     if (!liveLatexPreview || 
-        liveLatexPreview.includes('% Generate a resume') || 
-        liveLatexPreview.includes('% LaTeX document will be available') ||
-        liveLatexPreview.includes('% No visible sections')) {
+        liveLatexPreview.includes('% Generate a cover letter') || 
+        liveLatexPreview.includes('% Candidate profile information is required')) {
       setLivePreviewPdfUrl('');
       return;
     }
@@ -2448,8 +1706,7 @@ const AiResumeGenerator = () => {
               <ol className={`experience-list ${density === 'compact' ? 'compact' : ''}`}>
                 {experiences.map((exp, idx) => {
                   const bullets = density === 'compact' ? (exp.bullets || []).slice(0, 1) : exp.bullets;
-                  const groupId = getExperienceGroupId(exp, idx);
-                  const experienceKey = getExperienceUniqueId(exp, idx);
+                  const groupId = exp.source_experience_id || `${exp.role || 'experience'}-${exp.company || idx}`;
                   const bulletItems = (bullets || []).map((bullet, bulletIdx) => {
                     const key = buildBulletKey('experience', groupId, bulletIdx);
                     return {
@@ -2458,7 +1715,7 @@ const AiResumeGenerator = () => {
                     };
                   });
                   return (
-                    <li key={experienceKey}>
+                    <li key={`${exp.source_experience_id}-${exp.role}`}>
                       <div className="experience-card">
                         <div className="experience-header">
                           <span className="experience-rank">#{idx + 1}</span>
@@ -2466,7 +1723,7 @@ const AiResumeGenerator = () => {
                             <strong>{exp.role}</strong>
                             <span>{exp.company}</span>
                             <small>
-                              {exp.location || ' Remote'} · {exp.dates}
+                              {exp.location || 'Remote'} · {exp.dates}
                             </small>
                           </div>
                         </div>
@@ -2496,7 +1753,7 @@ const AiResumeGenerator = () => {
         const latexLines = ['\\section*{Experience Highlights}'];
         experiences.forEach((exp, idx) => {
           const bullets = density === 'compact' ? (exp.bullets || []).slice(0, 1) : exp.bullets;
-          const groupId = getExperienceGroupId(exp, idx);
+          const groupId = exp.source_experience_id || `${exp.role || 'experience'}-${exp.company || idx}`;
           const bulletItems = (bullets || []).map((bullet, bulletIdx) => {
             const key = buildBulletKey('experience', groupId, bulletIdx);
             return {
@@ -2672,9 +1929,9 @@ const AiResumeGenerator = () => {
     <div className="ai-resume-page">
       <section className="ai-resume-card hero">
         <div>
-          <h1>Tailored Resume Generator</h1>
+          <h1>Tailored Cover Letter Generator</h1>
           <p className="lead">
-            Select a job from your pipeline and let ResumeRocket craft a role-aligned resume grounded
+            Select a job from your pipeline and let ResumeRocket craft a role-aligned cover letter grounded
             in your verified profile data.
           </p>
           <ul className="hero-checklist">
@@ -2682,10 +1939,10 @@ const AiResumeGenerator = () => {
               <Icon name="sparkles" size="sm" /> Generates 1–3 curated variations
             </li>
             <li>
-              <Icon name="file-text" size="sm" /> Outputs ATS-friendly LaTeX plus an inline PDF preview
+              <Icon name="file-text" size="sm" /> Outputs personalized opening, body, and closing paragraphs
             </li>
             <li>
-              <Icon name="briefcase" size="sm" /> Surfaces priority skills and role-specific gaps
+              <Icon name="briefcase" size="sm" /> Highlights key experiences relevant to the role
             </li>
           </ul>
         </div>
@@ -2776,11 +2033,11 @@ const AiResumeGenerator = () => {
             >
               {generating ? (
                 <>
-                  <LoadingSpinner size="sm" /> Generating tailored resume…
+                  <LoadingSpinner size="sm" /> Generating tailored cover letter…
                 </>
               ) : (
                 <>
-                  <Icon name="sparkles" size="sm" /> Generate tailored resume
+                  <Icon name="sparkles" size="sm" /> Generate tailored cover letter
                 </>
               )}
             </button>
@@ -2871,34 +2128,44 @@ const AiResumeGenerator = () => {
             <div>
               <p className="eyebrow">AI insights</p>
               <h2>
-                How your profile maps to “{resultJobTitle}” at {resultJobCompany}
+                Cover letter for “{resultJobTitle}” at {resultJobCompany}
               </h2>
             </div>
             <div className="insight-grid">
               <div>
-                <strong>Job focus</strong>
+                <strong>Personalization strategy</strong>
                 <p>
-                  {analysis.job_focus_summary ||
-                    'The model will emphasize the core requirements of this role.'}
+                  {analysis.personalization_strategy ||
+                    'AI will tailor the cover letter to match the company culture and role requirements.'}
                 </p>
               </div>
               <div>
-                <strong>Profile match</strong>
+                <strong>Tone rationale</strong>
                 <p>
-                  {analysis.skill_match_notes ||
-                    'ResumeRocket AI will highlight the strongest overlapping stories.'}
+                  {analysis.tone_rationale ||
+                    `Using ${result.tone || 'balanced'} tone to match the company culture.`}
                 </p>
               </div>
-              {analysis.skill_gaps?.length ? (
+              {analysis.key_achievements?.length > 0 && (
                 <div>
-                  <strong>Skill gaps to monitor</strong>
+                  <strong>Key achievements highlighted</strong>
                   <ul>
-                    {analysis.skill_gaps.map((gap) => (
-                      <li key={gap}>{gap}</li>
+                    {analysis.key_achievements.slice(0, 3).map((achievement, idx) => (
+                      <li key={idx}>{achievement}</li>
                     ))}
                   </ul>
                 </div>
-              ) : null}
+              )}
+              {analysis.news_to_reference?.length > 0 && (
+                <div>
+                  <strong>Recent news referenced</strong>
+                  <ul>
+                    {analysis.news_to_reference.map((news, idx) => (
+                      <li key={idx}>{news}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {profile && (
                 <div className="profile-preview">
                   <strong>{profile.name}</strong>
@@ -2941,59 +2208,59 @@ const AiResumeGenerator = () => {
               </div>
 
             </div>
-            <div className="preview-and-tools">
-              <aside className="ai-resume-card preview-panel">
-                <h3>Live PDF preview</h3>
-                <p className="hint">
-                  Reflects your current section order, visibility, formatting, and bullet edits.
-                </p>
-                {livePreviewLoading && (
-                  <div className="live-preview-loading">
-                    <LoadingSpinner size="sm" /> Compiling preview...
-                  </div>
-                )}
-                {livePreviewError && (
-                  <p className="inline-error">{livePreviewError}</p>
-                )}
-                {livePreviewPdfUrl ? (
-                  <div className="pdf-frame-wrapper live-preview">
-                    <iframe
-                      src={`${livePreviewPdfUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-                      title="Live Resume PDF preview"
-                      className="pdf-preview-frame"
-                    />
-                  </div>
-                ) : !livePreviewLoading && !activeVariation ? (
-                  <p className="placeholder">Generate a resume to enable the live preview.</p>
-                ) : !livePreviewLoading && (
-                  <p className="placeholder">Adjust sections to see the preview update.</p>
-                )}
-                <div className="latex-column-actions">
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={handleCopyLiveLatex}
-                    disabled={!activeVariation}
-                  >
-                    <Icon name={latexCopied ? 'check' : 'clipboard'} size="sm" />{' '}
-                    {latexCopied ? 'Copied LaTeX' : 'Copy LaTeX source'}
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={compileLivePreview}
-                    disabled={!activeVariation || livePreviewLoading}
-                  >
-                    <Icon name="refresh" size="sm" /> Refresh preview
-                  </button>
+            
+            {activeVariation && activeVariation.highlights && (
+              <section className="ai-resume-card insights">
+                <div>
+                  <p className="eyebrow">Experience highlighting</p>
+                  <h2>What this variation emphasizes</h2>
                 </div>
-              </aside>
-              <div className="customization-column">
-                <section className="ai-resume-card section-customizer">
+                <div className="insight-grid">
+                  {activeVariation.highlights.achievements?.length > 0 && (
+                    <div>
+                      <strong>Achievements referenced</strong>
+                      <ul>
+                        {activeVariation.highlights.achievements.map((achievement, idx) => (
+                          <li key={idx}>{achievement}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {activeVariation.highlights.keywords_used?.length > 0 && (
+                    <div>
+                      <strong>Keywords emphasized</strong>
+                      <div className="chip-row">
+                        {activeVariation.highlights.keywords_used.map((keyword) => (
+                          <span key={keyword} className="chip">
+                            {keyword}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {activeVariation.highlights.news_citations?.length > 0 && (
+                    <div>
+                      <strong>Company news referenced</strong>
+                      <ul>
+                        {activeVariation.highlights.news_citations.map((news, idx) => (
+                          <li key={idx}>
+                            {news.title || news}
+                            {news.date && <span className="date"> ({news.date})</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+            
+            <div className="customizer-preview-grid">
+              <section className="ai-resume-card section-customizer">
                 <div className="customizer-header">
                   <div className="layout-panel-heading">
-                    <p className="eyebrow">Resume layout</p>
-                    <h2>Customize section arrangements</h2>
+                    <p className="eyebrow">Cover letter layout</p>
+                    <h2>Customize sections & preview</h2>
                     <p className="customizer-subtitle">
                       Toggle sections on/off, drag to reorder, adjust formatting, and watch the LaTeX preview
                       update instantly while you fine-tune each section.
@@ -3028,14 +2295,81 @@ const AiResumeGenerator = () => {
                     </button>
                   </div>
                 )}
+                <div className="customizer-body">
+                  <div className="latex-column">
+                    <h3>Live PDF preview</h3>
+                    <p className="hint">
+                      Reflects your current section order, visibility, formatting, and edits.
+                    </p>
+                    {livePreviewLoading && (
+                      <div className="live-preview-loading">
+                        <LoadingSpinner size="sm" /> Compiling preview...
+                      </div>
+                    )}
+                    {livePreviewError && (
+                      <p className="inline-error">{livePreviewError}</p>
+                    )}
+                    {livePreviewPdfUrl ? (
+                      <div className="pdf-frame-wrapper live-preview">
+                        <iframe
+                          src={`${livePreviewPdfUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                          title="Live Cover Letter PDF preview"
+                          className="pdf-preview-frame"
+                        />
+                      </div>
+                    ) : !livePreviewLoading && !activeVariation ? (
+                      <p className="placeholder">Generate a cover letter to enable the live preview.</p>
+                    ) : !livePreviewLoading && (
+                      <p className="placeholder">Adjust sections to see the preview update.</p>
+                    )}
+                    <div className="latex-column-actions">
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={handleCopyLiveLatex}
+                        disabled={!activeVariation}
+                      >
+                        <Icon name={latexCopied ? 'check' : 'clipboard'} size="sm" />{' '}
+                        {latexCopied ? 'Copied LaTeX' : 'Copy LaTeX source'}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={compileLivePreview}
+                        disabled={!activeVariation || livePreviewLoading}
+                      >
+                        <Icon name="refresh" size="sm" /> Refresh preview
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
               </section>
 
               {activeVariation && (
                 <article className="ai-resume-card variation-card">
                   <header>
+                    <div>
+                      <h3>{activeVariation.summary_headline || activeVariation.label}</h3>
+                      <div className="variation-chip-row">
+                        {activeVariation.tone && (
+                          <span className="chip tone">Tone: {activeVariation.tone}</span>
+                        )}
+                        <span className="chip layout-chip">{layoutSource.label}</span>
+                        {jobTypeSource && (
+                          <span className="chip jobtype-chip">{jobTypeSource}</span>
+                        )}
+                      </div>
+                    </div>
                     <div className="variation-action-stack">
                       <button type="button" onClick={() => handleDownloadPdf(activeVariation)}>
                         <Icon name="download" size="sm" /> Download PDF
+                      </button>
+                      <button type="button" onClick={() => handleDownloadDocx(activeVariation)}>
+                        <Icon name="download" size="sm" /> Download Word
+                      </button>
+                      <button type="button" onClick={() => handleDownloadText(activeVariation)}>
+                        <Icon name="download" size="sm" /> Download TXT
                       </button>
                       <button type="button" onClick={() => handleCopyLatex(activeVariation)}>
                         {copiedVariationId === activeVariation.id ? (
@@ -3051,13 +2385,15 @@ const AiResumeGenerator = () => {
                       <button type="button" className="primary ghost" onClick={() => handleDownload(activeVariation)}>
                         <Icon name="download" size="sm" /> Download .tex
                       </button>
-                      <button 
-                        type="button" 
-                        className="export-modal-trigger"
-                        onClick={() => setShowExportModal(true)}
-                        disabled={!liveLatexPreview}
+                      <button type="button" onClick={() => setShowEmailModal(true)}>
+                        <Icon name="mail" size="sm" /> Email
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => setShowLetterheadSettings(!showLetterheadSettings)}
                       >
-                        <Icon name="download" size="sm" /> Export Other Formats
+                        <Icon name="settings" size="sm" /> Letterhead
                       </button>
                       <button
                         type="button"
@@ -3082,7 +2418,7 @@ const AiResumeGenerator = () => {
                             onChange={(e) => {
                               const templateId = e.target.value;
                               const allTemplates = [...sectionTemplates, ...customTemplates];
-                              const template = allTemplates.find((t) => t.id === templateId);
+                              const template = allTemplates.find(t => t.id === templateId);
                               if (template) {
                                 handleApplyTemplate(template);
                               }
@@ -3219,154 +2555,160 @@ const AiResumeGenerator = () => {
                   </div>
                 </article>
               )}
-              {activeVariation?.experience_sections?.length > 0 && (
-              <ExperienceTailoringLab
-                experiences={activeVariation.experience_sections}
-                jobContext={{
-                  keywords: jobKeywords,
-                  jobTitle,
-                  company: jobCompanyName,
-                  industry: jobIndustry,
-                }}
-                selectedJobId={selectedJobId}
-                onApply={handleApplyExperienceVariant}
-                onSave={handleSaveExperienceVariant}
-                onDeleteSaved={handleDeleteSavedExperienceVariant}
-                onApplySaved={handleApplySavedExperienceVariant}
-                savedVariants={savedExperienceVersions[selectedJobId] || {}}
-                onNotify={setLayoutHint}
-                externalVariations={experienceVariations}
-                isLoading={experienceVariationsLoading}
-                loadingError={experienceVariationsError}
-                onRegenerateBullet={handleRegenerateBullet}
-                regeneratingBullet={regeneratingBullet}
-              />
-              )}
             </div>
-          </div>
-        </section>
+          </section>
         </>
       )}
 
-      {/* Export Modal */}
-      {showExportModal && (
-        <div className="export-modal-overlay" onClick={() => setShowExportModal(false)}>
-          <div className="export-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="export-modal-header">
-              <div>
-                <h3>
-                  <Icon name="download" size="sm" /> Export Resume
-                </h3>
-                <p className="hint">Choose format, theme, and customization options</p>
-              </div>
-              <button
-                type="button"
-                className="close-button"
-                onClick={() => setShowExportModal(false)}
-                aria-label="Close export dialog"
-              >
-                <Icon name="x" size="md" />
+      {/* UC-061: Letterhead Settings Modal */}
+      {showLetterheadSettings && (
+        <div className="modal-overlay" onClick={() => setShowLetterheadSettings(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Letterhead Settings</h3>
+              <button className="close-btn" onClick={() => setShowLetterheadSettings(false)}>
+                <Icon name="x" size="sm" />
               </button>
             </div>
-
-            <div className="export-modal-body">
-              <div className="export-control-group">
-                <label htmlFor="export-format">
-                  <Icon name="fileText" size="sm" /> Format
-                </label>
+            <div className="modal-body">
+              <div className="form-group">
+                <label htmlFor="header-format">Header Format</label>
                 <select
-                  id="export-format"
-                  value={exportFormat}
-                  onChange={(e) => setExportFormat(e.target.value)}
-                  disabled={isExporting}
+                  id="header-format"
+                  value={letterheadConfig.header_format}
+                  onChange={(e) => setLetterheadConfig({ ...letterheadConfig, header_format: e.target.value })}
                 >
-                  <option value="docx">Word Document (.docx)</option>
-                  <option value="html">HTML</option>
-                  <option value="txt">Plain Text</option>
+                  <option value="centered">Centered</option>
+                  <option value="left">Left Aligned</option>
+                  <option value="right">Right Aligned</option>
                 </select>
-                <p className="field-hint">
-                  {exportFormat === 'docx' && 'Editable Microsoft Word format'}
-                  {exportFormat === 'html' && 'Web-ready HTML with inline styles'}
-                  {exportFormat === 'txt' && 'Simple plain text format'}
-                </p>
               </div>
-
-              <div className="export-control-group">
-                <label htmlFor="export-theme">
-                  <Icon name="palette" size="sm" /> Theme
-                </label>
+              <div className="form-group">
+                <label htmlFor="font-name">Font</label>
                 <select
-                  id="export-theme"
-                  value={exportTheme}
-                  onChange={(e) => setExportTheme(e.target.value)}
-                  disabled={isExporting}
+                  id="font-name"
+                  value={letterheadConfig.font_name}
+                  onChange={(e) => setLetterheadConfig({ ...letterheadConfig, font_name: e.target.value })}
                 >
-                  {availableThemes.length > 0 ? (
-                    availableThemes.map((theme) => (
-                      <option key={theme} value={theme}>
-                        {theme.charAt(0).toUpperCase() + theme.slice(1)}
-                      </option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="professional">Professional</option>
-                      <option value="modern">Modern</option>
-                      <option value="minimal">Minimal</option>
-                      <option value="creative">Creative</option>
-                    </>
-                  )}
+                  <option value="Calibri">Calibri</option>
+                  <option value="Arial">Arial</option>
+                  <option value="Times New Roman">Times New Roman</option>
+                  <option value="Georgia">Georgia</option>
+                  <option value="Helvetica">Helvetica</option>
                 </select>
-                <p className="field-hint">Visual style and formatting</p>
               </div>
-
-              <div className="export-control-group">
-                <label htmlFor="export-watermark">
-                  <Icon name="droplet" size="sm" /> Watermark (optional)
-                </label>
+              <div className="form-group">
+                <label htmlFor="font-size">Font Size</label>
                 <input
-                  id="export-watermark"
-                  type="text"
-                  placeholder="e.g., CONFIDENTIAL, DRAFT"
-                  value={exportWatermark}
-                  onChange={(e) => setExportWatermark(e.target.value)}
-                  disabled={isExporting}
-                  maxLength={50}
+                  type="number"
+                  id="font-size"
+                  min="9"
+                  max="14"
+                  value={letterheadConfig.font_size}
+                  onChange={(e) => setLetterheadConfig({ ...letterheadConfig, font_size: parseInt(e.target.value) })}
                 />
-                <p className="field-hint">Adds text overlay to the document</p>
               </div>
-
-              {exportError && (
-                <div className="export-error-message" role="alert">
-                  <Icon name="alertCircle" size="sm" />
-                  {exportError}
-                </div>
-              )}
+              <div className="form-group">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!!letterheadConfig.header_color}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setLetterheadConfig({ ...letterheadConfig, header_color: [102, 126, 234] });
+                      } else {
+                        setLetterheadConfig({ ...letterheadConfig, header_color: null });
+                      }
+                    }}
+                  />
+                  {' '}Use custom header color (brand purple)
+                </label>
+              </div>
             </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowLetterheadSettings(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-            <div className="export-modal-footer">
+      {/* UC-061: Email Integration Modal */}
+      {showEmailModal && activeVariation && (
+        <div className="modal-overlay" onClick={() => setShowEmailModal(false)}>
+          <div className="modal-content email-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Email Cover Letter</h3>
+              <button className="close-btn" onClick={() => setShowEmailModal(false)}>
+                <Icon name="x" size="sm" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="hint">
+                <Icon name="info" size="sm" /> Copy the text below and paste it into your email client, or use the quick actions to open your default email app.
+              </p>
+              <div className="form-group">
+                <label>Email Subject</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={`Application for ${result?.job?.title || 'Position'} at ${result?.job?.company_name || 'Company'}`}
+                  onClick={(e) => e.target.select()}
+                />
+              </div>
+              <div className="form-group">
+                <label>Cover Letter Content</label>
+                <textarea
+                  readOnly
+                  rows="15"
+                  value={[
+                    activeVariation.opening_paragraph,
+                    ...(activeVariation.body_paragraphs || []),
+                    activeVariation.closing_paragraph,
+                  ]
+                    .filter(Boolean)
+                    .join('\n\n')}
+                  onClick={(e) => e.target.select()}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
               <button
-                type="button"
-                className="ghost"
-                onClick={() => setShowExportModal(false)}
-                disabled={isExporting}
+                className="btn-secondary"
+                onClick={() => {
+                  const fullText = [
+                    activeVariation.opening_paragraph,
+                    ...(activeVariation.body_paragraphs || []),
+                    activeVariation.closing_paragraph,
+                  ]
+                    .filter(Boolean)
+                    .join('\n\n');
+                  navigator.clipboard.writeText(fullText);
+                  setShowEmailModal(false);
+                }}
               >
-                Cancel
+                <Icon name="clipboard" size="sm" /> Copy to Clipboard
               </button>
               <button
-                type="button"
-                className="primary"
-                onClick={handleExportResume}
-                disabled={isExporting || !liveLatexPreview}
+                className="btn-primary"
+                onClick={() => {
+                  const subject = encodeURIComponent(
+                    `Application for ${result?.job?.title || 'Position'} at ${result?.job?.company_name || 'Company'}`
+                  );
+                  const body = encodeURIComponent(
+                    [
+                      activeVariation.opening_paragraph,
+                      ...(activeVariation.body_paragraphs || []),
+                      activeVariation.closing_paragraph,
+                    ]
+                      .filter(Boolean)
+                      .join('\n\n')
+                  );
+                  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+                }}
               >
-                {isExporting ? (
-                  <>
-                    <LoadingSpinner size="sm" /> Exporting...
-                  </>
-                ) : (
-                  <>
-                    <Icon name="download" size="sm" /> Export Resume
-                  </>
-                )}
+                <Icon name="mail" size="sm" /> Open in Email App
               </button>
             </div>
           </div>
@@ -3376,4 +2718,4 @@ const AiResumeGenerator = () => {
   );
 };
 
-export default AiResumeGenerator;
+export default AiCoverLetterGenerator;

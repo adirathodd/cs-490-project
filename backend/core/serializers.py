@@ -6,7 +6,20 @@ import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate
+
+class CoverLetterTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CoverLetterTemplate
+        fields = [
+            "id", "name", "description", "template_type", "industry", "content", "sample_content",
+            "owner", "is_shared", "imported_from", "usage_count", "last_used", "created_at", "updated_at", 
+            "customization_options", "original_file_type", "original_filename"
+        ]
+        read_only_fields = [
+            "id", "owner", "usage_count", "last_used", "created_at", "updated_at", 
+            "original_file_content", "original_file_type", "original_filename"
+        ]
 
 User = get_user_model()
 
@@ -944,6 +957,14 @@ class WorkExperienceSerializer(serializers.ModelSerializer):
 
         work_experience = WorkExperience.objects.create(**validated_data)
 
+        # Backwards compatibility: tests and some callers may submit 'skills_used' (list of IDs)
+        # even though the write-only field is named 'skills_used_ids'. If skills_ids is None,
+        # attempt to pull raw IDs from initial_data['skills_used'].
+        if skills_ids is None and 'skills_used' in getattr(self, 'initial_data', {}):
+            raw_ids = self.initial_data.get('skills_used')
+            if isinstance(raw_ids, (list, tuple)):
+                skills_ids = list(raw_ids)
+
         # Handle id-based skills (or Skill instances)
         if isinstance(skills_ids, (list, tuple)):
             if skills_ids and all(hasattr(s, 'pk') for s in skills_ids):
@@ -970,6 +991,12 @@ class WorkExperienceSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
+
+        # Backwards compatibility: allow 'skills_used' list of IDs when skills_ids is None.
+        if skills_ids is None and 'skills_used' in getattr(self, 'initial_data', {}):
+            raw_ids = self.initial_data.get('skills_used')
+            if isinstance(raw_ids, (list, tuple)):
+                skills_ids = list(raw_ids)
 
         # Update id-based skills if provided
         if skills_ids is not None:

@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { jobsAPI } from '../../services/api';
+import { jobsAPI, skillsAPI } from '../../services/api';
 import Icon from '../common/Icon';
 import { CompanyInfo } from '../../features/company';
+import InterviewInsights from './InterviewInsights';
+import SkillGapAnalysis from './SkillGapAnalysis';
 
 const JobDetailView = () => {
   const { id } = useParams();
@@ -14,7 +16,11 @@ const JobDetailView = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [activeTab, setActiveTab] = useState('basic');
   const [companyInfo, setCompanyInfo] = useState(null);
+  const [interviewInsights, setInterviewInsights] = useState(null);
+  const [skillsGapAnalysis, setSkillsGapAnalysis] = useState(null);
+  const [skillProgress, setSkillProgress] = useState({});
   const [formData, setFormData] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
   
@@ -218,6 +224,107 @@ const JobDetailView = () => {
     }
   };
 
+  const fetchInterviewInsights = useCallback(async (jobId) => {
+    try {
+      const insights = await jobsAPI.getJobInterviewInsights(jobId);
+      setInterviewInsights(insights);
+    } catch (err) {
+      console.warn('Unable to load interview insights', err);
+      setInterviewInsights(null);
+    }
+  }, []);
+
+  const fetchSkillsGap = useCallback(async (jobId, options = {}) => {
+    try {
+      const analysis = await jobsAPI.getJobSkillsGap(jobId, options);
+      setSkillsGapAnalysis(analysis);
+
+      // Load progress for each skill
+      if (analysis && analysis.skills) {
+        const progressData = {};
+        await Promise.all(
+          analysis.skills.map(async (skill) => {
+            try {
+              const progress = await jobsAPI.getSkillProgress(skill.skill_id);
+              if (progress && progress.length > 0) {
+                // Calculate total hours from all progress entries
+                const totalHours = progress.reduce((sum, entry) => sum + (entry.hours_spent || 0), 0);
+                const latestProgress = progress[progress.length - 1];
+                progressData[skill.skill_id] = {
+                  total_hours: totalHours,
+                  progress_percent: latestProgress.progress_percent || 0,
+                };
+              }
+            } catch (err) {
+              // Skip if can't load progress for this skill
+            }
+          })
+        );
+        setSkillProgress(progressData);
+      }
+    } catch (err) {
+      console.warn('Unable to load skills gap analysis', err);
+      setSkillsGapAnalysis(null);
+    }
+  }, []);
+
+  const handleRefreshSkillsGap = () => {
+    if (job?.id) {
+      fetchSkillsGap(job.id, { refresh: true });
+    }
+  };
+
+  const handleLogSkillProgress = async (skill, logData) => {
+    try {
+      // Calculate progress percentage based on hours spent
+      const totalNeeded = skill.suggested_learning_path?.reduce((sum, step) => sum + (step.estimated_hours || 0), 0) || 40;
+      const currentSpent = skillProgress[skill.skill_id]?.total_hours || 0;
+      const newTotal = currentSpent + logData.hours_spent;
+      const progressPercent = Math.min(100, Math.round((newTotal / totalNeeded) * 100));
+
+      await jobsAPI.logSkillProgress(skill.skill_id, {
+        activity_type: 'practice',
+        hours_spent: logData.hours_spent,
+        progress_percent: progressPercent,
+        job_id: job.id,
+      });
+
+      // Update local skill progress immediately for instant UI feedback
+      setSkillProgress((prev) => ({
+        ...prev,
+        [skill.skill_id]: {
+          total_hours: newTotal,
+          progress_percent: progressPercent,
+        },
+      }));
+      
+      setSuccess('Practice logged successfully!');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError('Failed to log progress: ' + (err.message || 'Unknown error'));
+    }
+  };
+
+  const handleAddSkill = async (skill) => {
+    try {
+      await skillsAPI.addSkill({
+        skill_id: skill.skill_id,
+        level: 'beginner',
+        years: 0,
+      });
+
+      setSuccess(`${skill.name} added to your skills!`);
+      setTimeout(() => setSuccess(''), 3000);
+
+      // Refresh the analysis to show the updated status
+      if (job?.id) {
+        await fetchSkillsGap(job.id, { refresh: true });
+      }
+    } catch (err) {
+      setError('Failed to add skill: ' + (err.message || 'Unknown error'));
+    }
+  };
+
   useEffect(() => {
     if (!job?.id || !job?.company_name) {
       setCompanyInfo(null);
@@ -248,6 +355,13 @@ const JobDetailView = () => {
       isMounted = false;
     };
   }, [job]);
+
+  useEffect(() => {
+    if (job?.id) {
+      fetchInterviewInsights(job.id);
+      fetchSkillsGap(job.id);
+    }
+  }, [job?.id, fetchInterviewInsights, fetchSkillsGap]);
 
   if (loading) {
     return (
@@ -341,14 +455,81 @@ const JobDetailView = () => {
       {error && <div className="error-banner">{error}</div>}
       {success && <div className="success-banner">{success}</div>}
 
-      {/* Basic Information & Company Card */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        <div style={{ width: '100%' }}>
-          {/* Job Details */}
-          <div className="education-form-card" style={{ height: '100%' }}>
-            <div className="form-header">
-              <h3>Basic Information</h3>
-            </div>
+      {/* Tab Navigation */}
+      <div style={{ 
+        display: 'flex', 
+        gap: '8px', 
+        borderBottom: '2px solid #e5e7eb',
+        marginBottom: '24px',
+        overflowX: 'auto'
+      }}>
+        <button
+          onClick={() => setActiveTab('basic')}
+          style={{
+            padding: '12px 24px',
+            fontSize: '15px',
+            fontWeight: '600',
+            border: 'none',
+            background: 'none',
+            color: activeTab === 'basic' ? '#667eea' : '#6b7280',
+            borderBottom: activeTab === 'basic' ? '3px solid #667eea' : '3px solid transparent',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            whiteSpace: 'nowrap',
+            marginBottom: '-2px',
+          }}
+        >
+          <Icon name="info" size="sm" /> Basic Information
+        </button>
+        <button
+          onClick={() => setActiveTab('interview')}
+          style={{
+            padding: '12px 24px',
+            fontSize: '15px',
+            fontWeight: '600',
+            border: 'none',
+            background: 'none',
+            color: activeTab === 'interview' ? '#667eea' : '#6b7280',
+            borderBottom: activeTab === 'interview' ? '3px solid #667eea' : '3px solid transparent',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            whiteSpace: 'nowrap',
+            marginBottom: '-2px',
+          }}
+        >
+          <Icon name="user-check" size="sm" /> Interview Insights
+        </button>
+        <button
+          onClick={() => setActiveTab('skills')}
+          style={{
+            padding: '12px 24px',
+            fontSize: '15px',
+            fontWeight: '600',
+            border: 'none',
+            background: 'none',
+            color: activeTab === 'skills' ? '#667eea' : '#6b7280',
+            borderBottom: activeTab === 'skills' ? '3px solid #667eea' : '3px solid transparent',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            whiteSpace: 'nowrap',
+            marginBottom: '-2px',
+          }}
+        >
+          <Icon name="target" size="sm" /> Skills Gap Analysis
+        </button>
+      </div>
+
+      {/* Tab Content - Basic Information */}
+      {activeTab === 'basic' && (
+        <>
+          {/* Basic Information & Company Card */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            <div style={{ width: '100%' }}>
+              {/* Job Details */}
+              <div className="education-form-card" style={{ height: '100%' }}>
+                <div className="form-header">
+                  <h3>Basic Information</h3>
+                </div>
             
             {editMode ? (
           <form className="education-form">
@@ -876,7 +1057,6 @@ const JobDetailView = () => {
         )}
       </div>
 
-
       {/* Metadata */}
       <div className="education-form-card">
         <div className="form-header">
@@ -893,6 +1073,50 @@ const JobDetailView = () => {
           </div>
         </div>
       </div>
+        </>
+      )}
+
+      {/* Tab Content - Interview Insights */}
+      {activeTab === 'interview' && (
+        <>
+          {interviewInsights ? (
+            <InterviewInsights insights={interviewInsights} />
+          ) : (
+            <div className="education-form-card">
+              <div className="education-form" style={{ padding: '40px', textAlign: 'center' }}>
+                <Icon name="info" size="lg" color="#9ca3af" />
+                <p style={{ color: '#9ca3af', marginTop: '16px', fontSize: '15px' }}>
+                  No interview insights available for this job yet.
+                </p>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Tab Content - Skills Gap Analysis */}
+      {activeTab === 'skills' && (
+        <>
+          {skillsGapAnalysis ? (
+            <SkillGapAnalysis
+              analysis={skillsGapAnalysis}
+              skillProgress={skillProgress}
+              onRefresh={handleRefreshSkillsGap}
+              onLogProgress={handleLogSkillProgress}
+              onAddSkill={handleAddSkill}
+            />
+          ) : (
+            <div className="education-form-card">
+              <div className="education-form" style={{ padding: '40px', textAlign: 'center' }}>
+                <Icon name="info" size="lg" color="#9ca3af" />
+                <p style={{ color: '#9ca3af', marginTop: '16px', fontSize: '15px' }}>
+                  No skills gap analysis available for this job yet.
+                </p>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 };

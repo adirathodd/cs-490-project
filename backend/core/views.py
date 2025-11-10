@@ -25,8 +25,595 @@ from core.serializers import (
     ProjectMediaSerializer,
     WorkExperienceSerializer,
     JobEntrySerializer,
+    CoverLetterTemplateSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_list_create(request):
+    """List all templates or create a new one."""
+    if request.method == "GET":
+        templates = CoverLetterTemplate.objects.filter(is_shared=True) | CoverLetterTemplate.objects.filter(owner=request.user)
+        serializer = CoverLetterTemplateSerializer(templates.distinct(), many=True)
+        return Response(serializer.data)
+    elif request.method == "POST":
+        serializer = CoverLetterTemplateSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(owner=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(["GET", "PUT", "DELETE"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_detail(request, pk):
+    """Retrieve, update, or delete a template."""
+    try:
+        template = CoverLetterTemplate.objects.get(pk=pk)
+    except CoverLetterTemplate.DoesNotExist:
+        return Response({"error": "Template not found."}, status=status.HTTP_404_NOT_FOUND)
+    if request.method == "GET":
+        serializer = CoverLetterTemplateSerializer(template)
+        return Response(serializer.data)
+    elif request.method == "PUT":
+        if template.owner != request.user:
+            return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = CoverLetterTemplateSerializer(template, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    elif request.method == "DELETE":
+        if template.owner != request.user:
+            return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+        template.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_import(request):
+    """Import a custom template from file or JSON data."""
+    
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Template import request from user: {request.user}")
+    logger.info(f"Request data: {request.data}")
+    logger.info(f"Request files: {request.FILES}")
+    
+    # Check if it's a file upload
+    if 'file' in request.FILES:
+        file = request.FILES['file']
+        file_extension = file.name.split('.')[-1].lower()
+        
+        try:
+            # Read the original file content
+            file.seek(0)  # Reset file pointer
+            original_content = file.read()
+            file.seek(0)  # Reset again for processing
+            
+            # Extract text content for display purposes only
+            if file_extension == 'txt':
+                content = file.read().decode('utf-8')
+            elif file_extension == 'docx':
+                from docx import Document
+                doc = Document(file)
+                content = '\n'.join([paragraph.text for paragraph in doc.paragraphs])
+            elif file_extension == 'pdf':
+                # For PDF parsing, you'd need additional libraries like PyPDF2
+                return Response({"error": "PDF import not yet supported. Please use TXT or DOCX files."}, 
+                              status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({"error": "Unsupported file format. Please use TXT or DOCX files."}, 
+                              status=status.HTTP_400_BAD_REQUEST)
+            
+            # Create template from file content
+            template_data = {
+                'name': request.data.get('name', file.name.rsplit('.', 1)[0]),
+                'content': content,
+                'template_type': request.data.get('template_type', 'custom'),
+                'industry': request.data.get('industry', ''),
+                'description': request.data.get('description', f'Imported from {file.name}'),
+                'sample_content': content[:200] + '...' if len(content) > 200 else content
+            }
+            
+            serializer = CoverLetterTemplateSerializer(data=template_data)
+            if serializer.is_valid():
+                template = serializer.save(
+                    owner=request.user, 
+                    imported_from=f"file:{file.name}",
+                    original_file_content=original_content,
+                    original_file_type=file_extension,
+                    original_filename=file.name
+                )
+                logger.info(f"Successfully created template: {template.id}")
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            else:
+                logger.error(f"Serializer validation errors: {serializer.errors}")
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            logger.error(f"File processing exception: {str(e)}", exc_info=True)
+            return Response({"error": f"Failed to process file: {str(e)}"}, 
+                          status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    # Handle JSON data import (existing functionality)
+    else:
+        logger.info("No file provided, processing as JSON data")
+        serializer = CoverLetterTemplateSerializer(data=request.data)
+        if serializer.is_valid():
+            template = serializer.save(owner=request.user, imported_from="json")
+            logger.info(f"Successfully created template from JSON: {template.id}")
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        logger.error(f"JSON serializer validation errors: {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_share(request, pk):
+    """Share a template (make it public)."""
+    try:
+        template = CoverLetterTemplate.objects.get(pk=pk, owner=request.user)
+    except CoverLetterTemplate.DoesNotExist:
+        return Response({"error": "Template not found or permission denied."}, status=status.HTTP_404_NOT_FOUND)
+    template.is_shared = True
+    template.save(update_fields=["is_shared"])
+    return Response({"success": True})
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_analytics(request, pk):
+    """Track template usage analytics."""
+    try:
+        template = CoverLetterTemplate.objects.get(pk=pk)
+    except CoverLetterTemplate.DoesNotExist:
+        return Response({"error": "Template not found."}, status=status.HTTP_404_NOT_FOUND)
+    template.usage_count += 1
+    template.last_used = timezone.now()
+    template.save(update_fields=["usage_count", "last_used"])
+    return Response({"success": True, "usage_count": template.usage_count})
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_stats(request):
+    """Get comprehensive template usage statistics."""
+    from django.db.models import Count, Q, Avg
+    
+    # Overall stats
+    total_templates = CoverLetterTemplate.objects.count()
+    shared_templates = CoverLetterTemplate.objects.filter(is_shared=True).count()
+    user_custom_templates = CoverLetterTemplate.objects.filter(owner=request.user).count()
+    
+    # Most popular templates
+    popular_templates = CoverLetterTemplate.objects.filter(
+        usage_count__gt=0
+    ).order_by('-usage_count')[:5].values(
+        'id', 'name', 'template_type', 'usage_count'
+    )
+    
+    # Usage by template type
+    type_stats = CoverLetterTemplate.objects.values('template_type').annotate(
+        count=Count('id'),
+        total_usage=Count('usage_count')
+    ).order_by('-total_usage')
+    
+    # Usage by industry
+    industry_stats = CoverLetterTemplate.objects.exclude(
+        industry=''
+    ).values('industry').annotate(
+        count=Count('id'),
+        total_usage=Count('usage_count')
+    ).order_by('-total_usage')
+    
+    return Response({
+        'overview': {
+            'total_templates': total_templates,
+            'shared_templates': shared_templates,
+            'user_custom_templates': user_custom_templates,
+        },
+        'popular_templates': list(popular_templates),
+        'type_distribution': list(type_stats),
+        'industry_distribution': list(industry_stats),
+    })
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_customize(request, pk):
+    """Update template customization options including headers, colors, and fonts."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"Customize request from user: {request.user} for template: {pk}")
+    logger.info(f"Request data: {request.data}")
+    
+    try:
+        template = CoverLetterTemplate.objects.get(pk=pk)
+        logger.info(f"Found template: {template.name}")
+    except CoverLetterTemplate.DoesNotExist:
+        logger.error(f"Template not found: {pk}")
+        return Response({"error": "Template not found."}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Only allow owner or create a copy for non-owners
+    if template.owner and template.owner != request.user:
+        # Create a personalized copy
+        template.pk = None  # This will create a new instance
+        template.owner = request.user
+        template.name = f"{template.name} (Custom)"
+        template.is_shared = False
+        template.usage_count = 0
+        template.last_used = None
+    
+    # Update customization options
+    data = request.data
+    customization_options = template.customization_options or {}
+    
+    # Validate and update styling options
+    if 'header_text' in data:
+        customization_options['header_text'] = data['header_text'][:200]  # Limit length
+    
+    if 'header_color' in data:
+        color = data['header_color']
+        if color.startswith('#') and len(color) == 7:  # Basic hex validation
+            customization_options['header_color'] = color
+    
+    if 'font_family' in data:
+        valid_fonts = ['Arial', 'Times New Roman', 'Calibri', 'Georgia', 'Verdana']
+        if data['font_family'] in valid_fonts:
+            customization_options['font_family'] = data['font_family']
+    
+    if 'header_font_size' in data:
+        size = int(data['header_font_size'])
+        if 10 <= size <= 24:  # Reasonable size range
+            customization_options['header_font_size'] = size
+    
+    if 'body_font_size' in data:
+        size = int(data['body_font_size'])
+        if 8 <= size <= 18:  # Reasonable size range
+            customization_options['body_font_size'] = size
+    
+    template.customization_options = customization_options
+    template.save()
+    
+    logger.info(f"Successfully updated template customization: {customization_options}")
+    
+    serializer = CoverLetterTemplateSerializer(template)
+    return Response({
+        'message': 'Template customization updated successfully.',
+        'template': serializer.data
+    })
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def cover_letter_template_download(request, pk, format_type):
+    """Download a template in the specified format (txt, docx, pdf)."""
+    try:
+        template = CoverLetterTemplate.objects.get(pk=pk)
+    except CoverLetterTemplate.DoesNotExist:
+        return Response({"error": "Template not found."}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Track download analytics
+    template.usage_count += 1
+    template.last_used = timezone.now()
+    template.save(update_fields=["usage_count", "last_used"])
+    
+    from django.http import HttpResponse
+    import io
+    
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Get customization options with defaults
+    custom_options = template.customization_options or {}
+    header_text = custom_options.get('header_text', '')
+    header_color = custom_options.get('header_color', '#2c5aa0')  # Professional blue
+    font_family = custom_options.get('font_family', 'Arial')
+    header_font_size = custom_options.get('header_font_size', 14)
+    body_font_size = custom_options.get('body_font_size', 12)
+    
+    logger.info(f"Download request for template {pk} in format {format_type}")
+    logger.info(f"Customization options: {custom_options}")
+    logger.info(f"Header text: '{header_text}', Color: {header_color}, Font: {font_family}")
+    logger.info(f"Font sizes - Header: {header_font_size}, Body: {body_font_size}")
+    
+    if format_type == 'txt':
+        # Plain text download with header
+        content = template.content
+        if header_text:
+            content = f"{header_text}\n{'='*len(header_text)}\n\n{content}"
+        
+        response = HttpResponse(content, content_type='text/plain')
+        response['Content-Disposition'] = f'attachment; filename="{template.name}.txt"'
+        return response
+    
+    elif format_type == 'docx':
+        # Word document download - use original file if available, otherwise generate new one
+        try:
+            from django.http import HttpResponse
+            import io
+            
+            # If we have the original Word document, use it with customizations
+            if template.original_file_type == 'docx' and template.original_file_content:
+                # For uploaded Word documents, return the original with minimal customizations
+                # Note: Advanced customization of existing Word docs requires more complex processing
+                
+                if not header_text:
+                    # No customization needed, return original file
+                    response = HttpResponse(
+                        template.original_file_content,
+                        content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                    )
+                    filename = template.original_filename or f"{template.name}.docx"
+                    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                    return response
+                else:
+                    # Apply basic header customization to uploaded Word document
+                    from docx import Document
+                    
+                    # Load the original document
+                    doc_stream = io.BytesIO(template.original_file_content)
+                    doc = Document(doc_stream)
+                    
+                    # Insert custom header at the beginning if specified
+                    if header_text:
+                        # Add header paragraph at the beginning
+                        first_paragraph = doc.paragraphs[0]
+                        header_para = first_paragraph.insert_paragraph_before()
+                        header_run = header_para.add_run(header_text)
+                        header_run.font.size = Pt(header_font_size)
+                        header_run.font.name = font_family
+                        header_run.bold = True
+                        
+                        # Parse and set color
+                        try:
+                            color_hex = header_color.lstrip('#')
+                            r = int(color_hex[0:2], 16)
+                            g = int(color_hex[2:4], 16)
+                            b = int(color_hex[4:6], 16)
+                            header_run.font.color.rgb = RGBColor(r, g, b)
+                        except:
+                            pass  # Use default color if parsing fails
+                        
+                        header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        
+                        # Add spacing after header
+                        spacing_para = first_paragraph.insert_paragraph_before()
+                    
+                    buffer = io.BytesIO()
+                    doc.save(buffer)
+                    buffer.seek(0)
+                    
+                    response = HttpResponse(
+                        buffer.getvalue(),
+                        content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                    )
+                    filename = template.original_filename or f"{template.name}.docx"
+                    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                    return response
+            
+            # Generate new Word document from text content (for text-based templates)
+            from docx import Document
+            from docx.shared import Inches, Pt, RGBColor
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            from docx.oxml.shared import OxmlElement, qn
+            
+            doc = Document()
+            
+            # Set document margins
+            sections = doc.sections
+            for section in sections:
+                section.top_margin = Inches(1)
+                section.bottom_margin = Inches(1)
+                section.left_margin = Inches(1)
+                section.right_margin = Inches(1)
+            
+            # Add custom header if specified
+            if header_text:
+                header_para = doc.add_paragraph()
+                header_run = header_para.add_run(header_text)
+                header_run.font.size = Pt(header_font_size)
+                header_run.font.name = font_family
+                header_run.bold = True
+                
+                # Parse color from hex string
+                try:
+                    color_hex = header_color.lstrip('#')
+                    r = int(color_hex[0:2], 16)
+                    g = int(color_hex[2:4], 16)
+                    b = int(color_hex[4:6], 16)
+                    header_run.font.color.rgb = RGBColor(r, g, b)
+                except:
+                    pass  # Use default color if parsing fails
+                    
+                header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                doc.add_paragraph()  # Add spacing
+            
+            # Process content with better formatting
+            lines = template.content.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    # Add spacing for empty lines
+                    doc.add_paragraph()
+                elif line.startswith('[') and line.endswith(']'):
+                    # Header information - right aligned, smaller font
+                    p = doc.add_paragraph()
+                    run = p.add_run(line)
+                    run.font.size = Pt(body_font_size - 1)
+                    run.font.name = font_family
+                    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                elif line.startswith('Dear') or line.startswith('Sincerely'):
+                    # Salutation and closing
+                    p = doc.add_paragraph()
+                    run = p.add_run(line)
+                    run.font.name = font_family
+                    run.font.size = Pt(body_font_size)
+                    p.space_after = Pt(12)
+                elif line.startswith('•') or line.startswith('-'):
+                    # Bullet points
+                    p = doc.add_paragraph()
+                    run = p.add_run(line[1:].strip())
+                    run.font.name = font_family
+                    run.font.size = Pt(body_font_size)
+                    # Apply bullet formatting
+                    p.style = 'List Bullet'
+                else:
+                    # Regular paragraph
+                    p = doc.add_paragraph()
+                    run = p.add_run(line)
+                    run.font.name = font_family
+                    run.font.size = Pt(body_font_size)
+                    p.space_after = Pt(6)
+                    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            
+            buffer = io.BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
+            
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{template.name}.docx"'
+            return response
+        except ImportError:
+            return Response({"error": "Word document generation not available."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            return Response({"error": f"Document generation failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    elif format_type == 'pdf':
+        # PDF download with custom styling
+        try:
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import letter
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+            from reportlab.lib.units import inch
+            from reportlab.lib.enums import TA_RIGHT, TA_JUSTIFY, TA_LEFT, TA_CENTER
+            from reportlab.lib.colors import HexColor
+            
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(
+                buffer, 
+                pagesize=letter,
+                topMargin=1*inch,
+                bottomMargin=1*inch,
+                leftMargin=1*inch,
+                rightMargin=1*inch
+            )
+            
+            styles = getSampleStyleSheet()
+            
+            # Parse header color
+            try:
+                header_color_obj = HexColor(header_color)
+            except:
+                header_color_obj = HexColor('#2c5aa0')  # Default blue
+            
+            # Map font families to ReportLab-compatible fonts
+            font_mapping = {
+                'Arial': 'Helvetica',
+                'Times New Roman': 'Times-Roman',
+                'Calibri': 'Helvetica',  # Fallback to Helvetica
+                'Georgia': 'Times-Roman',  # Fallback to Times
+                'Verdana': 'Helvetica'   # Fallback to Helvetica
+            }
+            
+            pdf_font_name = font_mapping.get(font_family, 'Helvetica')
+            pdf_font_bold = pdf_font_name + '-Bold' if pdf_font_name in ['Helvetica', 'Times-Roman'] else pdf_font_name
+            
+            # Create custom styles with user preferences
+            header_style = ParagraphStyle(
+                'CustomHeaderStyle',
+                parent=styles['Normal'],
+                fontSize=header_font_size,
+                alignment=TA_CENTER,
+                spaceAfter=18,
+                textColor=header_color_obj,
+                fontName=pdf_font_bold
+            )
+            
+            contact_header_style = ParagraphStyle(
+                'ContactHeaderStyle',
+                parent=styles['Normal'],
+                fontSize=body_font_size - 1,
+                alignment=TA_RIGHT,
+                spaceAfter=6,
+                fontName=pdf_font_name
+            )
+            
+            body_style = ParagraphStyle(
+                'CustomBodyStyle',
+                parent=styles['Normal'],
+                fontSize=body_font_size,
+                alignment=TA_JUSTIFY,
+                spaceAfter=12,
+                leading=body_font_size + 2,
+                fontName=pdf_font_name
+            )
+            
+            bullet_style = ParagraphStyle(
+                'CustomBulletStyle',
+                parent=styles['Normal'],
+                fontSize=body_font_size,
+                leftIndent=20,
+                spaceAfter=6,
+                leading=body_font_size + 2,
+                fontName=pdf_font_name
+            )
+            
+            story = []
+            
+            # Add custom header if specified
+            if header_text:
+                header_para = Paragraph(header_text, header_style)
+                story.append(header_para)
+                story.append(Spacer(1, 12))
+            
+            lines = template.content.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    story.append(Spacer(1, 12))
+                elif line.startswith('[') and line.endswith(']'):
+                    # Contact header information
+                    p = Paragraph(line, contact_header_style)
+                    story.append(p)
+                elif line.startswith('Dear') or line.startswith('Sincerely'):
+                    # Salutation and closing
+                    story.append(Spacer(1, 12))
+                    p = Paragraph(line, body_style)
+                    story.append(p)
+                elif line.startswith('•') or line.startswith('-'):
+                    # Bullet points
+                    p = Paragraph(f"• {line[1:].strip()}", bullet_style)
+                    story.append(p)
+                else:
+                    # Regular paragraph
+                    p = Paragraph(line, body_style)
+                    story.append(p)
+            
+            doc.build(story)
+            buffer.seek(0)
+            
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type='application/pdf'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{template.name}.pdf"'
+            return response
+        except ImportError:
+            return Response({"error": "PDF generation not available."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            return Response({"error": f"PDF generation failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{template.name}.pdf"'
+            return response
+        except ImportError:
+            return Response({"error": "PDF generation not available."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    else:
+        return Response({"error": "Unsupported format. Use txt, docx, or pdf."}, status=status.HTTP_400_BAD_REQUEST)
 from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (
@@ -4427,6 +5014,326 @@ def compile_latex_to_pdf(request):
 
 
 # ======================
+# UC-056: AI COVER LETTER CONTENT GENERATION
+# ======================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_cover_letter_for_job(request, job_id):
+    """
+    UC-056: Generate AI-tailored cover letter content for a specific job using Gemini.
+
+    Body: { "tone": "professional|warm|innovative|customer_centric|data_driven|concise|balanced", "variation_count": 1-3 }
+    """
+    from core import cover_letter_ai
+
+    profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
+    try:
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    api_key = getattr(settings, 'GEMINI_API_KEY', '')
+    if not api_key:
+        return Response(
+            {
+                'error': {
+                    'code': 'service_unavailable',
+                    'message': 'AI cover letter service is not configured. Set GEMINI_API_KEY in the backend environment.',
+                }
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+    tone = (request.data.get('tone') or 'balanced').strip().lower()
+    if tone not in cover_letter_ai.TONE_STYLES:
+        tone = 'balanced'
+
+    variation_count = request.data.get('variation_count', 2)
+    try:
+        variation_count = int(variation_count)
+    except (TypeError, ValueError):
+        variation_count = 2
+    variation_count = max(1, min(variation_count, 3))
+
+    candidate_snapshot = resume_ai.collect_candidate_snapshot(profile)
+    job_snapshot = resume_ai.build_job_snapshot(job)
+    research_snapshot = cover_letter_ai.build_company_research_snapshot(job.company_name)
+
+    try:
+        generation = cover_letter_ai.run_cover_letter_generation(
+            candidate_snapshot,
+            job_snapshot,
+            research_snapshot,
+            tone=tone,
+            variation_count=variation_count,
+            api_key=api_key,
+            model=getattr(settings, 'GEMINI_MODEL', None),
+        )
+    except cover_letter_ai.CoverLetterAIError as exc:
+        logger.warning('AI cover letter generation failed for job %s: %s', job_id, exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': str(exc)}},
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected AI cover letter failure for job %s: %s', job_id, exc)
+        return Response(
+            {
+                'error': {
+                    'code': 'ai_generation_failed',
+                    'message': 'Unexpected error while generating cover letter content.',
+                }
+            },
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+
+    payload = {
+        'job': job_snapshot,
+        'profile': resume_ai.build_profile_preview(candidate_snapshot),
+        'research': research_snapshot,
+        'generated_at': timezone.now().isoformat(),
+        'tone': tone,
+        'variation_count': generation.get('variation_count'),
+        'shared_analysis': generation.get('shared_analysis'),
+        'variations': generation.get('variations'),
+    }
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def tailor_experience_variations(request, job_id, experience_id):
+    """
+    Generate Gemini-powered variations for a single work experience.
+    """
+    profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
+    try:
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    try:
+        WorkExperience.objects.get(id=experience_id, candidate=profile)
+    except WorkExperience.DoesNotExist:
+        return Response(
+            {'error': {'code': 'experience_not_found', 'message': 'Experience entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    tone = (request.data.get('tone') or 'balanced').strip().lower()
+    if tone not in resume_ai.TONE_DESCRIPTORS:
+        tone = 'balanced'
+
+    variation_count = request.data.get('variation_count', 2)
+    try:
+        variation_count = int(variation_count)
+    except (TypeError, ValueError):
+        variation_count = 2
+    variation_count = max(1, min(variation_count, 3))
+
+    bullet_index = request.data.get('bullet_index')
+    if bullet_index is not None:
+        try:
+            bullet_index = int(bullet_index)
+        except (TypeError, ValueError):
+            return Response(
+                {'error': {'code': 'invalid_input', 'message': 'bullet_index must be a number.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    candidate_snapshot = resume_ai.collect_candidate_snapshot(profile)
+    job_snapshot = resume_ai.build_job_snapshot(job)
+
+    try:
+        payload = resume_ai.generate_experience_variations(
+            candidate_snapshot,
+            job_snapshot,
+            experience_id,
+            tone=tone,
+            variation_count=variation_count,
+            bullet_index=bullet_index,
+        )
+        return Response(payload, status=status.HTTP_200_OK)
+    except resume_ai.ResumeAIError as exc:
+        logger.warning('Experience tailoring failed for job %s experience %s: %s', job_id, experience_id, exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': str(exc)}},
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected experience tailoring failure: %s', exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': 'Unexpected error while tailoring experience.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def tailor_experience_bullet(request, job_id, experience_id):
+    """
+    Regenerate a single experience bullet via Gemini.
+    """
+    profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
+    try:
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    try:
+        WorkExperience.objects.get(id=experience_id, candidate=profile)
+    except WorkExperience.DoesNotExist:
+        return Response(
+            {'error': {'code': 'experience_not_found', 'message': 'Experience entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    bullet_index = request.data.get('bullet_index')
+    if bullet_index is None:
+        return Response(
+            {'error': {'code': 'invalid_input', 'message': 'bullet_index is required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    try:
+        bullet_index = int(bullet_index)
+    except (TypeError, ValueError):
+        return Response(
+            {'error': {'code': 'invalid_input', 'message': 'bullet_index must be a number.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    tone = (request.data.get('tone') or 'balanced').strip().lower()
+    if tone not in resume_ai.TONE_DESCRIPTORS:
+        tone = 'balanced'
+
+    variant_id = request.data.get('variant_id')
+
+    candidate_snapshot = resume_ai.collect_candidate_snapshot(profile)
+    job_snapshot = resume_ai.build_job_snapshot(job)
+
+    try:
+        payload = resume_ai.generate_experience_bullet(
+            candidate_snapshot,
+            job_snapshot,
+            experience_id,
+            bullet_index,
+            tone,
+        )
+        return Response(
+            {
+                'experience_id': experience_id,
+                'variant_id': variant_id,
+                'bullet_index': payload.get('bullet_index', bullet_index),
+                'bullet': payload.get('bullet'),
+            },
+            status=status.HTTP_200_OK,
+        )
+    except resume_ai.ResumeAIError as exc:
+        logger.warning('Bullet regeneration failed for job %s experience %s: %s', job_id, experience_id, exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': str(exc)}},
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected bullet regeneration failure: %s', exc)
+        return Response(
+            {'error': {'code': 'ai_generation_failed', 'message': 'Unexpected error while regenerating bullet.'}},
+        )
+
+def export_cover_letter_docx(request):
+    """
+    UC-061: Export cover letter as Word document (.docx).
+    
+    Request Body:
+    {
+        "candidate_name": "John Doe",
+        "candidate_email": "john@example.com",
+        "candidate_phone": "555-1234",
+        "candidate_location": "San Francisco, CA",
+        "company_name": "Acme Corp",
+        "job_title": "Software Engineer",
+        "opening_paragraph": "...",
+        "body_paragraphs": ["...", "..."],
+        "closing_paragraph": "...",
+        "letterhead_config": {
+            "header_format": "centered",  // 'centered', 'left', 'right'
+            "font_name": "Calibri",
+            "font_size": 11,
+            "header_color": [102, 126, 234]  // RGB tuple (optional)
+        }
+    }
+    
+    Response: Binary Word document with Content-Disposition header
+    """
+    from django.http import HttpResponse
+    from core import cover_letter_ai
+    
+    # Extract required fields
+    candidate_name = request.data.get('candidate_name', '').strip()
+    candidate_email = request.data.get('candidate_email', '').strip()
+    candidate_phone = request.data.get('candidate_phone', '').strip()
+    candidate_location = request.data.get('candidate_location', '').strip()
+    company_name = request.data.get('company_name', '').strip()
+    job_title = request.data.get('job_title', '').strip()
+    opening_paragraph = request.data.get('opening_paragraph', '').strip()
+    body_paragraphs = request.data.get('body_paragraphs', [])
+    closing_paragraph = request.data.get('closing_paragraph', '').strip()
+    letterhead_config = request.data.get('letterhead_config', {})
+    
+    # Validate required fields
+    if not all([candidate_name, company_name, job_title]):
+        return Response(
+            {'error': {'code': 'invalid_input', 'message': 'candidate_name, company_name, and job_title are required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        docx_bytes = cover_letter_ai.generate_cover_letter_docx(
+            candidate_name=candidate_name,
+            candidate_email=candidate_email,
+            candidate_phone=candidate_phone,
+            candidate_location=candidate_location,
+            company_name=company_name,
+            job_title=job_title,
+            opening_paragraph=opening_paragraph,
+            body_paragraphs=body_paragraphs,
+            closing_paragraph=closing_paragraph,
+            letterhead_config=letterhead_config,
+        )
+        
+        # Generate filename
+        name_parts = candidate_name.split()
+        if len(name_parts) >= 2:
+            filename = f"{name_parts[0]}_{name_parts[-1]}_CoverLetter.docx"
+        else:
+            filename = f"{candidate_name.replace(' ', '_')}_CoverLetter.docx"
+        
+        response = HttpResponse(
+            docx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except Exception as exc:
+        logger.exception('Failed to generate Word document: %s', exc)
+        return Response(
+            {'error': {'code': 'generation_failed', 'message': 'Failed to generate Word document.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# ======================
 # UC-063: AUTOMATED COMPANY RESEARCH
 # ======================
 
@@ -4670,6 +5577,654 @@ def refresh_company_research(request, company_name):
                     'message': f'Failed to refresh company research: {str(e)}'
                 }
             },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# ==============================================
+# UC-067: SALARY RESEARCH AND BENCHMARKING
+# ==============================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def salary_research(request, job_id):
+    """
+    UC-067: Salary Research for Job Entry
+    
+    GET: Retrieve salary research data for a job
+    POST: Trigger new salary research / refresh data
+    
+    POST Request Body:
+    {
+        "force_refresh": false,
+        "experience_level": "mid",  // optional override
+        "company_size": "medium"    // optional override
+    }
+    
+    Response includes:
+    - Salary ranges (min/max/median)
+    - Total compensation breakdown
+    - Market insights
+    - Negotiation recommendations
+    - Historical trends
+    - Company comparisons
+    """
+    from core.models import SalaryResearch
+    from core.salary_scraper import salary_aggregator
+    from decimal import Decimal
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_required', 'message': 'Candidate profile required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if request.method == 'GET':
+        # Return existing research or indicate none exists
+        research = SalaryResearch.objects.filter(job=job).order_by('-created_at').first()
+        
+        if not research:
+            return Response({
+                'has_data': False,
+                'message': 'No salary research available. Trigger research to generate data.'
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            'has_data': True,
+            'id': research.id,
+            'position_title': research.position_title,
+            'location': research.location,
+            'experience_level': research.experience_level,
+            'company_size': research.company_size,
+            'salary_min': float(research.salary_min) if research.salary_min else None,
+            'salary_max': float(research.salary_max) if research.salary_max else None,
+            'salary_median': float(research.salary_median) if research.salary_median else None,
+            'salary_currency': research.salary_currency,
+            'base_salary': float(research.base_salary) if research.base_salary else None,
+            'bonus_avg': float(research.bonus_avg) if research.bonus_avg else None,
+            'stock_equity': float(research.stock_equity) if research.stock_equity else None,
+            'total_comp_min': float(research.total_comp_min) if research.total_comp_min else None,
+            'total_comp_max': float(research.total_comp_max) if research.total_comp_max else None,
+            'benefits': research.benefits,
+            'market_trend': research.market_trend,
+            'percentile_25': float(research.percentile_25) if research.percentile_25 else None,
+            'percentile_75': float(research.percentile_75) if research.percentile_75 else None,
+            'negotiation_leverage': research.negotiation_leverage,
+            'recommended_ask': float(research.recommended_ask) if research.recommended_ask else None,
+            'negotiation_tips': research.negotiation_tips,
+            'user_current_salary': float(research.user_current_salary) if research.user_current_salary else None,
+            'salary_change_percent': float(research.salary_change_percent) if research.salary_change_percent else None,
+            'data_source': research.data_source,
+            'source_url': research.source_url,
+            'sample_size': research.sample_size,
+            'confidence_score': float(research.confidence_score) if research.confidence_score else None,
+            'company_comparisons': research.company_comparisons,
+            'historical_data': research.historical_data,
+            'created_at': research.created_at.isoformat(),
+            'updated_at': research.updated_at.isoformat(),
+        }, status=status.HTTP_200_OK)
+    
+    # POST: Trigger new research
+    force_refresh = request.data.get('force_refresh', False)
+    experience_override = request.data.get('experience_level')
+    company_size_override = request.data.get('company_size')
+    
+    # Check if recent research exists (within last 7 days)
+    if not force_refresh:
+        recent_research = SalaryResearch.objects.filter(
+            job=job,
+            created_at__gte=timezone.now() - timezone.timedelta(days=7)
+        ).order_by('-created_at').first()
+        
+        if recent_research:
+            return Response({
+                'message': 'Recent salary research already exists. Use force_refresh=true to regenerate.',
+                'has_data': True,
+                'research_age_days': (timezone.now() - recent_research.created_at).days
+            }, status=status.HTTP_200_OK)
+    
+    # Gather salary data
+    experience_level = experience_override or profile.experience_level or 'mid'
+    company_size = company_size_override or 'medium'
+    
+    try:
+        # Aggregate salary data from multiple sources
+        salary_data = salary_aggregator.aggregate_salary_data(
+            job_title=job.title,
+            location=job.location or 'Remote',
+            experience_level=experience_level,
+            company_size=company_size
+        )
+        
+        # Generate company comparisons
+        company_comparisons = salary_aggregator.generate_company_comparisons(
+            job_title=job.title,
+            location=job.location or 'Remote'
+        )
+        
+        # Generate historical trends
+        historical_trends = salary_aggregator.generate_historical_trends(
+            job_title=job.title,
+            location=job.location or 'Remote'
+        )
+        
+        stats = salary_data.get('aggregated_stats', {})
+        insights = salary_data.get('market_insights', {})
+        negotiation = salary_data.get('negotiation_recommendations', {})
+        
+        # Calculate salary change if user has current salary
+        user_current_salary = None
+        salary_change_percent = None
+        if job.salary_min or profile.years_experience:
+            # Try to estimate current salary from profile or job expectations
+            if job.salary_min:
+                user_current_salary = job.salary_min
+                if stats.get('salary_median'):
+                    salary_change_percent = ((float(stats['salary_median']) - float(user_current_salary)) / float(user_current_salary)) * 100
+        
+        # Create or update research record
+        research, created = SalaryResearch.objects.update_or_create(
+            job=job,
+            defaults={
+                'position_title': job.title,
+                'location': job.location or 'Remote',
+                'experience_level': experience_level,
+                'company_size': company_size,
+                'salary_min': Decimal(str(stats.get('salary_min'))) if stats.get('salary_min') else None,
+                'salary_max': Decimal(str(stats.get('salary_max'))) if stats.get('salary_max') else None,
+                'salary_median': Decimal(str(stats.get('salary_median'))) if stats.get('salary_median') else None,
+                'salary_currency': 'USD',
+                'base_salary': Decimal(str(stats.get('base_salary'))) if stats.get('base_salary') else None,
+                'bonus_avg': Decimal(str(stats.get('bonus_avg'))) if stats.get('bonus_avg') else None,
+                'stock_equity': Decimal(str(stats.get('stock_equity'))) if stats.get('stock_equity') else None,
+                'total_comp_min': Decimal(str(stats.get('total_comp_min'))) if stats.get('total_comp_min') else None,
+                'total_comp_max': Decimal(str(stats.get('total_comp_max'))) if stats.get('total_comp_max') else None,
+                'benefits': {
+                    'health_insurance': 'Standard',
+                    'retirement_401k': 'Yes',
+                    'pto_days': '15-25',
+                    'remote_work': 'Varies'
+                },
+                'market_trend': insights.get('market_trend', 'stable'),
+                'percentile_25': Decimal(str(stats.get('percentile_25'))) if stats.get('percentile_25') else None,
+                'percentile_75': Decimal(str(stats.get('percentile_75'))) if stats.get('percentile_75') else None,
+                'negotiation_leverage': negotiation.get('negotiation_leverage', 'medium'),
+                'recommended_ask': Decimal(str(negotiation.get('recommended_ask'))) if negotiation.get('recommended_ask') else None,
+                'negotiation_tips': '\n\n'.join(negotiation.get('tips', [])),
+                'user_current_salary': Decimal(str(user_current_salary)) if user_current_salary else None,
+                'salary_change_percent': Decimal(str(salary_change_percent)) if salary_change_percent else None,
+                'data_source': 'aggregated',
+                'sample_size': stats.get('data_points', 0),
+                'confidence_score': Decimal('0.80'),
+                'company_comparisons': company_comparisons,
+                'historical_data': historical_trends,
+                'research_notes': f"Generated from {len(salary_data.get('salary_data', []))} data sources"
+            }
+        )
+        
+        return Response({
+            'success': True,
+            'message': f"Salary research {'created' if created else 'updated'} successfully.",
+            'research_id': research.id,
+            'has_data': True
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error generating salary research for job {job_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'research_failed', 'message': f'Failed to generate salary research: {str(e)}'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def salary_research_export(request, job_id):
+    """
+    UC-067: Export Salary Research Report
+    
+    GET: Export salary research as JSON or PDF report
+    Query params:
+    - format: 'json' (default) or 'pdf'
+    """
+    from core.models import SalaryResearch
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        research = SalaryResearch.objects.filter(job=job).order_by('-created_at').first()
+        
+        if not research:
+            return Response(
+                {'error': {'code': 'not_found', 'message': 'No salary research data available to export.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        export_format = request.query_params.get('format', 'json').lower()
+        
+        if export_format == 'json':
+            report_data = {
+                'job': {
+                    'title': job.title,
+                    'company': job.company_name,
+                    'location': job.location,
+                },
+                'salary_research': {
+                    'position_title': research.position_title,
+                    'location': research.location,
+                    'experience_level': research.experience_level,
+                    'company_size': research.company_size,
+                    'salary_range': {
+                        'min': float(research.salary_min) if research.salary_min else None,
+                        'max': float(research.salary_max) if research.salary_max else None,
+                        'median': float(research.salary_median) if research.salary_median else None,
+                        'currency': research.salary_currency,
+                    },
+                    'total_compensation': {
+                        'base_salary': float(research.base_salary) if research.base_salary else None,
+                        'bonus_avg': float(research.bonus_avg) if research.bonus_avg else None,
+                        'stock_equity': float(research.stock_equity) if research.stock_equity else None,
+                        'total_min': float(research.total_comp_min) if research.total_comp_min else None,
+                        'total_max': float(research.total_comp_max) if research.total_comp_max else None,
+                    },
+                    'market_insights': {
+                        'market_trend': research.market_trend,
+                        'percentile_25': float(research.percentile_25) if research.percentile_25 else None,
+                        'percentile_75': float(research.percentile_75) if research.percentile_75 else None,
+                    },
+                    'negotiation': {
+                        'leverage': research.negotiation_leverage,
+                        'recommended_ask': float(research.recommended_ask) if research.recommended_ask else None,
+                        'tips': research.negotiation_tips.split('\n\n') if research.negotiation_tips else [],
+                    },
+                    'benefits': research.benefits,
+                    'company_comparisons': research.company_comparisons,
+                    'historical_trends': research.historical_data,
+                },
+                'metadata': {
+                    'generated_at': research.created_at.isoformat(),
+                    'data_source': research.data_source,
+                    'sample_size': research.sample_size,
+                    'confidence_score': float(research.confidence_score) if research.confidence_score else None,
+                }
+            }
+            
+            from django.http import JsonResponse
+            response = JsonResponse(report_data, safe=False)
+            response['Content-Disposition'] = f'attachment; filename="salary_research_{job.title.replace(" ", "_")}.json"'
+            return response
+        
+        else:
+            return Response(
+                {'error': {'code': 'unsupported_format', 'message': 'Only JSON format is currently supported.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error exporting salary research for job {job_id}: {str(e)}")
+        return Response(
+            {'error': {'code': 'export_failed', 'message': f'Failed to export research: {str(e)}'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def job_interview_insights(request, job_id):
+    """
+    UC-068: Interview Insights and Preparation
+    
+    GET: Retrieve AI-generated interview insights for a specific job
+    
+    Query Parameters:
+    - refresh: Set to 'true' to force regeneration (bypasses cache)
+    
+    Returns:
+    - Company-specific interview process and stages
+    - Common interview questions (technical and behavioral)
+    - Tailored preparation recommendations
+    - Timeline expectations
+    - Success tips based on company culture
+    - Interview preparation checklist
+    
+    Uses Gemini AI to generate company-specific insights when API key is available.
+    Falls back to template-based insights if AI generation fails.
+    Results are cached to reduce API costs.
+    """
+    from core.interview_insights import InterviewInsightsGenerator
+    from core.models import InterviewInsightsCache
+    
+    try:
+        # Verify job ownership
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        
+        # Check if user wants to force refresh
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        
+        # Try to get cached insights first (unless force refresh)
+        if not force_refresh:
+            cached = InterviewInsightsCache.objects.filter(
+                job=job,
+                is_valid=True
+            ).first()
+            
+            if cached:
+                logger.info(f"Returning cached interview insights for job {job_id}")
+                return Response(cached.insights_data, status=status.HTTP_200_OK)
+        
+        # Get Gemini API credentials
+        api_key = getattr(settings, 'GEMINI_API_KEY', '')
+        model = getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash-latest')
+        
+        # Generate insights based on job title and company
+        # Will use AI if api_key is available, otherwise falls back to templates
+        insights = InterviewInsightsGenerator.generate_for_job(
+            job_title=job.title,
+            company_name=job.company_name,
+            api_key=api_key if api_key else None,
+            model=model
+        )
+        
+        # Cache the results
+        try:
+            # Invalidate old cache entries for this job
+            InterviewInsightsCache.objects.filter(job=job).update(is_valid=False)
+            
+            # Create new cache entry
+            InterviewInsightsCache.objects.create(
+                job=job,
+                job_title=job.title,
+                company_name=job.company_name,
+                insights_data=insights,
+                generated_by=insights.get('generated_by', 'template')
+            )
+            logger.info(f"Cached interview insights for job {job_id}")
+        except Exception as cache_error:
+            logger.warning(f"Failed to cache insights: {cache_error}")
+            # Continue anyway - caching failure shouldn't break the response
+        
+        return Response(insights, status=status.HTTP_200_OK)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error generating interview insights for job {job_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to generate interview insights.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def job_skills_gap(request, job_id):
+    """
+    UC-066: Skills Gap Analysis
+    
+    GET: Analyze skills gap between candidate profile and job requirements
+    
+    Query Parameters:
+    - refresh: Set to 'true' to force regeneration (bypasses cache)
+    - include_similar: Set to 'true' to include trends across similar jobs
+    
+    Returns:
+    - Prioritized list of required skills with gap severity
+    - Candidate's current proficiency for each skill
+    - Learning resources and personalized learning paths
+    - Summary statistics and recommendations
+    - Optional: Skill gap trends across similar jobs
+    
+    Results are cached to improve performance.
+    """
+    from core.skills_gap_analysis import SkillsGapAnalyzer
+    from core.models import SkillGapAnalysisCache
+    from django.utils import timezone
+    
+    try:
+        # Verify job ownership
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        
+        # Check if user wants to force refresh or include trends
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        include_similar = request.query_params.get('include_similar', '').lower() == 'true'
+        
+        # Try to get cached analysis first (unless force refresh)
+        if not force_refresh:
+            cached = SkillGapAnalysisCache.objects.filter(
+                job=job,
+                is_valid=True
+            ).first()
+            
+            if cached:
+                analysis = cached.analysis_data
+                # Add trends if requested and not in cache
+                if include_similar and 'trends' not in analysis:
+                    trends = SkillsGapAnalyzer._analyze_similar_jobs(job, profile)
+                    analysis['trends'] = trends
+                
+                logger.info(f"Returning cached skills gap analysis for job {job_id}")
+                return Response(analysis, status=status.HTTP_200_OK)
+        
+        # Generate new analysis
+        logger.info(f"Generating skills gap analysis for job {job_id}")
+        analysis = SkillsGapAnalyzer.analyze_job(
+            job=job,
+            candidate_profile=profile,
+            include_similar_trends=include_similar
+        )
+        
+        # Add timestamp
+        analysis['generated_at'] = timezone.now().isoformat()
+        
+        # Cache the results
+        try:
+            # Invalidate old cache entries for this job
+            SkillGapAnalysisCache.objects.filter(job=job).update(is_valid=False)
+            
+            # Create new cache entry
+            SkillGapAnalysisCache.objects.create(
+                job=job,
+                job_title=job.title,
+                company_name=job.company_name,
+                analysis_data=analysis,
+                source=analysis.get('source', 'parsed')
+            )
+            logger.info(f"Cached skills gap analysis for job {job_id}")
+        except Exception as cache_error:
+            logger.warning(f"Failed to cache skills gap analysis: {cache_error}")
+            # Continue anyway - caching failure shouldn't break the response
+        
+        return Response(analysis, status=status.HTTP_200_OK)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error generating skills gap analysis for job {job_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to generate skills gap analysis.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def skill_progress(request, skill_id):
+    """
+    UC-066: Track Skill Development Progress
+    
+    GET: Retrieve progress records for a specific skill
+    POST: Log new practice/learning activity for a skill
+    
+    POST Request Body:
+    {
+        "activity_type": "practice|course|project|certification|review",
+        "hours_spent": 2.5,
+        "progress_percent": 50,
+        "notes": "Completed module 3",
+        "job_id": 123,  // Optional: link to specific job
+        "learning_resource_id": 456  // Optional: link to resource
+    }
+    """
+    from core.models import Skill, SkillDevelopmentProgress, LearningResource
+    from django.utils import timezone
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        # Verify skill exists
+        try:
+            skill = Skill.objects.get(id=skill_id)
+        except Skill.DoesNotExist:
+            return Response(
+                {'error': {'code': 'skill_not_found', 'message': 'Skill not found.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if request.method == 'GET':
+            # Get progress records for this skill
+            progress_records = SkillDevelopmentProgress.objects.filter(
+                candidate=profile,
+                skill=skill
+            ).order_by('-activity_date')
+            
+            data = []
+            for record in progress_records:
+                data.append({
+                    'id': record.id,
+                    'activity_type': record.activity_type,
+                    'hours_spent': float(record.hours_spent),
+                    'progress_percent': record.progress_percent,
+                    'notes': record.notes,
+                    'job_id': record.job.id if record.job else None,
+                    'learning_resource': {
+                        'id': record.learning_resource.id,
+                        'title': record.learning_resource.title,
+                    } if record.learning_resource else None,
+                    'activity_date': record.activity_date.isoformat(),
+                    'created_at': record.created_at.isoformat(),
+                })
+            
+            # Compute aggregate stats
+            total_hours = sum(r.hours_spent for r in progress_records)
+            latest_progress = progress_records.first().progress_percent if progress_records else 0
+            
+            return Response({
+                'skill': {
+                    'id': skill.id,
+                    'name': skill.name,
+                    'category': skill.category,
+                },
+                'total_hours': float(total_hours),
+                'current_progress_percent': latest_progress,
+                'activity_count': len(data),
+                'activities': data,
+            }, status=status.HTTP_200_OK)
+        
+        # POST: Log new activity
+        activity_type = request.data.get('activity_type', 'practice')
+        try:
+            hours_spent = float(request.data.get('hours_spent', 0))
+            progress_percent = int(request.data.get('progress_percent', 0))
+        except (ValueError, TypeError):
+            return Response(
+                {'error': {'code': 'invalid_data', 'message': 'Invalid hours_spent or progress_percent.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        notes = request.data.get('notes', '')
+        job_id = request.data.get('job_id')
+        resource_id = request.data.get('learning_resource_id')
+        
+        # Validate
+        if activity_type not in dict(SkillDevelopmentProgress.ACTIVITY_TYPES):
+            return Response(
+                {'error': {'code': 'invalid_activity_type', 'message': 'Invalid activity type.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not (0 <= progress_percent <= 100):
+            return Response(
+                {'error': {'code': 'invalid_progress', 'message': 'Progress must be between 0 and 100.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get optional related objects
+        job = None
+        if job_id:
+            try:
+                job = JobEntry.objects.get(id=job_id, candidate=profile)
+            except JobEntry.DoesNotExist:
+                pass
+        
+        resource = None
+        if resource_id:
+            try:
+                resource = LearningResource.objects.get(id=resource_id)
+            except LearningResource.DoesNotExist:
+                pass
+        
+        # Create progress record
+        record = SkillDevelopmentProgress.objects.create(
+            candidate=profile,
+            skill=skill,
+            job=job,
+            learning_resource=resource,
+            activity_type=activity_type,
+            hours_spent=hours_spent,
+            progress_percent=progress_percent,
+            notes=notes,
+            activity_date=timezone.now()
+        )
+        
+        return Response({
+            'id': record.id,
+            'message': 'Progress logged successfully.',
+            'activity_type': record.activity_type,
+            'hours_spent': float(record.hours_spent),
+            'progress_percent': record.progress_percent,
+            'activity_date': record.activity_date.isoformat(),
+        }, status=status.HTTP_201_CREATED)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in skill_progress for skill {skill_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to process skill progress.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
