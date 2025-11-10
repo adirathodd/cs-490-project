@@ -6,7 +6,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0005_add_skills_to_job_entry'),
+        ('core', '0009_add_skills_gap_models'),
     ]
 
     operations = [
@@ -29,13 +29,5 @@ class Migration(migrations.Migration):
             model_name='coverlettertemplate',
             new_name='core_coverl_is_shar_6d23c7_idx',
             old_name='core_coverl_is_shar_5e6f7g_idx',
-        ),
-        migrations.RemoveField(
-            model_name='jobentry',
-            name='preferred_skills',
-        ),
-        migrations.RemoveField(
-            model_name='jobentry',
-            name='required_skills',
         ),
     ]

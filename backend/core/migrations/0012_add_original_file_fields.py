@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0006_rename_core_coverl_templat_7b4c6b_idx_core_coverl_templat_4665ba_idx_and_more'),
+        ('core', '0011_rename_core_coverl_templat_7b4c6b_idx_core_coverl_templat_4665ba_idx_and_more'),
     ]
 
     operations = [
