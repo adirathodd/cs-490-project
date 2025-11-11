@@ -117,9 +117,9 @@ PASSWORD_HASHERS = [
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/New_York'  # Eastern Time
 USE_I18N = True
-USE_TZ = True
+USE_TZ = True  # Keep timezone-aware datetimes (stored as UTC, displayed in TIME_ZONE)
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'

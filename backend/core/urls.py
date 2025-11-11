@@ -154,4 +154,12 @@ urlpatterns = [
     # UC-065: Job Matching Algorithm endpoints
     path('jobs/<int:job_id>/match-score/', views.job_match_score, name='job-match-score'),
     path('jobs/match-scores/', views.bulk_job_match_scores, name='bulk-job-match-scores'),
+    
+    # UC-071: Interview Scheduling endpoints
+    path('interviews/', views.interview_list_create, name='interview-list-create'),
+    path('interviews/<int:pk>/', views.interview_detail, name='interview-detail'),
+    path('interviews/<int:pk>/complete/', views.interview_complete, name='interview-complete'),
+    path('interviews/<int:pk>/dismiss-reminder/', views.dismiss_interview_reminder, name='dismiss-interview-reminder'),
+    path('interviews/reminders/', views.active_interview_reminders, name='active-interview-reminders'),
+    path('interviews/tasks/<int:pk>/toggle/', views.toggle_preparation_task, name='toggle-preparation-task'),
 ]

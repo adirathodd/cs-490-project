@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Icon from './Icon';
 
 // Utility: format to YYYY-MM-DD
@@ -14,7 +15,8 @@ const endOfMonth = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
 
 const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 1);
 
-export default function DeadlineCalendar({ items = [], onSelectDate }) {
+export default function DeadlineCalendar({ items = [], interviews = [], onSelectDate }) {
+  const navigate = useNavigate();
   const [current, setCurrent] = useState(startOfMonth(new Date()));
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -39,14 +41,29 @@ export default function DeadlineCalendar({ items = [], onSelectDate }) {
     return { weeks, monthLabel: label };
   }, [current]);
 
+  // Group deadlines by date
   const deadlinesByDate = useMemo(() => {
-    const map = new Map();
-    (items || []).forEach((j) => {
-      if (!j.application_deadline) return;
-      map.set(j.application_deadline, [...(map.get(j.application_deadline) || []), j]);
+    const map = {};
+    items.forEach((job) => {
+      if (!job.application_deadline) return;
+      const key = fmt(new Date(job.application_deadline));
+      if (!map[key]) map[key] = [];
+      map[key].push(job);
     });
     return map;
   }, [items]);
+
+  // Group interviews by date
+  const interviewsByDate = useMemo(() => {
+    const map = {};
+    interviews.forEach((interview) => {
+      if (!interview.scheduled_at) return;
+      const key = fmt(new Date(interview.scheduled_at));
+      if (!map[key]) map[key] = [];
+      map[key].push(interview);
+    });
+    return map;
+  }, [interviews]);
 
   const todayStr = fmt(new Date());
   const monthStart = startOfMonth(current);
@@ -108,9 +125,11 @@ export default function DeadlineCalendar({ items = [], onSelectDate }) {
           <div key={wi} className="calendar-row">
             {week.map((d, di) => {
               const key = fmt(d);
-              const jobs = deadlinesByDate.get(key) || [];
+              const jobs = deadlinesByDate[key] || [];
+              const dayInterviews = interviewsByDate[key] || [];
               const isOtherMonth = d < monthStart || d > monthEnd;
               const isToday = key === todayStr;
+              const totalEvents = jobs.length + dayInterviews.length;
               return (
                 <button
                   key={di}
@@ -119,11 +138,11 @@ export default function DeadlineCalendar({ items = [], onSelectDate }) {
                   onClick={() => {
                     if (onSelectDate) onSelectDate(key, jobs);
                   }}
-                  title={jobs.length ? `${jobs.length} deadline${jobs.length > 1 ? 's' : ''} on ${key}` : key}
+                  title={totalEvents ? `${jobs.length} deadline${jobs.length !== 1 ? 's' : ''}, ${dayInterviews.length} interview${dayInterviews.length !== 1 ? 's' : ''} on ${key}` : key}
                 >
                   <div className="calendar-day-number">{d.getDate()}</div>
                   <div className="calendar-day-events">
-                    {jobs.slice(0, 3).map((j) => {
+                    {jobs.slice(0, 2).map((j) => {
                       // If job has been progressed beyond 'interested', show a neutral/gray pill
                       const isApplied = j.status && j.status !== 'interested';
                       const diff = daysDiff(j.application_deadline);
@@ -139,8 +158,42 @@ export default function DeadlineCalendar({ items = [], onSelectDate }) {
                         </div>
                       );
                     })}
-                    {jobs.length > 3 && (
-                      <div className="calendar-more">+{jobs.length - 3} more</div>
+                    {dayInterviews.slice(0, 2).map((interview) => {
+                      const interviewDate = new Date(interview.scheduled_at);
+                      const timeStr = interviewDate.toLocaleTimeString('en-US', { 
+                        hour: 'numeric', 
+                        minute: '2-digit',
+                        hour12: true 
+                      });
+                      const typeColors = {
+                        phone: { background: '#8b5cf6', color: '#ffffff', borderColor: '#8b5cf6' },
+                        video: { background: '#3b82f6', color: '#ffffff', borderColor: '#3b82f6' },
+                        in_person: { background: '#10b981', color: '#ffffff', borderColor: '#10b981' }
+                      };
+                      const s = typeColors[interview.interview_type] || typeColors.video;
+                      return (
+                        <div
+                          key={`interview-${interview.id}`}
+                          className="calendar-event-pill"
+                          title={`Interview: ${interview.job_title} (${interview.interview_type.replace('_', ' ')}) at ${timeStr}. Click to view details.`}
+                          style={{ 
+                            background: s.background, 
+                            color: s.color, 
+                            borderColor: s.borderColor,
+                            cursor: 'pointer'
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent day click
+                            // Navigate to job detail page with Scheduled Interviews tab
+                            navigate(`/jobs/${interview.job}?tab=interviews`);
+                          }}
+                        >
+                          🎤 {interview.job_title} {timeStr}
+                        </div>
+                      );
+                    })}
+                    {totalEvents > 4 && (
+                      <div className="calendar-more">+{totalEvents - 4} more</div>
                     )}
                   </div>
                 </button>

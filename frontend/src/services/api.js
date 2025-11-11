@@ -55,6 +55,30 @@ api.interceptors.response.use(
   }
 );
 
+const extractErrorMessage = (error, fallback) => {
+  const data = error?.response?.data;
+  if (!data) return fallback;
+
+  if (typeof data === 'string') return data;
+
+  if (typeof data.detail === 'string' && data.detail.trim()) {
+    return data.detail;
+  }
+
+  for (const value of Object.values(data)) {
+    if (!value) continue;
+    if (Array.isArray(value)) {
+      const first = value.find((v) => typeof v === 'string' && v.trim().length);
+      if (first) return first;
+    }
+    if (typeof value === 'string' && value.trim().length) {
+      return value;
+    }
+  }
+
+  return fallback;
+};
+
 // Profile API calls
 export const profileAPI = {
   getUserProfile: async (userId) => {
@@ -923,6 +947,154 @@ export const resumeAIAPI = {
   },
 };
 
+// UC-071: Interview Scheduling API calls
+export const interviewsAPI = {
+  // Get all interviews with optional filters
+  getInterviews: async (params = {}) => {
+    try {
+      const usp = new URLSearchParams();
+      Object.entries(params || {}).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') {
+          // Convert boolean to string for URL params
+          usp.append(k, String(v));
+        }
+      });
+      const path = usp.toString() ? `/interviews/?${usp.toString()}` : '/interviews/';
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch interviews' };
+    }
+  },
+
+  // Get a specific interview by ID
+  getInterview: async (id) => {
+    try {
+      const response = await api.get(`/interviews/${id}/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch interview' };
+    }
+  },
+
+  // Create a new interview
+  createInterview: async (data) => {
+    try {
+      const response = await api.post('/interviews/', data);
+      return response.data;
+    } catch (error) {
+      console.error('createInterview API error:', error);
+      console.error('error.response:', error.response);
+      console.error('error.response.data:', error.response?.data);
+      console.error('error.error:', error.error);
+      
+      // The response interceptor transforms errors, so check both error.response.data and error.error
+      // If error.error is an array, it's from the interceptor wrapping backend validation errors
+      if (error.error && Array.isArray(error.error) && error.error.length > 0) {
+        // Backend returns validation errors as strings in an array
+        // We need to wrap it in an object so the component can display it
+        const errorMessage = error.error[0];
+        if (typeof errorMessage === 'string') {
+          // This is likely a conflict message, so put it in scheduled_at field
+          throw { scheduled_at: errorMessage };
+        }
+        throw error.error[0];
+      }
+      
+      throw error.response?.data || error.error || { message: 'Failed to create interview' };
+    }
+  },
+
+  // Update an interview (including reschedule)
+  updateInterview: async (id, data) => {
+    try {
+      const response = await api.put(`/interviews/${id}/`, data);
+      return response.data;
+    } catch (error) {
+      console.error('updateInterview API error:', error);
+      console.error('error.response:', error.response);
+      console.error('error.response.data:', error.response?.data);
+      console.error('error.error:', error.error);
+      
+      // The response interceptor transforms errors, so check both error.response.data and error.error
+      if (error.error && Array.isArray(error.error) && error.error.length > 0) {
+        const errorMessage = error.error[0];
+        if (typeof errorMessage === 'string') {
+          // This is likely a conflict message, so put it in scheduled_at field
+          throw { scheduled_at: errorMessage };
+        }
+        throw error.error[0];
+      }
+      
+      throw error.response?.data || error.error || { message: 'Failed to update interview' };
+    }
+  },
+
+  // Cancel an interview
+  cancelInterview: async (id, reason = '') => {
+    try {
+      const response = await api.delete(`/interviews/${id}/`, {
+        data: { cancelled_reason: reason }
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to cancel interview' };
+    }
+  },
+
+  // Delete an interview permanently
+  deleteInterview: async (id) => {
+    try {
+      const response = await api.delete(`/interviews/${id}/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete interview' };
+    }
+  },
+
+  // Mark interview as completed with outcome
+  completeInterview: async (id, data) => {
+    try {
+      const response = await api.post(`/interviews/${id}/complete/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to complete interview' };
+    }
+  },
+
+  // Dismiss a reminder (24h or 1h)
+  dismissReminder: async (id, reminderType) => {
+    try {
+      const response = await api.post(`/interviews/${id}/dismiss-reminder/`, {
+        reminder_type: reminderType // '24h' or '1h'
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to dismiss reminder' };
+    }
+  },
+
+  // Get all active reminders for the user
+  getActiveReminders: async () => {
+    try {
+      const response = await api.get('/interviews/reminders/');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch reminders' };
+    }
+  },
+
+  // Toggle a preparation task completion
+  togglePreparationTask: async (taskId) => {
+    try {
+      const response = await api.put(`/interviews/tasks/${taskId}/toggle/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to toggle task' };
+    }
+  },
+};
+
 // UC-056: AI Cover Letter Generation API calls
 export const coverLetterAIAPI = {
   generateForJob: async (jobId, options = {}) => {
@@ -1258,6 +1430,7 @@ const _defaultExport = {
   materialsAPI,
   resumeAIAPI,
   resumeExportAPI,
+  interviewsAPI,
 };
 
 export default _defaultExport;
@@ -1275,6 +1448,7 @@ try {
     module.exports.salaryAPI = salaryAPI;
     module.exports.resumeAIAPI = resumeAIAPI;
     module.exports.resumeExportAPI = resumeExportAPI;
+    module.exports.interviewsAPI = interviewsAPI;
   }
 } catch (e) {
   // ignore in strict ESM environments
@@ -1310,6 +1484,7 @@ try {
     _defaultExport.salaryAPI = salaryAPI;
     _defaultExport.resumeAIAPI = resumeAIAPI;
     _defaultExport.resumeExportAPI = resumeExportAPI;
+    _defaultExport.interviewsAPI = interviewsAPI;
   }
   if (typeof module !== 'undefined' && module && module.exports) {
     module.exports = _defaultExport;
@@ -1319,6 +1494,7 @@ try {
     module.exports.salaryAPI = salaryAPI;
     module.exports.resumeAIAPI = resumeAIAPI;
     module.exports.resumeExportAPI = resumeExportAPI;
+    module.exports.interviewsAPI = interviewsAPI;
   }
 } catch (e) {
   // ignore any errors during best-effort compatibility wiring
