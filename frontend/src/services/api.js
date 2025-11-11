@@ -1729,3 +1729,248 @@ try {
   // ignore
 }
 
+
+// UC-052: Resume Sharing and Feedback API calls
+export const resumeSharingAPI = {
+  // List all shares for user's resumes
+  listShares: async () => {
+    try {
+      const response = await api.get('/resume-shares/');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch resume shares' };
+    }
+  },
+
+  // Create a new share link
+  createShare: async (shareData) => {
+    try {
+      const response = await api.post('/resume-shares/', shareData);
+      console.log('API Response:', response);
+      console.log('API Response Data:', response.data);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to create share link' };
+    }
+  },
+
+  // Get share details
+  getShare: async (shareId) => {
+    try {
+      const response = await api.get(`/resume-shares/${shareId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch share details' };
+    }
+  },
+
+  // Update share settings
+  updateShare: async (shareId, shareData) => {
+    try {
+      const response = await api.put(`/resume-shares/${shareId}/`, shareData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update share' };
+    }
+  },
+
+  // Delete share
+  deleteShare: async (shareId) => {
+    try {
+      const response = await api.delete(`/resume-shares/${shareId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete share' };
+    }
+  },
+
+  // View shared resume (public endpoint)
+  viewSharedResume: async (shareToken, accessData = {}) => {
+    try {
+      console.log('Sending access data:', accessData); // Debug log
+      console.log('Share token:', shareToken); // Debug log
+      console.log('Request URL:', `/shared-resume/${shareToken}/`); // Debug log
+      const response = await api.post(`/shared-resume/${shareToken}/`, accessData);
+      console.log('Success response:', response.data); // Debug log
+      return response.data;
+    } catch (error) {
+      console.log('Full error object:', error); // Debug log
+      console.log('Error response:', error.response); // Debug log
+      console.log('Error response status:', error.response?.status); // Debug log
+      console.log('Error response data:', error.response?.data); // Debug log
+      console.log('Error message:', error.message); // Debug log
+      
+      // Pass through the response data which contains requires_password, requires_reviewer_info flags
+      const errorData = error.response?.data || {};
+      throw {
+        message: errorData.error || error.message || 'Failed to access shared resume',
+        status: error.response?.status,
+        requires_password: errorData.requires_password || false,
+        requires_reviewer_info: errorData.requires_reviewer_info || false,
+        requires_email: errorData.requires_email || false,
+        ...errorData
+      };
+    }
+  },
+};
+
+export const feedbackAPI = {
+  // List all feedback for user's resumes
+  listFeedback: async (filters = {}) => {
+    try {
+      const response = await api.get('/feedback/', { params: filters });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch feedback' };
+    }
+  },
+
+  // Create feedback (public endpoint)
+  createFeedback: async (feedbackData) => {
+    try {
+      const response = await api.post('/feedback/create/', feedbackData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to submit feedback' };
+    }
+  },
+
+  // Get feedback details
+  getFeedback: async (feedbackId) => {
+    try {
+      const response = await api.get(`/feedback/${feedbackId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch feedback details' };
+    }
+  },
+
+  // Update feedback status
+  updateFeedback: async (feedbackId, updates) => {
+    try {
+      const response = await api.put(`/feedback/${feedbackId}/`, updates);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update feedback' };
+    }
+  },
+
+  // Delete feedback
+  deleteFeedback: async (feedbackId) => {
+    try {
+      const response = await api.delete(`/feedback/${feedbackId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete feedback' };
+    }
+  },
+
+  // Mark feedback as resolved
+  resolveFeedback: async (feedbackId, resolutionNotes = '', incorporatedVersionId = null) => {
+    try {
+      const response = await api.put(`/feedback/${feedbackId}/`, {
+        is_resolved: true,
+        resolution_notes: resolutionNotes,
+        incorporated_in_version_id: incorporatedVersionId
+      });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to resolve feedback' };
+    }
+  },
+
+  // Export feedback summary
+  exportFeedbackSummary: async (versionId, options = {}) => {
+    try {
+      const response = await api.post('/feedback/export/', {
+        resume_version_id: versionId,
+        include_resolved: options.includeResolved !== false,
+        include_comments: options.includeComments !== false,
+        format: options.format || 'json'
+      });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to export feedback' };
+    }
+  },
+};
+
+export const commentAPI = {
+  // Create a comment on feedback
+  createComment: async (commentData) => {
+    try {
+      const response = await api.post('/comments/create/', commentData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to post comment' };
+    }
+  },
+
+  // Update comment (resolve/unresolve)
+  updateComment: async (commentId, updates) => {
+    try {
+      const response = await api.put(`/comments/${commentId}/`, updates);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update comment' };
+    }
+  },
+
+  // Delete comment
+  deleteComment: async (commentId) => {
+    try {
+      const response = await api.delete(`/comments/${commentId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete comment' };
+    }
+  },
+
+  // Resolve a comment
+  resolveComment: async (commentId) => {
+    try {
+      const response = await api.put(`/comments/${commentId}/`, {
+        is_resolved: true
+      });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to resolve comment' };
+    }
+  },
+};
+
+export const notificationAPI = {
+  // Get feedback notifications
+  getFeedbackNotifications: async (filters = {}) => {
+    try {
+      const response = await api.get('/feedback-notifications/', { params: filters });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch notifications' };
+    }
+  },
+
+  // Mark notification as read
+  markNotificationRead: async (notificationId) => {
+    try {
+      const response = await api.put(`/feedback-notifications/${notificationId}/read/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to mark notification as read' };
+    }
+  },
+};
+
+// Export for module compatibility
+try {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports.resumeSharingAPI = resumeSharingAPI;
+    module.exports.feedbackAPI = feedbackAPI;
+    module.exports.commentAPI = commentAPI;
+    module.exports.notificationAPI = notificationAPI;
+  }
+} catch (e) {
+  // ignore
+}
+
+
