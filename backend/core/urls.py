@@ -150,4 +150,15 @@ urlpatterns = [
     # UC-066: Skills Gap Analysis endpoints
     path('jobs/<int:job_id>/skills-gap/', views.job_skills_gap, name='job-skills-gap'),
     path('skills/<int:skill_id>/progress/', views.skill_progress, name='skill-progress'),
+    
+    # UC-052: Resume Version Management endpoints
+    path('resume-versions/', views.resume_versions_list_create, name='resume-versions-list-create'),
+    path('resume-versions/<uuid:version_id>/', views.resume_version_detail, name='resume-version-detail'),
+    path('resume-versions/<uuid:version_id>/set-default/', views.resume_version_set_default, name='resume-version-set-default'),
+    path('resume-versions/<uuid:version_id>/archive/', views.resume_version_archive, name='resume-version-archive'),
+    path('resume-versions/<uuid:version_id>/restore/', views.resume_version_restore, name='resume-version-restore'),
+    path('resume-versions/<uuid:version_id>/duplicate/', views.resume_version_duplicate, name='resume-version-duplicate'),
+    path('resume-versions/<uuid:version_id>/history/', views.resume_version_history, name='resume-version-history'),
+    path('resume-versions/compare/', views.resume_version_compare, name='resume-version-compare'),
+    path('resume-versions/merge/', views.resume_version_merge, name='resume-version-merge'),
 ]

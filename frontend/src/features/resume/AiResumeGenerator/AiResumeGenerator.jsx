@@ -7,7 +7,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { jobsAPI, resumeAIAPI, resumeExportAPI } from '../../../services/api';
+import { jobsAPI, resumeAIAPI, resumeExportAPI, resumeVersionAPI } from '../../../services/api';
 import Icon from '../../../components/common/Icon';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import './AiResumeGenerator.css';
@@ -1165,6 +1165,19 @@ const AiResumeGenerator = () => {
   const [exportError, setExportError] = useState('');
   const [availableThemes, setAvailableThemes] = useState([]);
   
+  // UC-052: Resume Version Management state
+  const [showSaveVersionModal, setShowSaveVersionModal] = useState(false);
+  const [versionName, setVersionName] = useState('');
+  const [versionDescription, setVersionDescription] = useState('');
+  const [isSavingVersion, setIsSavingVersion] = useState(false);
+  const [saveVersionError, setSaveVersionError] = useState('');
+  
+  // UC-052: Load existing versions
+  const [savedVersions, setSavedVersions] = useState([]);
+  const [selectedVersionId, setSelectedVersionId] = useState(null);
+  const [currentVersionId, setCurrentVersionId] = useState(null);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+  
   // Template management state
   const [customTemplates, setCustomTemplates] = useState(() => {
     try {
@@ -1231,6 +1244,22 @@ const AiResumeGenerator = () => {
       }
     };
     fetchThemes();
+  }, []);
+
+  // UC-052: Load saved resume versions on mount
+  useEffect(() => {
+    const loadSavedVersions = async () => {
+      setIsLoadingVersions(true);
+      try {
+        const data = await resumeVersionAPI.listVersions(false); // Don't include archived
+        setSavedVersions(data.versions || []);
+      } catch (error) {
+        console.error('Failed to load saved versions:', error);
+      } finally {
+        setIsLoadingVersions(false);
+      }
+    };
+    loadSavedVersions();
   }, []);
 
   // Save result to cache whenever it changes
@@ -2012,6 +2041,156 @@ const AiResumeGenerator = () => {
       setExportError(error.response?.data?.error || 'Failed to export resume. Please try again.');
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  // UC-052: Save Resume Version Handler
+  const handleSaveVersion = async () => {
+    if (!versionName.trim()) {
+      setSaveVersionError('Please enter a version name');
+      return;
+    }
+
+    if (!liveLatexPreview || !activeVariation) {
+      setSaveVersionError('No resume content available to save');
+      return;
+    }
+
+    setIsSavingVersion(true);
+    setSaveVersionError('');
+
+    try {
+      // Prepare version data
+      const versionData = {
+        version_name: versionName.trim(),
+        description: versionDescription.trim() || '',
+        content: {
+          variation: activeVariation,
+          analysis: result?.shared_analysis,
+          sections: visibleSections,
+          bulletOverrides,
+          sectionRewrites,
+          sectionConfig,
+        },
+        latex_content: liveLatexPreview,
+        job_opportunity: selectedJobDetail?.id || null,
+      };
+
+      await resumeVersionAPI.createVersion(versionData);
+
+      // Success - close modal and reset
+      setShowSaveVersionModal(false);
+      setVersionName('');
+      setVersionDescription('');
+      setSaveVersionError('');
+      
+      // Reload versions list
+      const data = await resumeVersionAPI.listVersions(false);
+      setSavedVersions(data.versions || []);
+      
+      // Show success notification
+      alert('Resume version saved successfully!');
+    } catch (error) {
+      console.error('Save version failed:', error);
+      setSaveVersionError(error.response?.data?.error || 'Failed to save resume version. Please try again.');
+    } finally {
+      setIsSavingVersion(false);
+    }
+  };
+
+  // UC-052: Load a saved version into the editor
+  const handleLoadVersion = async (versionId) => {
+    if (!versionId) {
+      setCurrentVersionId(null);
+      setSelectedVersionId(null);
+      return;
+    }
+
+    try {
+      const version = await resumeVersionAPI.getVersion(versionId);
+      
+      // Restore the saved content
+      if (version.content) {
+        const content = version.content;
+        
+        // Restore variation
+        if (content.variation) {
+          setResult(prev => ({
+            ...prev,
+            variations: [content.variation]
+          }));
+          setActiveVariationId(content.variation.id);
+        }
+        
+        // Restore analysis
+        if (content.analysis) {
+          setResult(prev => ({
+            ...prev,
+            shared_analysis: content.analysis
+          }));
+        }
+        
+        // Restore sections
+        if (content.sections) {
+          // sections is an array of section IDs
+        }
+        
+        // Restore bullet overrides
+        if (content.bulletOverrides) {
+          setBulletOverrides(content.bulletOverrides);
+        }
+        
+        // Restore section rewrites
+        if (content.sectionRewrites) {
+          setSectionRewrites(content.sectionRewrites);
+        }
+        
+        // Restore section config
+        if (content.sectionConfig) {
+          setSectionConfig(hydrateSectionConfig(content.sectionConfig));
+        }
+      }
+      
+      // Set current version ID for tracking updates
+      setCurrentVersionId(versionId);
+      setSelectedVersionId(versionId);
+      
+      alert(`Loaded version: ${version.version_name}`);
+    } catch (error) {
+      console.error('Failed to load version:', error);
+      alert('Failed to load version. Please try again.');
+    }
+  };
+
+  // UC-052: Update current version when changes are made
+  const handleUpdateCurrentVersion = async () => {
+    if (!currentVersionId || !activeVariation) {
+      return;
+    }
+
+    try {
+      const versionData = {
+        content: {
+          variation: activeVariation,
+          analysis: result?.shared_analysis,
+          sections: visibleSections,
+          bulletOverrides,
+          sectionRewrites,
+          sectionConfig,
+        },
+        latex_content: liveLatexPreview,
+      };
+
+      await resumeVersionAPI.updateVersion(currentVersionId, versionData);
+      
+      // Reload versions list
+      const data = await resumeVersionAPI.listVersions(false);
+      setSavedVersions(data.versions || []);
+      
+      alert('Version updated successfully! Changes are tracked in history.');
+    } catch (error) {
+      console.error('Failed to update version:', error);
+      alert('Failed to update version. Please try again.');
     }
   };
 
@@ -3033,6 +3212,40 @@ const AiResumeGenerator = () => {
               {activeVariation && (
                 <article className="ai-resume-card variation-card">
                   <header>
+                    {/* UC-052: Version selector and update controls */}
+                    <div className="version-controls">
+                      <div className="version-selector">
+                        <label htmlFor="saved-version-select">
+                          <Icon name="file" size="sm" /> Saved Versions:
+                        </label>
+                        <select
+                          id="saved-version-select"
+                          value={selectedVersionId || ''}
+                          onChange={(e) => handleLoadVersion(e.target.value)}
+                          disabled={isLoadingVersions}
+                        >
+                          <option value="">-- New Resume (not saved) --</option>
+                          {savedVersions.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.version_name} {v.is_default ? '(Default)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      
+                      {currentVersionId && (
+                        <button
+                          type="button"
+                          className="update-version-btn primary"
+                          onClick={handleUpdateCurrentVersion}
+                          disabled={!liveLatexPreview}
+                          title="Save changes to this version (tracked in history)"
+                        >
+                          <Icon name="save" size="sm" /> Update Version
+                        </button>
+                      )}
+                    </div>
+                    
                     <div className="variation-action-stack">
                       <button type="button" onClick={() => handleDownloadPdf(activeVariation)}>
                         <Icon name="download" size="sm" /> Download PDF
@@ -3058,6 +3271,15 @@ const AiResumeGenerator = () => {
                         disabled={!liveLatexPreview}
                       >
                         <Icon name="download" size="sm" /> Export Other Formats
+                      </button>
+                      <button 
+                        type="button" 
+                        className="save-version-trigger primary"
+                        onClick={() => setShowSaveVersionModal(true)}
+                        disabled={!liveLatexPreview || !activeVariation}
+                        title={currentVersionId ? "Save as a new version" : "Save this resume as a version"}
+                      >
+                        <Icon name="save" size="sm" /> {currentVersionId ? 'Save as New Version' : 'Save as Version'}
                       </button>
                       <button
                         type="button"
@@ -3365,6 +3587,120 @@ const AiResumeGenerator = () => {
                 ) : (
                   <>
                     <Icon name="download" size="sm" /> Export Resume
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UC-052: Save Resume Version Modal */}
+      {showSaveVersionModal && (
+        <div className="export-modal-overlay" onClick={() => setShowSaveVersionModal(false)}>
+          <div className="export-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="export-modal-header">
+              <div>
+                <h3>
+                  <Icon name="save" size="sm" /> Save Resume Version
+                </h3>
+                <p className="hint">Create a named version of this resume to track changes</p>
+              </div>
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setShowSaveVersionModal(false)}
+                aria-label="Close save version dialog"
+              >
+                <Icon name="x" size="md" />
+              </button>
+            </div>
+
+            <div className="export-modal-body">
+              <div className="export-control-group">
+                <label htmlFor="version-name">
+                  <Icon name="tag" size="sm" /> Version Name <span className="required">*</span>
+                </label>
+                <input
+                  id="version-name"
+                  type="text"
+                  placeholder="e.g., Software Engineer - Google v1"
+                  value={versionName}
+                  onChange={(e) => setVersionName(e.target.value)}
+                  disabled={isSavingVersion}
+                  maxLength={100}
+                  required
+                />
+                <p className="field-hint">A descriptive name to identify this version</p>
+              </div>
+
+              <div className="export-control-group">
+                <label htmlFor="version-description">
+                  <Icon name="fileText" size="sm" /> Description (optional)
+                </label>
+                <textarea
+                  id="version-description"
+                  placeholder="e.g., Tailored for backend role, emphasized Python and cloud experience"
+                  value={versionDescription}
+                  onChange={(e) => setVersionDescription(e.target.value)}
+                  disabled={isSavingVersion}
+                  rows={3}
+                  maxLength={500}
+                />
+                <p className="field-hint">Notes about what makes this version unique</p>
+              </div>
+
+              {selectedJobDetail && (
+                <div className="version-job-info">
+                  <Icon name="briefcase" size="sm" />
+                  <div>
+                    <strong>Linked to Job:</strong>
+                    <p>{selectedJobDetail.title} at {selectedJobDetail.company_name}</p>
+                  </div>
+                </div>
+              )}
+
+              {currentVersionId && (
+                <div className="version-update-info">
+                  <Icon name="info" size="sm" />
+                  <p>
+                    <strong>Note:</strong> This will create a new separate version. 
+                    To update the current version "{savedVersions.find(v => v.id === currentVersionId)?.version_name}", 
+                    use the "Update Version" button instead.
+                  </p>
+                </div>
+              )}
+
+              {saveVersionError && (
+                <div className="export-error-message" role="alert">
+                  <Icon name="alertCircle" size="sm" />
+                  {saveVersionError}
+                </div>
+              )}
+            </div>
+
+            <div className="export-modal-footer">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setShowSaveVersionModal(false)}
+                disabled={isSavingVersion}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={handleSaveVersion}
+                disabled={isSavingVersion || !versionName.trim()}
+              >
+                {isSavingVersion ? (
+                  <>
+                    <LoadingSpinner size="sm" /> Saving...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="save" size="sm" /> Save Version
                   </>
                 )}
               </button>

@@ -6,7 +6,7 @@ import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate, ResumeVersion, ResumeVersionChange
 
 class CoverLetterTemplateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -1361,5 +1361,112 @@ class CompanySerializer(serializers.Serializer):
         return []
 
 
+class ResumeVersionSerializer(serializers.ModelSerializer):
+    """Serializer for UC-052: Resume Version Management"""
+    
+    source_job_title = serializers.SerializerMethodField()
+    source_job_company = serializers.SerializerMethodField()
+    application_count = serializers.SerializerMethodField()
+    created_from_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ResumeVersion
+        fields = [
+            'id', 'version_name', 'description', 'content', 'latex_content',
+            'is_default', 'is_archived', 'source_job', 'source_job_title', 
+            'source_job_company', 'applications', 'application_count',
+            'created_at', 'updated_at', 'created_from', 'created_from_name',
+            'generated_by_ai', 'generation_params'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'candidate']
+    
+    def get_source_job_title(self, obj):
+        """Get the title of the source job"""
+        if obj.source_job:
+            return obj.source_job.title
+        return None
+    
+    def get_source_job_company(self, obj):
+        """Get the company name of the source job"""
+        if obj.source_job and obj.source_job.company:
+            return obj.source_job.company.name
+        return None
+    
+    def get_application_count(self, obj):
+        """Count how many applications use this version"""
+        return obj.applications.count()
+    
+    def get_created_from_name(self, obj):
+        """Get the name of the parent version"""
+        if obj.created_from:
+            return obj.created_from.version_name
+        return None
+
+
+class ResumeVersionListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for listing resume versions"""
+    
+    source_job_title = serializers.SerializerMethodField()
+    source_job_company = serializers.SerializerMethodField()
+    application_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ResumeVersion
+        fields = [
+            'id', 'version_name', 'description', 'is_default', 'is_archived',
+            'source_job', 'source_job_title', 'source_job_company',
+            'application_count', 'created_at', 'updated_at', 'generated_by_ai'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_source_job_title(self, obj):
+        if obj.source_job:
+            return obj.source_job.title
+        return None
+    
+    def get_source_job_company(self, obj):
+        if obj.source_job and obj.source_job.company:
+            return obj.source_job.company.name
+        return None
+    
+    def get_application_count(self, obj):
+        return obj.applications.count()
+
+
+class ResumeVersionCompareSerializer(serializers.Serializer):
+    """Serializer for comparing two resume versions"""
+    
+    version1_id = serializers.UUIDField(required=True)
+    version2_id = serializers.UUIDField(required=True)
+
+
+class ResumeVersionMergeSerializer(serializers.Serializer):
+    """Serializer for merging changes between resume versions"""
+    
+    source_version_id = serializers.UUIDField(required=True)
+    target_version_id = serializers.UUIDField(required=True)
+    merge_fields = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        help_text="List of field paths to merge (e.g., ['skills', 'experience.0', 'education'])"
+    )
+    create_new = serializers.BooleanField(
+        default=False,
+        help_text="If True, create a new version with merged content instead of updating target"
+    )
+    new_version_name = serializers.CharField(
+        required=False,
+        max_length=200,
+        help_text="Name for the new merged version (required if create_new=True)"
+    )
+
+
+class ResumeVersionChangeSerializer(serializers.ModelSerializer):
+    """Serializer for UC-052: Resume Version Change Tracking"""
+    
+    class Meta:
+        model = ResumeVersionChange
+        fields = ['id', 'change_type', 'changes', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
 
