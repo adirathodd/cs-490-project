@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jobsAPI, materialsAPI, interviewsAPI } from '../../services/api';
 import Icon from '../common/Icon';
@@ -64,6 +64,7 @@ const Jobs = () => {
   const [success, setSuccess] = useState('');
   const [charCount, setCharCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
 
   // UC-039: Search and Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -114,6 +115,7 @@ const Jobs = () => {
   const [jobMaterials, setJobMaterials] = useState({ resume_doc: null, cover_letter_doc: null, history: [] });
   const [materialsForm, setMaterialsForm] = useState({ resume_doc_id: null, cover_letter_doc_id: null });
   const [savingMaterials, setSavingMaterials] = useState(false);
+  const initialFetchRef = useRef(true);
 
   // UC-039: Load saved search preferences from localStorage on mount
   useEffect(() => {
@@ -172,8 +174,14 @@ const Jobs = () => {
   }, []);
 
   useEffect(() => {
+    let isActive = true;
+
     const init = async () => {
-      setLoading(true);
+      const isInitialLoad = initialFetchRef.current;
+      if (!isInitialLoad) {
+        setIsFetching(true);
+      }
+
       try {
         // UC-039: Build query parameters for search and filtering
         // UC-045: Include archived filter
@@ -191,10 +199,12 @@ const Jobs = () => {
         };
         
         const response = await jobsAPI.getJobs(params);
+        if (!isActive) return;
         const list = response.results || response || [];
         setItems(Array.isArray(list) ? list : []);
         setError('');
       } catch (e) {
+        if (!isActive) return;
         const msg = e?.message || e?.error?.message || 'Failed to load jobs';
         if (e?.status === 401) {
           setError('Please log in to view your jobs.');
@@ -204,10 +214,18 @@ const Jobs = () => {
           setError(msg);
         }
       } finally {
-        setLoading(false);
+        if (!isActive) return;
+        if (initialFetchRef.current) {
+          initialFetchRef.current = false;
+          setLoading(false);
+        }
+        setIsFetching(false);
       }
     };
     init();
+    return () => {
+      isActive = false;
+    };
   }, [searchQuery, filters, sortBy, showArchived]);
 
   // Helper: days difference (deadline - today), and urgency color
@@ -1249,6 +1267,13 @@ const Jobs = () => {
                 </button>
               </div>
             </div>
+
+            {isFetching && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '13px', marginBottom: showFilters ? '16px' : '0' }}>
+                <Icon name="loader" size="sm" className="spin" ariaLabel="Updating results" />
+                Updating results...
+              </div>
+            )}
             
             {showFilters && (
               <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>

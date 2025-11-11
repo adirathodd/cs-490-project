@@ -2619,8 +2619,10 @@ def jobs_list_create(request):
             salary_max = (request.GET.get('salary_max') or '').strip()
             if salary_min:
                 try:
-                    qs = qs.filter(Q(salary_min__gte=int(salary_min)) | Q(salary_max__gte=int(salary_min)))
-                except ValueError:
+                    from decimal import Decimal, InvalidOperation
+                    min_value = Decimal(salary_min)
+                    qs = qs.filter(salary_min__gte=min_value)
+                except (InvalidOperation, ValueError):
                     pass
             if salary_max:
                 try:
