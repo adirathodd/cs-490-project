@@ -490,7 +490,6 @@ const JobDetailView = () => {
                     
                   } catch (error) {
                     console.error('Generate documents error:', error);
-                    setError('❌ Failed to generate documents: ' + error.message);
                     setTimeout(() => setError(''), 5000);
                   } finally {
                     setLoading(false);
