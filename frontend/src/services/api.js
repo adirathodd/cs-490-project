@@ -666,6 +666,11 @@ export const jobsAPI = {
     return response.data; // { interested: n, applied: n, ... }
   },
 
+  getAnalytics: async () => {
+    const response = await api.get('/jobs/analytics');
+    return response.data; // Enhanced analytics data
+  },
+
   bulkUpdateStatus: async (ids, status) => {
     const response = await api.post('/jobs/bulk-status', { ids, status });
     return response.data; // { updated: n }

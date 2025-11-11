@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { jobsAPI, materialsAPI, interviewsAPI } from '../../services/api';
 import Icon from '../common/Icon';
 import DeadlineCalendar from '../common/DeadlineCalendar';
+import AutomationDashboard from '../automation/AutomationDashboard';
 
 const defaultForm = {
   title: '',
@@ -97,6 +98,9 @@ const Jobs = () => {
   const [documents, setDocuments] = useState([]);
   const [defaults, setDefaults] = useState({ default_resume_doc: null, default_cover_letter_doc: null });
   const [showDefaultsModal, setShowDefaultsModal] = useState(false);
+
+  // Automation State
+  const [showAutomation, setShowAutomation] = useState(false);
   const [showMaterialsModal, setShowMaterialsModal] = useState(false);
 
   // Job Match Ranking State
@@ -900,6 +904,16 @@ const Jobs = () => {
             <Icon name="file-text" size="sm" />
             Set Defaults
           </button>
+          {/* UC-069: Automation Dashboard button */}
+          <button
+            className="btn-secondary"
+            onClick={() => setShowAutomation(!showAutomation)}
+            style={responsiveActionButtonStyle}
+            title="Manage application automation and scheduled submissions"
+          >
+            <Icon name="settings" size="sm" />
+            {showAutomation ? 'Hide Automation' : 'Automation'}
+          </button>
           {/* Job Match Ranking button */}
           <button
             className="btn-secondary"
@@ -1018,6 +1032,17 @@ const Jobs = () => {
           >
             Undo
           </button>
+        </div>
+      )}
+
+      {/* UC-069: Application Automation Dashboard */}
+      {showAutomation && (
+        <div className="education-form-card" style={{ 
+          marginBottom: '20px',
+          overflow: 'visible', // Override overflow: hidden to prevent cutting off modals
+          minHeight: 'auto'
+        }}>
+          <AutomationDashboard />
         </div>
       )}
 

@@ -1169,7 +1169,7 @@ class JobEntrySerializer(serializers.ModelSerializer):
     def _doc_payload(self, doc):
         if not doc:
             return None
-        return {
+        payload = {
             'id': doc.id,
             'doc_type': doc.doc_type,
             'version': doc.version,
@@ -1178,6 +1178,14 @@ class JobEntrySerializer(serializers.ModelSerializer):
             'document_name': getattr(doc, 'document_name', ''),
             'created_at': getattr(doc, 'created_at', None),
         }
+        
+        # Add analytics data for cover letters
+        if doc.doc_type == 'cover_letter':
+            payload['ai_generation_tone'] = getattr(doc, 'ai_generation_tone', '')
+            payload['ai_generation_params'] = getattr(doc, 'ai_generation_params', {})
+            payload['generated_by_ai'] = getattr(doc, 'generated_by_ai', False)
+            
+        return payload
 
     def get_resume_doc(self, obj):
         return self._doc_payload(getattr(obj, 'resume_doc', None))
@@ -1699,6 +1707,27 @@ class ResumeVersionListSerializer(serializers.ModelSerializer):
     def get_unresolved_feedback_count(self, obj):
         """Get count of unresolved feedback for this version"""
         return obj.feedback_received.filter(is_resolved=False).count()
+
+
+class ResumeVersionChangeSerializer(serializers.ModelSerializer):
+    """Serializer for ResumeVersionChange entries (history records).
+
+    Provides the timestamp and raw change payload. Kept intentionally small
+    so the frontend can pick the fields it needs without causing import errors.
+    """
+    # alias for frontend expectation (some places expect `changed_at`)
+    changed_at = serializers.DateTimeField(source='created_at', read_only=True)
+
+    class Meta:
+        model = ResumeVersionChange
+        fields = [
+            'id',
+            'change_type',
+            'changes',
+            'created_at',
+            'changed_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'changed_at']
 
 
 class ResumeVersionCompareSerializer(serializers.Serializer):
