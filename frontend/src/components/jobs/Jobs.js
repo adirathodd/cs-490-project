@@ -65,6 +65,7 @@ const Jobs = () => {
   const [charCount, setCharCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
 
   // UC-039: Search and Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -130,18 +131,21 @@ const Jobs = () => {
       }
     } catch (e) {
       console.warn('Failed to load saved search preferences:', e);
+    } finally {
+      setPrefsLoaded(true);
     }
   }, []);
 
   // UC-039: Save search preferences to localStorage when they change
   useEffect(() => {
+    if (!prefsLoaded) return;
     try {
       const prefs = { searchQuery, filters, sortBy, showFilters };
       localStorage.setItem('jobSearchPreferences', JSON.stringify(prefs));
     } catch (e) {
       console.warn('Failed to save search preferences:', e);
     }
-  }, [searchQuery, filters, sortBy, showFilters]);
+  }, [searchQuery, filters, sortBy, showFilters, prefsLoaded]);
 
   // UC-042: Load documents and defaults
   useEffect(() => {
@@ -174,6 +178,10 @@ const Jobs = () => {
   }, []);
 
   useEffect(() => {
+    if (!prefsLoaded) {
+      return undefined;
+    }
+
     let isActive = true;
 
     const init = async () => {
@@ -200,7 +208,7 @@ const Jobs = () => {
         
         const response = await jobsAPI.getJobs(params);
         if (!isActive) return;
-        const list = response.results || response || [];
+        const list = response?.results ?? response ?? [];
         setItems(Array.isArray(list) ? list : []);
         setError('');
       } catch (e) {
@@ -226,7 +234,7 @@ const Jobs = () => {
     return () => {
       isActive = false;
     };
-  }, [searchQuery, filters, sortBy, showArchived]);
+  }, [searchQuery, filters, sortBy, showArchived, prefsLoaded]);
 
   // Helper: days difference (deadline - today), and urgency color
   const daysUntil = (dateStr) => {
@@ -566,9 +574,9 @@ const Jobs = () => {
         sort: sortBy,
         archived: showArchived ? 'true' : 'false',
       };
-      const response = await jobsAPI.getJobs(params);
-      const list = response.results || response || [];
-      setItems(Array.isArray(list) ? list : []);
+  const response = await jobsAPI.getJobs(params);
+  const list = response?.results ?? response ?? [];
+  setItems(Array.isArray(list) ? list : []);
       
       setSuccess('Action undone.');
       setTimeout(() => setSuccess(''), 2000);
