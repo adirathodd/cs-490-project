@@ -153,10 +153,8 @@ const iconMap = {
   gitMerge: FaRandom,
   compare: FaRandom,
   rotateLeft: FaArrowLeft,
-  arrowRight: FaArrowRight,
   arrowLeft: FaArrowLeft,
   save: FaSave,
-  clock: FaClock,
   layers: FaLayerGroup,
   loader: FaSpinner,
 };

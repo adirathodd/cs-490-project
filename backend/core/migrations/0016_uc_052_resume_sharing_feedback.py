@@ -9,7 +9,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0025_merge_20251111_1221'),
+        ('core', '0015_merge_20251111_0725'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
