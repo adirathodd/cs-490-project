@@ -27,6 +27,7 @@ import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
 import { AiCoverLetterGenerator } from './features/cover-letter';
 import ResumeVersionControl from './components/resume/ResumeVersionControl';
+import SharedResumeView from './components/resume/SharedResumeView';
 import ScrollToTop from './components/common/ScrollToTop';
 import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
@@ -46,6 +47,9 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          
+          {/* Public shared resume view */}
+          <Route path="/shared-resume/:shareToken" element={<SharedResumeView />} />
 
           {/* protected */}
           <Route

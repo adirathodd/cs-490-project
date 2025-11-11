@@ -177,4 +177,18 @@ urlpatterns = [
     path('resume-versions/<uuid:version_id>/history/', views.resume_version_history, name='resume-version-history'),
     path('resume-versions/compare/', views.resume_version_compare, name='resume-version-compare'),
     path('resume-versions/merge/', views.resume_version_merge, name='resume-version-merge'),
+    
+    # UC-052: Resume Sharing and Feedback endpoints
+    path('resume-shares/', views.resume_share_list_create, name='resume-share-list-create'),
+    path('resume-shares/<uuid:share_id>/', views.resume_share_detail, name='resume-share-detail'),
+    path('shared-resume/<str:share_token>/', views.shared_resume_view, name='shared-resume-view'),
+    path('feedback/', views.feedback_list, name='feedback-list'),
+    path('feedback/create/', views.create_feedback, name='create-feedback'),
+    path('feedback/<uuid:feedback_id>/', views.feedback_detail, name='feedback-detail'),
+    path('comments/create/', views.create_comment, name='create-comment'),
+    path('comments/<uuid:comment_id>/', views.comment_detail, name='comment-detail'),
+    path('feedback-notifications/', views.feedback_notifications, name='feedback-notifications'),
+    path('feedback-notifications/<uuid:notification_id>/read/', views.mark_notification_read, name='mark-notification-read'),
+    path('feedback/export/', views.export_feedback_summary, name='export-feedback-summary'),
 ]
+

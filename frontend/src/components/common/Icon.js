@@ -53,9 +53,7 @@ import {
   FaCodeBranch,
   FaRandom,
   FaArrowLeft,
-  FaArrowRight,
   FaSave,
-  FaClock,
   FaLayerGroup,
 } from 'react-icons/fa';
 

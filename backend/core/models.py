@@ -1867,3 +1867,433 @@ class ResumeVersionChange(models.Model):
     
     def __str__(self):
         return f"{self.change_type.title()} - {self.version.version_name} at {self.created_at}"
+
+
+class ResumeShare(models.Model):
+    """
+    UC-052: Resume Sharing for Feedback
+    Generate shareable links for resumes with privacy controls
+    """
+    PRIVACY_CHOICES = [
+        ('public', 'Public - Anyone with link can view'),
+        ('password', 'Password Protected'),
+        ('email_verified', 'Email Verified Only'),
+        ('private', 'Private - Owner Only'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    resume_version = models.ForeignKey(
+        ResumeVersion,
+        on_delete=models.CASCADE,
+        related_name='shares'
+    )
+    
+    # Sharing configuration
+    share_token = models.CharField(
+        max_length=64,
+        unique=True,
+        db_index=True,
+        help_text="Unique token for shareable link"
+    )
+    privacy_level = models.CharField(
+        max_length=20,
+        choices=PRIVACY_CHOICES,
+        default='public'
+    )
+    password_hash = models.CharField(
+        max_length=128,
+        blank=True,
+        help_text="Hashed password for password-protected shares"
+    )
+    
+    # Access control
+    allowed_emails = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of email addresses allowed to access (for email_verified mode)"
+    )
+    allowed_domains = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of email domains allowed to access"
+    )
+    
+    # Permissions
+    allow_comments = models.BooleanField(
+        default=True,
+        help_text="Allow reviewers to leave comments"
+    )
+    allow_download = models.BooleanField(
+        default=False,
+        help_text="Allow reviewers to download the resume"
+    )
+    require_reviewer_info = models.BooleanField(
+        default=True,
+        help_text="Require reviewers to provide name/email before accessing"
+    )
+    
+    # Tracking
+    view_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Optional expiration date for the share link"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Deactivate to disable access without deleting"
+    )
+    
+    # Metadata
+    share_message = models.TextField(
+        blank=True,
+        help_text="Optional message to display to reviewers"
+    )
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['share_token']),
+            models.Index(fields=['resume_version', '-created_at']),
+            models.Index(fields=['is_active', 'expires_at']),
+        ]
+        ordering = ['-created_at']
+    
+    def save(self, *args, **kwargs):
+        if not self.share_token:
+            self.share_token = secrets.token_urlsafe(32)
+        super().save(*args, **kwargs)
+    
+    def is_expired(self):
+        """Check if the share link has expired"""
+        if self.expires_at and timezone.now() > self.expires_at:
+            return True
+        return False
+    
+    def is_accessible(self):
+        """Check if the share link is currently accessible"""
+        return self.is_active and not self.is_expired()
+    
+    def increment_view_count(self):
+        """Increment the view count atomically"""
+        self.view_count = models.F('view_count') + 1
+        self.save(update_fields=['view_count'])
+    
+    def __str__(self):
+        status = "Active" if self.is_accessible() else "Inactive"
+        return f"{self.resume_version.version_name} - {status} ({self.privacy_level})"
+
+
+class ShareAccessLog(models.Model):
+    """
+    Track who accessed shared resumes and when
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    share = models.ForeignKey(
+        ResumeShare,
+        on_delete=models.CASCADE,
+        related_name='access_logs'
+    )
+    
+    # Reviewer information
+    reviewer_name = models.CharField(max_length=200, blank=True)
+    reviewer_email = models.EmailField(blank=True)
+    reviewer_ip = models.GenericIPAddressField(null=True, blank=True)
+    
+    # Access details
+    accessed_at = models.DateTimeField(auto_now_add=True)
+    action = models.CharField(
+        max_length=20,
+        choices=[
+            ('view', 'Viewed'),
+            ('download', 'Downloaded'),
+            ('comment', 'Commented'),
+        ],
+        default='view'
+    )
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['share', '-accessed_at']),
+            models.Index(fields=['reviewer_email', '-accessed_at']),
+        ]
+        ordering = ['-accessed_at']
+    
+    def __str__(self):
+        return f"{self.reviewer_email or 'Anonymous'} {self.action} - {self.accessed_at}"
+
+
+class ResumeFeedback(models.Model):
+    """
+    UC-052: Feedback on shared resumes
+    Main feedback record with overall comments and ratings
+    """
+    FEEDBACK_STATUS = [
+        ('pending', 'Pending Review'),
+        ('in_review', 'Under Review'),
+        ('addressed', 'Addressed'),
+        ('resolved', 'Resolved'),
+        ('dismissed', 'Dismissed'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    share = models.ForeignKey(
+        ResumeShare,
+        on_delete=models.CASCADE,
+        related_name='feedback_items'
+    )
+    resume_version = models.ForeignKey(
+        ResumeVersion,
+        on_delete=models.CASCADE,
+        related_name='feedback_received'
+    )
+    
+    # Reviewer information
+    reviewer_name = models.CharField(max_length=200)
+    reviewer_email = models.EmailField()
+    reviewer_title = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="e.g., 'Senior Recruiter at TechCorp'"
+    )
+    
+    # Feedback content
+    overall_feedback = models.TextField(
+        help_text="General comments about the resume"
+    )
+    rating = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Optional rating (1-5 stars)"
+    )
+    
+    # Status tracking
+    status = models.CharField(
+        max_length=20,
+        choices=FEEDBACK_STATUS,
+        default='pending'
+    )
+    is_resolved = models.BooleanField(default=False)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolution_notes = models.TextField(
+        blank=True,
+        help_text="Notes about how feedback was addressed"
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Tracking which version incorporated this feedback
+    incorporated_in_version = models.ForeignKey(
+        ResumeVersion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='incorporated_feedback',
+        help_text="Version that incorporated this feedback"
+    )
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['resume_version', '-created_at']),
+            models.Index(fields=['share', '-created_at']),
+            models.Index(fields=['status', '-created_at']),
+            models.Index(fields=['reviewer_email', '-created_at']),
+        ]
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Feedback from {self.reviewer_name} - {self.status}"
+    
+    def mark_resolved(self, resolution_notes='', incorporated_version=None):
+        """Mark feedback as resolved"""
+        self.is_resolved = True
+        self.status = 'resolved'
+        self.resolved_at = timezone.now()
+        self.resolution_notes = resolution_notes
+        if incorporated_version:
+            self.incorporated_in_version = incorporated_version
+        self.save()
+
+
+class FeedbackComment(models.Model):
+    """
+    UC-052: Detailed comments on specific sections/lines of resume
+    Thread-based commenting system
+    """
+    COMMENT_TYPE = [
+        ('general', 'General Comment'),
+        ('suggestion', 'Suggestion'),
+        ('question', 'Question'),
+        ('praise', 'Praise'),
+        ('concern', 'Concern'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    feedback = models.ForeignKey(
+        ResumeFeedback,
+        on_delete=models.CASCADE,
+        related_name='comments'
+    )
+    
+    # Comment thread support
+    parent_comment = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='replies'
+    )
+    
+    # Commenter info (can be owner replying or reviewer)
+    commenter_name = models.CharField(max_length=200)
+    commenter_email = models.EmailField()
+    is_owner = models.BooleanField(
+        default=False,
+        help_text="True if comment is from resume owner (response)"
+    )
+    
+    # Comment content
+    comment_type = models.CharField(
+        max_length=20,
+        choices=COMMENT_TYPE,
+        default='general'
+    )
+    comment_text = models.TextField()
+    
+    # Location in resume (optional, for inline comments)
+    section = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Resume section this comment refers to (e.g., 'experience', 'skills')"
+    )
+    section_index = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Index of item within section (for specific bullet points)"
+    )
+    highlighted_text = models.TextField(
+        blank=True,
+        help_text="Specific text this comment refers to"
+    )
+    
+    # Status
+    is_resolved = models.BooleanField(default=False)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Helpful votes (optional feature)
+    helpful_count = models.PositiveIntegerField(default=0)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['feedback', '-created_at']),
+            models.Index(fields=['parent_comment', '-created_at']),
+            models.Index(fields=['section', 'section_index']),
+        ]
+        ordering = ['created_at']
+    
+    def __str__(self):
+        comment_preview = self.comment_text[:50]
+        return f"{self.commenter_name}: {comment_preview}..."
+    
+    def mark_resolved(self):
+        """Mark comment as resolved"""
+        self.is_resolved = True
+        self.resolved_at = timezone.now()
+        self.save()
+    
+    def get_thread_depth(self):
+        """Calculate depth of comment in thread"""
+        depth = 0
+        current = self
+        while current.parent_comment:
+            depth += 1
+            current = current.parent_comment
+        return depth
+
+
+class FeedbackNotification(models.Model):
+    """
+    UC-052: Notifications for feedback activity
+    Notify users about new feedback, comments, and resolutions
+    """
+    NOTIFICATION_TYPE = [
+        ('new_feedback', 'New Feedback Received'),
+        ('new_comment', 'New Comment on Your Resume'),
+        ('feedback_reply', 'Reply to Your Feedback'),
+        ('feedback_resolved', 'Feedback Marked as Resolved'),
+        ('share_accessed', 'Resume Share Accessed'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='feedback_notifications'
+    )
+    
+    # Notification details
+    notification_type = models.CharField(
+        max_length=30,
+        choices=NOTIFICATION_TYPE
+    )
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    
+    # Related objects
+    feedback = models.ForeignKey(
+        ResumeFeedback,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='notifications'
+    )
+    comment = models.ForeignKey(
+        FeedbackComment,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='notifications'
+    )
+    share = models.ForeignKey(
+        ResumeShare,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='notifications'
+    )
+    
+    # Status
+    is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    # Action link
+    action_url = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="URL to view the feedback/comment"
+    )
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['user', 'is_read', '-created_at']),
+        ]
+        ordering = ['-created_at']
+    
+    def mark_read(self):
+        """Mark notification as read"""
+        if not self.is_read:
+            self.is_read = True
+            self.read_at = timezone.now()
+            self.save()
+    
+    def __str__(self):
+        return f"{self.notification_type} for {self.user.username} - {'Read' if self.is_read else 'Unread'}"

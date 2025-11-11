@@ -327,6 +327,7 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  position: relative;
 }
 
 .action-btn:hover {
@@ -352,6 +353,35 @@
 .action-btn.delete-btn:hover {
   background: #fef2f2;
   border-color: #fecaca;
+}
+
+/* Notification Badge */
+.notification-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #dc2626;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
 }
 
 /* Modal Styles */
@@ -387,6 +417,11 @@
 
 .modal-content.large {
   max-width: 900px;
+}
+
+.modal-content.feedback-modal {
+  max-width: 800px;
+  max-height: 90vh;
 }
 
 @keyframes slideUp {
@@ -1263,6 +1298,26 @@
   background: #eff6ff;
   border-color: #3b82f6;
   color: #1e40af;
+}
+
+.action-btn.share-btn {
+  color: #059669;
+}
+
+.action-btn.share-btn:hover:not(:disabled) {
+  background: #d1fae5;
+  border-color: #059669;
+  color: #047857;
+}
+
+.action-btn.feedback-btn {
+  color: #7c3aed;
+}
+
+.action-btn.feedback-btn:hover:not(:disabled) {
+  background: #ede9fe;
+  border-color: #7c3aed;
+  color: #6d28d9;
 }
 
 .action-btn.delete-btn:hover:not(:disabled) {
