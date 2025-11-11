@@ -8,7 +8,9 @@ const NavBar = () => {
   const { currentUser, userProfile, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [resumeDropdownOpen, setResumeDropdownOpen] = useState(false);
   const menuRef = useRef(null);
+  const resumeDropdownRef = useRef(null);
 
   // Prefer backend candidate profile/user name to ensure consistency across providers
   const backendFullName = (userProfile?.full_name || '').trim();
@@ -28,6 +30,9 @@ const NavBar = () => {
     const onDocClick = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         setMenuOpen(false);
+      }
+      if (resumeDropdownRef.current && !resumeDropdownRef.current.contains(e.target)) {
+        setResumeDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', onDocClick);
@@ -75,7 +80,35 @@ const NavBar = () => {
         <NavLink to="/education" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Education</NavLink>
   <NavLink to="/projects" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Projects</NavLink>
   <NavLink to="/jobs" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Jobs</NavLink>
-  <NavLink to="/resume/ai" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>AI Resume</NavLink>
+  
+  {/* Resume dropdown */}
+  <div className="nav-dropdown" ref={resumeDropdownRef}>
+    <button 
+      className={`nav-link nav-dropdown-toggle ${(window.location.pathname.startsWith('/resume') ? 'active' : '')}`}
+      onClick={(e) => { e.stopPropagation(); setResumeDropdownOpen(v => !v); }}
+    >
+      Resume ▾
+    </button>
+    {resumeDropdownOpen && (
+      <div className="nav-dropdown-menu">
+        <NavLink 
+          to="/resume/ai" 
+          className="nav-dropdown-item"
+          onClick={() => { setResumeDropdownOpen(false); setOpen(false); }}
+        >
+          AI Resume Generator
+        </NavLink>
+        <NavLink 
+          to="/resume/versions" 
+          className="nav-dropdown-item"
+          onClick={() => { setResumeDropdownOpen(false); setOpen(false); }}
+        >
+          Resume Version Control
+        </NavLink>
+      </div>
+    )}
+  </div>
+  
   <NavLink to="/cover-letter/ai" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>AI Cover Letters</NavLink>
   <NavLink to="/documents" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Documents</NavLink>
         <NavLink to="/certifications" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Certifications</NavLink>

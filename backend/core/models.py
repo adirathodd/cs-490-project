@@ -844,6 +844,22 @@ class AIGenerationLog(models.Model):
         ]
 
 
+class AutomationRule(models.Model):
+    """User-defined automation rules for workflow optimization"""
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="automation_rules")
+    rule_name = models.CharField(max_length=200)
+    trigger_event = models.CharField(max_length=50)  # application_status_change, new_job_match
+    trigger_conditions = models.JSONField(default=dict)
+    action_type = models.CharField(max_length=50)  # send_email, update_status, generate_document
+    action_config = models.JSONField(default=dict)
+    is_active = models.BooleanField(default=True)
+    times_triggered = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        indexes = [models.Index(fields=["candidate", "is_active"])]
+
+
 # ======================
 # REMINDERS & NOTIFICATIONS
 # ======================
@@ -1425,455 +1441,6 @@ class JobMatchAnalysis(models.Model):
             return 'F'
 
 
-# ======================
-# UC-069: APPLICATION WORKFLOW AUTOMATION MODELS
-# ======================
-
-class ApplicationAutomationRule(models.Model):
-    """
-    UC-069: User-defined automation rules for application workflows
-    
-    Examples:
-    - Auto-generate resume for jobs with match score > 80%
-    - Schedule applications for Tuesdays at 9 AM
-    - Send follow-up after 1 week if no response
-    """
-    TRIGGER_TYPES = [
-        ('new_job', 'New Job Added'),
-        ('job_match_found', 'High Match Job Found'),
-        ('application_deadline', 'Application Deadline Approaching'),
-        ('match_score', 'Match Score Threshold'),
-        ('deadline_approaching', 'Deadline Approaching'),
-        ('status_change', 'Application Status Change'),
-        ('time_based', 'Time-Based Schedule'),
-    ]
-    
-    ACTION_TYPES = [
-        ('generate_package', 'Generate Application Package'),
-        ('generate_application_package', 'Generate Resume & Cover Letter'),
-        ('create_deadline_reminder', 'Create Deadline Reminder'),
-        ('schedule_application', 'Schedule Application Submission'),
-        ('send_followup', 'Send Follow-up Reminder'),
-        ('update_status', 'Update Application Status'),
-        ('create_reminder', 'Create Reminder'),
-    ]
-    
-    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="automation_rules")
-    name = models.CharField(max_length=200, help_text="User-friendly rule name")
-    description = models.TextField(blank=True, help_text="Description of what this rule does")
-    
-    # Trigger configuration
-    trigger_type = models.CharField(max_length=30, choices=TRIGGER_TYPES)
-    trigger_conditions = models.JSONField(default=dict, help_text="Conditions that activate this rule")
-    
-    # Action configuration
-    action_type = models.CharField(max_length=30, choices=ACTION_TYPES)
-    action_parameters = models.JSONField(default=dict, help_text="Parameters for the action to take")
-    
-    # Rule settings
-    is_active = models.BooleanField(default=True)
-    priority = models.PositiveSmallIntegerField(default=5, help_text="Execution priority (1=highest, 10=lowest)")
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    last_executed = models.DateTimeField(null=True, blank=True)
-    execution_count = models.PositiveIntegerField(default=0)
-    
-    class Meta:
-        ordering = ['priority', 'created_at']
-        indexes = [
-            models.Index(fields=['candidate', 'is_active']),
-            models.Index(fields=['trigger_type', 'is_active']),
-        ]
-    
-    def __str__(self):
-        return f"{self.candidate.get_full_name()} - {self.name}"
-
-
-class ApplicationPackage(models.Model):
-    """
-    UC-069: Auto-generated application packages (resume + cover letter + portfolio)
-    
-    Packages are generated automatically based on job requirements and user preferences.
-    Links to existing documents or creates new ones.
-    """
-    PACKAGE_STATUS = [
-        ('generating', 'Generating'),
-        ('ready', 'Ready'),
-        ('submitted', 'Submitted'),
-        ('failed', 'Generation Failed'),
-    ]
-    
-    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="application_packages")
-    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name="application_packages")
-    
-    # Package components
-    resume_document = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="resume_packages")
-    cover_letter_document = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name="cover_letter_packages")
-    portfolio_url = models.URLField(blank=True, help_text="Link to portfolio or additional materials")
-    
-    # Generation metadata
-    status = models.CharField(max_length=20, choices=PACKAGE_STATUS, default='generating')
-    generation_parameters = models.JSONField(default=dict, help_text="Parameters used for generation")
-    match_score = models.FloatField(null=True, blank=True, help_text="Job match score at time of generation")
-    
-    # Template references
-    resume_template = models.CharField(max_length=100, blank=True, help_text="Resume template used")
-    cover_letter_template = models.ForeignKey(CoverLetterTemplate, on_delete=models.SET_NULL, null=True, blank=True)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['candidate', 'status']),
-            models.Index(fields=['job', 'created_at']),
-        ]
-    
-    def __str__(self):
-        return f"Package for {self.job.title} at {self.job.company_name}"
-
-
-class ScheduledSubmission(models.Model):
-    """
-    UC-069: Scheduled application submissions with queue management
-    
-    Handles automatic submission of applications at optimal times,
-    respecting business hours, time zones, and user preferences.
-    """
-    SUBMISSION_STATUS = [
-        ('pending', 'Pending'),
-        ('scheduled', 'Scheduled'),
-        ('submitted', 'Submitted'),
-        ('failed', 'Failed'),
-        ('cancelled', 'Cancelled'),
-    ]
-    
-    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="scheduled_submissions")
-    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name="scheduled_submissions")
-    application_package = models.ForeignKey(ApplicationPackage, on_delete=models.CASCADE, related_name="scheduled_submissions")
-    
-    # Scheduling details
-    scheduled_datetime = models.DateTimeField(help_text="When to submit the application")
-    timezone = models.CharField(max_length=50, default='UTC', help_text="User's timezone for scheduling")
-    submission_method = models.CharField(max_length=50, default='email', help_text="How to submit (email, portal, etc.)")
-    
-    # Queue management
-    status = models.CharField(max_length=20, choices=SUBMISSION_STATUS, default='pending')
-    priority = models.PositiveSmallIntegerField(default=5, help_text="Submission priority (1=highest)")
-    retry_count = models.PositiveSmallIntegerField(default=0)
-    max_retries = models.PositiveSmallIntegerField(default=3)
-    
-    # Submission details
-    submission_parameters = models.JSONField(default=dict, help_text="Parameters for submission")
-    submission_result = models.JSONField(default=dict, help_text="Result of submission attempt")
-    submitted_at = models.DateTimeField(null=True, blank=True)
-    error_message = models.TextField(blank=True)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        ordering = ['scheduled_datetime', 'priority']
-        indexes = [
-            models.Index(fields=['candidate', 'status']),
-            models.Index(fields=['scheduled_datetime', 'status']),
-        ]
-    
-    def __str__(self):
-        return f"Scheduled: {self.job.title} at {self.scheduled_datetime}"
-
-
-class FollowUpReminder(models.Model):
-    """
-    UC-069: Automated follow-up reminders with customizable intervals
-    
-    Tracks and manages follow-up communications for job applications.
-    """
-    REMINDER_TYPES = [
-        ('application_followup', 'Application Follow-up'),
-        ('interview_followup', 'Interview Follow-up'),
-        ('offer_response', 'Offer Response'),
-        ('thank_you', 'Thank You Note'),
-        ('status_inquiry', 'Status Inquiry'),
-    ]
-    
-    REMINDER_STATUS = [
-        ('pending', 'Pending'),
-        ('sent', 'Sent'),
-        ('dismissed', 'Dismissed'),
-        ('failed', 'Failed'),
-    ]
-    
-    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="followup_reminders")
-    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name="followup_reminders")
-    
-    # Reminder configuration
-    reminder_type = models.CharField(max_length=30, choices=REMINDER_TYPES)
-    subject = models.CharField(max_length=200, help_text="Email subject or reminder title")
-    message_template = models.TextField(help_text="Template message with placeholders")
-    
-    # Scheduling
-    scheduled_datetime = models.DateTimeField(help_text="When to send the reminder")
-    interval_days = models.PositiveSmallIntegerField(null=True, blank=True, help_text="Days between reminders for recurring")
-    is_recurring = models.BooleanField(default=False)
-    max_occurrences = models.PositiveSmallIntegerField(default=1, help_text="Maximum times to send")
-    occurrence_count = models.PositiveSmallIntegerField(default=0)
-    
-    # Status and tracking
-    status = models.CharField(max_length=20, choices=REMINDER_STATUS, default='pending')
-    sent_at = models.DateTimeField(null=True, blank=True)
-    response_received = models.BooleanField(default=False)
-    response_date = models.DateTimeField(null=True, blank=True)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        ordering = ['scheduled_datetime']
-        indexes = [
-            models.Index(fields=['candidate', 'status']),
-            models.Index(fields=['scheduled_datetime', 'status']),
-        ]
-    
-    def __str__(self):
-        return f"{self.reminder_type} for {self.job.title} on {self.scheduled_datetime.date()}"
-
-
-class ApplicationChecklist(models.Model):
-    """
-    UC-069: Dynamic application checklists that auto-update based on progress
-    
-    Manages task lists for job applications that adapt to company requirements
-    and user-defined criteria.
-    """
-    CHECKLIST_STATUS = [
-        ('active', 'Active'),
-        ('completed', 'Completed'),
-        ('paused', 'Paused'),
-        ('archived', 'Archived'),
-    ]
-    
-    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="application_checklists")
-    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name="application_checklists")
-    
-    # Checklist metadata
-    name = models.CharField(max_length=200, help_text="Checklist name")
-    description = models.TextField(blank=True)
-    status = models.CharField(max_length=20, choices=CHECKLIST_STATUS, default='active')
-    
-    # Progress tracking
-    total_tasks = models.PositiveIntegerField(default=0)
-    completed_tasks = models.PositiveIntegerField(default=0)
-    completion_percentage = models.FloatField(default=0.0)
-    
-    # Automation settings
-    auto_update_enabled = models.BooleanField(default=True, help_text="Whether to auto-update based on application progress")
-    template_used = models.CharField(max_length=100, blank=True, help_text="Template this checklist was based on")
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    completed_at = models.DateTimeField(null=True, blank=True)
-    
-    class Meta:
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['candidate', 'status']),
-            models.Index(fields=['job', 'status']),
-        ]
-    
-    def update_progress(self):
-        """Update completion percentage based on completed tasks"""
-        if self.total_tasks > 0:
-            self.completion_percentage = (self.completed_tasks / self.total_tasks) * 100
-        else:
-            self.completion_percentage = 0.0
-        
-        if self.completion_percentage >= 100 and self.status == 'active':
-            self.status = 'completed'
-            self.completed_at = timezone.now()
-    
-    def __str__(self):
-        return f"Checklist for {self.job.title} - {self.completion_percentage:.0f}% complete"
-
-
-class ChecklistTask(models.Model):
-    """
-    UC-069: Individual tasks within an application checklist
-    """
-    TASK_PRIORITIES = [
-        ('low', 'Low'),
-        ('medium', 'Medium'),
-        ('high', 'High'),
-        ('urgent', 'Urgent'),
-    ]
-    
-    TASK_STATUS = [
-        ('pending', 'Pending'),
-        ('in_progress', 'In Progress'),
-        ('completed', 'Completed'),
-        ('skipped', 'Skipped'),
-        ('blocked', 'Blocked'),
-    ]
-    
-    checklist = models.ForeignKey(ApplicationChecklist, on_delete=models.CASCADE, related_name="tasks")
-    
-    # Task details
-    title = models.CharField(max_length=200)
-    description = models.TextField(blank=True)
-    priority = models.CharField(max_length=20, choices=TASK_PRIORITIES, default='medium')
-    status = models.CharField(max_length=20, choices=TASK_STATUS, default='pending')
-    
-    # Ordering and dependencies
-    order_index = models.PositiveIntegerField(default=0)
-    depends_on = models.ManyToManyField('self', blank=True, symmetrical=False, related_name='dependents')
-    
-    # Due dates and automation
-    due_date = models.DateTimeField(null=True, blank=True)
-    auto_complete_trigger = models.CharField(max_length=100, blank=True, help_text="Event that auto-completes this task")
-    
-    # Completion tracking
-    completed_at = models.DateTimeField(null=True, blank=True)
-    completed_by_automation = models.BooleanField(default=False)
-    notes = models.TextField(blank=True)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        ordering = ['order_index', 'created_at']
-        indexes = [
-            models.Index(fields=['checklist', 'status']),
-            models.Index(fields=['due_date', 'status']),
-        ]
-    
-    def mark_completed(self, automated=False, notes=""):
-        """Mark task as completed and update checklist progress"""
-        self.status = 'completed'
-        self.completed_at = timezone.now()
-        self.completed_by_automation = automated
-        if notes:
-            self.notes = notes
-        self.save()
-        
-        # Update checklist progress
-        self.checklist.completed_tasks = self.checklist.tasks.filter(status='completed').count()
-        self.checklist.update_progress()
-        self.checklist.save()
-    
-    def __str__(self):
-        return f"{self.checklist.job.title} - {self.title}"
-
-
-class BulkOperation(models.Model):
-    """
-    UC-069: Bulk operations for mass application management
-    
-    Tracks bulk operations like mass apply, status updates, and batch processing.
-    """
-    OPERATION_TYPES = [
-        ('bulk_apply', 'Bulk Apply'),
-        ('status_update', 'Status Update'),
-        ('package_generation', 'Package Generation'),
-        ('reminder_creation', 'Reminder Creation'),
-        ('export', 'Data Export'),
-        ('archive', 'Archive Jobs'),
-    ]
-    
-    OPERATION_STATUS = [
-        ('pending', 'Pending'),
-        ('running', 'Running'),
-        ('completed', 'Completed'),
-        ('failed', 'Failed'),
-        ('cancelled', 'Cancelled'),
-    ]
-    
-    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="bulk_operations")
-    
-    # Operation details
-    operation_type = models.CharField(max_length=30, choices=OPERATION_TYPES)
-    description = models.CharField(max_length=200)
-    parameters = models.JSONField(default=dict, help_text="Operation parameters and settings")
-    
-    # Target jobs
-    target_jobs = models.ManyToManyField(JobEntry, related_name="bulk_operations")
-    
-    # Progress tracking
-    status = models.CharField(max_length=20, choices=OPERATION_STATUS, default='pending')
-    total_items = models.PositiveIntegerField(default=0)
-    processed_items = models.PositiveIntegerField(default=0)
-    successful_items = models.PositiveIntegerField(default=0)
-    failed_items = models.PositiveIntegerField(default=0)
-    
-    # Results and errors
-    results = models.JSONField(default=dict, help_text="Operation results and summary")
-    error_log = models.JSONField(default=list, help_text="List of errors encountered")
-    
-    # Timing
-    started_at = models.DateTimeField(null=True, blank=True)
-    completed_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['candidate', 'status']),
-            models.Index(fields=['operation_type', 'status']),
-        ]
-    
-    @property
-    def progress_percentage(self):
-        """Calculate completion percentage"""
-        if self.total_items > 0:
-            return (self.processed_items / self.total_items) * 100
-        return 0.0
-    
-    def __str__(self):
-        return f"{self.operation_type} - {self.progress_percentage:.0f}% complete"
-
-
-class WorkflowAutomationLog(models.Model):
-    """
-    UC-069: Log of automation executions for debugging and analytics
-    """
-    LOG_LEVELS = [
-        ('info', 'Info'),
-        ('warning', 'Warning'),
-        ('error', 'Error'),
-        ('debug', 'Debug'),
-    ]
-    
-    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="automation_logs")
-    automation_rule = models.ForeignKey(ApplicationAutomationRule, on_delete=models.SET_NULL, null=True, blank=True, related_name="execution_logs")
-    
-    # Log details
-    level = models.CharField(max_length=20, choices=LOG_LEVELS, default='info')
-    message = models.TextField()
-    context = models.JSONField(default=dict, help_text="Additional context data")
-    
-    # Related objects (optional)
-    job = models.ForeignKey(JobEntry, on_delete=models.SET_NULL, null=True, blank=True)
-    bulk_operation = models.ForeignKey(BulkOperation, on_delete=models.SET_NULL, null=True, blank=True)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['candidate', 'level']),
-            models.Index(fields=['automation_rule', 'created_at']),
-        ]
-    
-    def __str__(self):
-        return f"[{self.level.upper()}] {self.message[:100]}..."
-
-
-# ======================
-# INTERVIEW SCHEDULING MODELS (from main branch)
-# ======================
-
 class InterviewSchedule(models.Model):
     """Interview scheduling and tracking for job applications (UC-071).
     
@@ -2126,3 +1693,177 @@ class InterviewPreparationTask(models.Model):
         self.is_completed = True
         self.completed_at = timezone.now()
         self.save()
+
+
+class ResumeVersion(models.Model):
+    """UC-052: Resume Version Management
+    
+    Tracks different versions of resumes with version control capabilities.
+    Allows users to manage multiple tailored versions for different applications.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    candidate = models.ForeignKey(
+        CandidateProfile, 
+        on_delete=models.CASCADE, 
+        related_name="resume_versions"
+    )
+    
+    # Version identification
+    version_name = models.CharField(
+        max_length=200,
+        help_text="Descriptive name for this resume version (e.g., 'Software Engineer - Tech Companies')"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Optional notes about what makes this version unique"
+    )
+    
+    # Version content (stored as LaTeX or structured JSON)
+    content = models.JSONField(
+        help_text="Resume content in structured format (sections, experiences, skills, etc.)"
+    )
+    latex_content = models.TextField(
+        blank=True,
+        help_text="LaTeX source if generated by AI"
+    )
+    
+    # Version metadata
+    is_default = models.BooleanField(
+        default=False,
+        help_text="Mark as the master/default resume version"
+    )
+    is_archived = models.BooleanField(
+        default=False,
+        help_text="Archive old versions without deleting them"
+    )
+    
+    # Link to job application (optional)
+    source_job = models.ForeignKey(
+        JobOpportunity,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="resume_versions",
+        help_text="Job this version was tailored for"
+    )
+    
+    # Link to applications using this version
+    applications = models.ManyToManyField(
+        'Application',
+        blank=True,
+        related_name="resume_versions_used",
+        help_text="Applications that used this resume version"
+    )
+    
+    # Version history
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_from = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="derived_versions",
+        help_text="Parent version this was created from"
+    )
+    
+    # AI generation metadata
+    generated_by_ai = models.BooleanField(default=False)
+    generation_params = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="AI generation parameters (tone, variation, etc.)"
+    )
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['candidate', '-created_at']),
+            models.Index(fields=['candidate', 'is_default']),
+            models.Index(fields=['candidate', 'is_archived']),
+        ]
+        ordering = ['-is_default', '-updated_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['candidate', 'version_name'],
+                name='unique_version_name_per_candidate'
+            )
+        ]
+    
+    def __str__(self):
+        default_marker = " [DEFAULT]" if self.is_default else ""
+        archived_marker = " [ARCHIVED]" if self.is_archived else ""
+        return f"{self.version_name}{default_marker}{archived_marker}"
+    
+    def save(self, *args, **kwargs):
+        # Track if this is an update to existing version
+        is_update = self.pk is not None
+        old_version = None
+        if is_update:
+            try:
+                old_version = ResumeVersion.objects.get(pk=self.pk)
+            except ResumeVersion.DoesNotExist:
+                pass
+        
+        # Ensure only one default version per candidate
+        if self.is_default:
+            ResumeVersion.objects.filter(
+                candidate=self.candidate,
+                is_default=True
+            ).exclude(id=self.id).update(is_default=False)
+        
+        super().save(*args, **kwargs)
+        
+        # Create change record if content was modified
+        if is_update and old_version:
+            changes = {}
+            if old_version.version_name != self.version_name:
+                changes['version_name'] = {'old': old_version.version_name, 'new': self.version_name}
+            if old_version.description != self.description:
+                changes['description'] = {'old': old_version.description, 'new': self.description}
+            if old_version.content != self.content:
+                changes['content'] = {'old': old_version.content, 'new': self.content}
+            if old_version.latex_content != self.latex_content:
+                changes['latex_content'] = {'old': len(old_version.latex_content or ''), 'new': len(self.latex_content or '')}
+            
+            if changes:
+                ResumeVersionChange.objects.create(
+                    version=self,
+                    changes=changes,
+                    change_type='edit'
+                )
+
+
+class ResumeVersionChange(models.Model):
+    """
+    UC-052: Track changes made to resume versions
+    Records each edit with timestamp and change details
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    version = models.ForeignKey(
+        ResumeVersion,
+        on_delete=models.CASCADE,
+        related_name='change_history'
+    )
+    change_type = models.CharField(
+        max_length=50,
+        choices=[
+            ('create', 'Created'),
+            ('edit', 'Edited'),
+            ('merge', 'Merged'),
+            ('duplicate', 'Duplicated'),
+        ],
+        default='edit'
+    )
+    changes = models.JSONField(
+        help_text='Details of what changed (field-level diffs)'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['version', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.change_type.title()} - {self.version.version_name} at {self.created_at}"

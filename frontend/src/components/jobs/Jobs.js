@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { jobsAPI, materialsAPI } from '../../services/api';
+import { jobsAPI, materialsAPI, interviewsAPI } from '../../services/api';
 import Icon from '../common/Icon';
 import DeadlineCalendar from '../common/DeadlineCalendar';
 import AutomationDashboard from '../automation/AutomationDashboard';
@@ -107,6 +107,9 @@ const Jobs = () => {
   const [jobMatchScores, setJobMatchScores] = useState([]);
   const [loadingMatchScores, setLoadingMatchScores] = useState(false);
   const [showMatchRanking, setShowMatchRanking] = useState(false);
+
+  // UC-071: Interview Scheduling State
+  const [interviews, setInterviews] = useState([]);
   const [selectedJobForMaterials, setSelectedJobForMaterials] = useState(null);
   const [jobMaterials, setJobMaterials] = useState({ resume_doc: null, cover_letter_doc: null, history: [] });
   const [materialsForm, setMaterialsForm] = useState({ resume_doc_id: null, cover_letter_doc_id: null });
@@ -153,6 +156,19 @@ const Jobs = () => {
       }
     };
     loadMaterialsData();
+  }, []);
+
+  // UC-071: Load interviews for calendar
+  useEffect(() => {
+    const loadInterviews = async () => {
+      try {
+        const response = await interviewsAPI.getInterviews({ upcoming_only: false });
+        setInterviews(response || []);
+      } catch (e) {
+        console.warn('Failed to load interviews:', e);
+      }
+    };
+    loadInterviews();
   }, []);
 
   useEffect(() => {
@@ -1031,7 +1047,7 @@ const Jobs = () => {
       )}
 
       {/* Calendar: placed below the header and above the search box */}
-      <DeadlineCalendar items={items} />
+      <DeadlineCalendar items={items} interviews={interviews} />
 
       {/* Job Match Rankings Section */}
       {showMatchRanking && (

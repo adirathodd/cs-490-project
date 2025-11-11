@@ -1,13 +1,14 @@
 # Use an official Python image as a parent image
 FROM python:3.12-slim AS base
 
-# Install system dependencies (including Pillow dependencies) and tzdata for timezone support
+# Install system dependencies (including Pillow dependencies, Java for LanguageTool) and tzdata for timezone support
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     curl ca-certificates wget \
     netcat-openbsd gcc postgresql-client build-essential \
     libjpeg-dev zlib1g-dev libpng-dev tzdata \
     fontconfig fonts-liberation \
+    default-jre-headless \
  && rm -rf /var/lib/apt/lists/*
 
 # Install Tectonic - use architecture-specific approach

@@ -144,6 +144,10 @@ urlpatterns = [
     path('jobs/<int:job_id>/salary-research/', views.salary_research, name='salary-research'),
     path('jobs/<int:job_id>/salary-research/export/', views.salary_research_export, name='salary-research-export'),
     
+    # UC-060: Grammar and Spell Checking endpoints
+    path('cover-letter/check-grammar/', views.check_grammar, name='check-grammar'),
+    path('cover-letter/apply-grammar-fix/', views.apply_grammar_fix, name='apply-grammar-fix'),
+    
     # UC-068: Interview Insights and Preparation endpoints
     path('jobs/<int:job_id>/interview-insights/', views.job_interview_insights, name='job-interview-insights'),
     
@@ -155,15 +159,22 @@ urlpatterns = [
     path('jobs/<int:job_id>/match-score/', views.job_match_score, name='job-match-score'),
     path('jobs/match-scores/', views.bulk_job_match_scores, name='bulk-job-match-scores'),
     
-    # UC-069: Application Workflow Automation endpoints
-    path('automation/rules/', views.automation_rules_list_create, name='automation-rules-list-create'),
-    path('automation/rules/<int:rule_id>/', views.automation_rule_detail, name='automation-rule-detail'),
-    path('automation/trigger/', views.trigger_automation_rules, name='trigger-automation-rules'),
-    path('automation/logs/', views.automation_logs, name='automation-logs'),
-    path('automation/bulk-actions/', views.bulk_automation_actions, name='bulk-automation-actions'),
-    path('jobs/<int:job_id>/generate-package/', views.generate_application_package, name='generate-application-package'),
-    path('automation/packages/', views.application_packages_list, name='application-packages-list'),
-    path('automation/packages/<int:package_id>/', views.application_package_detail, name='application-package-detail'),
-    path('automation/packages/<int:package_id>/download/', views.application_package_download, name='application-package-download'),
-    path('automation/packages/<int:package_id>/regenerate/', views.application_package_regenerate, name='application-package-regenerate'),
+    # UC-071: Interview Scheduling endpoints
+    path('interviews/', views.interview_list_create, name='interview-list-create'),
+    path('interviews/<int:pk>/', views.interview_detail, name='interview-detail'),
+    path('interviews/<int:pk>/complete/', views.interview_complete, name='interview-complete'),
+    path('interviews/<int:pk>/dismiss-reminder/', views.dismiss_interview_reminder, name='dismiss-interview-reminder'),
+    path('interviews/reminders/', views.active_interview_reminders, name='active-interview-reminders'),
+    path('interviews/tasks/<int:pk>/toggle/', views.toggle_preparation_task, name='toggle-preparation-task'),
+    
+    # UC-052: Resume Version Management endpoints
+    path('resume-versions/', views.resume_versions_list_create, name='resume-versions-list-create'),
+    path('resume-versions/<uuid:version_id>/', views.resume_version_detail, name='resume-version-detail'),
+    path('resume-versions/<uuid:version_id>/set-default/', views.resume_version_set_default, name='resume-version-set-default'),
+    path('resume-versions/<uuid:version_id>/archive/', views.resume_version_archive, name='resume-version-archive'),
+    path('resume-versions/<uuid:version_id>/restore/', views.resume_version_restore, name='resume-version-restore'),
+    path('resume-versions/<uuid:version_id>/duplicate/', views.resume_version_duplicate, name='resume-version-duplicate'),
+    path('resume-versions/<uuid:version_id>/history/', views.resume_version_history, name='resume-version-history'),
+    path('resume-versions/compare/', views.resume_version_compare, name='resume-version-compare'),
+    path('resume-versions/merge/', views.resume_version_merge, name='resume-version-merge'),
 ]

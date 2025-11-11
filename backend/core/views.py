@@ -28,8 +28,12 @@ from core.serializers import (
     WorkExperienceSerializer,
     JobEntrySerializer,
     CoverLetterTemplateSerializer,
+    ResumeVersionSerializer,
+    ResumeVersionListSerializer,
+    ResumeVersionCompareSerializer,
+    ResumeVersionMergeSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate, ResumeVersion
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def cover_letter_template_list_create(request):
@@ -2768,41 +2772,6 @@ def jobs_list_create(request):
                 # Don't fail the job creation if research fails
                 pass
         
-        # UC-069: Trigger automation rules for new job creation
-        try:
-            from core.automation import AutomationEngine
-            from core.job_matching import JobMatchingEngine
-            
-            # Calculate match score for the new job
-            match_result = JobMatchingEngine.calculate_match_score(instance, profile)
-            match_score = match_result.get('overall_score', 0)
-            
-            # Trigger new_job automation
-            AutomationEngine.trigger_rules('new_job', {
-                'candidate_id': profile.id,
-                'job_id': instance.id,
-                'job': instance,
-                'trigger_event': 'job_created',
-                'match_score': match_score
-            })
-            
-            # If match score is high, also trigger job_match_found automation
-            if match_score >= 70:  # High match threshold
-                AutomationEngine.trigger_rules('job_match_found', {
-                    'candidate_id': profile.id,
-                    'job_id': instance.id,
-                    'job': instance,
-                    'trigger_event': 'high_match_job',
-                    'match_score': match_score
-                })
-                logger.info(f"Triggered high-match automation for job {instance.id} with score {match_score}%")
-            
-            logger.info(f"Triggered automation rules for new job: {instance.title} at {instance.company_name}")
-        except Exception as e:
-            logger.error(f"Error triggering automation rules for job {instance.id}: {e}")
-            # Don't fail the job creation if automation fails
-            pass
-        
         data = JobEntrySerializer(instance).data
         data['message'] = 'Job entry saved successfully.'
         return Response(data, status=status.HTTP_201_CREATED)
@@ -5100,6 +5069,45 @@ def generate_cover_letter_for_job(request, job_id):
     job_snapshot = resume_ai.build_job_snapshot(job)
     research_snapshot = cover_letter_ai.build_company_research_snapshot(job.company_name)
 
+    # UC-058: cover letter customization options
+    length = (request.data.get('length') or '').strip().lower() or None
+    writing_style = (request.data.get('writing_style') or '').strip().lower() or None
+    company_culture = (request.data.get('company_culture') or '').strip().lower() or None
+    industry = (request.data.get('industry') or '').strip() or None
+    custom_instructions = (request.data.get('custom_instructions') or '').strip() or None
+
+    # Server-side validation / normalization for UC-058 enumerations
+    allowed_lengths = {'brief', 'standard', 'detailed'}
+    allowed_writing_styles = {'direct', 'narrative', 'bullet_points'}
+    allowed_company_cultures = {'auto', 'startup', 'corporate'}
+
+    # Validate enumerated parameters and return helpful errors if invalid
+    invalid_params = []
+    if length and length not in allowed_lengths:
+        invalid_params.append(f"length must be one of: {', '.join(sorted(allowed_lengths))}")
+    if writing_style and writing_style not in allowed_writing_styles:
+        invalid_params.append(f"writing_style must be one of: {', '.join(sorted(allowed_writing_styles))}")
+    if company_culture and company_culture not in allowed_company_cultures:
+        invalid_params.append(f"company_culture must be one of: {', '.join(sorted(allowed_company_cultures))}")
+
+    if invalid_params:
+        return Response(
+            {
+                'error': {
+                    'code': 'invalid_parameter',
+                    'message': 'Invalid customization options provided.',
+                    'details': invalid_params,
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Truncate free-text inputs to reasonable limits to avoid abuse / accidental huge payloads
+    if industry and len(industry) > 100:
+        industry = industry[:100]
+    if custom_instructions and len(custom_instructions) > 500:
+        custom_instructions = custom_instructions[:500]
+
     try:
         generation = cover_letter_ai.run_cover_letter_generation(
             candidate_snapshot,
@@ -5109,6 +5117,11 @@ def generate_cover_letter_for_job(request, job_id):
             variation_count=variation_count,
             api_key=api_key,
             model=getattr(settings, 'GEMINI_MODEL', None),
+            length=length,
+            writing_style=writing_style,
+            company_culture=company_culture,
+            industry=industry,
+            custom_instructions=custom_instructions,
         )
     except cover_letter_ai.CoverLetterAIError as exc:
         logger.warning('AI cover letter generation failed for job %s: %s', job_id, exc)
@@ -5618,815 +5631,6 @@ def refresh_company_research(request, company_name):
         )
 
 
-# ======================
-# UC-069: APPLICATION WORKFLOW AUTOMATION
-# ======================
-
-@api_view(['GET', 'POST'])
-@permission_classes([IsAuthenticated])
-def automation_rules_list_create(request):
-    """
-    UC-069: Application Workflow Automation - Rules Management
-    
-    GET: List all automation rules for the authenticated user
-    POST: Create a new automation rule
-    
-    POST Request Body:
-    {
-        "name": "Auto-generate application packages for high-priority jobs",
-        "trigger_type": "job_status_change",
-        "trigger_conditions": {
-            "from_status": "interested",
-            "to_status": "applied",
-            "job_priority": "high"
-        },
-        "action_type": "generate_application_package",
-        "action_parameters": {
-            "template_id": 123,
-            "cover_letter_template_id": 456,
-            "auto_schedule": true,
-            "schedule_delay_hours": 24
-        },
-        "is_active": true
-    }
-    
-    Response:
-    {
-        "rules": [...],
-        "total_count": 5,
-        "active_count": 3
-    }
-    """
-    try:
-        profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
-        
-        if request.method == 'GET':
-            from core.models import ApplicationAutomationRule
-            
-            rules = ApplicationAutomationRule.objects.filter(candidate=profile).order_by('-created_at')
-            
-            # Build response data
-            rules_data = []
-            for rule in rules:
-                rules_data.append({
-                    'id': rule.id,
-                    'name': rule.name,
-                    'trigger_type': rule.trigger_type,
-                    'trigger_conditions': rule.trigger_conditions,
-                    'action_type': rule.action_type,
-                    'action_parameters': rule.action_parameters,
-                    'is_active': rule.is_active,
-                    'execution_count': rule.execution_count,
-                    'created_at': rule.created_at.isoformat(),
-                    'last_executed': rule.last_executed.isoformat() if rule.last_executed else None
-                })
-            
-            return Response({
-                'rules': rules_data,
-                'total_count': len(rules_data),
-                'active_count': len([r for r in rules_data if r['is_active']])
-            }, status=status.HTTP_200_OK)
-        
-        elif request.method == 'POST':
-            from core.models import ApplicationAutomationRule
-            
-            # Validate required fields
-            name = request.data.get('name', '').strip()
-            trigger_type = request.data.get('trigger_type', '').strip()
-            action_type = request.data.get('action_type', '').strip()
-            
-            if not all([name, trigger_type, action_type]):
-                return Response(
-                    {
-                        'error': {
-                            'code': 'validation_error',
-                            'message': 'name, trigger_type, and action_type are required'
-                        }
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Validate trigger and action types
-            valid_triggers = ['job_match_found', 'application_deadline', 'new_job']  # Simplified triggers
-            valid_actions = ['generate_application_package', 'create_deadline_reminder']  # Simplified actions
-            
-            if trigger_type not in valid_triggers:
-                return Response(
-                    {
-                        'error': {
-                            'code': 'invalid_trigger',
-                            'message': f'trigger_type must be one of: {", ".join(valid_triggers)}'
-                        }
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            if action_type not in valid_actions:
-                return Response(
-                    {
-                        'error': {
-                            'code': 'invalid_action',
-                            'message': f'action_type must be one of: {", ".join(valid_actions)}'
-                        }
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Create automation rule
-            rule = ApplicationAutomationRule.objects.create(
-                candidate=profile,
-                name=name,
-                trigger_type=trigger_type,
-                trigger_conditions=request.data.get('trigger_conditions', {}),
-                action_type=action_type,
-                action_parameters=request.data.get('action_parameters', {}),
-                is_active=request.data.get('is_active', True)
-            )
-            
-            logger.info(f"Created automation rule {rule.id} for user {request.user.email}: {name}")
-            
-            return Response({
-                'id': rule.id,
-                'name': rule.name,
-                'trigger_type': rule.trigger_type,
-                'trigger_conditions': rule.trigger_conditions,
-                'action_type': rule.action_type,
-                'action_parameters': rule.action_parameters,
-                'is_active': rule.is_active,
-                'execution_count': rule.execution_count,
-                'created_at': rule.created_at.isoformat(),
-                'message': 'Automation rule created successfully'
-            }, status=status.HTTP_201_CREATED)
-    
-    except Exception as e:
-        logger.error(f"Error in automation_rules_list_create: {e}\n{traceback.format_exc()}")
-        return Response(
-            {
-                'error': {
-                    'code': 'internal_error',
-                    'message': 'Failed to process automation rules request'
-                }
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
-@permission_classes([IsAuthenticated])
-def automation_rule_detail(request, rule_id):
-    """
-    UC-069: Automation Rule Detail Operations
-    
-    GET: Retrieve automation rule details
-    PUT/PATCH: Update automation rule
-    DELETE: Delete automation rule
-    """
-    try:
-        profile = CandidateProfile.objects.get(user=request.user)
-        
-        from core.models import ApplicationAutomationRule
-        
-        try:
-            rule = ApplicationAutomationRule.objects.get(id=rule_id, candidate=profile)
-        except ApplicationAutomationRule.DoesNotExist:
-            return Response(
-                {'error': {'code': 'rule_not_found', 'message': 'Automation rule not found'}},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        if request.method == 'GET':
-            return Response({
-                'id': rule.id,
-                'name': rule.name,
-                'trigger_type': rule.trigger_type,
-                'trigger_conditions': rule.trigger_conditions,
-                'action_type': rule.action_type,
-                'action_parameters': rule.action_parameters,
-                'is_active': rule.is_active,
-                'execution_count': rule.execution_count,
-                'created_at': rule.created_at.isoformat(),
-                'last_executed': rule.last_executed.isoformat() if rule.last_executed else None
-            }, status=status.HTTP_200_OK)
-        
-        elif request.method in ['PUT', 'PATCH']:
-            # Update rule
-            if 'name' in request.data:
-                rule.name = request.data['name'].strip()
-            if 'trigger_type' in request.data:
-                rule.trigger_type = request.data['trigger_type']
-            if 'trigger_conditions' in request.data:
-                rule.trigger_conditions = request.data['trigger_conditions']
-            if 'action_type' in request.data:
-                rule.action_type = request.data['action_type']
-            if 'action_parameters' in request.data:
-                rule.action_parameters = request.data['action_parameters']
-            if 'is_active' in request.data:
-                rule.is_active = request.data['is_active']
-            
-            rule.save()
-            
-            return Response({
-                'id': rule.id,
-                'name': rule.name,
-                'trigger_type': rule.trigger_type,
-                'trigger_conditions': rule.trigger_conditions,
-                'action_type': rule.action_type,
-                'action_parameters': rule.action_parameters,
-                'is_active': rule.is_active,
-                'execution_count': rule.execution_count,
-                'created_at': rule.created_at.isoformat(),
-                'last_executed': rule.last_executed.isoformat() if rule.last_executed else None,
-                'message': 'Automation rule updated successfully'
-            }, status=status.HTTP_200_OK)
-        
-        elif request.method == 'DELETE':
-            rule_name = rule.name
-            rule.delete()
-            
-            logger.info(f"Deleted automation rule {rule_id} ({rule_name}) for user {request.user.email}")
-            
-            return Response({
-                'message': f'Automation rule "{rule_name}" deleted successfully'
-            }, status=status.HTTP_200_OK)
-    
-    except CandidateProfile.DoesNotExist:
-        return Response(
-            {'error': {'code': 'profile_not_found', 'message': 'Profile not found'}},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    except Exception as e:
-        logger.error(f"Error in automation_rule_detail: {e}\n{traceback.format_exc()}")
-        return Response(
-            {
-                'error': {
-                    'code': 'internal_error',
-                    'message': 'Failed to process automation rule request'
-                }
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def generate_application_package(request, job_id):
-    """
-    UC-069: Generate Application Package
-    
-    POST: Generate a comprehensive application package for a specific job
-    
-    Request Body:
-    {
-        "template_id": 123,                   // Optional: specific document template
-        "cover_letter_template_id": 456,     // Optional: specific cover letter template
-        "auto_schedule": true,               // Whether to auto-schedule submission
-        "schedule_delay_hours": 24,          // Hours to delay auto-submission
-        "include_portfolio": true,           // Include portfolio items
-        "custom_notes": "Apply by Friday"    // Custom application notes
-    }
-    
-    Response:
-    {
-        "package_id": 789,
-        "job": {...},
-        "generated_documents": [
-            {
-                "type": "resume",
-                "document_id": 101,
-                "ai_generated": true,
-                "match_score": 0.85
-            },
-            {
-                "type": "cover_letter", 
-                "document_id": 102,
-                "ai_generated": true,
-                "match_score": 0.90
-            }
-        ],
-        "checklist": [
-            {"task": "Review resume for accuracy", "completed": false},
-            {"task": "Customize cover letter intro", "completed": false}
-        ],
-        "scheduled_submission": {
-            "scheduled_at": "2024-11-09T10:00:00Z",
-            "auto_submit": true
-        },
-        "match_analysis": {
-            "overall_score": 0.87,
-            "missing_skills": ["Docker", "Kubernetes"],
-            "strong_matches": ["Python", "AWS", "Machine Learning"]
-        }
-    }
-    """
-    try:
-        profile = CandidateProfile.objects.get(user=request.user)
-        
-        from core.models import JobEntry
-        
-        try:
-            job = JobEntry.objects.get(id=job_id, candidate=profile)
-        except JobEntry.DoesNotExist:
-            return Response(
-                {'error': {'code': 'job_not_found', 'message': 'Job entry not found'}},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        # Use the automation engine to generate the package
-        from core.automation import ApplicationPackageGenerator
-        
-        # Extract basic parameters from request
-        parameters = {
-            'template_id': request.data.get('template_id'),
-            'cover_letter_template_id': request.data.get('cover_letter_template_id'),
-            'auto_schedule': request.data.get('auto_schedule', False),
-            'schedule_delay_hours': request.data.get('schedule_delay_hours', 24),
-            'include_portfolio': request.data.get('include_portfolio', True),
-            'custom_notes': request.data.get('custom_notes', '')
-        }
-        
-        # Generate the application package using the static method
-        package = ApplicationPackageGenerator.generate_package(
-            job=job,
-            candidate=profile,
-            parameters=parameters
-        )
-        
-        if not package:
-            return Response(
-                {'error': {'code': 'generation_failed', 'message': 'Failed to generate application package'}},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-        
-        # Return package information
-        response_data = {
-            'package': {
-                'id': package.id,
-                'status': package.status,
-                'job': {
-                    'id': job.id,
-                    'title': job.title,
-                    'company_name': job.company_name
-                },
-                'resume_document': package.resume_document.id if package.resume_document else None,
-                'cover_letter_document': package.cover_letter_document.id if package.cover_letter_document else None,
-                'created_at': package.created_at,
-                'updated_at': package.updated_at
-            },
-            'message': 'Application package generated successfully'
-        }
-        
-        logger.info(f"Generated application package {package.id} for job {job_id}")
-        
-        return Response(response_data, status=status.HTTP_201_CREATED)
-    
-    except CandidateProfile.DoesNotExist:
-        return Response(
-            {'error': {'code': 'profile_not_found', 'message': 'Profile not found'}},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    except Exception as e:
-        logger.error(f"Error generating application package for job {job_id}: {e}\n{traceback.format_exc()}")
-        return Response(
-            {
-                'error': {
-                    'code': 'package_generation_failed',
-                    'message': f'Failed to generate application package: {str(e)}'
-                }
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def application_packages_list(request):
-    """
-    UC-069: List Application Packages
-    
-    GET: List all application packages for the authenticated user
-    
-    Query Parameters:
-        - status: filter by package status (draft, ready, submitted, expired)
-        - job_id: filter by specific job
-        - limit: number of results to return (default: 20)
-    """
-    try:
-        profile = CandidateProfile.objects.get(user=request.user)
-        
-        from core.models import ApplicationPackage
-        
-        packages = ApplicationPackage.objects.filter(candidate=profile)
-        
-        # Apply filters
-        status_filter = request.query_params.get('status')
-        if status_filter:
-            packages = packages.filter(status=status_filter)
-        
-        job_id_filter = request.query_params.get('job_id')
-        if job_id_filter:
-            packages = packages.filter(job_id=job_id_filter)
-        
-        # Limit results
-        limit = int(request.query_params.get('limit', 20))
-        packages = packages.order_by('-created_at')[:limit]
-        
-        # Build response
-        packages_data = []
-        for package in packages:
-            packages_data.append({
-                'id': package.id,
-                'job': {
-                    'id': package.job.id,
-                    'title': package.job.title,
-                    'company_name': package.job.company_name
-                },
-                'status': package.status,
-                'match_score': package.match_score,
-                'resume_document': {
-                    'id': package.resume_document.id,
-                    'filename': package.resume_document.document_name,
-                    'file_type': package.resume_document.doc_type
-                } if package.resume_document else None,
-                'cover_letter_document': {
-                    'id': package.cover_letter_document.id,
-                    'filename': package.cover_letter_document.document_name,
-                    'file_type': package.cover_letter_document.doc_type
-                } if package.cover_letter_document else None,
-                'portfolio_url': package.portfolio_url,
-                'generation_parameters': package.generation_parameters,
-                'resume_template': package.resume_template,
-                'cover_letter_template': package.cover_letter_template.name if package.cover_letter_template else None,
-                'created_at': package.created_at.isoformat(),
-                'updated_at': package.updated_at.isoformat()
-            })
-        
-        return Response({
-            'packages': packages_data,
-            'total_count': len(packages_data)
-        }, status=status.HTTP_200_OK)
-    
-    except CandidateProfile.DoesNotExist:
-        return Response({'packages': [], 'total_count': 0}, status=status.HTTP_200_OK)
-    except Exception as e:
-        logger.error(f"Error listing application packages: {e}\n{traceback.format_exc()}")
-        return Response(
-            {
-                'error': {
-                    'code': 'internal_error',
-                    'message': 'Failed to list application packages'
-                }
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
-@permission_classes([IsAuthenticated])
-def application_package_detail(request, package_id):
-    """
-    UC-069: Application Package Detail Operations
-    
-    GET: Retrieve application package details
-    PUT/PATCH: Update application package
-    DELETE: Delete application package
-    """
-    try:
-        profile = CandidateProfile.objects.get(user=request.user)
-        
-        from core.models import ApplicationPackage
-        
-        try:
-            package = ApplicationPackage.objects.get(id=package_id, candidate=profile)
-        except ApplicationPackage.DoesNotExist:
-            return Response(
-                {'error': {'code': 'package_not_found', 'message': 'Application package not found'}},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        if request.method == 'GET':
-            return Response({
-                'id': package.id,
-                'job': {
-                    'id': package.job.id,
-                    'title': package.job.title,
-                    'company_name': package.job.company_name,
-                    'location': package.job.location,
-                    'application_deadline': package.job.application_deadline.isoformat() if package.job.application_deadline else None
-                },
-                'status': package.status,
-                'match_score': package.match_score,
-                'documents_generated': package.documents_generated,
-                'checklist_items': package.checklist_items,
-                'auto_submit': package.auto_submit,
-                'scheduled_at': package.scheduled_at.isoformat() if package.scheduled_at else None,
-                'custom_notes': package.custom_notes,
-                'ai_insights': package.ai_insights,
-                'created_at': package.created_at.isoformat(),
-                'submitted_at': package.submitted_at.isoformat() if package.submitted_at else None
-            }, status=status.HTTP_200_OK)
-        
-        elif request.method in ['PUT', 'PATCH']:
-            # Update package
-            if 'status' in request.data:
-                package.status = request.data['status']
-            if 'auto_submit' in request.data:
-                package.auto_submit = request.data['auto_submit']
-            if 'scheduled_at' in request.data:
-                package.scheduled_at = request.data['scheduled_at']
-            if 'custom_notes' in request.data:
-                package.custom_notes = request.data['custom_notes']
-            if 'checklist_items' in request.data:
-                package.checklist_items = request.data['checklist_items']
-            
-            package.save()
-            
-            return Response({
-                'message': 'Application package updated successfully',
-                'status': package.status
-            }, status=status.HTTP_200_OK)
-        
-        elif request.method == 'DELETE':
-            package.delete()
-            
-            return Response({
-                'message': 'Application package deleted successfully'
-            }, status=status.HTTP_200_OK)
-    
-    except CandidateProfile.DoesNotExist:
-        return Response(
-            {'error': {'code': 'profile_not_found', 'message': 'Profile not found'}},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    except Exception as e:
-        logger.error(f"Error in application_package_detail: {e}\n{traceback.format_exc()}")
-        return Response(
-            {
-                'error': {
-                    'code': 'internal_error',
-                    'message': 'Failed to process application package request'
-                }
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def application_package_download(request, package_id):
-    """
-    UC-069: Download Application Package
-    
-    Downloads all documents in an application package as a zip file
-    """
-    try:
-        profile = CandidateProfile.objects.get(user=request.user)
-        
-        from core.models import ApplicationPackage
-        
-        try:
-            package = ApplicationPackage.objects.get(id=package_id, candidate=profile)
-        except ApplicationPackage.DoesNotExist:
-            return Response(
-                {'error': {'code': 'package_not_found', 'message': 'Application package not found'}},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        import tempfile
-        import zipfile
-        import os
-        from django.http import HttpResponse
-        
-        # Create a temporary file for the zip
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
-            with zipfile.ZipFile(tmp_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                files_added = 0
-                
-                # Add resume document
-                if package.resume_document and package.resume_document.file:
-                    try:
-                        if hasattr(package.resume_document.file, 'path') and os.path.exists(package.resume_document.file.path):
-                            # Determine file extension
-                            extension = 'pdf' if 'pdf' in (package.resume_document.content_type or '') else 'tex'
-                            filename = f"resume.{extension}"
-                            zipf.write(package.resume_document.file.path, filename)
-                            files_added += 1
-                            logger.info(f"Added resume {filename} to zip")
-                    except (ValueError, OSError) as e:
-                        logger.warning(f"Could not add resume to zip: {e}")
-                
-                # Add cover letter document  
-                if package.cover_letter_document and package.cover_letter_document.file:
-                    try:
-                        if hasattr(package.cover_letter_document.file, 'path') and os.path.exists(package.cover_letter_document.file.path):
-                            # Determine file extension
-                            extension = 'pdf' if 'pdf' in (package.cover_letter_document.content_type or '') else 'txt'
-                            filename = f"cover_letter.{extension}"
-                            zipf.write(package.cover_letter_document.file.path, filename)
-                            files_added += 1
-                            logger.info(f"Added cover letter {filename} to zip")
-                    except (ValueError, OSError) as e:
-                        logger.warning(f"Could not add cover letter to zip: {e}")
-                
-                # If no files were added, add debug info
-                if files_added == 0:
-                    debug_info = f"Package ID: {package.id}\n"
-                    debug_info += f"Resume document: {package.resume_document.id if package.resume_document else 'None'}\n"
-                    debug_info += f"Cover letter document: {package.cover_letter_document.id if package.cover_letter_document else 'None'}\n"
-                    if package.resume_document:
-                        debug_info += f"Resume file exists: {'Yes' if package.resume_document.file else 'No'}\n"
-                    if package.cover_letter_document:
-                        debug_info += f"Cover letter file exists: {'Yes' if package.cover_letter_document.file else 'No'}\n"
-                    zipf.writestr('README.txt', f'No files found in this package.\n\nDebug info:\n{debug_info}')
-                    logger.warning(f"No files found in package {package.id}")
-        
-        # Read the zip file and return as response
-        with open(tmp_file.name, 'rb') as f:
-            response = HttpResponse(f.read(), content_type='application/zip')
-            filename = f"application_package_{package.job.title.replace(' ', '_')}_{package.id}.zip"
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        
-        # Clean up the temporary file
-        os.unlink(tmp_file.name)
-        
-        return response
-        
-    except CandidateProfile.DoesNotExist:
-        return Response(
-            {'error': {'code': 'profile_not_found', 'message': 'Profile not found'}},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    except Exception as e:
-        logger.error(f"Error in application_package_download: {e}\n{traceback.format_exc()}")
-        return Response(
-            {
-                'error': {
-                    'code': 'internal_error',
-                    'message': 'Failed to download application package'
-                }
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def application_package_regenerate(request, package_id):
-    """
-    UC-069: Regenerate Application Package
-    
-    Regenerates all documents in an application package using AI
-    """
-    try:
-        profile = CandidateProfile.objects.get(user=request.user)
-        
-        from core.models import ApplicationPackage
-        
-        try:
-            package = ApplicationPackage.objects.get(id=package_id, candidate=profile)
-        except ApplicationPackage.DoesNotExist:
-            return Response(
-                {'error': {'code': 'package_not_found', 'message': 'Application package not found'}},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        # Import automation functionality
-        from core.automation import AutomationEngine
-        
-        # Initialize automation engine
-        automation_engine = AutomationEngine()
-        
-        # Update package status to processing
-        package.status = 'processing'
-        package.save()
-        
-        # Clear existing documents
-        package.documents.all().delete()
-        
-        # Regenerate package using automation engine
-        try:
-            automation_engine.generate_application_package(
-                candidate=profile,
-                job=package.job,
-                package=package
-            )
-            
-            # Update status
-            package.status = 'ready'
-            package.save()
-            
-            return Response({
-                'message': 'Application package regenerated successfully',
-                'package': {
-                    'id': package.id,
-                    'status': package.status,
-                    'job': {
-                        'id': package.job.id,
-                        'title': package.job.title,
-                        'company_name': package.job.company_name
-                    },
-                    'created_at': package.created_at,
-                    'updated_at': package.updated_at,
-                    'document_count': package.documents.count()
-                }
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as gen_error:
-            package.status = 'failed'
-            package.save()
-            logger.error(f"Failed to regenerate package {package_id}: {gen_error}")
-            return Response(
-                {
-                    'error': {
-                        'code': 'regeneration_failed',
-                        'message': 'Failed to regenerate application package'
-                    }
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-        
-    except CandidateProfile.DoesNotExist:
-        return Response(
-            {'error': {'code': 'profile_not_found', 'message': 'Profile not found'}},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    except Exception as e:
-        logger.error(f"Error in application_package_regenerate: {e}\n{traceback.format_exc()}")
-        return Response(
-            {
-                'error': {
-                    'code': 'internal_error',
-                    'message': 'Failed to regenerate application package'
-                }
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def trigger_automation_rules(request):
-    """
-    UC-069: Trigger Automation Rules
-    
-    POST: Manually trigger automation rules for testing or immediate execution
-    
-    Request Body:
-    {
-        "trigger_type": "job_status_change",
-        "event_data": {
-            "job_id": 123,
-            "from_status": "interested", 
-            "to_status": "applied"
-        }
-    }
-    """
-    try:
-        profile = CandidateProfile.objects.get(user=request.user)
-        
-        trigger_type = request.data.get('trigger_type')
-        event_data = request.data.get('event_data', {})
-        
-        if not trigger_type:
-            return Response(
-                {'error': {'code': 'missing_trigger', 'message': 'trigger_type is required'}},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Use the automation engine to trigger rules
-        from core.automation import AutomationEngine
-        
-        engine = AutomationEngine()
-        
-        # Execute matching automation rules
-        results = engine.trigger_rules(trigger_type, event_data, profile)
-        
-        logger.info(f"Triggered {len(results['executed'])} automation rules for user {request.user.email}")
-        
-        return Response({
-            'triggered_rules': results['executed'],
-            'failed_rules': results['failed'],
-            'total_executed': len(results['executed']),
-            'total_failed': len(results['failed'])
-        }, status=status.HTTP_200_OK)
-    
-    except CandidateProfile.DoesNotExist:
-        return Response(
-            {'error': {'code': 'profile_not_found', 'message': 'Profile not found'}},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    except Exception as e:
-        logger.error(f"Error triggering automation rules: {e}\n{traceback.format_exc()}")
-        return Response(
-            {
-                'error': {
-                    'code': 'trigger_failed',
-                    'message': f'Failed to trigger automation rules: {str(e)}'
-                }
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
 # ==============================================
 # UC-067: SALARY RESEARCH AND BENCHMARKING
 # ==============================================
@@ -6727,6 +5931,70 @@ def salary_research_export(request, job_id):
         )
 
 
+# ============================================================================
+# UC-060: Grammar and Spell Checking
+# ============================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def check_grammar(request):
+    """
+    Check text for grammar, spelling, and style issues using LanguageTool.
+    
+    Request body:
+        {
+            "text": "Text to check for grammar and spelling issues."
+        }
+    
+    Response:
+        {
+            "issues": [
+                {
+                    "id": "unique_id",
+                    "rule_id": "RULE_NAME",
+                    "message": "Description of the issue",
+                    "context": "...surrounding context...",
+                    "offset": 10,
+                    "length": 5,
+                    "text": "error",
+                    "type": "grammar|spelling|punctuation|style|other",
+                    "category": "Category name",
+                    "replacements": ["fix1", "fix2", "fix3"],
+                    "can_auto_fix": true
+                }
+            ],
+            "text_length": 123,
+            "issue_count": 5
+        }
+    """
+    from core.grammar_check import check_grammar as check_text
+    
+    try:
+        text = request.data.get('text', '')
+        
+        if not text or not text.strip():
+            return Response(
+                {'error': 'Text is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check grammar
+        issues = check_text(text)
+        
+        return Response({
+            'issues': issues,
+            'text_length': len(text),
+            'issue_count': len(issues),
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Grammar check error: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': f'Grammar check failed: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def job_interview_insights(request, job_id):
@@ -6819,6 +6087,55 @@ def job_interview_insights(request, job_id):
         logger.error(f"Error generating interview insights for job {job_id}: {str(e)}\n{traceback.format_exc()}")
         return Response(
             {'error': {'code': 'internal_error', 'message': 'Failed to generate interview insights.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def apply_grammar_fix(request):
+    """
+    Apply a grammar fix to text.
+    
+    Request body:
+        {
+            "text": "Original text",
+            "issue": {
+                "offset": 10,
+                "length": 5,
+                "replacements": ["fix1", "fix2"]
+            },
+            "replacement_index": 0
+        }
+    
+    Response:
+        {
+            "fixed_text": "Text with fix applied"
+        }
+    """
+    from core.grammar_check import apply_suggestion
+    
+    try:
+        text = request.data.get('text', '')
+        issue = request.data.get('issue', {})
+        replacement_index = request.data.get('replacement_index', 0)
+        
+        if not text or not issue:
+            return Response(
+                {'error': 'Text and issue are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        fixed_text = apply_suggestion(text, issue, replacement_index)
+        
+        return Response({
+            'fixed_text': fixed_text
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Apply fix error: {str(e)}")
+        return Response(
+            {'error': f'Failed to apply fix: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -7916,159 +7233,745 @@ def extract_profile_from_latex(latex_content):
     return profile
 
 
-# ======================
-# ADDITIONAL UC-069 AUTOMATION ENDPOINTS
-# ======================
+# ============================================
+# UC-071: Interview Scheduling Views
+# ============================================
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
-def automation_logs(request):
+def interview_list_create(request):
     """
-    UC-069: Automation Execution Logs
+    GET: List all interviews for the authenticated user
+    POST: Schedule a new interview
+    """
+    from core.serializers import InterviewScheduleSerializer
+    from core.models import InterviewSchedule, InterviewPreparationTask, JobEntry
     
-    GET: Retrieve automation execution logs for monitoring and debugging
-    """
-    try:
-        profile = CandidateProfile.objects.get(user=request.user)
-        
-        from core.models import WorkflowAutomationLog
-        
-        logs = WorkflowAutomationLog.objects.filter(candidate=profile)
-        
-        # Apply filters
-        rule_id_filter = request.query_params.get('rule_id')
-        if rule_id_filter:
-            logs = logs.filter(rule_id=rule_id_filter)
-        
+    candidate = request.user.profile
+    
+    if request.method == 'GET':
+        # Get filter parameters
+        job_id = request.query_params.get('job')
         status_filter = request.query_params.get('status')
+        upcoming_only = request.query_params.get('upcoming') == 'true'
+        
+        interviews = InterviewSchedule.objects.filter(candidate=candidate)
+        
+        if job_id:
+            interviews = interviews.filter(job_id=job_id)
+        
         if status_filter:
-            logs = logs.filter(status=status_filter)
+            interviews = interviews.filter(status=status_filter)
         
-        # Limit results
-        limit = int(request.query_params.get('limit', 50))
-        logs = logs.order_by('-created_at')[:limit]
+        if upcoming_only:
+            from django.utils import timezone
+            interviews = interviews.filter(
+                scheduled_at__gte=timezone.now(),
+                status__in=['scheduled', 'rescheduled']
+            )
         
-        # Build response
-        logs_data = []
-        for log in logs:
-            logs_data.append({
-                'id': log.id,
-                'rule_id': log.rule.id,
-                'rule_name': log.rule.name,
-                'trigger_type': log.trigger_type,
-                'trigger_data': log.trigger_data,
-                'action_type': log.action_type,
-                'action_result': log.action_result,
-                'status': log.status,
-                'error_message': log.error_message,
-                'execution_time_ms': log.execution_time_ms,
-                'executed_at': log.created_at.isoformat()
-            })
+        # Update reminder flags for all upcoming interviews
+        for interview in interviews:
+            if interview.is_upcoming:
+                interview.update_reminder_flags()
         
-        return Response({
-            'logs': logs_data,
-            'total_count': len(logs_data)
-        }, status=status.HTTP_200_OK)
+        serializer = InterviewScheduleSerializer(interviews, many=True)
+        return Response(serializer.data)
     
-    except CandidateProfile.DoesNotExist:
-        return Response({'logs': [], 'total_count': 0}, status=status.HTTP_200_OK)
-    except Exception as e:
-        logger.error(f"Error retrieving automation logs: {e}\n{traceback.format_exc()}")
+    elif request.method == 'POST':
+        # Schedule new interview
+        data = request.data.copy()
+        
+        # Set candidate from authenticated user
+        data['candidate'] = candidate.id
+        
+        # Validate job belongs to user
+        job_id = data.get('job')
+        try:
+            job = JobEntry.objects.get(id=job_id, candidate=candidate)
+        except JobEntry.DoesNotExist:
+            return Response(
+                {'error': 'Job not found or does not belong to you'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = InterviewScheduleSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            interview = serializer.save(candidate=candidate)
+            
+            # Auto-generate preparation tasks
+            generate_preparation_tasks(interview)
+            
+            # Update reminder flags
+            interview.update_reminder_flags()
+            
+            # Return with tasks
+            response_serializer = InterviewScheduleSerializer(interview)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def interview_detail(request, pk):
+    """
+    GET: Retrieve interview details
+    PUT: Update interview (including reschedule)
+    DELETE: Cancel interview
+    """
+    from core.serializers import InterviewScheduleSerializer
+    from core.models import InterviewSchedule
+    
+    try:
+        interview = InterviewSchedule.objects.get(pk=pk, candidate=request.user.profile)
+    except InterviewSchedule.DoesNotExist:
         return Response(
-            {
-                'error': {
-                    'code': 'internal_error',
-                    'message': 'Failed to retrieve automation logs'
-                }
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            {'error': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == 'GET':
+        # Update reminder flags
+        if interview.is_upcoming:
+            interview.update_reminder_flags()
+        
+        serializer = InterviewScheduleSerializer(interview)
+        return Response(serializer.data)
+    
+    elif request.method == 'PUT':
+        # Check if this is a reschedule (scheduled_at changed)
+        old_datetime = interview.scheduled_at
+        
+        serializer = InterviewScheduleSerializer(
+            interview,
+            data=request.data,
+            partial=True,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            new_datetime = serializer.validated_data.get('scheduled_at')
+            
+            # Handle rescheduling
+            if new_datetime and new_datetime != old_datetime:
+                reason = request.data.get('rescheduled_reason', '')
+                interview.reschedule(new_datetime, reason)
+                # Still update other fields
+                for key, value in serializer.validated_data.items():
+                    if key != 'scheduled_at':
+                        setattr(interview, key, value)
+                interview.save()
+            else:
+                serializer.save()
+            
+            # Update reminder flags
+            interview.update_reminder_flags()
+            
+            response_serializer = InterviewScheduleSerializer(interview)
+            return Response(response_serializer.data)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        # Actually delete the interview record
+        interview.delete()
+        return Response(
+            {'message': 'Interview deleted successfully'},
+            status=status.HTTP_204_NO_CONTENT
         )
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def bulk_automation_actions(request):
-    """
-    UC-069: Bulk Automation Operations
+def interview_complete(request, pk):
+    """Mark interview as completed and record outcome."""
+    from core.models import InterviewSchedule
     
-    POST: Execute bulk actions across multiple jobs or applications
+    try:
+        interview = InterviewSchedule.objects.get(pk=pk, candidate=request.user.profile)
+    except InterviewSchedule.DoesNotExist:
+        return Response(
+            {'error': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    outcome = request.data.get('outcome')
+    feedback_notes = request.data.get('feedback_notes', '')
+    
+    if not outcome:
+        return Response(
+            {'error': 'Outcome is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    interview.mark_completed(outcome=outcome, feedback_notes=feedback_notes)
+    
+    from core.serializers import InterviewScheduleSerializer
+    serializer = InterviewScheduleSerializer(interview)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def dismiss_interview_reminder(request, pk):
+    """Dismiss interview reminder notification."""
+    from core.models import InterviewSchedule
+    
+    try:
+        interview = InterviewSchedule.objects.get(pk=pk, candidate=request.user.profile)
+    except InterviewSchedule.DoesNotExist:
+        return Response(
+            {'error': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    reminder_type = request.data.get('reminder_type')  # '24h' or '1h'
+    
+    if reminder_type == '24h':
+        interview.reminder_24h_dismissed = True
+        interview.show_24h_reminder = False
+    elif reminder_type == '1h':
+        interview.reminder_1h_dismissed = True
+        interview.show_1h_reminder = False
+    else:
+        return Response(
+            {'error': 'Invalid reminder_type. Must be "24h" or "1h"'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    interview.save()
+    return Response({'message': 'Reminder dismissed'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def active_interview_reminders(request):
+    """Get all active interview reminders for the user."""
+    from core.models import InterviewSchedule
+    from core.serializers import InterviewScheduleSerializer
+    from django.utils import timezone
+    
+    candidate = request.user.profile
+    
+    # Get upcoming interviews
+    upcoming_interviews = InterviewSchedule.objects.filter(
+        candidate=candidate,
+        scheduled_at__gte=timezone.now(),
+        status__in=['scheduled', 'rescheduled']
+    )
+    
+    # Update reminder flags
+    for interview in upcoming_interviews:
+        interview.update_reminder_flags()
+    
+    # Get interviews with active reminders
+    active_reminders = upcoming_interviews.filter(
+        models.Q(show_24h_reminder=True, reminder_24h_dismissed=False) |
+        models.Q(show_1h_reminder=True, reminder_1h_dismissed=False)
+    )
+    
+    serializer = InterviewScheduleSerializer(active_reminders, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def toggle_preparation_task(request, pk):
+    """Toggle completion status of a preparation task."""
+    from core.models import InterviewPreparationTask
+    
+    try:
+        task = InterviewPreparationTask.objects.get(
+            pk=pk,
+            interview__candidate=request.user.profile
+        )
+    except InterviewPreparationTask.DoesNotExist:
+        return Response(
+            {'error': 'Task not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if task.is_completed:
+        task.is_completed = False
+        task.completed_at = None
+    else:
+        task.mark_completed()
+    
+    task.save()
+    
+    from core.serializers import InterviewPreparationTaskSerializer
+    serializer = InterviewPreparationTaskSerializer(task)
+    return Response(serializer.data)
+
+
+def generate_preparation_tasks(interview):
+    """Auto-generate preparation tasks for an interview."""
+    from core.models import InterviewPreparationTask
+    
+    tasks_config = [
+        {
+            'task_type': 'research_company',
+            'title': f'Research {interview.job.company_name}',
+            'description': 'Learn about the company\'s mission, values, recent news, and culture. Check their website, LinkedIn, and recent press releases.',
+            'order': 1
+        },
+        {
+            'task_type': 'review_job',
+            'title': 'Review Job Description',
+            'description': f'Re-read the {interview.job.title} job posting. Identify key requirements and how your experience aligns.',
+            'order': 2
+        },
+        {
+            'task_type': 'prepare_questions',
+            'title': 'Prepare Questions for Interviewer',
+            'description': 'Prepare 3-5 thoughtful questions about the role, team, company culture, and growth opportunities.',
+            'order': 3
+        },
+        {
+            'task_type': 'prepare_examples',
+            'title': 'Prepare STAR Examples',
+            'description': 'Prepare specific examples of your achievements using the STAR method (Situation, Task, Action, Result).',
+            'order': 4
+        },
+        {
+            'task_type': 'review_resume',
+            'title': 'Review Your Resume',
+            'description': 'Be ready to discuss everything on your resume in detail, especially items relevant to this role.',
+            'order': 5
+        },
+    ]
+    
+    # Add type-specific tasks
+    if interview.interview_type == 'video':
+        tasks_config.append({
+            'task_type': 'test_tech',
+            'title': 'Test Video Conference Setup',
+            'description': 'Test your camera, microphone, and internet connection. Ensure good lighting and a professional background.',
+            'order': 6
+        })
+    elif interview.interview_type == 'in_person':
+        tasks_config.append({
+            'task_type': 'plan_route',
+            'title': 'Plan Your Route',
+            'description': f'Plan your route to {interview.location}. Aim to arrive 10-15 minutes early.',
+            'order': 6
+        })
+    
+    tasks_config.append({
+        'task_type': 'prepare_materials',
+        'title': 'Prepare Materials',
+        'description': 'Print extra copies of your resume, prepare a portfolio if relevant, and bring a notepad and pen.',
+        'order': 7
+    })
+    
+    # Create tasks
+    for task_data in tasks_config:
+        InterviewPreparationTask.objects.create(
+            interview=interview,
+            **task_data
+        )
+
+# UC-052: Resume Version Management Views
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def resume_versions_list_create(request):
+    """
+    GET: List all resume versions for the current user
+    POST: Create a new resume version
     """
     try:
         profile = CandidateProfile.objects.get(user=request.user)
-        
-        action_type = request.data.get('action_type')
-        job_ids = request.data.get('job_ids', [])
-        parameters = request.data.get('parameters', {})
-        
-        if not action_type or not job_ids:
-            return Response(
-                {
-                    'error': {
-                        'code': 'invalid_input',
-                        'message': 'action_type and job_ids are required'
-                    }
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Validate job ownership
-        from core.models import JobEntry
-        jobs = JobEntry.objects.filter(id__in=job_ids, candidate=profile)
-        
-        if len(jobs) != len(job_ids):
-            return Response(
-                {
-                    'error': {
-                        'code': 'invalid_jobs',
-                        'message': 'Some jobs not found or not accessible'
-                    }
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Mock bulk execution for now (would use BulkOperationExecutor in production)
-        successful = []
-        failed = []
-        
-        for job in jobs:
-            try:
-                # Simulate bulk action execution
-                if action_type == 'generate_packages':
-                    # Would call automation engine here
-                    successful.append(job.id)
-                elif action_type == 'schedule_follow_ups':
-                    successful.append(job.id)
-                elif action_type == 'create_checklists':
-                    successful.append(job.id)
-                else:
-                    failed.append({'job_id': job.id, 'error': 'Unknown action type'})
-            except Exception as e:
-                failed.append({'job_id': job.id, 'error': str(e)})
-        
-        logger.info(f"Executed bulk automation action {action_type} on {len(job_ids)} jobs for user {request.user.email}")
-        
-        return Response({
-            'action_type': action_type,
-            'total_jobs': len(job_ids),
-            'successful': successful,
-            'failed': failed,
-            'success_count': len(successful),
-            'failed_count': len(failed)
-        }, status=status.HTTP_200_OK)
-    
     except CandidateProfile.DoesNotExist:
-        return Response(
-            {'error': {'code': 'profile_not_found', 'message': 'Profile not found'}},
-            status=status.HTTP_404_NOT_FOUND
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        # Filter options
+        include_archived = request.query_params.get('include_archived', 'false').lower() == 'true'
+        
+        versions = ResumeVersion.objects.filter(candidate=profile)
+        if not include_archived:
+            versions = versions.filter(is_archived=False)
+        
+        serializer = ResumeVersionListSerializer(versions, many=True)
+        return Response({
+            'versions': serializer.data,
+            'count': versions.count()
+        })
+    
+    elif request.method == 'POST':
+        serializer = ResumeVersionSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(candidate=profile)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def resume_version_detail(request, version_id):
+    """
+    GET: Retrieve a specific resume version
+    PUT: Update a resume version
+    DELETE: Delete or archive a resume version
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        serializer = ResumeVersionSerializer(version)
+        return Response(serializer.data)
+    
+    elif request.method == 'PUT':
+        serializer = ResumeVersionSerializer(version, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        # Check if this is the default version
+        if version.is_default and ResumeVersion.objects.filter(candidate=profile, is_archived=False).count() > 1:
+            return Response({
+                'error': 'Cannot delete the default version. Please set another version as default first.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        version.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_set_default(request, version_id):
+    """
+    POST: Set a resume version as the default/master version
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Set as default (model save will handle unsetting others)
+    version.is_default = True
+    version.save()
+    
+    serializer = ResumeVersionSerializer(version)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_archive(request, version_id):
+    """
+    POST: Archive a resume version
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Cannot archive the default version
+    if version.is_default:
+        return Response({
+            'error': 'Cannot archive the default version. Please set another version as default first.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    version.is_archived = True
+    version.save()
+    
+    serializer = ResumeVersionSerializer(version)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_restore(request, version_id):
+    """
+    POST: Restore an archived resume version
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    version.is_archived = False
+    version.save()
+    
+    serializer = ResumeVersionSerializer(version)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_compare(request):
+    """
+    POST: Compare two resume versions side-by-side
+    Expects: version1_id, version2_id
+    Returns: Structured diff highlighting differences
+    """
+    serializer = ResumeVersionCompareSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version1 = ResumeVersion.objects.get(
+            id=serializer.validated_data['version1_id'],
+            candidate=profile
         )
-    except Exception as e:
-        logger.error(f"Error executing bulk automation actions: {e}\n{traceback.format_exc()}")
-        return Response(
-            {
-                'error': {
-                    'code': 'bulk_action_failed',
-                    'message': f'Failed to execute bulk automation action: {str(e)}'
-                }
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        version2 = ResumeVersion.objects.get(
+            id=serializer.validated_data['version2_id'],
+            candidate=profile
         )
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'One or both resume versions not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Simple comparison of content fields
+    import json
+    
+    def deep_diff(obj1, obj2, path=""):
+        """Recursively find differences between two objects"""
+        differences = []
+        
+        if type(obj1) != type(obj2):
+            differences.append({
+                'path': path,
+                'type': 'type_change',
+                'version1': str(obj1),
+                'version2': str(obj2)
+            })
+            return differences
+        
+        if isinstance(obj1, dict):
+            all_keys = set(obj1.keys()) | set(obj2.keys())
+            for key in all_keys:
+                new_path = f"{path}.{key}" if path else key
+                if key not in obj1:
+                    differences.append({
+                        'path': new_path,
+                        'type': 'added',
+                        'version2': obj2[key]
+                    })
+                elif key not in obj2:
+                    differences.append({
+                        'path': new_path,
+                        'type': 'removed',
+                        'version1': obj1[key]
+                    })
+                else:
+                    differences.extend(deep_diff(obj1[key], obj2[key], new_path))
+        elif isinstance(obj1, list):
+            max_len = max(len(obj1), len(obj2))
+            for i in range(max_len):
+                new_path = f"{path}[{i}]"
+                if i >= len(obj1):
+                    differences.append({
+                        'path': new_path,
+                        'type': 'added',
+                        'version2': obj2[i]
+                    })
+                elif i >= len(obj2):
+                    differences.append({
+                        'path': new_path,
+                        'type': 'removed',
+                        'version1': obj1[i]
+                    })
+                else:
+                    differences.extend(deep_diff(obj1[i], obj2[i], new_path))
+        elif obj1 != obj2:
+            differences.append({
+                'path': path,
+                'type': 'changed',
+                'version1': obj1,
+                'version2': obj2
+            })
+        
+        return differences
+    
+    content_diff = deep_diff(version1.content, version2.content)
+    
+    return Response({
+        'version1': ResumeVersionSerializer(version1).data,
+        'version2': ResumeVersionSerializer(version2).data,
+        'differences': content_diff,
+        'diff_count': len(content_diff)
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_merge(request):
+    """
+    POST: Merge changes from one version into another
+    Expects: source_version_id, target_version_id, merge_fields (optional), create_new, new_version_name
+    """
+    serializer = ResumeVersionMergeSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        source = ResumeVersion.objects.get(
+            id=serializer.validated_data['source_version_id'],
+            candidate=profile
+        )
+        target = ResumeVersion.objects.get(
+            id=serializer.validated_data['target_version_id'],
+            candidate=profile
+        )
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'One or both resume versions not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    import copy
+    
+    merge_fields = serializer.validated_data.get('merge_fields', [])
+    create_new = serializer.validated_data.get('create_new', False)
+    new_version_name = serializer.validated_data.get('new_version_name')
+    
+    # Create merged content
+    merged_content = copy.deepcopy(target.content)
+    
+    if merge_fields:
+        # Merge specific fields
+        for field_path in merge_fields:
+            keys = field_path.split('.')
+            # Navigate to the field in source and copy to merged
+            source_val = source.content
+            target_val = merged_content
+            
+            for key in keys[:-1]:
+                if isinstance(source_val, dict) and key in source_val:
+                    source_val = source_val[key]
+                    if key not in target_val:
+                        target_val[key] = {}
+                    target_val = target_val[key]
+                else:
+                    break
+            
+            # Set the final value
+            if isinstance(target_val, dict) and keys[-1] in source_val:
+                target_val[keys[-1]] = source_val[keys[-1]]
+    else:
+        # Merge all fields from source
+        merged_content = copy.deepcopy(source.content)
+    
+    if create_new:
+        # Create new version with merged content
+        if not new_version_name:
+            return Response({
+                'error': 'new_version_name is required when create_new is True'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        new_version = ResumeVersion.objects.create(
+            candidate=profile,
+            version_name=new_version_name,
+            description=f"Merged from '{source.version_name}' and '{target.version_name}'",
+            content=merged_content,
+            latex_content=source.latex_content if source.latex_content else target.latex_content,
+            created_from=target,
+            generated_by_ai=False
+        )
+        serializer = ResumeVersionSerializer(new_version)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    else:
+        # Update target version
+        target.content = merged_content
+        target.save()
+        serializer = ResumeVersionSerializer(target)
+        return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_duplicate(request, version_id):
+    """
+    POST: Create a duplicate of an existing resume version
+    Expects: new_version_name (optional)
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        original = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    new_name = request.data.get('new_version_name', f"{original.version_name} (Copy)")
+    
+    import copy
+    
+    # Create duplicate
+    duplicate = ResumeVersion.objects.create(
+        candidate=profile,
+        version_name=new_name,
+        description=original.description,
+        content=copy.deepcopy(original.content),
+        latex_content=original.latex_content,
+        source_job=original.source_job,
+        created_from=original,
+        generated_by_ai=original.generated_by_ai,
+        generation_params=copy.deepcopy(original.generation_params)
+    )
+    
+    serializer = ResumeVersionSerializer(duplicate)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def resume_version_history(request, version_id):
+    """
+    GET: Get the history and lineage of a resume version
+    Shows parent and child versions, plus all edits/changes
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except (ResumeVersion.DoesNotExist, ValueError):
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Get parent chain
+    parents = []
+    current = version.created_from
+    while current:
+        parents.append(ResumeVersionListSerializer(current).data)
+        current = current.created_from
+    
+    # Get children
+    children = ResumeVersion.objects.filter(created_from=version)
+    children_data = ResumeVersionListSerializer(children, many=True).data
+    
+    # Get change history for this version
+    from .serializers import ResumeVersionChangeSerializer
+    changes = version.change_history.all()
+    changes_data = ResumeVersionChangeSerializer(changes, many=True).data
+    
+    return Response({
+        'version': ResumeVersionSerializer(version).data,
+        'parents': parents,
+        'children': children_data,
+        'changes': changes_data
+    })
+
+

@@ -794,6 +794,120 @@
   transform: translateY(-1px);
 }
 
+/* UC-052: Version Controls */
+.version-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.version-selector {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 300px;
+}
+
+.version-selector label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.version-selector select {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: var(--radius-md);
+  background: white;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.version-selector select:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.version-selector select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.version-selector select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.update-version-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.update-version-btn:hover:not(:disabled) {
+  background: var(--primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.update-version-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.save-version-trigger {
+  /* Match the style of Download PDF and other action buttons */
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(248, 250, 255, 0.9);
+  padding: var(--space-2) var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast), border var(--transition-fast);
+}
+
+.save-version-trigger:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-1px);
+}
+
+.save-version-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .variation-action-stack .export-modal-trigger:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -1006,6 +1120,55 @@
 .export-modal-footer button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* UC-052: Version info boxes in modal */
+.version-job-info,
+.version-update-info {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-3);
+}
+
+.version-job-info {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(5, 150, 105, 0.08));
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.version-job-info svg {
+  color: rgb(16, 185, 129);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.version-update-info {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08));
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.version-update-info svg {
+  color: var(--primary-color);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.version-job-info strong,
+.version-update-info strong {
+  display: block;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.version-job-info p,
+.version-update-info p {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
 }
 
 .template-manager {
@@ -1685,6 +1848,93 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+.validation-panel {
+  border: 1px solid var(--muted-border);
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  box-shadow: var(--shadow-sm);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.validation-header {
+  padding: var(--space-4);
+  border-bottom: 1px solid rgba(72, 102, 229, 0.15);
+}
+
+.validation-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.validation-item {
+  border: 1px solid var(--muted-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: #fff;
+}
+
+.validation-item.ok {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+}
+
+.validation-item.warn {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+
+.validation-item.info {
+  border-color: var(--info-border);
+  background: var(--info-bg);
+}
+
+.validation-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.validation-label {
+  font-weight: var(--font-weight-semibold);
+  color: var(--gray-800);
+}
+
+.validation-status {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--gray-600);
+}
+
+.validation-item ul {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  color: var(--gray-700);
+  font-size: var(--font-size-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.validation-item.ok .validation-status {
+  color: var(--success-text);
+}
+
+.validation-item.warn .validation-status {
+  color: var(--warning-text);
+}
+
+.validation-item.info .validation-status {
+  color: var(--info-text);
 }
 
 .preview-panel {

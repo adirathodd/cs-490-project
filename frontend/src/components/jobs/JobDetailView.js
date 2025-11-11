@@ -1,15 +1,17 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { jobsAPI, skillsAPI } from '../../services/api';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { jobsAPI, skillsAPI, interviewsAPI } from '../../services/api';
 import Icon from '../common/Icon';
 import { CompanyInfo } from '../../features/company';
 import InterviewInsights from './InterviewInsights';
 import SkillGapAnalysis from './SkillGapAnalysis';
 import JobMatchAnalysis from './JobMatchAnalysis';
+import InterviewScheduler from './InterviewScheduler';
 
 const JobDetailView = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   
   const [job, setJob] = useState(null);
   const [editMode, setEditMode] = useState(false);
@@ -24,6 +26,11 @@ const JobDetailView = () => {
   const [skillProgress, setSkillProgress] = useState({});
   const [formData, setFormData] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
+  const [showInterviewScheduler, setShowInterviewScheduler] = useState(false);
+  const [jobInterviews, setJobInterviews] = useState([]);
+  const [loadingInterviews, setLoadingInterviews] = useState(false);
+  const [editingInterviewId, setEditingInterviewId] = useState(null);
+  const [interviewToDelete, setInterviewToDelete] = useState(null);
   
   const jobTypeOptions = [
     { value: 'ft', label: 'Full-time' },
@@ -41,6 +48,21 @@ const JobDetailView = () => {
     loadJob();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Check for tab query parameter and switch to that tab
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'interviews') {
+      setActiveTab('scheduled-interviews');
+      // Scroll to the interviews section after a short delay to ensure it's rendered
+      setTimeout(() => {
+        const interviewsSection = document.getElementById('scheduled-interviews-section');
+        if (interviewsSection) {
+          interviewsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    }
+  }, [searchParams]);
 
   const buildFallbackCompanyInfo = (jobData) => {
     if (!jobData || !jobData.company_name) return null;
@@ -96,13 +118,34 @@ const JobDetailView = () => {
         interview_notes: data.interview_notes || '',
         application_history: data.application_history || [],
       });
-    } catch (e) {
-      const msg = e?.message || e?.error?.message || 'Failed to load job';
-      setError(msg);
+        } catch (err) {
+      console.error('Failed to load job:', err);
+      setError(err?.message || 'Failed to load job');
     } finally {
       setLoading(false);
     }
   };
+
+  const loadInterviews = async () => {
+    setLoadingInterviews(true);
+    try {
+      const response = await interviewsAPI.getInterviews({ job: id });
+      const filtered = Array.isArray(response)
+        ? response.filter((interview) => String(interview.job) === String(id))
+        : [];
+      setJobInterviews(filtered);
+    } catch (err) {
+      console.error('Failed to load interviews:', err);
+    } finally {
+      setLoadingInterviews(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'scheduled-interviews') {
+      loadInterviews();
+    }
+  }, [activeTab, id]);
 
   const onChange = (e) => {
     const { name, value } = e.target;
@@ -403,6 +446,18 @@ const JobDetailView = () => {
           <Icon name="briefcase" size="md" /> Job Details
         </h2>
         <div style={{ display: 'flex', gap: '12px' }}>
+          {!editMode && (
+            <button 
+              className="add-education-button" 
+              onClick={() => setShowInterviewScheduler(true)}
+              style={{ 
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+              }}
+            >
+              <Icon name="calendar" size="sm" /> Schedule Interview
+            </button>
+          )}
           {!editMode ? (
             <>
               <button className="add-education-button" onClick={() => setEditMode(true)}>
@@ -578,6 +633,24 @@ const JobDetailView = () => {
           }}
         >
           <Icon name="target" size="sm" /> Skills Gap Analysis
+        </button>
+        <button
+          onClick={() => setActiveTab('scheduled-interviews')}
+          style={{
+            padding: '12px 24px',
+            fontSize: '15px',
+            fontWeight: '600',
+            border: 'none',
+            background: 'none',
+            color: activeTab === 'scheduled-interviews' ? '#667eea' : '#6b7280',
+            borderBottom: activeTab === 'scheduled-interviews' ? '3px solid #667eea' : '3px solid transparent',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            whiteSpace: 'nowrap',
+            marginBottom: '-2px',
+          }}
+        >
+          <Icon name="calendar" size="sm" /> Scheduled Interviews
         </button>
       </div>
 
@@ -1188,6 +1261,294 @@ const JobDetailView = () => {
             </div>
           )}
         </>
+      )}
+
+      {/* Tab Content - Scheduled Interviews */}
+      {activeTab === 'scheduled-interviews' && (
+        <div className="education-form-card" id="scheduled-interviews-section">
+          <div className="education-form" style={{ padding: '24px' }}>
+            <div style={{ marginBottom: '24px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#1f2937', margin: 0 }}>
+                <Icon name="calendar" size="sm" /> Scheduled Interviews
+              </h3>
+            </div>
+
+            {loadingInterviews ? (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <p style={{ color: '#9ca3af' }}>Loading interviews...</p>
+              </div>
+            ) : jobInterviews.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <Icon name="calendar" size="lg" color="#9ca3af" />
+                <p style={{ color: '#9ca3af', marginTop: '16px', fontSize: '15px' }}>
+                  No interviews scheduled for this job yet.
+                </p>
+                <button
+                  onClick={() => setShowInterviewScheduler(true)}
+                  className="btn-primary"
+                  style={{ marginTop: '16px' }}
+                >
+                  <Icon name="plus" size="sm" /> Schedule Interview
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {jobInterviews.map((interview) => {
+                  const scheduledDate = new Date(interview.scheduled_at);
+                  const isPast = scheduledDate < new Date();
+                  const interviewTypeLabels = {
+                    phone: 'Phone Interview',
+                    video: 'Video Interview',
+                    in_person: 'In-Person Interview'
+                  };
+                  const interviewTypeColors = {
+                    phone: '#8b5cf6',
+                    video: '#3b82f6',
+                    in_person: '#10b981'
+                  };
+
+                  return (
+                    <div
+                      key={interview.id}
+                      style={{
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        padding: '20px',
+                        background: isPast ? '#f9fafb' : '#ffffff',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                padding: '4px 12px',
+                                borderRadius: '16px',
+                                fontSize: '13px',
+                                fontWeight: '600',
+                                color: '#ffffff',
+                                background: interviewTypeColors[interview.interview_type] || '#6b7280'
+                              }}
+                            >
+                              {interviewTypeLabels[interview.interview_type] || interview.interview_type}
+                            </span>
+                            {interview.status && (
+                              <span
+                                style={{
+                                  display: 'inline-block',
+                                  padding: '4px 12px',
+                                  borderRadius: '16px',
+                                  fontSize: '13px',
+                                  fontWeight: '600',
+                                  color: interview.status === 'completed' ? '#059669' : interview.status === 'cancelled' ? '#dc2626' : '#6b7280',
+                                  background: interview.status === 'completed' ? '#d1fae5' : interview.status === 'cancelled' ? '#fee2e2' : '#f3f4f6'
+                                }}
+                              >
+                                {interview.status}
+                              </span>
+                            )}
+                          </div>
+                          <h4 style={{ fontSize: '16px', fontWeight: '600', color: '#1f2937', margin: '0 0 4px 0' }}>
+                            {scheduledDate.toLocaleDateString('en-US', { 
+                              weekday: 'long', 
+                              year: 'numeric', 
+                              month: 'long', 
+                              day: 'numeric' 
+                            })}
+                          </h4>
+                          <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
+                            {scheduledDate.toLocaleTimeString('en-US', { 
+                              hour: 'numeric', 
+                              minute: '2-digit',
+                              hour12: true 
+                            })}
+                            {interview.duration && ` • ${interview.duration} minutes`}
+                          </p>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => {
+                              setEditingInterviewId(interview.id);
+                              setShowInterviewScheduler(true);
+                            }}
+                            className="btn-secondary"
+                            style={{ padding: '6px 12px', fontSize: '13px' }}
+                          >
+                            <Icon name="edit" size="sm" /> Edit
+                          </button>
+                          <button
+                            onClick={() => setInterviewToDelete(interview)}
+                            className="btn-secondary"
+                            style={{ 
+                              padding: '6px 12px', 
+                              fontSize: '13px',
+                              color: '#dc2626',
+                              borderColor: '#dc2626'
+                            }}
+                          >
+                            <Icon name="trash" size="sm" /> Delete
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Interview Details */}
+                      <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>
+                        {interview.interviewer_name && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <strong style={{ fontSize: '14px', color: '#4b5563' }}>Interviewer: </strong>
+                            <span style={{ fontSize: '14px', color: '#1f2937' }}>{interview.interviewer_name}</span>
+                            {interview.interviewer_title && (
+                              <span style={{ fontSize: '14px', color: '#6b7280' }}> ({interview.interviewer_title})</span>
+                            )}
+                          </div>
+                        )}
+                        {interview.interviewer_email && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <strong style={{ fontSize: '14px', color: '#4b5563' }}>Email: </strong>
+                            <a 
+                              href={`mailto:${interview.interviewer_email}`}
+                              style={{ fontSize: '14px', color: '#667eea', textDecoration: 'none' }}
+                            >
+                              {interview.interviewer_email}
+                            </a>
+                          </div>
+                        )}
+                        {interview.interview_type === 'in_person' && interview.location && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <strong style={{ fontSize: '14px', color: '#4b5563' }}>Location: </strong>
+                            <span style={{ fontSize: '14px', color: '#1f2937' }}>{interview.location}</span>
+                          </div>
+                        )}
+                        {interview.interview_type === 'video' && interview.meeting_link && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <strong style={{ fontSize: '14px', color: '#4b5563' }}>Meeting Link: </strong>
+                            <a 
+                              href={interview.meeting_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ fontSize: '14px', color: '#667eea', textDecoration: 'none' }}
+                            >
+                              Join Meeting
+                            </a>
+                          </div>
+                        )}
+                        {interview.preparation_notes && (
+                          <div style={{ marginTop: '12px' }}>
+                            <strong style={{ fontSize: '14px', color: '#4b5563', display: 'block', marginBottom: '4px' }}>
+                              Preparation Notes:
+                            </strong>
+                            <p style={{ fontSize: '14px', color: '#1f2937', margin: 0, whiteSpace: 'pre-wrap' }}>
+                              {interview.preparation_notes}
+                            </p>
+                          </div>
+                        )}
+                        {interview.outcome && (
+                          <div style={{ marginTop: '12px', padding: '12px', background: '#f0fdf4', borderRadius: '6px' }}>
+                            <strong style={{ fontSize: '14px', color: '#059669', display: 'block', marginBottom: '4px' }}>
+                              Outcome: {interview.outcome}
+                            </strong>
+                            {interview.outcome_notes && (
+                              <p style={{ fontSize: '14px', color: '#065f46', margin: 0, whiteSpace: 'pre-wrap' }}>
+                                {interview.outcome_notes}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Interview Scheduler Modal */}
+      {showInterviewScheduler && job && (
+        <InterviewScheduler
+          job={job}
+          existingInterview={editingInterviewId ? jobInterviews.find(i => i.id === editingInterviewId) : null}
+          onClose={() => {
+            setShowInterviewScheduler(false);
+            setEditingInterviewId(null);
+          }}
+          onSuccess={() => {
+            setShowInterviewScheduler(false);
+            setEditingInterviewId(null);
+            setSuccess(editingInterviewId ? 'Interview updated successfully!' : 'Interview scheduled successfully!');
+            setTimeout(() => setSuccess(''), 3000);
+            // Reload interviews if we're on that tab
+            if (activeTab === 'scheduled-interviews') {
+              loadInterviews();
+            }
+          }}
+        />
+      )}
+
+      {/* Delete Interview Confirmation Modal */}
+      {interviewToDelete && (
+        <div className="modal-overlay" onClick={() => setInterviewToDelete(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Icon name="alert-triangle" size="md" color="#dc2626" />
+                Delete Interview
+              </h3>
+              <button className="modal-close" onClick={() => setInterviewToDelete(null)} aria-label="Close">
+                <Icon name="x" size="sm" />
+              </button>
+            </div>
+            <div className="modal-body" style={{ paddingTop: '8px' }}>
+              <p style={{ color: '#4b5563', marginBottom: '16px' }}>
+                Are you sure you want to delete this interview? This action cannot be undone.
+              </p>
+              <div style={{ padding: '12px', background: '#f9fafb', borderRadius: '8px', marginBottom: '20px' }}>
+                <p style={{ margin: '0 0 6px 0', fontSize: '15px', color: '#1f2937', fontWeight: '600' }}>
+                  {interviewToDelete.job_title || job?.title}
+                </p>
+                <p style={{ margin: 0, fontSize: '14px', color: '#6b7280' }}>
+                  {new Date(interviewToDelete.scheduled_at).toLocaleString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true,
+                  })}
+                </p>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  className="btn-secondary"
+                  onClick={() => setInterviewToDelete(null)}
+                  style={{ padding: '8px 16px', fontSize: '14px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn-danger"
+                  onClick={async () => {
+                    try {
+                      await interviewsAPI.deleteInterview(interviewToDelete.id);
+                      setInterviewToDelete(null);
+                      setSuccess('Interview deleted successfully!');
+                      setTimeout(() => setSuccess(''), 3000);
+                      loadInterviews();
+                    } catch (err) {
+                      setError(err?.message || 'Failed to delete interview');
+                      setTimeout(() => setError(''), 3000);
+                    }
+                  }}
+                  style={{ padding: '8px 16px', fontSize: '14px', background: '#dc2626', borderColor: '#dc2626' }}
+                >
+                  Delete Interview
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -7,7 +7,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { jobsAPI, resumeAIAPI, resumeExportAPI } from '../../../services/api';
+import { jobsAPI, resumeAIAPI, resumeExportAPI, resumeVersionAPI } from '../../../services/api';
 import Icon from '../../../components/common/Icon';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import './AiResumeGenerator.css';
@@ -414,6 +414,461 @@ const sectionStatusCopy = {
   pending: 'Waiting on AI',
 };
 
+const COMMON_MISSPELLINGS = {
+  teh: 'the',
+  recieve: 'receive',
+  definately: 'definitely',
+  adress: 'address',
+  occured: 'occurred',
+  seperate: 'separate',
+  goverment: 'government',
+  happend: 'happened',
+  beleive: 'believe',
+  occurence: 'occurrence',
+};
+
+const FIRST_PERSON_PATTERN = /\b(?:I|I'm|I've|My|Me|Mine|Myself)\b/gi;
+
+const validationStatusCopy = {
+  ok: 'Looks good',
+  warn: 'Review',
+  info: 'Pending',
+};
+
+const detectMisspellings = (text = '') => {
+  if (!text) return [];
+  const matches = [];
+  const normalized = text.toLowerCase();
+  Object.entries(COMMON_MISSPELLINGS).forEach(([typo, correction]) => {
+    const regex = new RegExp(`\\b${escapeRegExp(typo)}\\b`, 'g');
+    if (regex.test(normalized)) {
+      matches.push(`Replace "${typo}" with "${correction}".`);
+    }
+  });
+  return matches;
+};
+
+const buildSummaryBody = ({ variation, rewriteState = {}, analysis = {} }) => {
+  if (!variation) return '';
+  const regenCount = rewriteState.regenerate || 0;
+  let summaryBody = variation.summary || '';
+  if (regenCount > 0) {
+    const sentences = summaryBody
+      .split(/(?<=[.!?])\s+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (sentences.length > 1) {
+      summaryBody = rotateArray(sentences, regenCount).join(' ');
+    } else {
+      const emphasisList = [
+        analysis?.job_focus_summary,
+        analysis?.skill_match_notes,
+        variation.summary_headline,
+        'Tailored highlight for this role',
+      ].filter(Boolean);
+      const rotated = rotateArray(emphasisList, regenCount);
+      summaryBody = `${rotated[0] || emphasisList[0] || ''} ${summaryBody}`.trim();
+    }
+  }
+  return summaryBody.trim();
+};
+
+const gatherExperienceBullets = ({
+  variation,
+  sectionConfig,
+  bulletOverrides,
+  bulletOrderOverrides,
+  rewriteState = {},
+}) => {
+  if (!variation?.experience_sections?.length) return [];
+  let experiences = variation.experience_sections || [];
+  if (rewriteState.regenerate) {
+    experiences = rotateArray(experiences, rewriteState.regenerate);
+  }
+  const density = sectionConfig?.formatting?.experience?.density || 'detailed';
+  return experiences.flatMap((experience, idx) => {
+    const bullets = density === 'compact'
+      ? (experience.bullets || []).slice(0, 1)
+      : experience.bullets || [];
+    if (!bullets.length) return [];
+    const groupId = getExperienceGroupId(experience, idx);
+    const bulletItems = bullets.map((bullet, bulletIdx) => {
+      const key = buildBulletKey('experience', groupId, bulletIdx);
+      return {
+        key,
+        text: bulletOverrides[key] ?? bullet,
+      };
+    });
+    const ordered = getOrderedBulletItems('experience', groupId, bulletItems, bulletOrderOverrides);
+    return ordered
+      .map((item) => item.text?.trim())
+      .filter(Boolean);
+  });
+};
+
+const gatherProjectBullets = ({
+  variation,
+  bulletOverrides,
+  bulletOrderOverrides,
+  rewriteState = {},
+}) => {
+  if (!variation?.project_sections?.length) return [];
+  let projects = variation.project_sections || [];
+  if (rewriteState.regenerate) {
+    projects = rotateArray(projects, rewriteState.regenerate);
+  }
+  return projects.flatMap((proj, idx) => {
+    const bullets = proj.bullets || [];
+    if (!bullets.length) return [];
+    const groupId = proj.source_project_id || proj.name || `project-${idx}`;
+    const bulletItems = bullets.map((bullet, bulletIdx) => {
+      const key = buildBulletKey('projects', groupId, bulletIdx);
+      return {
+        key,
+        text: bulletOverrides[key] ?? bullet,
+      };
+    });
+    const ordered = getOrderedBulletItems('projects', groupId, bulletItems, bulletOrderOverrides);
+    return ordered
+      .map((item) => item.text?.trim())
+      .filter(Boolean);
+  });
+};
+
+const gatherEducationNotes = ({
+  variation,
+  bulletOverrides,
+  bulletOrderOverrides,
+  rewriteState = {},
+}) => {
+  if (!variation?.education_highlights?.length) return [];
+  let education = variation.education_highlights || [];
+  if (rewriteState.regenerate) {
+    education = rotateArray(education, rewriteState.regenerate);
+  }
+  const educationGroupId = 'education-main';
+  const bulletItems = education.map((edu, idx) => {
+    const key = buildBulletKey('education', educationGroupId, idx);
+    return {
+      key,
+      text: bulletOverrides[key] ?? edu.notes,
+    };
+  });
+  const ordered = getOrderedBulletItems('education', educationGroupId, bulletItems, bulletOrderOverrides);
+  return ordered
+    .map((item) => item.text?.trim())
+    .filter(Boolean);
+};
+
+const gatherSkillHighlights = ({ variation, rewriteState = {} }) => {
+  if (!variation) return [];
+  let skills = chipify(variation.skills_to_highlight);
+  if (rewriteState.regenerate) {
+    skills = rotateArray(skills, rewriteState.regenerate);
+  }
+  return skills;
+};
+
+const collectLiveSegments = ({
+  variation,
+  sectionConfig,
+  bulletOverrides,
+  bulletOrderOverrides,
+  sectionRewrites = {},
+  analysis,
+}) => {
+  if (!variation) {
+    return {
+      summaryText: '',
+      experienceBullets: [],
+      projectBullets: [],
+      educationNotes: [],
+      skillHighlights: [],
+    };
+  }
+  const summaryBody = buildSummaryBody({
+    variation,
+    rewriteState: sectionRewrites.summary,
+    analysis,
+  });
+  const summaryHeadline = variation.summary_headline || variation.label;
+  const visible = (sectionConfig && sectionConfig.visibility) || {};
+  const summaryText = visible.summary ? [summaryHeadline, summaryBody].filter(Boolean).join(' ').trim() : '';
+
+  return {
+    summaryText,
+    experienceBullets: visible.experience
+      ? gatherExperienceBullets({
+          variation,
+          sectionConfig,
+          bulletOverrides,
+          bulletOrderOverrides,
+          rewriteState: sectionRewrites.experience,
+        })
+      : [],
+    projectBullets: visible.projects
+      ? gatherProjectBullets({
+          variation,
+          bulletOverrides,
+          bulletOrderOverrides,
+          rewriteState: sectionRewrites.projects,
+        })
+      : [],
+    educationNotes: visible.education
+      ? gatherEducationNotes({
+          variation,
+          bulletOverrides,
+          bulletOrderOverrides,
+          rewriteState: sectionRewrites.education,
+        })
+      : [],
+    skillHighlights: visible.skills
+      ? gatherSkillHighlights({
+          variation,
+          rewriteState: sectionRewrites.skills,
+        })
+      : [],
+  };
+};
+
+
+const buildValidationInsights = ({
+  variation,
+  profile,
+  tone,
+  sectionConfig,
+  bulletOverrides,
+  bulletOrderOverrides,
+  sectionRewrites = {},
+  analysis,
+  pdfPageCount = null,
+}) => {
+  const placeholderSummary = 'Generate a resume to run the validation checks.';
+  if (!variation) {
+    return [
+      {
+        id: 'spell',
+        label: 'Spell check & grammar',
+        status: 'info',
+        summary: placeholderSummary,
+        details: [],
+      },
+      {
+        id: 'format',
+        label: 'Format consistency',
+        status: 'info',
+        summary: placeholderSummary,
+        details: [],
+      },
+      {
+        id: 'length',
+        label: 'Length optimization',
+        status: 'info',
+        summary: placeholderSummary,
+        details: [],
+      },
+      {
+        id: 'missing',
+        label: 'Missing information',
+        status: 'info',
+        summary: placeholderSummary,
+        details: [],
+      },
+      {
+        id: 'contact',
+        label: 'Contact validation',
+        status: 'info',
+        summary: placeholderSummary,
+        details: [],
+      },
+      {
+        id: 'tone',
+        label: 'Professional tone',
+        status: 'info',
+        summary: placeholderSummary,
+        details: [],
+      },
+    ];
+  }
+
+  const segments = collectLiveSegments({
+    variation,
+    sectionConfig,
+    bulletOverrides,
+    bulletOrderOverrides,
+    sectionRewrites,
+    analysis,
+  });
+  const aggregatedText = [
+    segments.summaryText,
+    ...segments.experienceBullets,
+    ...segments.projectBullets,
+    ...segments.educationNotes,
+    ...segments.skillHighlights,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const wordMatches = aggregatedText.match(/\b\w+\b/g) || [];
+  const wordCount = wordMatches.length;
+  const pagesEstimate = Math.max(1, Math.ceil(wordCount / 380));
+  const pagesDetected = pdfPageCount || pagesEstimate;
+  const typos = detectMisspellings(aggregatedText);
+  const firstPersonMatches = aggregatedText.match(FIRST_PERSON_PATTERN) || [];
+  const bullets = [...segments.experienceBullets, ...segments.projectBullets];
+  const totalBullets = bullets.length;
+  const punctuatedBullets = bullets.filter((bullet) => /[.!?]$/.test(bullet.trim())).length;
+  const punctuationRatio = totalBullets ? punctuatedBullets / totalBullets : 0;
+  const selectedTone = toneOptions.find((option) => option.value === tone);
+
+  const lengthDetails = [];
+  let lengthStatus = 'ok';
+  let lengthSummary = `~${wordCount} words (~${pagesEstimate} page${pagesEstimate > 1 ? 's' : ''})`;
+  if (wordCount === 0) {
+    lengthStatus = 'info';
+    lengthSummary = 'No resume content is available yet.';
+  } else if (pdfPageCount) {
+    // If we have a detected page count from the generated PDF, use density to determine visual fullness
+    const density = wordCount / (pagesDetected * 420);
+    if (density >= 0.6) {
+      lengthStatus = 'ok';
+      lengthDetails.push('Visual preview fills the pages — formatting looks appropriately full.');
+      lengthSummary = `~${wordCount} words (~${pagesDetected} page${pagesDetected > 1 ? 's' : ''})`;
+    } else if (wordCount < 400) {
+      lengthStatus = 'warn';
+      lengthDetails.push('Add a few more achievements to land between 1–2 pages.');
+    } else if (wordCount > 900) {
+      lengthStatus = 'warn';
+      lengthDetails.push('Consider trimming repetition to keep the document between 1–2 pages.');
+    } else {
+      lengthDetails.push('Length is within the recommended 1–2 page range.');
+    }
+  } else if (wordCount < 400) {
+    lengthStatus = 'warn';
+    lengthDetails.push('Add a few more achievements to land between 1–2 pages.');
+  } else if (wordCount > 900) {
+    lengthStatus = 'warn';
+    lengthDetails.push('Consider trimming repetition to keep the document between 1–2 pages.');
+  } else {
+    lengthDetails.push('Length is within the recommended 1–2 page range.');
+  }
+
+  const formatStatus = totalBullets
+    ? punctuationRatio > 0.8 || punctuationRatio < 0.2
+      ? 'ok'
+      : 'warn'
+    : 'info';
+  const formatSummary =
+    totalBullets === 0
+      ? 'Add bullet points to evaluate formatting consistency.'
+      : punctuationRatio > 0.8
+      ? 'Most bullets end with punctuation—nice and consistent.'
+      : punctuationRatio < 0.2
+      ? 'Most bullets skip trailing punctuation. Choose one style and stick with it.'
+      : 'Mixed punctuation detected across bullets.';
+
+  const formatDetails = [];
+  if (formatStatus === 'warn') {
+    formatDetails.push('Some bullets end with periods while others do not. Pick one style to stay consistent.');
+  }
+
+  const missingDetails = [];
+  const visible = (sectionConfig && sectionConfig.visibility) || {};
+  // Warn if any core sections are purposely excluded from the preview
+  const coreSections = ['experience', 'projects', 'education'];
+  const excludedCores = coreSections.filter((id) => visible[id] === false);
+  if (excludedCores.length) {
+    excludedCores.forEach((sec) => {
+      const label = resumeSectionMeta[sec]?.label || sec;
+      missingDetails.push(`${label} section is excluded from the preview.`);
+    });
+  }
+  if (!segments.summaryText) {
+    missingDetails.push('Add a headline or summary to frame your story.');
+  }
+  if (!segments.experienceBullets.length && !segments.projectBullets.length) {
+    missingDetails.push('Include at least one experience or project to highlight accomplishments.');
+  }
+  if (!segments.skillHighlights.length) {
+    missingDetails.push('Highlight key skills to match the role focus.');
+  }
+  if (!segments.educationNotes.length) {
+    missingDetails.push('Document a degree or certification so credentials are visible.');
+  }
+  const missingStatus = missingDetails.length ? 'warn' : 'ok';
+  const missingSummary = missingDetails.length
+    ? `${missingDetails.length} area${missingDetails.length === 1 ? '' : 's'} need details.`
+    : 'Core sections are filled.';
+
+  const contactIssues = [];
+  const contact = profile?.contact || {};
+  if (!contact.email) contactIssues.push('Add a professional email address.');
+  if (!contact.phone) contactIssues.push('Include a phone number so recruiters can reach you.');
+  if (!contact.location) contactIssues.push('Share a location or remote preference for clarity.');
+  const contactStatus = contactIssues.length ? 'warn' : 'ok';
+  const contactSummary = contactIssues.length
+    ? 'Critical contact details are missing.'
+    : 'Contact info looks complete.';
+
+  const toneStatus = firstPersonMatches.length ? 'warn' : 'ok';
+  const toneSummary = firstPersonMatches.length
+    ? `Detected ${firstPersonMatches.length} first-person pronom${firstPersonMatches.length === 1 ? 'oun' : 'ouns'}; consider keeping the tone neutral.`
+    : `Tone aligns with the ${
+        selectedTone?.label || 'selected'
+      } style.`;
+  const toneDetails = [];
+  if (selectedTone?.hint) toneDetails.push(selectedTone.hint);
+  if (firstPersonMatches.length) {
+    toneDetails.push('Remove "I" or "my" statements to keep it impersonal.');
+  }
+
+  return [
+    {
+      id: 'spell',
+      label: 'Spell check & grammar',
+      status: typos.length ? 'warn' : 'ok',
+      summary: typos.length
+        ? `${typos.length} potential typo${typos.length === 1 ? '' : 's'} detected.`
+        : 'No common typos detected.',
+      details: typos,
+    },
+    {
+      id: 'format',
+      label: 'Format consistency',
+      status: formatStatus,
+      summary: formatSummary,
+      details: formatDetails,
+    },
+    {
+      id: 'length',
+      label: 'Length optimization',
+      status: lengthStatus,
+      summary: lengthSummary,
+      details: lengthDetails,
+    },
+    {
+      id: 'missing',
+      label: 'Missing information',
+      status: missingStatus,
+      summary: missingSummary,
+      details: missingDetails,
+    },
+    {
+      id: 'contact',
+      label: 'Contact validation',
+      status: contactStatus,
+      summary: contactSummary,
+      details: contactIssues,
+    },
+    {
+      id: 'tone',
+      label: 'Professional tone',
+      status: toneStatus,
+      summary: toneSummary,
+      details: toneDetails,
+    },
+  ];
+};
+
 const SortableSectionRow = ({
   sectionId,
   meta,
@@ -591,6 +1046,8 @@ const SortableBulletList = ({
               text={bulletOverrides[item.key] ?? item.text}
               originalText={item.text}
               onManualSave={(value) => onBulletOverride(item.key, value)}
+              // propagate live drafts to parent so validation updates while typing
+              onDraftChange={onBulletOverride}
             />
           ))}
         </div>
@@ -599,7 +1056,7 @@ const SortableBulletList = ({
   );
 };
 
-const SortableBulletItem = ({ itemKey, text, originalText, onManualSave }) => {
+const SortableBulletItem = ({ itemKey, text, originalText, onManualSave, onDraftChange }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: itemKey });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -611,6 +1068,21 @@ const SortableBulletItem = ({ itemKey, text, originalText, onManualSave }) => {
   useEffect(() => {
     setDraft(text);
   }, [text]);
+
+  // Propagate live draft changes to parent (debounced) so validation and preview update
+  useEffect(() => {
+    if (!onDraftChange) return undefined;
+    // Only propagate while editing to avoid noisy updates when parent pushes new text
+    if (!editing) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (!cancelled) onDraftChange(itemKey, draft);
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [draft, editing, itemKey, onDraftChange]);
 
   return (
     <div ref={setNodeRef} style={style} className={`bullet-row ${isDragging ? 'dragging' : ''}`}>
@@ -635,7 +1107,9 @@ const SortableBulletItem = ({ itemKey, text, originalText, onManualSave }) => {
                 type="button"
                 className="ghost"
                 onClick={() => {
+                  // revert draft to latest saved text and notify parent to revert live override
                   setDraft(text);
+                  if (onDraftChange) onDraftChange(itemKey, text);
                   setEditing(false);
                 }}
               >
@@ -671,6 +1145,23 @@ const sanitizeText = (value) => {
     return `${value}`;
   }
   return '';
+};
+
+// Heuristic to detect if a URL likely points to a profile picture or image
+const isLikelyImageUrl = (url = '') => {
+  if (!url || typeof url !== 'string') return false;
+  const lowered = url.toLowerCase();
+  // common image extensions
+  if (/\.(png|jpe?g|gif|bmp|svg)(\?.*)?$/.test(lowered)) return true;
+  // common profile picture path fragments returned by backend (relative paths)
+  if (lowered.includes('/profile_pictures/') || lowered.includes('profile_picture')) return true;
+  // url that points to Gravatar or similar: contains 'gravatar' or 'avatar'
+  if (lowered.includes('gravatar') || lowered.includes('/avatar') || lowered.includes('avatar/')) return true;
+  // common CDN/profile image hosts and patterns (Google profile images, Twitter, Facebook)
+  if (lowered.includes('googleusercontent') || lowered.includes('lh3.google') || lowered.includes('twimg.com') || lowered.includes('fbcdn.net') || lowered.includes('cdn.discordapp.com') || lowered.includes('avatars.githubusercontent')) return true;
+  // Google profile images often append =s{size} or =s{size}-c at the end
+  if (/=s\d+(-[a-z])?/.test(lowered)) return true;
+  return false;
 };
 
 const formatDate = (value) => {
@@ -866,13 +1357,7 @@ export const ExperienceTailoringLab = ({
         {insights.map((insight) => {
           const experienceKey = insight.experienceId;
           const sourceId = insight.experience?.source_experience_id;
-          console.log('[ExperienceTailoringLab] Looking up variations:', {
-            experienceKey,
-            sourceId,
-            hasKeyLookup: !!externalVariations[experienceKey],
-            hasSourceLookup: !!externalVariations[sourceId],
-            allKeys: Object.keys(externalVariations),
-          });
+          
           const serverEntry =
             externalVariations[experienceKey] ||
             externalVariations[sourceId] ||
@@ -1077,7 +1562,7 @@ const loadCachedResult = () => {
     if (cacheAge > 24 * 60 * 60 * 1000) return null;
     return parsed.data;
   } catch (err) {
-    console.error('Failed to load cached resume:', err);
+    // silently ignore cache load errors
     return null;
   }
 };
@@ -1091,7 +1576,7 @@ const saveCachedResult = (data) => {
     };
     localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
   } catch (err) {
-    console.error('Failed to cache resume:', err);
+    // silently ignore cache save errors
   }
 };
 
@@ -1099,7 +1584,7 @@ const clearCachedResult = () => {
   try {
     localStorage.removeItem(CACHE_KEY);
   } catch (err) {
-    console.error('Failed to clear cache:', err);
+    // silently ignore cache clear errors
   }
 };
 
@@ -1141,6 +1626,7 @@ const AiResumeGenerator = () => {
   const [livePreviewPdfUrl, setLivePreviewPdfUrl] = useState('');
   const [livePreviewLoading, setLivePreviewLoading] = useState(false);
   const [livePreviewError, setLivePreviewError] = useState('');
+  const [detectedPdfPageCount, setDetectedPdfPageCount] = useState(null);
   const [experienceVariations, setExperienceVariations] = useState({});
   const [experienceVariationsLoading, setExperienceVariationsLoading] = useState(false);
   const [experienceVariationsError, setExperienceVariationsError] = useState('');
@@ -1164,6 +1650,19 @@ const AiResumeGenerator = () => {
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState('');
   const [availableThemes, setAvailableThemes] = useState([]);
+  
+  // UC-052: Resume Version Management state
+  const [showSaveVersionModal, setShowSaveVersionModal] = useState(false);
+  const [versionName, setVersionName] = useState('');
+  const [versionDescription, setVersionDescription] = useState('');
+  const [isSavingVersion, setIsSavingVersion] = useState(false);
+  const [saveVersionError, setSaveVersionError] = useState('');
+  
+  // UC-052: Load existing versions
+  const [savedVersions, setSavedVersions] = useState([]);
+  const [selectedVersionId, setSelectedVersionId] = useState(null);
+  const [currentVersionId, setCurrentVersionId] = useState(null);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
   
   // Template management state
   const [customTemplates, setCustomTemplates] = useState(() => {
@@ -1225,12 +1724,27 @@ const AiResumeGenerator = () => {
         const themes = await resumeExportAPI.getThemes();
         setAvailableThemes(themes);
       } catch (error) {
-        console.error('Failed to fetch themes:', error);
-        // Use default themes if fetch fails
+        // Failed to fetch themes; fallback to defaults
         setAvailableThemes(['professional', 'modern', 'minimal', 'creative']);
       }
     };
     fetchThemes();
+  }, []);
+
+  // UC-052: Load saved resume versions on mount
+  useEffect(() => {
+    const loadSavedVersions = async () => {
+      setIsLoadingVersions(true);
+      try {
+        const data = await resumeVersionAPI.listVersions(false); // Don't include archived
+        setSavedVersions(data.versions || []);
+      } catch (error) {
+        console.error('Failed to load saved versions:', error);
+      } finally {
+        setIsLoadingVersions(false);
+      }
+    };
+    loadSavedVersions();
   }, []);
 
   // Save result to cache whenever it changes
@@ -1365,33 +1879,16 @@ const AiResumeGenerator = () => {
   }, [result, activeVariationId]);
 
   useEffect(() => {
-    console.log('[ExperienceVariations] useEffect triggered:', {
-      selectedJobId,
-      hasActiveVariation: !!activeVariation,
-      experienceSections: activeVariation?.experience_sections,
-      experienceCount: activeVariation?.experience_sections?.length
-    });
     
     if (!selectedJobId || !activeVariation) {
-      console.log('[ExperienceVariations] Skipping - no job or variation');
       setExperienceVariations({});
       setExperienceVariationsError('');
       return;
     }
     const experiences = (activeVariation.experience_sections || [])
       .filter((exp) => exp.source_experience_id);
-    console.log('[ExperienceVariations] Filtered experiences:', {
-      total: activeVariation.experience_sections?.length,
-      withSourceId: experiences.length,
-      experiences: experiences.map(exp => ({
-        source_experience_id: exp.source_experience_id,
-        role: exp.role,
-        company: exp.company
-      }))
-    });
     
     if (!experiences.length) {
-      console.log('[ExperienceVariations] Skipping - no experiences with source_experience_id');
       setExperienceVariations({});
       setExperienceVariationsError('');
       return;
@@ -1400,49 +1897,40 @@ const AiResumeGenerator = () => {
     let cancelled = false;
 
     const loadExperienceVariations = async () => {
-      console.log('[ExperienceVariations] Starting to load variations for experiences:', experiences.map(e => e.source_experience_id));
+      
       setExperienceVariationsLoading(true);
       setExperienceVariationsError('');
       try {
-        console.log('[ExperienceVariations] Making API calls...');
         const results = await Promise.all(
           experiences.map(async (exp, idx) => {
-            console.log(`[ExperienceVariations] Calling API for experience ${idx}:`, exp.source_experience_id);
+            
             try {
               const result = await resumeAIAPI.generateExperienceVariations(selectedJobId, exp.source_experience_id, {
                 tone,
                 variation_count: EXPERIENCE_VARIATION_TARGET,
               });
-              console.log(`[ExperienceVariations] API call ${idx} completed:`, result);
+              
               return result;
             } catch (err) {
-              console.error(`[ExperienceVariations] API call ${idx} failed:`, err);
+              
               throw err;
             }
           }),
         );
-        console.log('[ExperienceVariations] All API calls completed');
         if (cancelled) return;
-        console.log('[ExperienceVariations] Raw API results:', results);
         const map = {};
         results.forEach((entry, idx) => {
-          console.log(`[ExperienceVariations] Processing result ${idx}:`, {
-            experience_id: entry?.experience_id,
-            variations_count: entry?.variations?.length,
-            entry
-          });
+          
           if (entry?.experience_id) {
             const key = `experience-${entry.experience_id}`;
             map[entry.experience_id] = entry;
             map[key] = entry;
-            console.log(`[ExperienceVariations] Stored variation with keys: ${entry.experience_id} and ${key}`);
           }
         });
-        console.log('[ExperienceVariations] Final map keys:', Object.keys(map));
-        console.log('[ExperienceVariations] Loaded variations:', { experiences: experiences.length, results: results.length, map });
+        
         setExperienceVariations(map);
       } catch (err) {
-        console.error('[ExperienceVariations] Error loading variations:', err);
+        
         if (!cancelled) {
           setExperienceVariationsError(err?.message || 'Unable to fetch tailored variations.');
         }
@@ -1469,10 +1957,18 @@ const AiResumeGenerator = () => {
         pdfUrlRef.current = '';
       }
       setPdfPreviewUrl('');
+      setDetectedPdfPageCount(null);
       return undefined;
     }
     try {
       const byteCharacters = window.atob(activeVariation.pdf_document);
+      // Try to estimate page count by searching for PDF page markers in the decoded stream
+      try {
+        const pageMatches = byteCharacters.match(/\/Type\s*\/Page/g) || [];
+        setDetectedPdfPageCount(pageMatches.length || 1);
+      } catch (e) {
+        setDetectedPdfPageCount(null);
+      }
       const byteNumbers = new Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i += 1) {
         byteNumbers[i] = byteCharacters.charCodeAt(i);
@@ -1494,7 +1990,7 @@ const AiResumeGenerator = () => {
         }
       };
     } catch (err) {
-      console.error('Failed to render PDF preview', err); // eslint-disable-line no-console
+      // Failed to render PDF preview — ignore and clear preview URL
       setPdfPreviewUrl('');
     }
     return undefined;
@@ -1839,11 +2335,7 @@ const AiResumeGenerator = () => {
         tone,
         variation_count: variationCount,
       });
-      console.log('Received resume data:', {
-        variation_count: data?.variation_count,
-        variations_length: data?.variations?.length,
-        variation_labels: data?.variations?.map(v => v.label),
-      });
+      // Received resume data
       setResult(data);
       const firstVariation = data?.variations?.[0];
       setActiveVariationId(firstVariation?.id || '');
@@ -1961,7 +2453,7 @@ const AiResumeGenerator = () => {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Failed to download PDF:', err);
+      // Failed to download PDF
       setGenerationError('Failed to download PDF. Please try again.');
     }
   };
@@ -2008,10 +2500,160 @@ const AiResumeGenerator = () => {
         setExportWatermark('');
       }, 300);
     } catch (error) {
-      console.error('Export failed:', error);
+      // Export failed
       setExportError(error.response?.data?.error || 'Failed to export resume. Please try again.');
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  // UC-052: Save Resume Version Handler
+  const handleSaveVersion = async () => {
+    if (!versionName.trim()) {
+      setSaveVersionError('Please enter a version name');
+      return;
+    }
+
+    if (!liveLatexPreview || !activeVariation) {
+      setSaveVersionError('No resume content available to save');
+      return;
+    }
+
+    setIsSavingVersion(true);
+    setSaveVersionError('');
+
+    try {
+      // Prepare version data
+      const versionData = {
+        version_name: versionName.trim(),
+        description: versionDescription.trim() || '',
+        content: {
+          variation: activeVariation,
+          analysis: result?.shared_analysis,
+          sections: visibleSections,
+          bulletOverrides,
+          sectionRewrites,
+          sectionConfig,
+        },
+        latex_content: liveLatexPreview,
+        job_opportunity: selectedJobDetail?.id || null,
+      };
+
+      await resumeVersionAPI.createVersion(versionData);
+
+      // Success - close modal and reset
+      setShowSaveVersionModal(false);
+      setVersionName('');
+      setVersionDescription('');
+      setSaveVersionError('');
+      
+      // Reload versions list
+      const data = await resumeVersionAPI.listVersions(false);
+      setSavedVersions(data.versions || []);
+      
+      // Show success notification
+      alert('Resume version saved successfully!');
+    } catch (error) {
+      console.error('Save version failed:', error);
+      setSaveVersionError(error.response?.data?.error || 'Failed to save resume version. Please try again.');
+    } finally {
+      setIsSavingVersion(false);
+    }
+  };
+
+  // UC-052: Load a saved version into the editor
+  const handleLoadVersion = async (versionId) => {
+    if (!versionId) {
+      setCurrentVersionId(null);
+      setSelectedVersionId(null);
+      return;
+    }
+
+    try {
+      const version = await resumeVersionAPI.getVersion(versionId);
+      
+      // Restore the saved content
+      if (version.content) {
+        const content = version.content;
+        
+        // Restore variation
+        if (content.variation) {
+          setResult(prev => ({
+            ...prev,
+            variations: [content.variation]
+          }));
+          setActiveVariationId(content.variation.id);
+        }
+        
+        // Restore analysis
+        if (content.analysis) {
+          setResult(prev => ({
+            ...prev,
+            shared_analysis: content.analysis
+          }));
+        }
+        
+        // Restore sections
+        if (content.sections) {
+          // sections is an array of section IDs
+        }
+        
+        // Restore bullet overrides
+        if (content.bulletOverrides) {
+          setBulletOverrides(content.bulletOverrides);
+        }
+        
+        // Restore section rewrites
+        if (content.sectionRewrites) {
+          setSectionRewrites(content.sectionRewrites);
+        }
+        
+        // Restore section config
+        if (content.sectionConfig) {
+          setSectionConfig(hydrateSectionConfig(content.sectionConfig));
+        }
+      }
+      
+      // Set current version ID for tracking updates
+      setCurrentVersionId(versionId);
+      setSelectedVersionId(versionId);
+      
+      alert(`Loaded version: ${version.version_name}`);
+    } catch (error) {
+      console.error('Failed to load version:', error);
+      alert('Failed to load version. Please try again.');
+    }
+  };
+
+  // UC-052: Update current version when changes are made
+  const handleUpdateCurrentVersion = async () => {
+    if (!currentVersionId || !activeVariation) {
+      return;
+    }
+
+    try {
+      const versionData = {
+        content: {
+          variation: activeVariation,
+          analysis: result?.shared_analysis,
+          sections: visibleSections,
+          bulletOverrides,
+          sectionRewrites,
+          sectionConfig,
+        },
+        latex_content: liveLatexPreview,
+      };
+
+      await resumeVersionAPI.updateVersion(currentVersionId, versionData);
+      
+      // Reload versions list
+      const data = await resumeVersionAPI.listVersions(false);
+      setSavedVersions(data.versions || []);
+      
+      alert('Version updated successfully! Changes are tracked in history.');
+    } catch (error) {
+      console.error('Failed to update version:', error);
+      alert('Failed to update version. Please try again.');
     }
   };
 
@@ -2054,6 +2696,39 @@ const AiResumeGenerator = () => {
       return acc;
     }, {});
   }, [activeVariation, analysis, pdfPreviewUrl]);
+
+  const validationInsights = useMemo(
+    () =>
+      buildValidationInsights({
+        variation: activeVariation,
+        profile,
+        tone,
+        sectionConfig,
+        bulletOverrides,
+        bulletOrderOverrides,
+        sectionRewrites,
+        analysis,
+        pdfPageCount: detectedPdfPageCount,
+      }),
+    [
+      activeVariation,
+      profile,
+      tone,
+      sectionConfig,
+      visibleSections,
+      bulletOverrides,
+      bulletOrderOverrides,
+      sectionRewrites,
+      analysis,
+      detectedPdfPageCount,
+    ],
+  );
+
+  // Mirror memoized validation into state so UI updates reliably when visibility toggles
+  const [liveValidationInsights, setLiveValidationInsights] = useState(() => validationInsights);
+  useEffect(() => {
+    setLiveValidationInsights(validationInsights);
+  }, [validationInsights]);
 
   const sectionSnapshots = useMemo(() => {
     if (!activeVariation) return {};
@@ -2109,7 +2784,13 @@ const AiResumeGenerator = () => {
       }
       if (profile.contact?.portfolio_url) {
         const url = profile.contact.portfolio_url;
-        contactBits.push(`\\href{${url}}{\\underline{Portfolio}}`);
+        const picUrl = profile.profile_picture_url || profile.contact?.profile_picture_url || '';
+        const looksLikeImage = isLikelyImageUrl(url) || (picUrl && picUrl === url);
+        if (!looksLikeImage) {
+          contactBits.push(`\\href{${url}}{\\underline{Portfolio}}`);
+        } else {
+            // Skip portfolio link when it appears to point to an image/profile picture
+          }
       }
       
       const location = profile.location || profile.contact?.location;
@@ -2305,7 +2986,7 @@ const AiResumeGenerator = () => {
         setLivePreviewPdfUrl(newUrl);
       }
     } catch (err) {
-      console.error('Failed to compile live preview:', err);
+      // Failed to compile live preview
       setLivePreviewError(err?.message || 'Unable to compile LaTeX preview');
     } finally {
       setLivePreviewLoading(false);
@@ -3028,11 +3709,76 @@ const AiResumeGenerator = () => {
                     </button>
                   </div>
                 )}
-              </section>
+                </section>
 
-              {activeVariation && (
-                <article className="ai-resume-card variation-card">
+                <section className="ai-resume-card validation-panel">
+                  <div className="validation-header">
+                    <p className="eyebrow">Resume health</p>
+                    <h2>Preview & validation checks</h2>
+                    <p className="hint">
+                      Live PDF preview updates in real time while these checks surface issues before submission.
+                    </p>
+                  </div>
+                  <div className="validation-list">
+                    {liveValidationInsights.map((insight) => (
+                      <article key={insight.id} className={`validation-item ${insight.status}`}>
+                        <header className="validation-item-header">
+                          <span className="validation-label">{insight.label}</span>
+                          <span className="validation-status">{validationStatusCopy[insight.status]}</span>
+                        </header>
+                        <p>{insight.summary}</p>
+                        {insight.details?.length > 0 && (
+                          <ul>
+                            {insight.details.map((detail, index) => (
+                              <li key={`${insight.id}-${index}`}>{detail}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </article>
+                    ))}
+                    {false && (
+                      <div />
+                    )}
+                  </div>
+                </section>
+
+                {activeVariation && (
+                  <article className="ai-resume-card variation-card">
                   <header>
+                    {/* UC-052: Version selector and update controls */}
+                    <div className="version-controls">
+                      <div className="version-selector">
+                        <label htmlFor="saved-version-select">
+                          <Icon name="file" size="sm" /> Saved Versions:
+                        </label>
+                        <select
+                          id="saved-version-select"
+                          value={selectedVersionId || ''}
+                          onChange={(e) => handleLoadVersion(e.target.value)}
+                          disabled={isLoadingVersions}
+                        >
+                          <option value="">-- New Resume (not saved) --</option>
+                          {savedVersions.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.version_name} {v.is_default ? '(Default)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      
+                      {currentVersionId && (
+                        <button
+                          type="button"
+                          className="update-version-btn primary"
+                          onClick={handleUpdateCurrentVersion}
+                          disabled={!liveLatexPreview}
+                          title="Save changes to this version (tracked in history)"
+                        >
+                          <Icon name="save" size="sm" /> Update Version
+                        </button>
+                      )}
+                    </div>
+                    
                     <div className="variation-action-stack">
                       <button type="button" onClick={() => handleDownloadPdf(activeVariation)}>
                         <Icon name="download" size="sm" /> Download PDF
@@ -3058,6 +3804,15 @@ const AiResumeGenerator = () => {
                         disabled={!liveLatexPreview}
                       >
                         <Icon name="download" size="sm" /> Export Other Formats
+                      </button>
+                      <button 
+                        type="button" 
+                        className="save-version-trigger primary"
+                        onClick={() => setShowSaveVersionModal(true)}
+                        disabled={!liveLatexPreview || !activeVariation}
+                        title={currentVersionId ? "Save as a new version" : "Save this resume as a version"}
+                      >
+                        <Icon name="save" size="sm" /> {currentVersionId ? 'Save as New Version' : 'Save as Version'}
                       </button>
                       <button
                         type="button"
@@ -3365,6 +4120,120 @@ const AiResumeGenerator = () => {
                 ) : (
                   <>
                     <Icon name="download" size="sm" /> Export Resume
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UC-052: Save Resume Version Modal */}
+      {showSaveVersionModal && (
+        <div className="export-modal-overlay" onClick={() => setShowSaveVersionModal(false)}>
+          <div className="export-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="export-modal-header">
+              <div>
+                <h3>
+                  <Icon name="save" size="sm" /> Save Resume Version
+                </h3>
+                <p className="hint">Create a named version of this resume to track changes</p>
+              </div>
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setShowSaveVersionModal(false)}
+                aria-label="Close save version dialog"
+              >
+                <Icon name="x" size="md" />
+              </button>
+            </div>
+
+            <div className="export-modal-body">
+              <div className="export-control-group">
+                <label htmlFor="version-name">
+                  <Icon name="tag" size="sm" /> Version Name <span className="required">*</span>
+                </label>
+                <input
+                  id="version-name"
+                  type="text"
+                  placeholder="e.g., Software Engineer - Google v1"
+                  value={versionName}
+                  onChange={(e) => setVersionName(e.target.value)}
+                  disabled={isSavingVersion}
+                  maxLength={100}
+                  required
+                />
+                <p className="field-hint">A descriptive name to identify this version</p>
+              </div>
+
+              <div className="export-control-group">
+                <label htmlFor="version-description">
+                  <Icon name="fileText" size="sm" /> Description (optional)
+                </label>
+                <textarea
+                  id="version-description"
+                  placeholder="e.g., Tailored for backend role, emphasized Python and cloud experience"
+                  value={versionDescription}
+                  onChange={(e) => setVersionDescription(e.target.value)}
+                  disabled={isSavingVersion}
+                  rows={3}
+                  maxLength={500}
+                />
+                <p className="field-hint">Notes about what makes this version unique</p>
+              </div>
+
+              {selectedJobDetail && (
+                <div className="version-job-info">
+                  <Icon name="briefcase" size="sm" />
+                  <div>
+                    <strong>Linked to Job:</strong>
+                    <p>{selectedJobDetail.title} at {selectedJobDetail.company_name}</p>
+                  </div>
+                </div>
+              )}
+
+              {currentVersionId && (
+                <div className="version-update-info">
+                  <Icon name="info" size="sm" />
+                  <p>
+                    <strong>Note:</strong> This will create a new separate version. 
+                    To update the current version "{savedVersions.find(v => v.id === currentVersionId)?.version_name}", 
+                    use the "Update Version" button instead.
+                  </p>
+                </div>
+              )}
+
+              {saveVersionError && (
+                <div className="export-error-message" role="alert">
+                  <Icon name="alertCircle" size="sm" />
+                  {saveVersionError}
+                </div>
+              )}
+            </div>
+
+            <div className="export-modal-footer">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setShowSaveVersionModal(false)}
+                disabled={isSavingVersion}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={handleSaveVersion}
+                disabled={isSavingVersion || !versionName.trim()}
+              >
+                {isSavingVersion ? (
+                  <>
+                    <LoadingSpinner size="sm" /> Saving...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="save" size="sm" /> Save Version
                   </>
                 )}
               </button>
