@@ -2295,3 +2295,102 @@ class ApplicationPackageGenerator:
             ).first()
         except Document.DoesNotExist:
             return None
+
+
+class ApplicationGoal(models.Model):
+    """Track weekly application goals and progress for analytics."""
+    
+    GOAL_TYPES = [
+        ('weekly_applications', 'Weekly Applications'),
+        ('response_rate', 'Response Rate Target'),
+        ('interviews_per_month', 'Interviews per Month'),
+    ]
+    
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="application_goals")
+    goal_type = models.CharField(max_length=30, choices=GOAL_TYPES, default='weekly_applications')
+    target_value = models.DecimalField(max_digits=10, decimal_places=2, help_text="Target number (e.g., 5 applications per week)")
+    current_value = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Current progress toward goal")
+    
+    # Time period for the goal
+    start_date = models.DateField()
+    end_date = models.DateField()
+    
+    # Goal status
+    is_active = models.BooleanField(default=True)
+    is_completed = models.BooleanField(default=False)
+    completion_date = models.DateTimeField(null=True, blank=True)
+    
+    # Additional metadata
+    notes = models.TextField(blank=True, help_text="Optional notes about this goal")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['candidate', 'goal_type', 'is_active']),
+            models.Index(fields=['start_date', 'end_date']),
+        ]
+    
+    def __str__(self):
+        return f"{self.candidate.user.username} - {self.get_goal_type_display()}: {self.target_value}"
+    
+    @property
+    def progress_percentage(self):
+        """Calculate progress as percentage of target."""
+        if not self.target_value or self.target_value == 0:
+            return 0
+        return min(100, (float(self.current_value) / float(self.target_value)) * 100)
+    
+    @property
+    def is_overdue(self):
+        """Check if goal period has passed."""
+        return timezone.now().date() > self.end_date and not self.is_completed
+    
+    def update_progress(self):
+        """Update current_value based on actual job application data."""
+        
+        if self.goal_type == 'weekly_applications':
+            # Count applications in the goal period
+            applications = JobEntry.objects.filter(
+                candidate=self.candidate,
+                created_at__date__gte=self.start_date,
+                created_at__date__lte=self.end_date
+            ).count()
+            self.current_value = applications
+            
+        elif self.goal_type == 'response_rate':
+            # Calculate response rate in the goal period
+            applications = JobEntry.objects.filter(
+                candidate=self.candidate,
+                created_at__date__gte=self.start_date,
+                created_at__date__lte=self.end_date,
+                status__in=['applied', 'phone_screen', 'interview', 'offer', 'rejected']
+            )
+            responded = applications.filter(
+                status__in=['phone_screen', 'interview', 'offer', 'rejected']
+            )
+            
+            if applications.count() > 0:
+                self.current_value = (responded.count() / applications.count()) * 100
+            else:
+                self.current_value = 0
+                
+        elif self.goal_type == 'interviews_per_month':
+            # Count interviews in the goal period
+            interviews = JobEntry.objects.filter(
+                candidate=self.candidate,
+                created_at__date__gte=self.start_date,
+                created_at__date__lte=self.end_date,
+                status__in=['interview', 'offer']
+            ).count()
+            self.current_value = interviews
+        
+        # Check if goal is completed
+        if self.current_value >= self.target_value and not self.is_completed:
+            self.is_completed = True
+            self.completion_date = timezone.now()
+        
+        self.save()
+        return self.current_value

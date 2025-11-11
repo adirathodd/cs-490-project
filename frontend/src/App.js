@@ -20,6 +20,7 @@ import ProjectDetail from './components/profile/ProjectDetail';
 import Jobs from './components/jobs/Jobs';
 import JobsPipeline from './components/jobs/JobsPipeline';
 import JobStats from './components/jobs/JobStats';
+import Analytics from './components/analytics/Analytics';
 import JobDetailView from './components/jobs/JobDetailView';
 import JobsCalendar from './components/jobs/JobsCalendar';
 import SalaryResearch from './components/jobs/SalaryResearch';
@@ -223,6 +224,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <JobStats />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/analytics"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <Analytics />
               </PrivateRoute>
             }
           />
