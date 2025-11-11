@@ -133,6 +133,7 @@ urlpatterns = [
     path('jobs/<int:job_id>/generate-package/', views.generate_application_package, name='job-generate-package'),
     # UC-061: Cover letter export
     path('cover-letter/export-docx/', views.export_cover_letter_docx, name='cover-letter-export-docx'),
+    path('cover-letter/export/ai', views.export_ai_cover_letter, name='export-ai-cover-letter'),
     
     # UC-051: Resume export endpoints
     path('resume/export/themes', views.resume_export_themes, name='resume-export-themes'),

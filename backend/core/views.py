@@ -5383,6 +5383,180 @@ def export_cover_letter_docx(request):
         )
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def export_ai_cover_letter(request):
+    """Export AI-generated cover letter content in multiple formats."""
+    import base64
+    import re
+    from django.http import HttpResponse
+
+    try:
+        from core import cover_letter_ai, resume_ai
+    except ImportError as exc:
+        logger.exception('Failed to import cover letter export dependencies: %s', exc)
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'Unable to load export dependencies.'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+    latex_content = (request.data.get('latex_content') or '').strip()
+    format_type = (request.data.get('format') or '').lower()
+    filename = (request.data.get('filename') or '').strip()
+    profile_data = request.data.get('profile_data') or {}
+    job_data = request.data.get('job_data') or {}
+
+    logger.info(
+        "Cover letter export requested: format=%s, filename=%s, job_company=%s",
+        format_type,
+        filename,
+        job_data.get('company_name'),
+    )
+
+    if not format_type:
+        return Response(
+            {
+                'error': {
+                    'code': 'missing_parameter',
+                    'message': 'format parameter is required. Valid options: docx, html, txt, pdf'
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    valid_formats = {'docx', 'html', 'txt', 'pdf'}
+    if format_type not in valid_formats:
+        return Response(
+            {
+                'error': {
+                    'code': 'invalid_format',
+                    'message': f'Invalid format: {format_type}. Valid options: {", ".join(sorted(valid_formats))}'
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    def _build_filename(default_base: str) -> str:
+        if filename:
+            return filename
+        if profile_data.get('name') and job_data.get('company_name'):
+            clean_name = re.sub(r'[^a-zA-Z0-9_]', '', profile_data['name'].replace(' ', '_'))
+            clean_company = re.sub(r'[^a-zA-Z0-9_]', '', job_data['company_name'].replace(' ', '_'))
+            return f"{clean_name}_{clean_company}_{default_base}"
+        return default_base
+
+    try:
+        if format_type == 'pdf':
+            if not latex_content:
+                return Response(
+                    {
+                        'error': {
+                            'code': 'missing_parameter',
+                            'message': 'latex_content is required for PDF export'
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            pdf_base64 = resume_ai.compile_latex_pdf(latex_content)
+            pdf_bytes = base64.b64decode(pdf_base64)
+            output_name = _build_filename('Cover_Letter')
+
+            response = HttpResponse(pdf_bytes, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{output_name}.pdf"'
+            response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response['Pragma'] = 'no-cache'
+            response['Expires'] = '0'
+            return response
+
+        if format_type == 'docx':
+            content_text = latex_content
+            text_only = re.sub(r'\\[a-zA-Z]+(\[.*?\])?(\{.*?\})?', '', content_text)
+            text_only = re.sub(r'[{}]', '', text_only)
+            paragraphs = [p.strip() for p in text_only.split('\n\n') if p.strip()]
+
+            opening = paragraphs[0] if paragraphs else ''
+            closing = paragraphs[-1] if len(paragraphs) >= 2 else ''
+            body_paragraphs = paragraphs[1:-1] if len(paragraphs) > 2 else []
+
+            docx_bytes = cover_letter_ai.generate_cover_letter_docx(
+                candidate_name=profile_data.get('name', 'Candidate'),
+                candidate_email=profile_data.get('email', ''),
+                candidate_phone=profile_data.get('phone', ''),
+                candidate_location=profile_data.get('location', ''),
+                company_name=job_data.get('company_name', 'Company'),
+                job_title=job_data.get('title', 'Position'),
+                opening_paragraph=opening,
+                body_paragraphs=body_paragraphs,
+                closing_paragraph=closing,
+                letterhead_config={}
+            )
+
+            output_name = _build_filename('Cover_Letter')
+            response = HttpResponse(
+                docx_bytes,
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{output_name}.docx"'
+            return response
+
+        # HTML and TXT share the same simplified LaTeX stripping
+        text_only = re.sub(r'\\[a-zA-Z]+(\[.*?\])?(\{.*?\})?', '', latex_content)
+        text_only = re.sub(r'[{}]', '', text_only).strip()
+        output_name = _build_filename('Cover_Letter')
+
+        if format_type == 'txt':
+            response = HttpResponse(text_only, content_type='text/plain')
+            response['Content-Disposition'] = f'attachment; filename="{output_name}.txt"'
+            return response
+
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Cover Letter</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6; }}
+        p {{ margin-bottom: 1em; }}
+    </style>
+</head>
+<body>
+    <pre style="white-space: pre-wrap; font-family: Arial, sans-serif;">{text_only}</pre>
+</body>
+</html>"""
+        response = HttpResponse(html_content, content_type='text/html')
+        response['Content-Disposition'] = f'attachment; filename="{output_name}.html"'
+        return response
+
+    except resume_ai.ResumeAIError as exc:
+        logger.warning('Cover letter PDF compilation failed: %s', exc)
+        return Response(
+            {
+                'error': {
+                    'code': 'pdf_compilation_failed',
+                    'message': str(exc)
+                }
+            },
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+    except Exception as exc:
+        logger.exception('Cover letter export failed: %s', exc)
+        return Response(
+            {
+                'error': {
+                    'code': 'export_failed',
+                    'message': 'Failed to export cover letter.'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 # ======================
 # UC-063: AUTOMATED COMPANY RESEARCH
 # ======================
@@ -6916,69 +7090,71 @@ def resume_export(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def export_ai_resume(request):
-    """
-    UC-051: Export AI-generated resume content in multiple formats
-    
-    This endpoint takes AI-generated resume data and exports it in various formats.
-    Unlike the regular export endpoint, this works with AI-generated content that
-    includes LaTeX, not from the database profile.
-    
-    Request Body:
-    {
-        "latex_content": "\\documentclass{article}...",
-        "format": "docx|html|txt|pdf",
-        "theme": "professional|modern|minimal|creative" (optional, default: professional),
-        "watermark": "DRAFT" (optional),
-        "filename": "MyResume" (optional, without extension),
-        "profile_data": {  (optional, extracted from LaTeX if not provided)
-            "name": "John Doe",
-            "email": "john@example.com",
-            ...
-        }
-    }
-    
-    Returns: File download with appropriate MIME type
-    """
+    """Export AI-generated resume content in multiple formats."""
+    import base64
+    import re
+    from django.http import HttpResponse
+
     try:
-        from core import resume_export
-        from django.http import HttpResponse
-        import re
-        
-        # Get request parameters
-        latex_content = request.data.get('latex_content', '').strip()
-        format_type = request.data.get('format', '').lower()
-        theme = request.data.get('theme', 'professional')
-        watermark = request.data.get('watermark', '')
-        filename = request.data.get('filename', '')
-        profile_data = request.data.get('profile_data', {})
-        
-        logger.info(f"Export params - filename: '{filename}', watermark: '{watermark}', format: {format_type}")
-        
-        # Validate format
-        if not format_type:
-            return Response(
-                {
-                    'error': {
-                        'code': 'missing_parameter',
-                        'message': 'format parameter is required. Valid options: docx, html, txt, pdf'
-                    }
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        valid_formats = ['docx', 'html', 'txt', 'pdf']
-        if format_type not in valid_formats:
-            return Response(
-                {
-                    'error': {
-                        'code': 'invalid_format',
-                        'message': f'Invalid format: {format_type}. Valid options: {", ".join(valid_formats)}'
-                    }
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # For PDF, use the LaTeX compilation
+        from core import resume_ai, resume_export
+    except ImportError as exc:
+        logger.exception('Failed to import AI resume export dependencies: %s', exc)
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'Unable to load export dependencies.'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+    latex_content = (request.data.get('latex_content') or '').strip()
+    format_type = (request.data.get('format') or '').lower()
+    theme = (request.data.get('theme') or 'professional').strip()
+    watermark = (request.data.get('watermark') or '').strip()
+    filename = (request.data.get('filename') or '').strip()
+    profile_data = request.data.get('profile_data') or {}
+
+    logger.info(
+        "AI resume export requested: user=%s format=%s filename=%s",
+        getattr(request.user, 'id', 'unknown'),
+        format_type,
+        filename,
+    )
+
+    if not format_type:
+        return Response(
+            {
+                'error': {
+                    'code': 'missing_parameter',
+                    'message': 'format parameter is required. Valid options: docx, html, txt, pdf'
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    valid_formats = {'docx', 'html', 'txt', 'pdf'}
+    if format_type not in valid_formats:
+        return Response(
+            {
+                'error': {
+                    'code': 'invalid_format',
+                    'message': f'Invalid format: {format_type}. Valid options: {", ".join(sorted(valid_formats))}'
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    def _build_filename(default_base: str) -> str:
+        if filename:
+            return filename
+        if profile_data.get('name'):
+            clean_name = re.sub(r'[^a-zA-Z0-9_]', '', profile_data['name'].replace(' ', '_'))
+            return f"{clean_name}_{default_base}"
+        return default_base
+
+    try:
         if format_type == 'pdf':
             if not latex_content:
                 return Response(
@@ -6990,54 +7166,33 @@ def export_ai_resume(request):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
-            try:
-                pdf_data = resume_ai.compile_latex_to_pdf(latex_content)
-                default_filename = filename or 'AI_Generated_Resume'
-                
-                response = HttpResponse(pdf_data, content_type='application/pdf')
-                response['Content-Disposition'] = f'attachment; filename="{default_filename}.pdf"'
-                response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                response['Pragma'] = 'no-cache'
-                response['Expires'] = '0'
-                
-                return response
-            except Exception as e:
-                logger.error(f"PDF compilation failed: {e}")
+
+            pdf_base64 = resume_ai.compile_latex_pdf(latex_content)
+            pdf_bytes = base64.b64decode(pdf_base64)
+            output_name = _build_filename('AI_Generated_Resume')
+
+            response = HttpResponse(pdf_bytes, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{output_name}.pdf"'
+            response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response['Pragma'] = 'no-cache'
+            response['Expires'] = '0'
+            return response
+
+        if not profile_data:
+            if not latex_content:
                 return Response(
                     {
                         'error': {
-                            'code': 'pdf_compilation_failed',
-                            'message': 'Failed to compile LaTeX to PDF'
+                            'code': 'missing_parameter',
+                            'message': 'profile_data or latex_content is required for export'
                         }
                     },
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    status=status.HTTP_400_BAD_REQUEST
                 )
-        
-        # For other formats, extract data from LaTeX or use provided profile_data
-        logger.info(f"Profile data received: {profile_data}")
-        logger.info(f"Profile data type: {type(profile_data)}, bool check: {bool(profile_data)}")
-        
-        if not profile_data:
-            # Try to extract basic info from LaTeX content
-            logger.info(f"Extracting profile from LaTeX (length: {len(latex_content)} chars)")
-            logger.debug(f"LaTeX preview (first 500 chars): {latex_content[:500]}")
             profile_data = extract_profile_from_latex(latex_content)
-            logger.info(f"Extracted profile - Name: {profile_data.get('name')}, "
-                       f"Experiences: {len(profile_data.get('experiences', []))}, "
-                       f"Education: {len(profile_data.get('education', []))}, "
-                       f"Projects: {len(profile_data.get('projects', []))}, "
-                       f"Skills categories: {len(profile_data.get('skills', {}))}")
-        else:
-            logger.info(f"Using provided profile_data: {profile_data}")
-        
-        # Ensure we have at least basic profile data
-        if not profile_data.get('name'):
-            profile_data['name'] = 'Resume'
-        if not profile_data.get('email'):
-            profile_data['email'] = ''
-        
-        # Fill in default empty values for required fields
+
+        profile_data.setdefault('name', 'Resume')
+        profile_data.setdefault('email', '')
         profile_data.setdefault('phone', '')
         profile_data.setdefault('location', '')
         profile_data.setdefault('headline', '')
@@ -7048,49 +7203,47 @@ def export_ai_resume(request):
         profile_data.setdefault('education', [])
         profile_data.setdefault('certifications', [])
         profile_data.setdefault('projects', [])
-        
-        # Log export request
-        logger.info(f"AI resume export requested by user {request.user.id}: format={format_type}, theme={theme}")
-        
-        # Export resume
-        try:
-            result = resume_export.export_resume(
-                profile=None,  # We're not using database profile
-                format_type=format_type,
-                theme=theme,
-                watermark=watermark,
-                filename=filename or None,
-                profile_data=profile_data  # Pass extracted/provided data directly
-            )
-            logger.info(f"Export successful - filename: '{result['filename']}', size: {len(result['content'])} bytes")
-        except resume_export.ResumeExportError as e:
-            logger.warning(f"AI resume export error: {e}")
-            return Response(
-                {
-                    'error': {
-                        'code': 'export_failed',
-                        'message': str(e)
-                    }
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Create HTTP response with file download
-        response = HttpResponse(
-            result['content'],
-            content_type=result['content_type']
+
+        result = resume_export.export_resume(
+            profile=None,
+            format_type=format_type,
+            theme=theme,
+            watermark=watermark,
+            filename=filename or None,
+            profile_data=profile_data
         )
+
+        response = HttpResponse(result['content'], content_type=result['content_type'])
         response['Content-Disposition'] = f'attachment; filename="{result["filename"]}"'
-        
-        # Add cache control headers
         response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response['Pragma'] = 'no-cache'
         response['Expires'] = '0'
-        
         return response
-        
-    except Exception as e:
-        logger.exception(f"Unexpected error during AI resume export: {e}")
+
+    except resume_ai.ResumeAIError as exc:
+        logger.warning('AI resume PDF compilation failed: %s', exc)
+        return Response(
+            {
+                'error': {
+                    'code': 'pdf_compilation_failed',
+                    'message': str(exc)
+                }
+            },
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+    except resume_export.ResumeExportError as exc:
+        logger.warning('AI resume export error: %s', exc)
+        return Response(
+            {
+                'error': {
+                    'code': 'export_failed',
+                    'message': str(exc)
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except Exception as exc:
+        logger.exception('Unexpected error during AI resume export: %s', exc)
         return Response(
             {
                 'error': {
