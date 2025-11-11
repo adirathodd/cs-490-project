@@ -16,75 +16,10 @@ export default function Analytics() {
   const loadAnalytics = async () => {
     setLoading(true);
     try {
-      // For now, use the existing jobs stats endpoint and enhance on frontend
-      const data = await jobsAPI.getJobStats();
-      
-      // Use the same data structure as JobStats component
-      const enhancedData = {
-        ...data,
-        funnel_analytics: {
-          stage_counts: data.counts || {},
-          total_applications: Object.values(data.counts || {}).reduce((sum, count) => sum + count, 0),
-          success_rate: data.counts?.offer && data.counts?.applied ? 
-            Math.round((data.counts.offer / data.counts.applied) * 100) : 0,
-        },
-        industry_benchmarks: {
-          industry_standards: {
-            conversion_rates: {
-              overall_success_rate: 10,
-              applied_to_interview: 25,
-              interview_to_offer: 40,
-            },
-            application_volume: {
-              applications_per_week: 5,
-              applications_per_month: 20,
-            }
-          },
-          user_vs_benchmarks: {}
-        },
-        response_trends: data.monthly_applications?.map((month) => {
-          // For each month, calculate response rate
-          // Response rate = applications that got at least one of phone_screen, interview, or offer / total applications
-          // Since we don't have per-month breakdown of stages, we'll use overall response rate for now
-          const responseRate = data.response_rate_percent || 0;
-          return {
-            month: month.month,
-            applications: month.count,
-            response_rate: responseRate, // Use the overall response rate for all months
-          };
-        }) || [],
-        volume_patterns: {
-          daily_applications: data.daily_applications || [],
-        },
-        goal_progress: {
-          weekly_goal: {
-            target: 5,
-            current: data.counts?.applied || 0,
-            progress_percent: ((data.counts?.applied || 0) / 5) * 100,
-            period: 'This Week',
-          },
-          monthly_goal: data.monthly_applications?.length > 0 ? {
-            target: 20,
-            current: data.monthly_applications[data.monthly_applications.length - 1]?.count || 0,
-            progress_percent: ((data.monthly_applications[data.monthly_applications.length - 1]?.count || 0) / 20) * 100,
-            period: data.monthly_applications[data.monthly_applications.length - 1]?.month || new Date().toISOString().slice(0, 7),
-          } : null,
-        },
-        insights_recommendations: {
-          insights: [
-            `You've applied to ${data.counts?.applied || 0} positions`,
-            data.response_rate_percent > 25 ? "Good response rate!" : "Response rate could be improved",
-          ],
-          recommendations: [
-            "Set a goal of 5 applications per week",
-            "Focus on tailoring applications to specific job requirements",
-            "Follow up on applications after 1-2 weeks",
-          ],
-          summary: `Applied to ${data.counts?.applied || 0} positions with ${data.response_rate_percent || 0}% response rate`,
-        }
-      };
-      
-      setAnalytics(enhancedData);
+      // Use the analytics endpoint that includes cover letter performance
+      const data = await jobsAPI.getAnalytics();
+      console.log('Analytics data received:', data);
+      setAnalytics(data);
       setError('');
     } catch (e) {
       setError('Failed to load analytics data');
@@ -172,7 +107,7 @@ export default function Analytics() {
         <div style={card}>
           <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>RESPONSE RATE</div>
           <div style={{ fontSize: 24, fontWeight: 700 }}>
-            {analytics.response_rate_percent || 0}%
+            {funnel_analytics?.response_rate || 0}%
           </div>
         </div>
       </div>
@@ -206,7 +141,7 @@ export default function Analytics() {
       {/* Response Rate Trends */}
       <div style={card}>
         <h2 style={sectionTitle}>Response Rate Trends</h2>
-        <ResponseRateTrends trends={response_trends} />
+        <ResponseRateTrends trends={response_trends?.monthly_trends} />
       </div>
 
       {/* Volume Patterns */}
@@ -214,6 +149,17 @@ export default function Analytics() {
         <h2 style={sectionTitle}>Application Volume Patterns</h2>
         <VolumePatterns patterns={volume_patterns} />
       </div>
+
+      {/* Cover Letter Performance */}
+      {analytics.cover_letter_performance && (
+        <div style={card}>
+          <h2 style={sectionTitle}>
+            <Icon name="document" style={{ marginRight: 8 }} />
+            Cover Letter Performance
+          </h2>
+          <CoverLetterPerformancePanel analytics={analytics.cover_letter_performance} />
+        </div>
+      )}
 
       {/* Insights & Recommendations */}
       <div style={card}>
@@ -228,7 +174,7 @@ export default function Analytics() {
 function ApplicationFunnel({ funnel }) {
   if (!funnel) return <div>No funnel data available</div>;
 
-  const counts = funnel.stage_counts || {};
+  const counts = funnel.status_breakdown || {};
   
   // Use the same structure as JobStats - iterate over actual keys
   const stages = Object.keys(counts).map(key => ({
@@ -350,9 +296,11 @@ function BenchmarkComparison({ benchmarks, analytics }) {
 
 // Response Rate Trends Component
 function ResponseRateTrends({ trends }) {
-  if (!trends || trends.length === 0) return <div>No trend data available</div>;
+  if (!trends || !Array.isArray(trends) || trends.length === 0) {
+    return <div>No trend data available</div>;
+  }
 
-  const maxRate = Math.max(...trends.map(t => t.response_rate), 1);
+  const maxRate = Math.max(...trends.map(t => t.response_rate || 0), 1);
 
   return (
     <div>
@@ -405,14 +353,17 @@ function VolumePatterns({ patterns }) {
   // Always show a bar graph, even if no data - create empty data structure
   let dailyData = [];
   
-  if (patterns && patterns.daily_applications && patterns.daily_applications.length > 0) {
-    dailyData = patterns.daily_applications;
+  if (patterns && patterns.weekly_volume && patterns.weekly_volume.length > 0) {
+    dailyData = patterns.weekly_volume.map(item => ({
+      date: item.week,
+      count: item.count
+    }));
   } else {
-    // Create empty data for the last 30 days if no data available
+    // Create empty data for the last 8 weeks if no data available
     const today = new Date();
-    for (let i = 29; i >= 0; i--) {
+    for (let i = 7; i >= 0; i--) {
       const date = new Date(today);
-      date.setDate(today.getDate() - i);
+      date.setDate(today.getDate() - (i * 7));
       dailyData.push({
         date: date.toISOString().split('T')[0],
         count: 0
@@ -505,6 +456,127 @@ function InsightsPanel({ insights }) {
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+// Cover Letter Performance Panel Component
+function CoverLetterPerformancePanel({ analytics }) {
+  if (!analytics || !analytics.performance_by_tone) {
+    return <div style={{ padding: 20, textAlign: 'center', color: '#6b7280' }}>
+      No cover letter analytics data available. Start applying with AI-generated cover letters to see performance insights.
+    </div>;
+  }
+
+  const { 
+    total_cover_letters, 
+    performance_by_tone, 
+    best_performing_tone, 
+    insights 
+  } = analytics;
+
+  const getPerformanceColor = (rate) => {
+    if (rate >= 75) return '#059669';
+    if (rate >= 50) return '#d97706';
+    if (rate >= 25) return '#dc2626';
+    return '#6b7280';
+  };
+
+  return (
+    <div>
+      {/* Summary Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+        <div style={{ textAlign: 'center', padding: 12, background: '#f9fafb', borderRadius: 6 }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: '#059669' }}>
+            {total_cover_letters}
+          </div>
+          <div style={{ fontSize: 12, color: '#6b7280' }}>Cover Letters Tracked</div>
+        </div>
+        <div style={{ textAlign: 'center', padding: 12, background: '#f9fafb', borderRadius: 6 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#dc2626', textTransform: 'capitalize' }}>
+            {best_performing_tone || 'N/A'}
+          </div>
+          <div style={{ fontSize: 12, color: '#6b7280' }}>Best Performing Tone</div>
+        </div>
+      </div>
+
+      {/* Performance by Tone */}
+      {Object.keys(performance_by_tone).length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <h4 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600 }}>Performance by Tone</h4>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {Object.entries(performance_by_tone).map(([tone, stats]) => (
+              <div 
+                key={tone}
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between',
+                  padding: 12, 
+                  border: tone === best_performing_tone ? '2px solid #059669' : '1px solid #e5e7eb',
+                  borderRadius: 6,
+                  background: tone === best_performing_tone ? '#f0fdf4' : '#fff'
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, textTransform: 'capitalize', marginBottom: 4 }}>
+                    {tone}
+                    {tone === best_performing_tone && (
+                      <span style={{ marginLeft: 8, fontSize: 12, color: '#059669' }}>🏆 Best</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#6b7280' }}>
+                    {stats.total_applications} applications → {stats.responses} responses → {stats.interviews} interviews → {stats.offers} offers
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 16, fontSize: 13 }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontWeight: 600, color: getPerformanceColor(stats.response_rate) }}>
+                      {stats.response_rate}%
+                    </div>
+                    <div style={{ color: '#6b7280' }}>Response</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontWeight: 600, color: getPerformanceColor(stats.interview_rate) }}>
+                      {stats.interview_rate}%
+                    </div>
+                    <div style={{ color: '#6b7280' }}>Interview</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontWeight: 600, color: getPerformanceColor(stats.offer_rate) }}>
+                      {stats.offer_rate}%
+                    </div>
+                    <div style={{ color: '#6b7280' }}>Offer</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Insights */}
+      {insights && insights.length > 0 && (
+        <div>
+          <h4 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600 }}>Insights</h4>
+          {insights.map((insight, index) => (
+            <div 
+              key={index}
+              style={{ 
+                padding: 8, 
+                background: '#f0f9ff', 
+                border: '1px solid #0ea5e9', 
+                borderRadius: 4,
+                fontSize: 13,
+                color: '#0c4a6e',
+                marginBottom: 6
+              }}
+            >
+              💡 {insight}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

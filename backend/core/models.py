@@ -184,6 +184,10 @@ class Document(models.Model):
     file = models.FileField(upload_to='documents/%Y/%m/', blank=True, null=True)  # Legacy field
     default_for_type = models.BooleanField(default=False)
     notes = models.TextField(blank=True, default='')
+    
+    # Cover letter style/tone tracking for analytics
+    ai_generation_tone = models.CharField(max_length=50, blank=True, help_text="AI generation tone (e.g., formal, analytical, warm)")
+    ai_generation_params = models.JSONField(default=dict, blank=True, help_text="AI generation parameters for analytics")
 
     class Meta:
         unique_together = [("candidate", "doc_type", "version")]
