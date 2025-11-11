@@ -5065,6 +5065,45 @@ def generate_cover_letter_for_job(request, job_id):
     job_snapshot = resume_ai.build_job_snapshot(job)
     research_snapshot = cover_letter_ai.build_company_research_snapshot(job.company_name)
 
+    # UC-058: cover letter customization options
+    length = (request.data.get('length') or '').strip().lower() or None
+    writing_style = (request.data.get('writing_style') or '').strip().lower() or None
+    company_culture = (request.data.get('company_culture') or '').strip().lower() or None
+    industry = (request.data.get('industry') or '').strip() or None
+    custom_instructions = (request.data.get('custom_instructions') or '').strip() or None
+
+    # Server-side validation / normalization for UC-058 enumerations
+    allowed_lengths = {'brief', 'standard', 'detailed'}
+    allowed_writing_styles = {'direct', 'narrative', 'bullet_points'}
+    allowed_company_cultures = {'auto', 'startup', 'corporate'}
+
+    # Validate enumerated parameters and return helpful errors if invalid
+    invalid_params = []
+    if length and length not in allowed_lengths:
+        invalid_params.append(f"length must be one of: {', '.join(sorted(allowed_lengths))}")
+    if writing_style and writing_style not in allowed_writing_styles:
+        invalid_params.append(f"writing_style must be one of: {', '.join(sorted(allowed_writing_styles))}")
+    if company_culture and company_culture not in allowed_company_cultures:
+        invalid_params.append(f"company_culture must be one of: {', '.join(sorted(allowed_company_cultures))}")
+
+    if invalid_params:
+        return Response(
+            {
+                'error': {
+                    'code': 'invalid_parameter',
+                    'message': 'Invalid customization options provided.',
+                    'details': invalid_params,
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Truncate free-text inputs to reasonable limits to avoid abuse / accidental huge payloads
+    if industry and len(industry) > 100:
+        industry = industry[:100]
+    if custom_instructions and len(custom_instructions) > 500:
+        custom_instructions = custom_instructions[:500]
+
     try:
         generation = cover_letter_ai.run_cover_letter_generation(
             candidate_snapshot,
@@ -5074,6 +5113,11 @@ def generate_cover_letter_for_job(request, job_id):
             variation_count=variation_count,
             api_key=api_key,
             model=getattr(settings, 'GEMINI_MODEL', None),
+            length=length,
+            writing_style=writing_style,
+            company_culture=company_culture,
+            industry=industry,
+            custom_instructions=custom_instructions,
         )
     except cover_letter_ai.CoverLetterAIError as exc:
         logger.warning('AI cover letter generation failed for job %s: %s', job_id, exc)

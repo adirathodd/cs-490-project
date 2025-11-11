@@ -930,6 +930,11 @@ export const coverLetterAIAPI = {
       const response = await api.post(`/jobs/${jobId}/cover-letter/generate`, {
         tone: options.tone,
         variation_count: options.variation_count,
+        length: options.length,
+        writing_style: options.writing_style,
+        company_culture: options.company_culture,
+        industry: options.industry,
+        custom_instructions: options.custom_instructions,
       });
       return response.data;
     } catch (error) {

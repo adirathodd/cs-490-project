@@ -33,7 +33,12 @@ class CoverLetterAIError(Exception):
 
 
 TONE_STYLES = {
+    # Backwards-compatible plus UC-058 tones
+    'formal': 'Polished, concise, and formal with clear impact statements.',
     'professional': 'Polished, concise, and formal with clear impact statements.',
+    'casual': 'Friendly, conversational, and approachable while professional.',
+    'enthusiastic': 'Energetic, positive, and motivational with clear excitement.',
+    'analytical': 'Data-driven, evidence-focused, and logically structured.',
     'warm': 'Approachable, collaborative, people-first tone with empathy.',
     'innovative': 'Forward-looking, curious, and product/impact oriented.',
     'customer_centric': 'Customer-obsessed voice focusing on outcomes and value.',
@@ -111,6 +116,12 @@ def build_generation_prompt(
     research_snapshot: Dict[str, Any],
     tone: str,
     variation_count: int,
+    *,
+    length: str | None = None,
+    writing_style: str | None = None,
+    company_culture: str | None = None,
+    industry: str | None = None,
+    custom_instructions: str | None = None,
 ) -> str:
     tone_descriptor = TONE_STYLES.get(tone, TONE_STYLES['balanced'])
     candidate_json = json.dumps(candidate_snapshot, indent=2, ensure_ascii=False)
@@ -119,29 +130,29 @@ def build_generation_prompt(
 
     schema = """
 {
-  "shared_analysis": {
-    "personalization_strategy": "How to tailor to role and company culture.",
-    "key_achievements": ["List of most relevant achievements from candidate"],
-    "news_to_reference": ["Optional news headline strings used"],
-    "tone_rationale": "Why this tone matches the culture"
-  },
-  "variations": [
-    {
-      "label": "Warm and Data-Driven",
-      "tone": "warm",
-      "opening_paragraph": "Personalized intro referencing company, role, and motivation.",
-      "body_paragraphs": [
-        "Paragraph focused on relevant experience and quantified results.",
-        "Optional second para tying achievements to job requirements and culture."
-      ],
-      "closing_paragraph": "Confident, polite CTA with availability and thanks.",
-      "achievements_referenced": ["achievement 1", "achievement 2"],
-      "keywords_used": ["Python", "APIs", "Cloud"],
-      "news_citations": [
-        {"title": "Acme announces new product", "url": "https://...", "date": "2025-10-10"}
-      ]
-    }
-  ]
+    "shared_analysis": {
+        "personalization_strategy": "How to tailor to role and company culture.",
+        "key_achievements": ["List of most relevant achievements from candidate"],
+        "news_to_reference": ["Optional news headline strings used"],
+        "tone_rationale": "Why this tone matches the culture"
+    },
+    "variations": [
+        {
+            "label": "Warm and Data-Driven",
+            "tone": "warm",
+            "opening_paragraph": "Personalized intro referencing company, role, and motivation.",
+            "body_paragraphs": [
+                "Paragraph focused on relevant experience and quantified results.",
+                "Optional second para tying achievements to job requirements and culture."
+            ],
+            "closing_paragraph": "Confident, polite CTA with availability and thanks.",
+            "achievements_referenced": ["achievement 1", "achievement 2"],
+            "keywords_used": ["Python", "APIs", "Cloud"],
+            "news_citations": [
+                {"title": "Acme announces new product", "url": "https://...", "date": "2025-10-10"}
+            ]
+        }
+    ]
 }
 """.strip()
 
@@ -149,6 +160,13 @@ def build_generation_prompt(
 You are ResumeRocket AI. Generate {variation_count} cover letter variations as JSON ONLY (no markdown fences).
 
 Tone style: {tone} → {tone_descriptor}
+
+Additional user preferences:
+- Desired length: {length or 'standard'}
+- Writing style: {writing_style or 'balanced (direct narrative)'}
+- Company culture match: {company_culture or 'auto-detect (startup/corporate)'}
+- Industry guidance: {industry or 'none'}
+{f'- Custom instructions: {custom_instructions}' if custom_instructions else ''}
 
 STRICT RULES:
 - Use ONLY facts from candidate_snapshot, job_snapshot, and research_snapshot. Do NOT invent companies, dates, titles, or achievements.
@@ -160,6 +178,9 @@ STRICT RULES:
 - Keep each paragraph under 140 words. Use professional writing style.
 - Provide 1-2 body paragraphs total.
 - Output valid JSON matching the schema below. No comments or extra text.
+
+TONE CONSISTENCY VALIDATION:
+- Ensure the selected tone is applied consistently across opening, body and closing paragraphs. If you must soften or vary tone for readability, explain the choice in shared_analysis.tone_rationale.
 
 Schema:
 {schema}
@@ -260,9 +281,25 @@ def run_cover_letter_generation(
     variation_count: int,
     api_key: str,
     model: str | None = None,
+    length: str | None = None,
+    writing_style: str | None = None,
+    company_culture: str | None = None,
+    industry: str | None = None,
+    custom_instructions: str | None = None,
 ) -> Dict[str, Any]:
     logger.info("Starting cover letter generation with variation_count=%s, tone=%s", variation_count, tone)
-    prompt = build_generation_prompt(candidate_snapshot, job_snapshot, research_snapshot, tone, variation_count)
+    prompt = build_generation_prompt(
+        candidate_snapshot,
+        job_snapshot,
+        research_snapshot,
+        tone,
+        variation_count,
+        length=length,
+        writing_style=writing_style,
+        company_culture=company_culture,
+        industry=industry,
+        custom_instructions=custom_instructions,
+    )
     raw_text = resume_ai.call_gemini_api(prompt, api_key, model=model)
     parsed = parse_payload(raw_text)
     shared_analysis = parsed.get('shared_analysis') or {}
