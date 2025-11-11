@@ -1,0 +1,241 @@
+.latex-renderer {
+  font-family: 'Georgia', 'Times New Roman', serif;
+  line-height: 1.6;
+  color: #333;
+  max-width: 850px;
+  margin: 0 auto;
+  padding: 2rem;
+  background: white;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.latex-renderer-error {
+  color: #d32f2f;
+  padding: 1rem;
+  background: #ffebee;
+  border-radius: 4px;
+  text-align: center;
+}
+
+/* Header Section */
+.resume-header {
+  text-align: center;
+  border-bottom: 2px solid #333;
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.resume-name {
+  font-size: 2.5rem;
+  font-weight: bold;
+  margin: 0 0 0.5rem 0;
+  color: #1a1a1a;
+}
+
+.contact-info {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 1.5rem;
+  font-size: 0.95rem;
+}
+
+.contact-item {
+  color: #555;
+}
+
+.contact-item a {
+  color: #1976d2;
+  text-decoration: none;
+}
+
+.contact-item a:hover {
+  text-decoration: underline;
+}
+
+/* Section Blocks */
+.resume-section-block {
+  margin-bottom: 1.5rem;
+}
+
+.section-title {
+  font-size: 1.4rem;
+  font-weight: bold;
+  color: #1a1a1a;
+  border-bottom: 1px solid #666;
+  padding-bottom: 0.25rem;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.section-content {
+  padding-left: 0.5rem;
+}
+
+/* Subsection Items */
+.subsection-item {
+  margin-bottom: 1.25rem;
+}
+
+.subsection-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.subsection-title-wrapper {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.subsection-title {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #1a1a1a;
+  margin: 0;
+  display: block;
+}
+
+.subsection-meta {
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.subsection-company {
+  color: #333;
+  font-weight: 500;
+  display: inline;
+}
+
+.subsection-location {
+  color: #555;
+  font-style: italic;
+  display: inline;
+}
+
+.subsection-location::before {
+  content: " • ";
+  margin: 0 0.3rem;
+  color: #999;
+}
+
+.subsection-date {
+  font-size: 0.95rem;
+  color: #666;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+.subsection-description {
+  margin: 0.25rem 0 0.5rem 0;
+  color: #444;
+  font-size: 0.95rem;
+}
+
+.subsection-bullets {
+  margin: 0.5rem 0 0 1.5rem;
+  padding: 0;
+  list-style-type: disc;
+}
+
+.subsection-bullets li {
+  margin-bottom: 0.3rem;
+  color: #444;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+/* Plain Content */
+.plain-content {
+  margin-bottom: 1rem;
+}
+
+.plain-text {
+  margin: 0.5rem 0;
+  color: #444;
+  font-size: 0.95rem;
+  white-space: pre-wrap;
+}
+
+.plain-bullets {
+  margin: 0.5rem 0 0 1.5rem;
+  padding: 0;
+  list-style-type: disc;
+}
+
+.plain-bullets li {
+  margin-bottom: 0.3rem;
+  color: #444;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+/* Text Formatting */
+.latex-renderer strong {
+  font-weight: bold;
+  color: #1a1a1a;
+}
+
+.latex-renderer em {
+  font-style: italic;
+}
+
+.latex-renderer a {
+  color: #1976d2;
+  text-decoration: none;
+}
+
+.latex-renderer a:hover {
+  text-decoration: underline;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .latex-renderer {
+    padding: 1rem;
+  }
+
+  .resume-name {
+    font-size: 2rem;
+  }
+
+  .section-title {
+    font-size: 1.2rem;
+  }
+
+  .subsection-header {
+    flex-direction: column;
+  }
+
+  .subsection-date {
+    align-self: flex-start;
+  }
+
+  .contact-info {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .latex-renderer {
+    box-shadow: none;
+    padding: 0;
+  }
+
+  .resume-name {
+    font-size: 2rem;
+  }
+
+  .section-title {
+    font-size: 1.2rem;
+  }
+}

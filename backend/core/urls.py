@@ -3,6 +3,7 @@ URL configuration for core app authentication endpoints.
 """
 from django.urls import path
 from core import views
+from core import analytics_views
 
 app_name = 'core'
 
@@ -88,7 +89,7 @@ urlpatterns = [
     # SCRUM-39: Job import from URL
     path('jobs/import-from-url', views.import_job_from_url, name='import-job-from-url'),
     path('jobs/stats', views.jobs_stats, name='jobs-stats'),
-    # path('jobs/analytics', views.analytics_dashboard, name='analytics-dashboard'),  # Temporarily disabled due to container sync issues
+    path('jobs/analytics', analytics_views.cover_letter_analytics_view, name='cover-letter-analytics'),
     path('jobs/bulk-status', views.jobs_bulk_status, name='jobs-bulk-status'),
     path('jobs/bulk-deadline', views.jobs_bulk_deadline, name='jobs-bulk-deadline'),
     path('jobs/upcoming-deadlines', views.jobs_upcoming_deadlines, name='jobs-upcoming-deadlines'),
@@ -188,4 +189,18 @@ urlpatterns = [
     path('automation/logs/', views.automation_logs, name='automation-logs'),
     path('automation/packages/', views.application_packages_list, name='application-packages-list'),
     path('automation/scheduled-submissions/', views.automation_logs, name='automation-scheduled-submissions'),
+    
+    # UC-052: Resume Sharing and Feedback endpoints
+    path('resume-shares/', views.resume_share_list_create, name='resume-share-list-create'),
+    path('resume-shares/<uuid:share_id>/', views.resume_share_detail, name='resume-share-detail'),
+    path('shared-resume/<str:share_token>/', views.shared_resume_view, name='shared-resume-view'),
+    path('feedback/', views.feedback_list, name='feedback-list'),
+    path('feedback/create/', views.create_feedback, name='create-feedback'),
+    path('feedback/<uuid:feedback_id>/', views.feedback_detail, name='feedback-detail'),
+    path('comments/create/', views.create_comment, name='create-comment'),
+    path('comments/<uuid:comment_id>/', views.comment_detail, name='comment-detail'),
+    path('feedback-notifications/', views.feedback_notifications, name='feedback-notifications'),
+    path('feedback-notifications/<uuid:notification_id>/read/', views.mark_notification_read, name='mark-notification-read'),
+    path('feedback/export/', views.export_feedback_summary, name='export-feedback-summary'),
 ]
+

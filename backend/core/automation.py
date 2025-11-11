@@ -8,6 +8,7 @@ including package generation, scheduling, and workflow management.
 
 import logging
 from typing import Dict, List, Optional, Any
+from django.utils import timezone
 from datetime import datetime, timedelta
 from django.utils import timezone
 from django.db import transaction
@@ -296,7 +297,15 @@ class ApplicationPackageGenerator:
                     document_name=f"AI_CoverLetter_{job.company_name}_{job.title}",
                     version=next_version,
                     generated_by_ai=True,
-                    notes=f"AI-generated cover letter for {job.title} at {job.company_name}"
+                    notes=f"AI-generated cover letter for {job.title} at {job.company_name}",
+                    ai_generation_tone='balanced',  # Store the tone used for analytics
+                    ai_generation_params={
+                        'tone': 'balanced',
+                        'generation_context': 'automation',
+                        'job_title': job.title,
+                        'company_name': job.company_name,
+                        'generated_at': timezone.now().isoformat(),
+                    }
                 )
                 
                 # Save the actual content as a file

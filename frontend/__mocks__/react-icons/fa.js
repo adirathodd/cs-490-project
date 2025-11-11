@@ -69,4 +69,14 @@ module.exports = {
   FaArrowLeft: createMockIcon('FaArrowLeft'),
   FaSave: createMockIcon('FaSave'),
   FaLayerGroup: createMockIcon('FaLayerGroup'),
+  // New icons for cover letter features
+  FaBolt: createMockIcon('FaBolt'),
+  FaTimes: createMockIcon('FaTimes'),
+  FaPlus: createMockIcon('FaPlus'),
+  FaExclamationCircle: createMockIcon('FaExclamationCircle'),
+  FaEnvelope: createMockIcon('FaEnvelope'),
+  FaAlignLeft: createMockIcon('FaAlignLeft'),
+  FaBook: createMockIcon('FaBook'),
+  FaPen: createMockIcon('FaPen'),
 };
+

@@ -69,8 +69,14 @@ const Login = () => {
       const token = await userCredential.user.getIdToken();
       localStorage.setItem('firebaseToken', token);
 
-      // Redirect to dashboard
-      navigate('/dashboard');
+      // Check for return URL and redirect accordingly
+      const returnUrl = localStorage.getItem('returnUrl');
+      if (returnUrl) {
+        localStorage.removeItem('returnUrl');
+        navigate(returnUrl);
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error) {
       console.error('Login error:', error);
       
@@ -103,7 +109,15 @@ const Login = () => {
       const result = await signInWithPopup(auth, provider);
       const token = await result.user.getIdToken();
       localStorage.setItem('firebaseToken', token);
-      navigate('/dashboard');
+      
+      // Check for return URL and redirect accordingly
+      const returnUrl = localStorage.getItem('returnUrl');
+      if (returnUrl) {
+        localStorage.removeItem('returnUrl');
+        navigate(returnUrl);
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error) {
       console.error(`${providerName} sign-in error:`, error);
       if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {

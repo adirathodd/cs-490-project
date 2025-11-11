@@ -10,7 +10,8 @@ from core.models import (
     CandidateProfile, Skill, CandidateSkill, Education, Certification, 
     Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory, 
     CoverLetterTemplate, InterviewSchedule, InterviewPreparationTask,
-    ResumeVersion, ResumeVersionChange
+    ResumeVersion, ResumeVersionChange, ResumeShare, ShareAccessLog,
+    ResumeFeedback, FeedbackComment, FeedbackNotification
 )
 
 class CoverLetterTemplateSerializer(serializers.ModelSerializer):
@@ -1168,7 +1169,7 @@ class JobEntrySerializer(serializers.ModelSerializer):
     def _doc_payload(self, doc):
         if not doc:
             return None
-        return {
+        payload = {
             'id': doc.id,
             'doc_type': doc.doc_type,
             'version': doc.version,
@@ -1177,6 +1178,14 @@ class JobEntrySerializer(serializers.ModelSerializer):
             'document_name': getattr(doc, 'document_name', ''),
             'created_at': getattr(doc, 'created_at', None),
         }
+        
+        # Add analytics data for cover letters
+        if doc.doc_type == 'cover_letter':
+            payload['ai_generation_tone'] = getattr(doc, 'ai_generation_tone', '')
+            payload['ai_generation_params'] = getattr(doc, 'ai_generation_params', {})
+            payload['generated_by_ai'] = getattr(doc, 'generated_by_ai', False)
+            
+        return payload
 
     def get_resume_doc(self, obj):
         return self._doc_payload(getattr(obj, 'resume_doc', None))
@@ -1670,13 +1679,15 @@ class ResumeVersionListSerializer(serializers.ModelSerializer):
     source_job_title = serializers.SerializerMethodField()
     source_job_company = serializers.SerializerMethodField()
     application_count = serializers.SerializerMethodField()
+    unresolved_feedback_count = serializers.SerializerMethodField()
     
     class Meta:
         model = ResumeVersion
         fields = [
             'id', 'version_name', 'description', 'is_default', 'is_archived',
             'source_job', 'source_job_title', 'source_job_company',
-            'application_count', 'created_at', 'updated_at', 'generated_by_ai'
+            'application_count', 'unresolved_feedback_count', 'created_at', 
+            'updated_at', 'generated_by_ai'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -1692,6 +1703,10 @@ class ResumeVersionListSerializer(serializers.ModelSerializer):
     
     def get_application_count(self, obj):
         return obj.applications.count()
+    
+    def get_unresolved_feedback_count(self, obj):
+        """Get count of unresolved feedback for this version"""
+        return obj.feedback_received.filter(is_resolved=False).count()
 
 
 class ResumeVersionChangeSerializer(serializers.ModelSerializer):
@@ -1740,6 +1755,274 @@ class ResumeVersionMergeSerializer(serializers.Serializer):
         required=False,
         max_length=200,
         help_text="Name for the new merged version (required if create_new=True)"
+    )
+
+
+# UC-052: Resume Sharing and Feedback Serializers
+
+class FeedbackCommentSerializer(serializers.ModelSerializer):
+    """Serializer for feedback comments with thread support"""
+    
+    replies = serializers.SerializerMethodField()
+    thread_depth = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = FeedbackComment
+        fields = [
+            'id', 'feedback', 'parent_comment', 'commenter_name', 'commenter_email',
+            'is_owner', 'comment_type', 'comment_text', 'section', 'section_index',
+            'highlighted_text', 'is_resolved', 'resolved_at', 'created_at', 
+            'updated_at', 'helpful_count', 'replies', 'thread_depth'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'resolved_at']
+    
+    def get_replies(self, obj):
+        """Get nested replies to this comment"""
+        if obj.replies.exists():
+            return FeedbackCommentSerializer(obj.replies.all(), many=True).data
+        return []
+    
+    def get_thread_depth(self, obj):
+        """Calculate depth in comment thread"""
+        return obj.get_thread_depth()
+
+
+class ResumeFeedbackSerializer(serializers.ModelSerializer):
+    """Serializer for resume feedback with comments"""
+    
+    comments = FeedbackCommentSerializer(many=True, read_only=True)
+    comment_count = serializers.SerializerMethodField()
+    resolved_comment_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ResumeFeedback
+        fields = [
+            'id', 'share', 'resume_version', 'reviewer_name', 'reviewer_email',
+            'reviewer_title', 'overall_feedback', 'rating', 'status', 'is_resolved',
+            'resolved_at', 'resolution_notes', 'created_at', 'updated_at',
+            'incorporated_in_version', 'comments', 'comment_count', 'resolved_comment_count'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'resolved_at']
+    
+    def get_comment_count(self, obj):
+        """Total number of comments"""
+        return obj.comments.count()
+    
+    def get_resolved_comment_count(self, obj):
+        """Number of resolved comments"""
+        return obj.comments.filter(is_resolved=True).count()
+
+
+class ResumeFeedbackListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for listing feedback"""
+    
+    comment_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ResumeFeedback
+        fields = [
+            'id', 'reviewer_name', 'reviewer_email', 'reviewer_title',
+            'rating', 'status', 'is_resolved', 'created_at', 'updated_at',
+            'comment_count'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_comment_count(self, obj):
+        return obj.comments.count()
+
+
+class ShareAccessLogSerializer(serializers.ModelSerializer):
+    """Serializer for share access logs"""
+    
+    class Meta:
+        model = ShareAccessLog
+        fields = [
+            'id', 'share', 'reviewer_name', 'reviewer_email', 'reviewer_ip',
+            'accessed_at', 'action'
+        ]
+        read_only_fields = ['id', 'accessed_at']
+
+
+class ResumeShareSerializer(serializers.ModelSerializer):
+    """Serializer for resume sharing"""
+    
+    version_name = serializers.SerializerMethodField()
+    feedback_count = serializers.SerializerMethodField()
+    pending_feedback_count = serializers.SerializerMethodField()
+    is_expired = serializers.SerializerMethodField()
+    is_accessible = serializers.SerializerMethodField()
+    share_url = serializers.SerializerMethodField()
+    recent_feedback = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ResumeShare
+        fields = [
+            'id', 'resume_version', 'version_name', 'share_token', 'privacy_level',
+            'password_hash', 'allowed_emails', 'allowed_domains', 'allow_comments',
+            'allow_download', 'require_reviewer_info', 'view_count', 'created_at',
+            'updated_at', 'expires_at', 'is_active', 'share_message', 'feedback_count',
+            'pending_feedback_count', 'is_expired', 'is_accessible', 'share_url',
+            'recent_feedback'
+        ]
+        read_only_fields = ['id', 'share_token', 'view_count', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'password_hash': {'write_only': True}
+        }
+    
+    def get_version_name(self, obj):
+        """Get resume version name"""
+        return obj.resume_version.version_name
+    
+    def get_feedback_count(self, obj):
+        """Total feedback count"""
+        return obj.feedback_items.count()
+    
+    def get_pending_feedback_count(self, obj):
+        """Unresolved feedback count"""
+        return obj.feedback_items.filter(is_resolved=False).count()
+    
+    def get_is_expired(self, obj):
+        """Check if share has expired"""
+        return obj.is_expired()
+    
+    def get_is_accessible(self, obj):
+        """Check if share is currently accessible"""
+        return obj.is_accessible()
+    
+    def get_share_url(self, obj):
+        """Generate full shareable URL"""
+        from django.conf import settings
+        
+        # Always use frontend URL for shareable links
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        return f'{frontend_url}/shared-resume/{obj.share_token}'
+    
+    def get_recent_feedback(self, obj):
+        """Get 3 most recent feedback items"""
+        recent = obj.feedback_items.order_by('-created_at')[:3]
+        return ResumeFeedbackListSerializer(recent, many=True).data
+
+
+class ResumeShareListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for listing shares"""
+    
+    version_name = serializers.SerializerMethodField()
+    feedback_count = serializers.SerializerMethodField()
+    is_accessible = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ResumeShare
+        fields = [
+            'id', 'resume_version', 'version_name', 'privacy_level', 'view_count',
+            'created_at', 'expires_at', 'is_active', 'feedback_count', 'is_accessible'
+        ]
+        read_only_fields = ['id', 'view_count', 'created_at']
+    
+    def get_version_name(self, obj):
+        return obj.resume_version.version_name
+    
+    def get_feedback_count(self, obj):
+        return obj.feedback_items.count()
+    
+    def get_is_accessible(self, obj):
+        return obj.is_accessible()
+
+
+class CreateResumeShareSerializer(serializers.Serializer):
+    """Serializer for creating a new resume share"""
+    
+    resume_version_id = serializers.UUIDField(required=True)
+    privacy_level = serializers.ChoiceField(
+        choices=['public', 'password', 'email_verified', 'private'],
+        default='public'
+    )
+    password = serializers.CharField(
+        required=False, 
+        write_only=True,
+        help_text="Required if privacy_level is 'password'"
+    )
+    allowed_emails = serializers.ListField(
+        child=serializers.EmailField(),
+        required=False,
+        help_text="List of allowed email addresses"
+    )
+    allowed_domains = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        help_text="List of allowed email domains (e.g., ['company.com'])"
+    )
+    allow_comments = serializers.BooleanField(default=True)
+    allow_download = serializers.BooleanField(default=False)
+    require_reviewer_info = serializers.BooleanField(default=True)
+    expires_at = serializers.DateTimeField(required=False, allow_null=True)
+    share_message = serializers.CharField(required=False, allow_blank=True)
+
+
+class CreateFeedbackSerializer(serializers.Serializer):
+    """Serializer for creating feedback on a shared resume"""
+    
+    share_token = serializers.CharField(required=True)
+    reviewer_name = serializers.CharField(required=True, max_length=200)
+    reviewer_email = serializers.EmailField(required=True)
+    reviewer_title = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    overall_feedback = serializers.CharField(required=True)
+    rating = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)
+    password = serializers.CharField(required=False, write_only=True)
+
+
+class CreateCommentSerializer(serializers.Serializer):
+    """Serializer for creating a comment on feedback"""
+    
+    feedback_id = serializers.UUIDField(required=True)
+    parent_comment_id = serializers.UUIDField(required=False, allow_null=True)
+    comment_text = serializers.CharField(required=True)
+    comment_type = serializers.ChoiceField(
+        choices=['general', 'suggestion', 'question', 'praise', 'concern'],
+        default='general'
+    )
+    section = serializers.CharField(required=False, allow_blank=True, max_length=100)
+    section_index = serializers.IntegerField(required=False, allow_null=True)
+    highlighted_text = serializers.CharField(required=False, allow_blank=True)
+    # These fields are populated from context
+    commenter_name = serializers.CharField(required=False, max_length=200)
+    commenter_email = serializers.EmailField(required=False)
+    is_owner = serializers.BooleanField(default=False)
+
+
+class FeedbackNotificationSerializer(serializers.ModelSerializer):
+    """Serializer for feedback notifications"""
+    
+    feedback_details = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = FeedbackNotification
+        fields = [
+            'id', 'notification_type', 'title', 'message', 'is_read', 'read_at',
+            'created_at', 'action_url', 'feedback', 'comment', 'share',
+            'feedback_details'
+        ]
+        read_only_fields = ['id', 'created_at', 'read_at']
+    
+    def get_feedback_details(self, obj):
+        """Get minimal feedback/comment details"""
+        if obj.feedback:
+            return {
+                'reviewer_name': obj.feedback.reviewer_name,
+                'rating': obj.feedback.rating,
+                'status': obj.feedback.status
+            }
+        return None
+
+
+class FeedbackSummaryExportSerializer(serializers.Serializer):
+    """Serializer for exporting feedback summary"""
+    
+    resume_version_id = serializers.UUIDField(required=True)
+    include_resolved = serializers.BooleanField(default=True)
+    include_comments = serializers.BooleanField(default=True)
+    format = serializers.ChoiceField(
+        choices=['pdf', 'docx', 'json'],
+        default='pdf'
     )
 
 

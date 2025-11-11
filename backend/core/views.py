@@ -33,7 +33,7 @@ from core.serializers import (
     ResumeVersionCompareSerializer,
     ResumeVersionMergeSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate, ResumeVersion
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate, ResumeVersion, ResumeShare, ShareAccessLog, ResumeFeedback, FeedbackComment, FeedbackNotification
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def cover_letter_template_list_create(request):
@@ -7975,6 +7975,706 @@ def resume_version_history(request, version_id):
     })
 
 
+# UC-052: Resume Sharing and Feedback Views
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def resume_share_list_create(request):
+    """
+    GET: List all shares for user's resume versions
+    POST: Create a new share link for a resume version
+    """
+    profile = request.user.profile
+    
+    if request.method == 'GET':
+        # Get all shares for user's resume versions
+        shares = ResumeShare.objects.filter(
+            resume_version__candidate=profile
+        ).select_related('resume_version')
+        
+        serializer = ResumeShareListSerializer(shares, many=True)
+        return Response({'shares': serializer.data})
+    
+    elif request.method == 'POST':
+        from core.serializers import CreateResumeShareSerializer, ResumeShareSerializer
+        from django.contrib.auth.hashers import make_password
+        
+        serializer = CreateResumeShareSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get resume version and verify ownership
+        try:
+            version = ResumeVersion.objects.get(
+                id=serializer.validated_data['resume_version_id'],
+                candidate=profile
+            )
+        except ResumeVersion.DoesNotExist:
+            return Response(
+                {'error': 'Resume version not found or you do not have permission'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Create share
+        share_data = {
+            'resume_version': version,
+            'privacy_level': serializer.validated_data.get('privacy_level', 'public'),
+            'allow_comments': serializer.validated_data.get('allow_comments', True),
+            'allow_download': serializer.validated_data.get('allow_download', False),
+            'require_reviewer_info': serializer.validated_data.get('require_reviewer_info', True),
+            'allowed_emails': serializer.validated_data.get('allowed_emails', []),
+            'allowed_domains': serializer.validated_data.get('allowed_domains', []),
+            'expires_at': serializer.validated_data.get('expires_at'),
+            'share_message': serializer.validated_data.get('share_message', ''),
+        }
+        
+        # Hash password if provided
+        password = serializer.validated_data.get('password')
+        if password:
+            share_data['password_hash'] = make_password(password)
+        
+        share = ResumeShare.objects.create(**share_data)
+        
+        # Create notification
+        from core.models import FeedbackNotification
+        FeedbackNotification.objects.create(
+            user=request.user,
+            notification_type='share_accessed',
+            title='Resume Share Link Created',
+            message=f'You created a share link for "{version.version_name}"',
+            share=share,
+            action_url=f'/resume-versions?share={share.id}'
+        )
+        
+        return Response(
+            ResumeShareSerializer(share, context={'request': request}).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def resume_share_detail(request, share_id):
+    """
+    GET: Get share details
+    PUT: Update share settings
+    DELETE: Delete share link
+    """
+    profile = request.user.profile
+    
+    try:
+        share = ResumeShare.objects.select_related('resume_version').get(
+            id=share_id,
+            resume_version__candidate=profile
+        )
+    except ResumeShare.DoesNotExist:
+        return Response(
+            {'error': 'Share not found or you do not have permission'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == 'GET':
+        from core.serializers import ResumeShareSerializer
+        return Response(ResumeShareSerializer(share, context={'request': request}).data)
+    
+    elif request.method == 'PUT':
+        from django.contrib.auth.hashers import make_password
+        
+        # Update allowed fields
+        allowed_fields = [
+            'privacy_level', 'allowed_emails', 'allowed_domains',
+            'allow_comments', 'allow_download', 'require_reviewer_info',
+            'expires_at', 'is_active', 'share_message'
+        ]
+        
+        for field in allowed_fields:
+            if field in request.data:
+                setattr(share, field, request.data[field])
+        
+        # Handle password update
+        if 'password' in request.data and request.data['password']:
+            share.password_hash = make_password(request.data['password'])
+        
+        share.save()
+        
+        from core.serializers import ResumeShareSerializer
+        return Response(ResumeShareSerializer(share, context={'request': request}).data)
+    
+    elif request.method == 'DELETE':
+        share.delete()
+        return Response(
+            {'message': 'Share deleted successfully'},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def shared_resume_view(request, share_token):
+    """
+    Public endpoint to view a shared resume
+    Handles access control based on privacy settings
+    GET: Initial load (may return access requirements)
+    POST: Submit access credentials (password, reviewer info)
+    """
+    from core.serializers import ResumeVersionSerializer, ShareAccessLogSerializer
+    from django.contrib.auth.hashers import check_password
+    
+    try:
+        share = ResumeShare.objects.select_related('resume_version').get(
+            share_token=share_token
+        )
+    except ResumeShare.DoesNotExist:
+        return Response(
+            {'error': 'Share link not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Check if share is accessible
+    if not share.is_accessible():
+        if share.is_expired():
+            return Response(
+                {'error': 'This share link has expired'},
+                status=status.HTTP_410_GONE
+            )
+        return Response(
+            {'error': 'This share link is no longer active'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Handle password protection
+    if share.privacy_level == 'password':
+        password = request.data.get('password') or request.query_params.get('password')
+        if not password or not check_password(password, share.password_hash):
+            return Response(
+                {'error': 'Invalid password', 'requires_password': True},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+    
+    # Handle email verification
+    reviewer_email = request.data.get('reviewer_email') or request.query_params.get('reviewer_email')
+    
+    if share.privacy_level == 'email_verified':
+        if not reviewer_email:
+            return Response(
+                {'error': 'Email required', 'requires_email': True},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Check if email is allowed
+        email_allowed = False
+        if share.allowed_emails and reviewer_email.lower() in [e.lower() for e in share.allowed_emails]:
+            email_allowed = True
+        elif share.allowed_domains:
+            email_domain = reviewer_email.split('@')[1] if '@' in reviewer_email else ''
+            if email_domain.lower() in [d.lower() for d in share.allowed_domains]:
+                email_allowed = True
+        
+        if not email_allowed:
+            return Response(
+                {'error': 'Your email is not authorized to access this resume'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+    
+    # Require reviewer info if configured
+    if share.require_reviewer_info:
+        reviewer_name = request.data.get('reviewer_name') or request.query_params.get('reviewer_name')
+        if not reviewer_name or not reviewer_email:
+            return Response(
+                {
+                    'error': 'Please provide your name and email',
+                    'requires_reviewer_info': True
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+    
+    # Log access
+    from core.models import ShareAccessLog
+    reviewer_ip = request.META.get('REMOTE_ADDR')
+    ShareAccessLog.objects.create(
+        share=share,
+        reviewer_name=request.data.get('reviewer_name', ''),
+        reviewer_email=reviewer_email or '',
+        reviewer_ip=reviewer_ip,
+        action='view'
+    )
+    
+    # Increment view count
+    share.increment_view_count()
+    
+    # Return resume data
+    return Response({
+        'share': {
+            'id': str(share.id),
+            'version_name': share.resume_version.version_name,
+            'share_message': share.share_message,
+            'allow_comments': share.allow_comments,
+            'allow_download': share.allow_download,
+        },
+        'resume': ResumeVersionSerializer(share.resume_version).data
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def create_feedback(request):
+    """
+    Public endpoint for reviewers to submit feedback on shared resumes
+    """
+    from core.serializers import CreateFeedbackSerializer, ResumeFeedbackSerializer
+    from django.contrib.auth.hashers import check_password
+    from core.models import ResumeFeedback, FeedbackNotification
+    
+    serializer = CreateFeedbackSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Get share and verify access
+    try:
+        share = ResumeShare.objects.select_related('resume_version__candidate').get(
+            share_token=serializer.validated_data['share_token']
+        )
+    except ResumeShare.DoesNotExist:
+        return Response(
+            {'error': 'Share link not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if not share.is_accessible():
+        return Response(
+            {'error': 'Share link is no longer accessible'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    if not share.allow_comments:
+        return Response(
+            {'error': 'Comments are not allowed on this share'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Verify password if needed
+    if share.privacy_level == 'password':
+        password = serializer.validated_data.get('password')
+        if not password or not check_password(password, share.password_hash):
+            return Response(
+                {'error': 'Invalid password'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+    
+    # Create feedback
+    feedback = ResumeFeedback.objects.create(
+        share=share,
+        resume_version=share.resume_version,
+        reviewer_name=serializer.validated_data['reviewer_name'],
+        reviewer_email=serializer.validated_data['reviewer_email'],
+        reviewer_title=serializer.validated_data.get('reviewer_title', ''),
+        overall_feedback=serializer.validated_data['overall_feedback'],
+        rating=serializer.validated_data.get('rating')
+    )
+    
+    # Log access
+    from core.models import ShareAccessLog
+    ShareAccessLog.objects.create(
+        share=share,
+        reviewer_name=feedback.reviewer_name,
+        reviewer_email=feedback.reviewer_email,
+        reviewer_ip=request.META.get('REMOTE_ADDR'),
+        action='comment'
+    )
+    
+    # Create notification for resume owner
+    FeedbackNotification.objects.create(
+        user=share.resume_version.candidate.user,
+        notification_type='new_feedback',
+        title=f'New Feedback on {share.resume_version.version_name}',
+        message=f'{feedback.reviewer_name} left feedback on your resume.',
+        feedback=feedback,
+        share=share,
+        action_url=f'/resume-versions?feedback={feedback.id}'
+    )
+    
+    return Response(
+        ResumeFeedbackSerializer(feedback).data,
+        status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def feedback_detail(request, feedback_id):
+    """
+    GET: Get feedback details with comments
+    PUT: Update feedback status/resolution
+    DELETE: Delete feedback
+    """
+    from core.serializers import ResumeFeedbackSerializer
+    
+    profile = request.user.profile
+    
+    try:
+        feedback = ResumeFeedback.objects.select_related(
+            'resume_version', 'share'
+        ).prefetch_related('comments').get(
+            id=feedback_id,
+            resume_version__candidate=profile
+        )
+    except ResumeFeedback.DoesNotExist:
+        return Response(
+            {'error': 'Feedback not found or you do not have permission'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == 'GET':
+        return Response(ResumeFeedbackSerializer(feedback).data)
+    
+    elif request.method == 'PUT':
+        # Update status and resolution
+        if 'status' in request.data:
+            feedback.status = request.data['status']
+        
+        if 'is_resolved' in request.data:
+            if request.data['is_resolved'] and not feedback.is_resolved:
+                feedback.mark_resolved(
+                    resolution_notes=request.data.get('resolution_notes', ''),
+                    incorporated_version=None  # Can be set later
+                )
+        
+        if 'resolution_notes' in request.data:
+            feedback.resolution_notes = request.data['resolution_notes']
+        
+        if 'incorporated_in_version_id' in request.data:
+            try:
+                version = ResumeVersion.objects.get(
+                    id=request.data['incorporated_in_version_id'],
+                    candidate=profile
+                )
+                feedback.incorporated_in_version = version
+            except ResumeVersion.DoesNotExist:
+                pass
+        
+        feedback.save()
+        
+        return Response(ResumeFeedbackSerializer(feedback).data)
+    
+    elif request.method == 'DELETE':
+        feedback.delete()
+        return Response(
+            {'message': 'Feedback deleted successfully'},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def feedback_list(request):
+    """
+    List all feedback for user's resume versions
+    Supports filtering by status, version, etc.
+    """
+    from core.serializers import ResumeFeedbackListSerializer
+    
+    profile = request.user.profile
+    
+    # Get all feedback for user's resumes
+    feedback_qs = ResumeFeedback.objects.filter(
+        resume_version__candidate=profile
+    ).select_related('resume_version', 'share')
+    
+    # Apply filters
+    status_filter = request.query_params.get('status')
+    if status_filter:
+        feedback_qs = feedback_qs.filter(status=status_filter)
+    
+    version_id = request.query_params.get('version_id')
+    if version_id:
+        feedback_qs = feedback_qs.filter(resume_version__id=version_id)
+    
+    is_resolved = request.query_params.get('is_resolved')
+    if is_resolved is not None:
+        feedback_qs = feedback_qs.filter(is_resolved=is_resolved.lower() == 'true')
+    
+    # Order by creation date
+    feedback_qs = feedback_qs.order_by('-created_at')
+    
+    serializer = ResumeFeedbackListSerializer(feedback_qs, many=True)
+    return Response({'feedback': serializer.data})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def create_comment(request):
+    """
+    Create a comment on feedback (thread support)
+    Can be from reviewer or resume owner (authenticated)
+    """
+    from core.serializers import CreateCommentSerializer, FeedbackCommentSerializer
+    from core.models import FeedbackComment, FeedbackNotification
+    
+    serializer = CreateCommentSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Get feedback
+    try:
+        feedback = ResumeFeedback.objects.select_related(
+            'resume_version__candidate__user', 'share'
+        ).get(id=serializer.validated_data['feedback_id'])
+    except ResumeFeedback.DoesNotExist:
+        return Response(
+            {'error': 'Feedback not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Check if authenticated user is the resume owner
+    is_owner = request.user.is_authenticated and request.user == feedback.resume_version.candidate.user
+    
+    # Get commenter info
+    if is_owner:
+        commenter_name = f"{request.user.first_name} {request.user.last_name}".strip()
+        commenter_email = request.user.email
+    else:
+        commenter_name = serializer.validated_data.get('commenter_name') or feedback.reviewer_name
+        commenter_email = serializer.validated_data.get('commenter_email') or feedback.reviewer_email
+    
+    # Get parent comment if specified
+    parent_comment = None
+    if serializer.validated_data.get('parent_comment_id'):
+        try:
+            parent_comment = FeedbackComment.objects.get(
+                id=serializer.validated_data['parent_comment_id'],
+                feedback=feedback
+            )
+        except FeedbackComment.DoesNotExist:
+            return Response(
+                {'error': 'Parent comment not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    # Create comment
+    comment = FeedbackComment.objects.create(
+        feedback=feedback,
+        parent_comment=parent_comment,
+        commenter_name=commenter_name,
+        commenter_email=commenter_email,
+        is_owner=is_owner,
+        comment_type=serializer.validated_data.get('comment_type', 'general'),
+        comment_text=serializer.validated_data['comment_text'],
+        section=serializer.validated_data.get('section', ''),
+        section_index=serializer.validated_data.get('section_index'),
+        highlighted_text=serializer.validated_data.get('highlighted_text', '')
+    )
+    
+    # Create notification
+    if is_owner:
+        # Owner replied - notify original reviewer (no user to notify)
+        pass
+    else:
+        # Reviewer commented - notify owner
+        FeedbackNotification.objects.create(
+            user=feedback.resume_version.candidate.user,
+            notification_type='new_comment',
+            title=f'New Comment on Feedback',
+            message=f'{commenter_name} commented on feedback for {feedback.resume_version.version_name}',
+            feedback=feedback,
+            comment=comment,
+            share=feedback.share,
+            action_url=f'/resume-versions?feedback={feedback.id}'
+        )
+    
+    return Response(
+        FeedbackCommentSerializer(comment).data,
+        status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(['PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def comment_detail(request, comment_id):
+    """
+    PUT: Resolve/unresolve comment
+    DELETE: Delete comment
+    """
+    from core.serializers import FeedbackCommentSerializer
+    from core.models import FeedbackComment
+    
+    profile = request.user.profile
+    
+    try:
+        comment = FeedbackComment.objects.select_related(
+            'feedback__resume_version'
+        ).get(
+            id=comment_id,
+            feedback__resume_version__candidate=profile
+        )
+    except FeedbackComment.DoesNotExist:
+        return Response(
+            {'error': 'Comment not found or you do not have permission'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == 'PUT':
+        if 'is_resolved' in request.data:
+            if request.data['is_resolved']:
+                comment.mark_resolved()
+            else:
+                comment.is_resolved = False
+                comment.resolved_at = None
+                comment.save()
+        
+        return Response(FeedbackCommentSerializer(comment).data)
+    
+    elif request.method == 'DELETE':
+        comment.delete()
+        return Response(
+            {'message': 'Comment deleted successfully'},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def feedback_notifications(request):
+    """
+    Get feedback notifications for the user
+    """
+    from core.serializers import FeedbackNotificationSerializer
+    from core.models import FeedbackNotification
+    
+    notifications = FeedbackNotification.objects.filter(
+        user=request.user
+    ).select_related('feedback', 'comment', 'share').order_by('-created_at')
+    
+    # Filter by read status if specified
+    is_read = request.query_params.get('is_read')
+    if is_read is not None:
+        notifications = notifications.filter(is_read=is_read.lower() == 'true')
+    
+    # Limit results
+    limit = request.query_params.get('limit', 50)
+    notifications = notifications[:int(limit)]
+    
+    serializer = FeedbackNotificationSerializer(notifications, many=True)
+    return Response({'notifications': serializer.data})
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def mark_notification_read(request, notification_id):
+    """
+    Mark a notification as read
+    """
+    from core.models import FeedbackNotification
+    
+    try:
+        notification = FeedbackNotification.objects.get(
+            id=notification_id,
+            user=request.user
+        )
+    except FeedbackNotification.DoesNotExist:
+        return Response(
+            {'error': 'Notification not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    notification.mark_read()
+    
+    from core.serializers import FeedbackNotificationSerializer
+    return Response(FeedbackNotificationSerializer(notification).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def export_feedback_summary(request):
+    """
+    Export feedback summary for a resume version
+    Supports PDF, DOCX, and JSON formats
+    """
+    from core.serializers import FeedbackSummaryExportSerializer
+    
+    serializer = FeedbackSummaryExportSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    profile = request.user.profile
+    
+    # Get resume version
+    try:
+        version = ResumeVersion.objects.get(
+            id=serializer.validated_data['resume_version_id'],
+            candidate=profile
+        )
+    except ResumeVersion.DoesNotExist:
+        return Response(
+            {'error': 'Resume version not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Get feedback
+    feedback_qs = ResumeFeedback.objects.filter(
+        resume_version=version
+    ).prefetch_related('comments')
+    
+    if not serializer.validated_data.get('include_resolved', True):
+        feedback_qs = feedback_qs.filter(is_resolved=False)
+    
+    # Prepare export data
+    export_data = {
+        'version_name': version.version_name,
+        'version_description': version.description,
+        'export_date': timezone.now().isoformat(),
+        'feedback_count': feedback_qs.count(),
+        'feedback_items': []
+    }
+    
+    for feedback in feedback_qs:
+        feedback_data = {
+            'reviewer_name': feedback.reviewer_name,
+            'reviewer_email': feedback.reviewer_email,
+            'reviewer_title': feedback.reviewer_title,
+            'rating': feedback.rating,
+            'overall_feedback': feedback.overall_feedback,
+            'status': feedback.status,
+            'is_resolved': feedback.is_resolved,
+            'created_at': feedback.created_at.isoformat(),
+            'resolution_notes': feedback.resolution_notes,
+        }
+        
+        if serializer.validated_data.get('include_comments', True):
+            comments_data = []
+            for comment in feedback.comments.all():
+                comments_data.append({
+                    'commenter_name': comment.commenter_name,
+                    'comment_type': comment.comment_type,
+                    'comment_text': comment.comment_text,
+                    'section': comment.section,
+                    'is_owner': comment.is_owner,
+                    'is_resolved': comment.is_resolved,
+                    'created_at': comment.created_at.isoformat(),
+                })
+            feedback_data['comments'] = comments_data
+        
+        export_data['feedback_items'].append(feedback_data)
+    
+    # Handle different export formats
+    export_format = serializer.validated_data.get('format', 'json')
+    
+    if export_format == 'json':
+        from django.http import JsonResponse
+        response = JsonResponse(export_data)
+        response['Content-Disposition'] = f'attachment; filename="feedback_summary_{version.version_name}.json"'
+        return response
+    
+    elif export_format in ['pdf', 'docx']:
+        # For PDF/DOCX, we'll return JSON for now with a note
+        # In production, you'd use libraries like ReportLab or python-docx
+        return Response({
+            'message': f'{export_format.upper()} export coming soon',
+            'data': export_data
+        })
+    
+    return Response(export_data)
+
+
 
 
 # ============================================================================
@@ -8356,3 +9056,4 @@ def generate_application_package(request, job_id):
         
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
