@@ -135,7 +135,6 @@ const JobMatchAnalysis = ({ job, onError }) => {
             color: getGradeColor(matchData.match_grade),
             marginBottom: '8px'
           }}>
-            Grade: {matchData.match_grade}
           </div>
           <div style={{
             color: '#6b7280',
