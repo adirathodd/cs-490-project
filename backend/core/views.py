@@ -7115,3 +7115,343 @@ def extract_profile_from_latex(latex_content):
     
     return profile
 
+
+# ============================================
+# UC-071: Interview Scheduling Views
+# ============================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def interview_list_create(request):
+    """
+    GET: List all interviews for the authenticated user
+    POST: Schedule a new interview
+    """
+    from core.serializers import InterviewScheduleSerializer
+    from core.models import InterviewSchedule, InterviewPreparationTask, JobEntry
+    
+    candidate = request.user.profile
+    
+    if request.method == 'GET':
+        # Get filter parameters
+        job_id = request.query_params.get('job')
+        status_filter = request.query_params.get('status')
+        upcoming_only = request.query_params.get('upcoming') == 'true'
+        
+        interviews = InterviewSchedule.objects.filter(candidate=candidate)
+        
+        if job_id:
+            interviews = interviews.filter(job_id=job_id)
+        
+        if status_filter:
+            interviews = interviews.filter(status=status_filter)
+        
+        if upcoming_only:
+            from django.utils import timezone
+            interviews = interviews.filter(
+                scheduled_at__gte=timezone.now(),
+                status__in=['scheduled', 'rescheduled']
+            )
+        
+        # Update reminder flags for all upcoming interviews
+        for interview in interviews:
+            if interview.is_upcoming:
+                interview.update_reminder_flags()
+        
+        serializer = InterviewScheduleSerializer(interviews, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        # Schedule new interview
+        data = request.data.copy()
+        
+        # Set candidate from authenticated user
+        data['candidate'] = candidate.id
+        
+        # Validate job belongs to user
+        job_id = data.get('job')
+        try:
+            job = JobEntry.objects.get(id=job_id, candidate=candidate)
+        except JobEntry.DoesNotExist:
+            return Response(
+                {'error': 'Job not found or does not belong to you'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = InterviewScheduleSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            interview = serializer.save(candidate=candidate)
+            
+            # Auto-generate preparation tasks
+            generate_preparation_tasks(interview)
+            
+            # Update reminder flags
+            interview.update_reminder_flags()
+            
+            # Return with tasks
+            response_serializer = InterviewScheduleSerializer(interview)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def interview_detail(request, pk):
+    """
+    GET: Retrieve interview details
+    PUT: Update interview (including reschedule)
+    DELETE: Cancel interview
+    """
+    from core.serializers import InterviewScheduleSerializer
+    from core.models import InterviewSchedule
+    
+    try:
+        interview = InterviewSchedule.objects.get(pk=pk, candidate=request.user.profile)
+    except InterviewSchedule.DoesNotExist:
+        return Response(
+            {'error': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == 'GET':
+        # Update reminder flags
+        if interview.is_upcoming:
+            interview.update_reminder_flags()
+        
+        serializer = InterviewScheduleSerializer(interview)
+        return Response(serializer.data)
+    
+    elif request.method == 'PUT':
+        # Check if this is a reschedule (scheduled_at changed)
+        old_datetime = interview.scheduled_at
+        
+        serializer = InterviewScheduleSerializer(
+            interview,
+            data=request.data,
+            partial=True,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            new_datetime = serializer.validated_data.get('scheduled_at')
+            
+            # Handle rescheduling
+            if new_datetime and new_datetime != old_datetime:
+                reason = request.data.get('rescheduled_reason', '')
+                interview.reschedule(new_datetime, reason)
+                # Still update other fields
+                for key, value in serializer.validated_data.items():
+                    if key != 'scheduled_at':
+                        setattr(interview, key, value)
+                interview.save()
+            else:
+                serializer.save()
+            
+            # Update reminder flags
+            interview.update_reminder_flags()
+            
+            response_serializer = InterviewScheduleSerializer(interview)
+            return Response(response_serializer.data)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        # Actually delete the interview record
+        interview.delete()
+        return Response(
+            {'message': 'Interview deleted successfully'},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def interview_complete(request, pk):
+    """Mark interview as completed and record outcome."""
+    from core.models import InterviewSchedule
+    
+    try:
+        interview = InterviewSchedule.objects.get(pk=pk, candidate=request.user.profile)
+    except InterviewSchedule.DoesNotExist:
+        return Response(
+            {'error': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    outcome = request.data.get('outcome')
+    feedback_notes = request.data.get('feedback_notes', '')
+    
+    if not outcome:
+        return Response(
+            {'error': 'Outcome is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    interview.mark_completed(outcome=outcome, feedback_notes=feedback_notes)
+    
+    from core.serializers import InterviewScheduleSerializer
+    serializer = InterviewScheduleSerializer(interview)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def dismiss_interview_reminder(request, pk):
+    """Dismiss interview reminder notification."""
+    from core.models import InterviewSchedule
+    
+    try:
+        interview = InterviewSchedule.objects.get(pk=pk, candidate=request.user.profile)
+    except InterviewSchedule.DoesNotExist:
+        return Response(
+            {'error': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    reminder_type = request.data.get('reminder_type')  # '24h' or '1h'
+    
+    if reminder_type == '24h':
+        interview.reminder_24h_dismissed = True
+        interview.show_24h_reminder = False
+    elif reminder_type == '1h':
+        interview.reminder_1h_dismissed = True
+        interview.show_1h_reminder = False
+    else:
+        return Response(
+            {'error': 'Invalid reminder_type. Must be "24h" or "1h"'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    interview.save()
+    return Response({'message': 'Reminder dismissed'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def active_interview_reminders(request):
+    """Get all active interview reminders for the user."""
+    from core.models import InterviewSchedule
+    from core.serializers import InterviewScheduleSerializer
+    from django.utils import timezone
+    
+    candidate = request.user.profile
+    
+    # Get upcoming interviews
+    upcoming_interviews = InterviewSchedule.objects.filter(
+        candidate=candidate,
+        scheduled_at__gte=timezone.now(),
+        status__in=['scheduled', 'rescheduled']
+    )
+    
+    # Update reminder flags
+    for interview in upcoming_interviews:
+        interview.update_reminder_flags()
+    
+    # Get interviews with active reminders
+    active_reminders = upcoming_interviews.filter(
+        models.Q(show_24h_reminder=True, reminder_24h_dismissed=False) |
+        models.Q(show_1h_reminder=True, reminder_1h_dismissed=False)
+    )
+    
+    serializer = InterviewScheduleSerializer(active_reminders, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def toggle_preparation_task(request, pk):
+    """Toggle completion status of a preparation task."""
+    from core.models import InterviewPreparationTask
+    
+    try:
+        task = InterviewPreparationTask.objects.get(
+            pk=pk,
+            interview__candidate=request.user.profile
+        )
+    except InterviewPreparationTask.DoesNotExist:
+        return Response(
+            {'error': 'Task not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if task.is_completed:
+        task.is_completed = False
+        task.completed_at = None
+    else:
+        task.mark_completed()
+    
+    task.save()
+    
+    from core.serializers import InterviewPreparationTaskSerializer
+    serializer = InterviewPreparationTaskSerializer(task)
+    return Response(serializer.data)
+
+
+def generate_preparation_tasks(interview):
+    """Auto-generate preparation tasks for an interview."""
+    from core.models import InterviewPreparationTask
+    
+    tasks_config = [
+        {
+            'task_type': 'research_company',
+            'title': f'Research {interview.job.company_name}',
+            'description': 'Learn about the company\'s mission, values, recent news, and culture. Check their website, LinkedIn, and recent press releases.',
+            'order': 1
+        },
+        {
+            'task_type': 'review_job',
+            'title': 'Review Job Description',
+            'description': f'Re-read the {interview.job.title} job posting. Identify key requirements and how your experience aligns.',
+            'order': 2
+        },
+        {
+            'task_type': 'prepare_questions',
+            'title': 'Prepare Questions for Interviewer',
+            'description': 'Prepare 3-5 thoughtful questions about the role, team, company culture, and growth opportunities.',
+            'order': 3
+        },
+        {
+            'task_type': 'prepare_examples',
+            'title': 'Prepare STAR Examples',
+            'description': 'Prepare specific examples of your achievements using the STAR method (Situation, Task, Action, Result).',
+            'order': 4
+        },
+        {
+            'task_type': 'review_resume',
+            'title': 'Review Your Resume',
+            'description': 'Be ready to discuss everything on your resume in detail, especially items relevant to this role.',
+            'order': 5
+        },
+    ]
+    
+    # Add type-specific tasks
+    if interview.interview_type == 'video':
+        tasks_config.append({
+            'task_type': 'test_tech',
+            'title': 'Test Video Conference Setup',
+            'description': 'Test your camera, microphone, and internet connection. Ensure good lighting and a professional background.',
+            'order': 6
+        })
+    elif interview.interview_type == 'in_person':
+        tasks_config.append({
+            'task_type': 'plan_route',
+            'title': 'Plan Your Route',
+            'description': f'Plan your route to {interview.location}. Aim to arrive 10-15 minutes early.',
+            'order': 6
+        })
+    
+    tasks_config.append({
+        'task_type': 'prepare_materials',
+        'title': 'Prepare Materials',
+        'description': 'Print extra copies of your resume, prepare a portfolio if relevant, and bring a notepad and pen.',
+        'order': 7
+    })
+    
+    # Create tasks
+    for task_data in tasks_config:
+        InterviewPreparationTask.objects.create(
+            interview=interview,
+            **task_data
+        )
+
