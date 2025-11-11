@@ -16,6 +16,8 @@ from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
+import time
+import random
 
 import requests
 from django.conf import settings
@@ -484,6 +486,7 @@ def call_gemini_api(prompt: str, api_key: str, *, model: str | None = None, time
         raise ResumeAIError('Gemini API key is not configured.')
     model_name = model or getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash-latest')
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+    # Prepare payload
     payload = {
         'contents': [
             {
@@ -498,12 +501,41 @@ def call_gemini_api(prompt: str, api_key: str, *, model: str | None = None, time
             'maxOutputTokens': 8192,  # Increased to handle multiple variations with full content
         },
     }
-    try:
-        response = requests.post(endpoint, params={'key': api_key}, json=payload, timeout=timeout)
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        logger.error('Gemini API request failed: %s', exc)
-        raise ResumeAIError('Unable to reach Gemini API. Please try again.') from exc
+
+    # Retry/backoff parameters for transient 5xx errors
+    max_retries = 3
+    base_backoff = 1.0
+
+    last_exc = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            # Avoid logging the API key by not including query params in logs
+            safe_endpoint = endpoint
+            response = requests.post(endpoint, params={'key': api_key}, json=payload, timeout=timeout)
+            # If we get a server error, treat as transient and retry
+            if 500 <= response.status_code < 600:
+                logger.warning('Gemini API server error (status=%s) on attempt %s/%s', response.status_code, attempt, max_retries)
+                last_exc = requests.HTTPError(f'Server error: {response.status_code}')
+                # Backoff before next attempt
+                if attempt < max_retries:
+                    sleep_for = base_backoff * (2 ** (attempt - 1)) * (0.5 + random.random() * 0.5)
+                    time.sleep(sleep_for)
+                    continue
+                else:
+                    # Exhausted retries
+                    response.raise_for_status()
+            response.raise_for_status()
+            break
+        except requests.RequestException as exc:
+            # Treat DNS/network/timeouts or server errors as transient
+            logger.warning('Gemini API request exception on attempt %s/%s: %s', attempt, max_retries, str(exc))
+            last_exc = exc
+            if attempt < max_retries:
+                sleep_for = base_backoff * (2 ** (attempt - 1)) * (0.5 + random.random() * 0.5)
+                time.sleep(sleep_for)
+                continue
+            logger.error('Gemini API request failed after %s attempts: %s', max_retries, str(last_exc))
+            raise ResumeAIError('Gemini service unavailable. Please try again later.') from exc
 
     data = response.json()
     
@@ -512,7 +544,7 @@ def call_gemini_api(prompt: str, api_key: str, *, model: str | None = None, time
         feedback = data['promptFeedback']
         block_reason = feedback.get('blockReason')
         if block_reason:
-            logger.error('Gemini blocked request. Reason: %s, Feedback: %s', block_reason, feedback)
+            logger.error('Gemini blocked request. Reason: %s', block_reason)
             raise ResumeAIError(f'Content was blocked by Gemini: {block_reason}. Please try with different job or profile data.')
     
     candidates = data.get('candidates') or []
