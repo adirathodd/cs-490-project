@@ -9,8 +9,9 @@ from django.contrib.auth.password_validation import validate_password
 from core.models import (
     CandidateProfile, Skill, CandidateSkill, Education, Certification, 
     Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory, 
-    CoverLetterTemplate, InterviewSchedule, InterviewPreparationTask
-), ResumeVersion, ResumeVersionChange
+    CoverLetterTemplate, InterviewSchedule, InterviewPreparationTask,
+    ResumeVersion, ResumeVersionChange
+)
 
 class CoverLetterTemplateSerializer(serializers.ModelSerializer):
     class Meta:
