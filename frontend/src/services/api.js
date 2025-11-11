@@ -1499,3 +1499,150 @@ try {
 } catch (e) {
   // ignore any errors during best-effort compatibility wiring
 }
+
+
+// UC-052: Resume Version Management API calls
+export const resumeVersionAPI = {
+  // List all resume versions
+  listVersions: async (includeArchived = false) => {
+    try {
+      const response = await api.get('/resume-versions/', {
+        params: { include_archived: includeArchived }
+      });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch resume versions' };
+    }
+  },
+
+  // Get a specific version
+  getVersion: async (versionId) => {
+    try {
+      const response = await api.get(`/resume-versions/${versionId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch resume version' };
+    }
+  },
+
+  // Create a new version
+  createVersion: async (versionData) => {
+    try {
+      const response = await api.post('/resume-versions/', versionData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to create resume version' };
+    }
+  },
+
+  // Update a version
+  updateVersion: async (versionId, versionData) => {
+    try {
+      const response = await api.put(`/resume-versions/${versionId}/`, versionData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update resume version' };
+    }
+  },
+
+  // Delete a version
+  deleteVersion: async (versionId) => {
+    try {
+      const response = await api.delete(`/resume-versions/${versionId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete resume version' };
+    }
+  },
+
+  // Set as default version
+  setDefault: async (versionId) => {
+    try {
+      const response = await api.post(`/resume-versions/${versionId}/set-default/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to set default version' };
+    }
+  },
+
+  // Archive a version
+  archiveVersion: async (versionId) => {
+    try {
+      const response = await api.post(`/resume-versions/${versionId}/archive/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to archive version' };
+    }
+  },
+
+  // Restore an archived version
+  restoreVersion: async (versionId) => {
+    try {
+      const response = await api.post(`/resume-versions/${versionId}/restore/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to restore version' };
+    }
+  },
+
+  // Duplicate a version
+  duplicateVersion: async (versionId, newVersionName) => {
+    try {
+      const response = await api.post(`/resume-versions/${versionId}/duplicate/`, {
+        new_version_name: newVersionName
+      });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to duplicate version' };
+    }
+  },
+
+  // Compare two versions
+  compareVersions: async (version1Id, version2Id) => {
+    try {
+      const response = await api.post('/resume-versions/compare/', {
+        version1_id: version1Id,
+        version2_id: version2Id
+      });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to compare versions' };
+    }
+  },
+
+  // Merge versions
+  mergeVersions: async (sourceVersionId, targetVersionId, mergeFields = [], createNew = false, newVersionName = null) => {
+    try {
+      const response = await api.post('/resume-versions/merge/', {
+        source_version_id: sourceVersionId,
+        target_version_id: targetVersionId,
+        merge_fields: mergeFields,
+        create_new: createNew,
+        new_version_name: newVersionName
+      });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to merge versions' };
+    }
+  },
+
+  // Get version history
+  getVersionHistory: async (versionId) => {
+    try {
+      const response = await api.get(`/resume-versions/${versionId}/history/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch version history' };
+    }
+  }
+};
+
+// Export for module compatibility
+try {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports.resumeVersionAPI = resumeVersionAPI;
+  }
+} catch (e) {
+  // ignore
+}
+

@@ -48,6 +48,15 @@ import {
   FaKeyboard,
   FaFont,
   FaChartBar,
+  FaStar,
+  FaCopy,
+  FaCodeBranch,
+  FaRandom,
+  FaArrowLeft,
+  FaArrowRight,
+  FaSave,
+  FaClock,
+  FaLayerGroup,
 } from 'react-icons/fa';
 
 // Simple, centralized Icon wrapper used across the app.
@@ -95,10 +104,12 @@ const iconMap = {
   chevronUp: FaChevronUp,
   archive: FaArchive,
   restore: FaHistory,
+  history: FaHistory,
   file: FaFile,
   'file-text': FaFileAlt,
   filter: FaFilter,
   sparkles: FaMagic,
+  stars: FaMagic,
   refresh: FaSyncAlt,
   clipboard: FaClipboard,
   check: FaCheck,
@@ -115,6 +126,18 @@ const iconMap = {
   'thumbs-up': FaThumbsUp,
   type: FaKeyboard,
   'bar-chart': FaChartBar,
+  star: FaStar,
+  copy: FaCopy,
+  gitBranch: FaCodeBranch,
+  gitMerge: FaRandom,
+  compare: FaRandom,
+  rotateLeft: FaArrowLeft,
+  arrowRight: FaArrowRight,
+  arrowLeft: FaArrowLeft,
+  save: FaSave,
+  clock: FaClock,
+  layers: FaLayerGroup,
+  loader: FaSpinner,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {

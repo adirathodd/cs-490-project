@@ -28,8 +28,12 @@ from core.serializers import (
     WorkExperienceSerializer,
     JobEntrySerializer,
     CoverLetterTemplateSerializer,
+    ResumeVersionSerializer,
+    ResumeVersionListSerializer,
+    ResumeVersionCompareSerializer,
+    ResumeVersionMergeSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate, ResumeVersion
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def cover_letter_template_list_create(request):
@@ -7567,3 +7571,407 @@ def generate_preparation_tasks(interview):
             interview=interview,
             **task_data
         )
+
+# UC-052: Resume Version Management Views
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def resume_versions_list_create(request):
+    """
+    GET: List all resume versions for the current user
+    POST: Create a new resume version
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        # Filter options
+        include_archived = request.query_params.get('include_archived', 'false').lower() == 'true'
+        
+        versions = ResumeVersion.objects.filter(candidate=profile)
+        if not include_archived:
+            versions = versions.filter(is_archived=False)
+        
+        serializer = ResumeVersionListSerializer(versions, many=True)
+        return Response({
+            'versions': serializer.data,
+            'count': versions.count()
+        })
+    
+    elif request.method == 'POST':
+        serializer = ResumeVersionSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(candidate=profile)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def resume_version_detail(request, version_id):
+    """
+    GET: Retrieve a specific resume version
+    PUT: Update a resume version
+    DELETE: Delete or archive a resume version
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        serializer = ResumeVersionSerializer(version)
+        return Response(serializer.data)
+    
+    elif request.method == 'PUT':
+        serializer = ResumeVersionSerializer(version, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        # Check if this is the default version
+        if version.is_default and ResumeVersion.objects.filter(candidate=profile, is_archived=False).count() > 1:
+            return Response({
+                'error': 'Cannot delete the default version. Please set another version as default first.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        version.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_set_default(request, version_id):
+    """
+    POST: Set a resume version as the default/master version
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Set as default (model save will handle unsetting others)
+    version.is_default = True
+    version.save()
+    
+    serializer = ResumeVersionSerializer(version)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_archive(request, version_id):
+    """
+    POST: Archive a resume version
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Cannot archive the default version
+    if version.is_default:
+        return Response({
+            'error': 'Cannot archive the default version. Please set another version as default first.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    version.is_archived = True
+    version.save()
+    
+    serializer = ResumeVersionSerializer(version)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_restore(request, version_id):
+    """
+    POST: Restore an archived resume version
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    version.is_archived = False
+    version.save()
+    
+    serializer = ResumeVersionSerializer(version)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_compare(request):
+    """
+    POST: Compare two resume versions side-by-side
+    Expects: version1_id, version2_id
+    Returns: Structured diff highlighting differences
+    """
+    serializer = ResumeVersionCompareSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version1 = ResumeVersion.objects.get(
+            id=serializer.validated_data['version1_id'],
+            candidate=profile
+        )
+        version2 = ResumeVersion.objects.get(
+            id=serializer.validated_data['version2_id'],
+            candidate=profile
+        )
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'One or both resume versions not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Simple comparison of content fields
+    import json
+    
+    def deep_diff(obj1, obj2, path=""):
+        """Recursively find differences between two objects"""
+        differences = []
+        
+        if type(obj1) != type(obj2):
+            differences.append({
+                'path': path,
+                'type': 'type_change',
+                'version1': str(obj1),
+                'version2': str(obj2)
+            })
+            return differences
+        
+        if isinstance(obj1, dict):
+            all_keys = set(obj1.keys()) | set(obj2.keys())
+            for key in all_keys:
+                new_path = f"{path}.{key}" if path else key
+                if key not in obj1:
+                    differences.append({
+                        'path': new_path,
+                        'type': 'added',
+                        'version2': obj2[key]
+                    })
+                elif key not in obj2:
+                    differences.append({
+                        'path': new_path,
+                        'type': 'removed',
+                        'version1': obj1[key]
+                    })
+                else:
+                    differences.extend(deep_diff(obj1[key], obj2[key], new_path))
+        elif isinstance(obj1, list):
+            max_len = max(len(obj1), len(obj2))
+            for i in range(max_len):
+                new_path = f"{path}[{i}]"
+                if i >= len(obj1):
+                    differences.append({
+                        'path': new_path,
+                        'type': 'added',
+                        'version2': obj2[i]
+                    })
+                elif i >= len(obj2):
+                    differences.append({
+                        'path': new_path,
+                        'type': 'removed',
+                        'version1': obj1[i]
+                    })
+                else:
+                    differences.extend(deep_diff(obj1[i], obj2[i], new_path))
+        elif obj1 != obj2:
+            differences.append({
+                'path': path,
+                'type': 'changed',
+                'version1': obj1,
+                'version2': obj2
+            })
+        
+        return differences
+    
+    content_diff = deep_diff(version1.content, version2.content)
+    
+    return Response({
+        'version1': ResumeVersionSerializer(version1).data,
+        'version2': ResumeVersionSerializer(version2).data,
+        'differences': content_diff,
+        'diff_count': len(content_diff)
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_merge(request):
+    """
+    POST: Merge changes from one version into another
+    Expects: source_version_id, target_version_id, merge_fields (optional), create_new, new_version_name
+    """
+    serializer = ResumeVersionMergeSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        source = ResumeVersion.objects.get(
+            id=serializer.validated_data['source_version_id'],
+            candidate=profile
+        )
+        target = ResumeVersion.objects.get(
+            id=serializer.validated_data['target_version_id'],
+            candidate=profile
+        )
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'One or both resume versions not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    import copy
+    
+    merge_fields = serializer.validated_data.get('merge_fields', [])
+    create_new = serializer.validated_data.get('create_new', False)
+    new_version_name = serializer.validated_data.get('new_version_name')
+    
+    # Create merged content
+    merged_content = copy.deepcopy(target.content)
+    
+    if merge_fields:
+        # Merge specific fields
+        for field_path in merge_fields:
+            keys = field_path.split('.')
+            # Navigate to the field in source and copy to merged
+            source_val = source.content
+            target_val = merged_content
+            
+            for key in keys[:-1]:
+                if isinstance(source_val, dict) and key in source_val:
+                    source_val = source_val[key]
+                    if key not in target_val:
+                        target_val[key] = {}
+                    target_val = target_val[key]
+                else:
+                    break
+            
+            # Set the final value
+            if isinstance(target_val, dict) and keys[-1] in source_val:
+                target_val[keys[-1]] = source_val[keys[-1]]
+    else:
+        # Merge all fields from source
+        merged_content = copy.deepcopy(source.content)
+    
+    if create_new:
+        # Create new version with merged content
+        if not new_version_name:
+            return Response({
+                'error': 'new_version_name is required when create_new is True'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        new_version = ResumeVersion.objects.create(
+            candidate=profile,
+            version_name=new_version_name,
+            description=f"Merged from '{source.version_name}' and '{target.version_name}'",
+            content=merged_content,
+            latex_content=source.latex_content if source.latex_content else target.latex_content,
+            created_from=target,
+            generated_by_ai=False
+        )
+        serializer = ResumeVersionSerializer(new_version)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    else:
+        # Update target version
+        target.content = merged_content
+        target.save()
+        serializer = ResumeVersionSerializer(target)
+        return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_duplicate(request, version_id):
+    """
+    POST: Create a duplicate of an existing resume version
+    Expects: new_version_name (optional)
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        original = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    new_name = request.data.get('new_version_name', f"{original.version_name} (Copy)")
+    
+    import copy
+    
+    # Create duplicate
+    duplicate = ResumeVersion.objects.create(
+        candidate=profile,
+        version_name=new_name,
+        description=original.description,
+        content=copy.deepcopy(original.content),
+        latex_content=original.latex_content,
+        source_job=original.source_job,
+        created_from=original,
+        generated_by_ai=original.generated_by_ai,
+        generation_params=copy.deepcopy(original.generation_params)
+    )
+    
+    serializer = ResumeVersionSerializer(duplicate)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def resume_version_history(request, version_id):
+    """
+    GET: Get the history and lineage of a resume version
+    Shows parent and child versions, plus all edits/changes
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except (ResumeVersion.DoesNotExist, ValueError):
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Get parent chain
+    parents = []
+    current = version.created_from
+    while current:
+        parents.append(ResumeVersionListSerializer(current).data)
+        current = current.created_from
+    
+    # Get children
+    children = ResumeVersion.objects.filter(created_from=version)
+    children_data = ResumeVersionListSerializer(children, many=True).data
+    
+    # Get change history for this version
+    from .serializers import ResumeVersionChangeSerializer
+    changes = version.change_history.all()
+    changes_data = ResumeVersionChangeSerializer(changes, many=True).data
+    
+    return Response({
+        'version': ResumeVersionSerializer(version).data,
+        'parents': parents,
+        'children': children_data,
+        'changes': changes_data
+    })
+
+
