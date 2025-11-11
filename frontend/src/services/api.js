@@ -1411,6 +1411,80 @@ export const resumeExportAPI = {
   },
 };
 
+// UC-061: Cover Letter Export API
+export const coverLetterExportAPI = {
+  getThemes: async () => {
+    try {
+      const response = await api.get('/cover-letter/export/themes');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { code: 'fetch_failed', message: 'Failed to fetch themes' };
+    }
+  },
+
+  // Export AI-generated cover letter with custom options
+  exportAICoverLetter: async (latexContent, format, theme = 'professional', watermark = '', filename = '', profileData = null, jobData = null) => {
+    try {
+      const response = await api.post('/cover-letter/export/ai', {
+        latex_content: latexContent,
+        format,
+        theme,
+        watermark,
+        filename,
+        profile_data: profileData,
+        job_data: jobData
+      }, {
+        responseType: 'blob', // Important for file downloads
+      });
+
+      // Create a download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+
+      // Extract filename from Content-Disposition header or use default
+      const contentDisposition = response.headers['content-disposition'];
+      let downloadFilename = `cover_letter.${format}`;
+      if (contentDisposition) {
+        // Try multiple patterns to extract filename
+        const patterns = [
+          /filename\*=UTF-8''([^;]+)/,  // RFC 5987 format
+          /filename="([^"]+)"/,           // Quoted filename
+          /filename=([^;]+)/              // Unquoted filename
+        ];
+        
+        for (const pattern of patterns) {
+          const match = contentDisposition.match(pattern);
+          if (match && match[1]) {
+            downloadFilename = decodeURIComponent(match[1].trim());
+            break;
+          }
+        }
+      }
+
+      link.setAttribute('download', downloadFilename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      return { success: true, filename: downloadFilename };
+    } catch (error) {
+      // For blob responses, error.response.data is a Blob, need to parse it
+      if (error.response?.data instanceof Blob) {
+        const text = await error.response.data.text();
+        try {
+          const errorData = JSON.parse(text);
+          throw errorData.error || { code: 'export_failed', message: 'Export failed' };
+        } catch {
+          throw { code: 'export_failed', message: 'Export failed' };
+        }
+      }
+      throw error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+    }
+  },
+};
+
 // Provide a forgiving default export that supports both
 // - `import authAPI from './services/api'` (legacy/default import)
 // - `import { authAPI } from './services/api'` (named import)
@@ -1430,6 +1504,7 @@ const _defaultExport = {
   materialsAPI,
   resumeAIAPI,
   resumeExportAPI,
+  coverLetterExportAPI,
   interviewsAPI,
 };
 
@@ -1448,6 +1523,7 @@ try {
     module.exports.salaryAPI = salaryAPI;
     module.exports.resumeAIAPI = resumeAIAPI;
     module.exports.resumeExportAPI = resumeExportAPI;
+    module.exports.coverLetterExportAPI = coverLetterExportAPI;
     module.exports.interviewsAPI = interviewsAPI;
   }
 } catch (e) {
@@ -1484,6 +1560,7 @@ try {
     _defaultExport.salaryAPI = salaryAPI;
     _defaultExport.resumeAIAPI = resumeAIAPI;
     _defaultExport.resumeExportAPI = resumeExportAPI;
+    _defaultExport.coverLetterExportAPI = coverLetterExportAPI;
     _defaultExport.interviewsAPI = interviewsAPI;
   }
   if (typeof module !== 'undefined' && module && module.exports) {
@@ -1494,6 +1571,7 @@ try {
     module.exports.salaryAPI = salaryAPI;
     module.exports.resumeAIAPI = resumeAIAPI;
     module.exports.resumeExportAPI = resumeExportAPI;
+    module.exports.coverLetterExportAPI = coverLetterExportAPI;
     module.exports.interviewsAPI = interviewsAPI;
   }
 } catch (e) {
