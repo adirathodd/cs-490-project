@@ -127,6 +127,8 @@ urlpatterns = [
     # UC-056: AI cover letter generation
     path('jobs/<int:job_id>/cover-letter/generate', views.generate_cover_letter_for_job, name='job-cover-letter-generate'),
     path('cover-letter/compile-latex/', views.compile_latex_to_pdf, name='cover-letter-compile-latex-to-pdf'),
+    # UC-069: Application package generation
+    path('jobs/<int:job_id>/generate-package/', views.generate_application_package, name='job-generate-package'),
     # UC-061: Cover letter export
     path('cover-letter/export-docx/', views.export_cover_letter_docx, name='cover-letter-export-docx'),
     
@@ -177,4 +179,12 @@ urlpatterns = [
     path('resume-versions/<uuid:version_id>/history/', views.resume_version_history, name='resume-version-history'),
     path('resume-versions/compare/', views.resume_version_compare, name='resume-version-compare'),
     path('resume-versions/merge/', views.resume_version_merge, name='resume-version-merge'),
+    
+    # UC-069: Application Workflow Automation endpoints
+    path('automation/rules/', views.automation_rules_list_create, name='automation-rules-list-create'),
+    path('automation/rules/<uuid:rule_id>/', views.automation_rule_detail, name='automation-rule-detail'),
+    path('automation/rules/<uuid:rule_id>/trigger/', views.trigger_automation_rule, name='trigger-automation-rule'),
+    path('automation/logs/', views.automation_logs, name='automation-logs'),
+    path('automation/packages/', views.application_packages_list, name='application-packages-list'),
+    path('automation/scheduled-submissions/', views.automation_logs, name='automation-scheduled-submissions'),
 ]

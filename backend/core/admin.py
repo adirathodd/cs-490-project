@@ -16,7 +16,9 @@ from .models import (
     # Analytics models
     UserActivity, PerformanceMetric, SuccessPattern, MarketIntelligence,
     # AI & Automation
-    AIGenerationLog, AutomationRule,
+    AIGenerationLog,
+    # UC-069: Automation models
+    ApplicationAutomationRule, ApplicationPackage,
     # Notifications
     Reminder, Notification,
     # Projects
@@ -239,11 +241,12 @@ class AIGenerationLogAdmin(admin.ModelAdmin):
     search_fields = ['candidate__user__username', 'content_type']
 
 
-@admin.register(AutomationRule)
-class AutomationRuleAdmin(admin.ModelAdmin):
-    list_display = ['candidate', 'rule_name', 'trigger_event', 'action_type', 'is_active', 'times_triggered']
-    list_filter = ['trigger_event', 'action_type', 'is_active']
-    search_fields = ['candidate__user__username', 'rule_name']
+@admin.register(ApplicationAutomationRule)
+class ApplicationAutomationRuleAdmin(admin.ModelAdmin):
+    list_display = ['candidate', 'name', 'trigger_type', 'action_type', 'is_active', 'trigger_count']
+    list_filter = ['trigger_type', 'action_type', 'is_active']
+    search_fields = ['candidate__user__username', 'name', 'description']
+    readonly_fields = ['trigger_count', 'last_triggered_at', 'created_at', 'updated_at']
 
 
 # Notifications
@@ -259,3 +262,15 @@ class NotificationAdmin(admin.ModelAdmin):
     list_display = ['user', 'notification_type', 'title', 'is_read', 'created_at']
     list_filter = ['notification_type', 'is_read', 'created_at']
     search_fields = ['user__username', 'title', 'message']
+
+
+# ======================
+# UC-069: AUTOMATION ADMIN CONFIGURATIONS
+# ======================
+
+@admin.register(ApplicationPackage)
+class ApplicationPackageAdmin(admin.ModelAdmin):
+    list_display = ['candidate', 'job', 'status', 'generation_method', 'created_at']
+    list_filter = ['status', 'created_at']
+    search_fields = ['candidate__user__username', 'job__title', 'job__company_name']
+    readonly_fields = ['created_at', 'updated_at']
