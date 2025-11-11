@@ -1,0 +1,24 @@
+Interview Reminder: {{ job_title }} @ {{ company_name }}
+
+Hi there,
+
+This is a reminder that you have an interview scheduled for tomorrow:
+
+{{ interview_type }} - {{ job_title }}
+Company: {{ company_name }}
+Time: {{ interview_time }}
+Duration: {{ duration }} minutes
+{% if location %}Location: {{ location }}{% endif %}
+{% if meeting_link %}Meeting Link: {{ meeting_link }}{% endif %}
+{% if interviewer_name %}Interviewer: {{ interviewer_name }}{% endif %}
+
+{% if preparation_notes %}Preparation Notes:
+{{ preparation_notes }}
+{% endif %}
+
+View full job details: {{ job_url }}
+
+Good luck with your interview!
+
+Best regards,
+{{ brand }}

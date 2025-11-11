@@ -144,12 +144,28 @@ urlpatterns = [
     path('jobs/<int:job_id>/salary-research/', views.salary_research, name='salary-research'),
     path('jobs/<int:job_id>/salary-research/export/', views.salary_research_export, name='salary-research-export'),
     
+    # UC-060: Grammar and Spell Checking endpoints
+    path('cover-letter/check-grammar/', views.check_grammar, name='check-grammar'),
+    path('cover-letter/apply-grammar-fix/', views.apply_grammar_fix, name='apply-grammar-fix'),
+    
     # UC-068: Interview Insights and Preparation endpoints
     path('jobs/<int:job_id>/interview-insights/', views.job_interview_insights, name='job-interview-insights'),
     
     # UC-066: Skills Gap Analysis endpoints
     path('jobs/<int:job_id>/skills-gap/', views.job_skills_gap, name='job-skills-gap'),
     path('skills/<int:skill_id>/progress/', views.skill_progress, name='skill-progress'),
+    
+    # UC-065: Job Matching Algorithm endpoints
+    path('jobs/<int:job_id>/match-score/', views.job_match_score, name='job-match-score'),
+    path('jobs/match-scores/', views.bulk_job_match_scores, name='bulk-job-match-scores'),
+    
+    # UC-071: Interview Scheduling endpoints
+    path('interviews/', views.interview_list_create, name='interview-list-create'),
+    path('interviews/<int:pk>/', views.interview_detail, name='interview-detail'),
+    path('interviews/<int:pk>/complete/', views.interview_complete, name='interview-complete'),
+    path('interviews/<int:pk>/dismiss-reminder/', views.dismiss_interview_reminder, name='dismiss-interview-reminder'),
+    path('interviews/reminders/', views.active_interview_reminders, name='active-interview-reminders'),
+    path('interviews/tasks/<int:pk>/toggle/', views.toggle_preparation_task, name='toggle-preparation-task'),
     
     # UC-052: Resume Version Management endpoints
     path('resume-versions/', views.resume_versions_list_create, name='resume-versions-list-create'),

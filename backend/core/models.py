@@ -1365,6 +1365,336 @@ class SkillDevelopmentProgress(models.Model):
         return f"{self.candidate.user.username} - {self.skill.name} ({self.activity_type})"
 
 
+class JobMatchAnalysis(models.Model):
+    """Store job matching analysis results with scores and breakdowns.
+    
+    Provides comprehensive match scoring for UC-065 Job Matching Algorithm:
+    - Overall match score (0-100)
+    - Component scores (skills, experience, education) 
+    - Detailed match breakdown and recommendations
+    - Personalized scoring weights
+    - Historical tracking capabilities
+    """
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='match_analysis')
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name='job_matches')
+    
+    # Overall match score (0-100)
+    overall_score = models.DecimalField(max_digits=5, decimal_places=2)
+    
+    # Component scores (0-100 each)
+    skills_score = models.DecimalField(max_digits=5, decimal_places=2)
+    experience_score = models.DecimalField(max_digits=5, decimal_places=2)
+    education_score = models.DecimalField(max_digits=5, decimal_places=2)
+    
+    # Detailed match breakdown
+    match_data = models.JSONField(help_text="Detailed analysis including strengths, gaps, and recommendations")
+    
+    # Personalized scoring weights
+    user_weights = models.JSONField(
+        default=dict, 
+        help_text="Custom category weights (skills, experience, education)"
+    )
+    
+    # Metadata
+    generated_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_valid = models.BooleanField(default=True, help_text="False if analysis is outdated due to profile changes")
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['candidate', '-overall_score']),
+            models.Index(fields=['job', '-overall_score']),
+            models.Index(fields=['candidate', '-generated_at']),
+            models.Index(fields=['-overall_score']),
+        ]
+        ordering = ['-overall_score', '-generated_at']
+        unique_together = ['job', 'candidate']
+    
+    def __str__(self):
+        return f"{self.candidate.user.username} - {self.job.title} at {self.job.company_name} ({self.overall_score}%)"
+    
+    def invalidate(self):
+        """Mark analysis as invalid when profile or job changes."""
+        self.is_valid = False
+        self.save(update_fields=['is_valid'])
+    
+    @property
+    def match_grade(self):
+        """Return letter grade based on overall score."""
+        if self.overall_score >= 90:
+            return 'A+'
+        elif self.overall_score >= 85:
+            return 'A'
+        elif self.overall_score >= 80:
+            return 'B+'
+        elif self.overall_score >= 75:
+            return 'B'
+        elif self.overall_score >= 70:
+            return 'C+'
+        elif self.overall_score >= 65:
+            return 'C'
+        elif self.overall_score >= 60:
+            return 'D+'
+        elif self.overall_score >= 55:
+            return 'D'
+        else:
+            return 'F'
+
+
+class InterviewSchedule(models.Model):
+    """Interview scheduling and tracking for job applications (UC-071).
+    
+    Manages interview scheduling with calendar integration, conflict detection,
+    preparation task generation, and reminder system.
+    """
+    INTERVIEW_TYPES = [
+        ('phone', 'Phone Interview'),
+        ('video', 'Video Interview'),
+        ('in_person', 'In-Person Interview'),
+        ('assessment', 'Technical Assessment'),
+        ('group', 'Group Interview'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('scheduled', 'Scheduled'),
+        ('rescheduled', 'Rescheduled'),
+        ('cancelled', 'Cancelled'),
+        ('completed', 'Completed'),
+        ('no_show', 'No Show'),
+    ]
+    
+    OUTCOME_CHOICES = [
+        ('', 'Not Yet Recorded'),
+        ('excellent', 'Excellent'),
+        ('good', 'Good'),
+        ('average', 'Average'),
+        ('poor', 'Poor'),
+        ('rejected', 'Rejected'),
+        ('withdrew', 'Withdrew Application'),
+    ]
+    
+    # Core relationships
+    job = models.ForeignKey(
+        'JobEntry',
+        on_delete=models.CASCADE,
+        related_name='interviews'
+    )
+    candidate = models.ForeignKey(
+        'CandidateProfile',
+        on_delete=models.CASCADE,
+        related_name='interviews'
+    )
+    
+    # Interview details
+    interview_type = models.CharField(max_length=20, choices=INTERVIEW_TYPES)
+    scheduled_at = models.DateTimeField(db_index=True, help_text="Interview date and time")
+    duration_minutes = models.PositiveIntegerField(default=60, help_text="Expected duration in minutes")
+    
+    # Location/meeting details
+    location = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Physical address for in-person interviews"
+    )
+    meeting_link = models.URLField(
+        max_length=500,
+        blank=True,
+        help_text="Video conference link (Zoom, Teams, etc.)"
+    )
+    interviewer_name = models.CharField(max_length=200, blank=True)
+    interviewer_email = models.EmailField(blank=True)
+    interviewer_phone = models.CharField(max_length=20, blank=True)
+    
+    # Status and outcome
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled')
+    outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES, blank=True, default='')
+    feedback_notes = models.TextField(blank=True, help_text="Post-interview notes and feedback")
+    
+    # Interview preparation
+    preparation_notes = models.TextField(blank=True, help_text="Preparation notes and research")
+    questions_to_ask = models.TextField(blank=True, help_text="Questions prepared for interviewer")
+    
+    # In-app reminder tracking (will appear in calendar/dashboard)
+    show_24h_reminder = models.BooleanField(default=False, help_text="Show 24h reminder in app")
+    show_1h_reminder = models.BooleanField(default=False, help_text="Show 1h reminder in app")
+    reminder_24h_dismissed = models.BooleanField(default=False)
+    reminder_1h_dismissed = models.BooleanField(default=False)
+    
+    # Rescheduling history
+    original_datetime = models.DateTimeField(null=True, blank=True, help_text="Original scheduled time if rescheduled")
+    rescheduled_reason = models.CharField(max_length=500, blank=True)
+    cancelled_reason = models.CharField(max_length=500, blank=True)
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['scheduled_at']
+        indexes = [
+            models.Index(fields=['candidate', 'scheduled_at']),
+            models.Index(fields=['job', 'scheduled_at']),
+            models.Index(fields=['candidate', 'status']),
+            models.Index(fields=['scheduled_at', 'status']),
+            models.Index(fields=['show_24h_reminder', 'show_1h_reminder']),
+        ]
+    
+    def __str__(self):
+        return f"{self.get_interview_type_display()} - {self.job.title} at {self.job.company_name} on {self.scheduled_at.strftime('%Y-%m-%d %H:%M')}"
+    
+    def get_end_time(self):
+        """Calculate interview end time based on duration."""
+        from datetime import timedelta
+        return self.scheduled_at + timedelta(minutes=self.duration_minutes)
+    
+    def has_conflict(self, exclude_self=True):
+        """Check if this interview conflicts with other scheduled interviews.
+        
+        Returns:
+            QuerySet of conflicting InterviewSchedule objects
+        """
+        from datetime import timedelta
+        
+        # Get all interviews for this candidate that aren't cancelled/no-show
+        interviews = InterviewSchedule.objects.filter(
+            candidate=self.candidate,
+            status__in=['scheduled', 'rescheduled']
+        )
+        
+        if exclude_self and self.pk:
+            interviews = interviews.exclude(pk=self.pk)
+        
+        # Check for time overlap
+        start = self.scheduled_at
+        end = self.get_end_time()
+        
+        conflicts = []
+        for interview in interviews:
+            other_start = interview.scheduled_at
+            other_end = interview.get_end_time()
+            
+            # Check if intervals overlap
+            if start < other_end and end > other_start:
+                conflicts.append(interview)
+        
+        return conflicts
+    
+    def mark_completed(self, outcome=None, feedback_notes=None):
+        """Mark interview as completed and optionally record outcome."""
+        self.status = 'completed'
+        if outcome:
+            self.outcome = outcome
+        if feedback_notes:
+            self.feedback_notes = feedback_notes
+        self.save()
+    
+    def reschedule(self, new_datetime, reason=''):
+        """Reschedule interview to new datetime."""
+        if not self.original_datetime:
+            self.original_datetime = self.scheduled_at
+        self.scheduled_at = new_datetime
+        self.status = 'rescheduled'
+        self.rescheduled_reason = reason
+        # Reset reminders
+        self.show_24h_reminder = False
+        self.show_1h_reminder = False
+        self.reminder_24h_dismissed = False
+        self.reminder_1h_dismissed = False
+        self.save()
+    
+    def cancel(self, reason=''):
+        """Cancel the interview."""
+        self.status = 'cancelled'
+        self.cancelled_reason = reason
+        self.save()
+    
+    @property
+    def is_upcoming(self):
+        """Check if interview is in the future."""
+        return self.scheduled_at > timezone.now() and self.status in ['scheduled', 'rescheduled']
+    
+    @property
+    def needs_24h_reminder(self):
+        """Check if 24-hour reminder should be shown in app."""
+        from datetime import timedelta
+        if self.reminder_24h_dismissed or self.status not in ['scheduled', 'rescheduled']:
+            return False
+        time_until = self.scheduled_at - timezone.now()
+        # Show reminder when within 24 hours
+        return timedelta(hours=0) <= time_until <= timedelta(hours=24)
+    
+    @property
+    def needs_1h_reminder(self):
+        """Check if 1-hour reminder should be shown in app."""
+        from datetime import timedelta
+        if self.reminder_1h_dismissed or self.status not in ['scheduled', 'rescheduled']:
+            return False
+        time_until = self.scheduled_at - timezone.now()
+        # Show reminder when within 1 hour
+        return timedelta(minutes=0) <= time_until <= timedelta(hours=1)
+    
+    def update_reminder_flags(self):
+        """Update reminder flags based on time until interview."""
+        if self.needs_24h_reminder:
+            self.show_24h_reminder = True
+        if self.needs_1h_reminder:
+            self.show_1h_reminder = True
+        if self.show_24h_reminder or self.show_1h_reminder:
+            self.save(update_fields=['show_24h_reminder', 'show_1h_reminder'])
+
+
+class InterviewPreparationTask(models.Model):
+    """Auto-generated preparation tasks for interviews (UC-071).
+    
+    When an interview is scheduled, helpful preparation tasks are automatically
+    created to guide the candidate through interview preparation.
+    """
+    TASK_TYPES = [
+        ('research_company', 'Research Company'),
+        ('review_job', 'Review Job Description'),
+        ('prepare_questions', 'Prepare Questions'),
+        ('practice_answers', 'Practice Common Answers'),
+        ('review_resume', 'Review Your Resume'),
+        ('prepare_examples', 'Prepare STAR Examples'),
+        ('research_interviewer', 'Research Interviewer'),
+        ('test_tech', 'Test Technology (for video)'),
+        ('plan_route', 'Plan Route (for in-person)'),
+        ('prepare_materials', 'Prepare Materials'),
+        ('custom', 'Custom Task'),
+    ]
+    
+    interview = models.ForeignKey(
+        'InterviewSchedule',
+        on_delete=models.CASCADE,
+        related_name='preparation_tasks'
+    )
+    task_type = models.CharField(max_length=30, choices=TASK_TYPES)
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    is_completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    order = models.PositiveIntegerField(default=0, help_text="Display order")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['order', 'created_at']
+        indexes = [
+            models.Index(fields=['interview', 'is_completed']),
+        ]
+    
+    def __str__(self):
+        status = "✓" if self.is_completed else "○"
+        return f"{status} {self.title}"
+    
+    def mark_completed(self):
+        """Mark task as completed."""
+        self.is_completed = True
+        self.completed_at = timezone.now()
+        self.save()
+
+
 class ResumeVersion(models.Model):
     """UC-052: Resume Version Management
     

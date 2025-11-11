@@ -3,11 +3,13 @@ Authentication views for Firebase-based user registration and login.
 """
 from rest_framework import status, serializers
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes, authentication_classes
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
+from rest_framework.authentication import SessionAuthentication
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from core.authentication import FirebaseAuthentication
 from core.serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
@@ -5067,6 +5069,45 @@ def generate_cover_letter_for_job(request, job_id):
     job_snapshot = resume_ai.build_job_snapshot(job)
     research_snapshot = cover_letter_ai.build_company_research_snapshot(job.company_name)
 
+    # UC-058: cover letter customization options
+    length = (request.data.get('length') or '').strip().lower() or None
+    writing_style = (request.data.get('writing_style') or '').strip().lower() or None
+    company_culture = (request.data.get('company_culture') or '').strip().lower() or None
+    industry = (request.data.get('industry') or '').strip() or None
+    custom_instructions = (request.data.get('custom_instructions') or '').strip() or None
+
+    # Server-side validation / normalization for UC-058 enumerations
+    allowed_lengths = {'brief', 'standard', 'detailed'}
+    allowed_writing_styles = {'direct', 'narrative', 'bullet_points'}
+    allowed_company_cultures = {'auto', 'startup', 'corporate'}
+
+    # Validate enumerated parameters and return helpful errors if invalid
+    invalid_params = []
+    if length and length not in allowed_lengths:
+        invalid_params.append(f"length must be one of: {', '.join(sorted(allowed_lengths))}")
+    if writing_style and writing_style not in allowed_writing_styles:
+        invalid_params.append(f"writing_style must be one of: {', '.join(sorted(allowed_writing_styles))}")
+    if company_culture and company_culture not in allowed_company_cultures:
+        invalid_params.append(f"company_culture must be one of: {', '.join(sorted(allowed_company_cultures))}")
+
+    if invalid_params:
+        return Response(
+            {
+                'error': {
+                    'code': 'invalid_parameter',
+                    'message': 'Invalid customization options provided.',
+                    'details': invalid_params,
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Truncate free-text inputs to reasonable limits to avoid abuse / accidental huge payloads
+    if industry and len(industry) > 100:
+        industry = industry[:100]
+    if custom_instructions and len(custom_instructions) > 500:
+        custom_instructions = custom_instructions[:500]
+
     try:
         generation = cover_letter_ai.run_cover_letter_generation(
             candidate_snapshot,
@@ -5076,6 +5117,11 @@ def generate_cover_letter_for_job(request, job_id):
             variation_count=variation_count,
             api_key=api_key,
             model=getattr(settings, 'GEMINI_MODEL', None),
+            length=length,
+            writing_style=writing_style,
+            company_culture=company_culture,
+            industry=industry,
+            custom_instructions=custom_instructions,
         )
     except cover_letter_ai.CoverLetterAIError as exc:
         logger.warning('AI cover letter generation failed for job %s: %s', job_id, exc)
@@ -5885,6 +5931,70 @@ def salary_research_export(request, job_id):
         )
 
 
+# ============================================================================
+# UC-060: Grammar and Spell Checking
+# ============================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def check_grammar(request):
+    """
+    Check text for grammar, spelling, and style issues using LanguageTool.
+    
+    Request body:
+        {
+            "text": "Text to check for grammar and spelling issues."
+        }
+    
+    Response:
+        {
+            "issues": [
+                {
+                    "id": "unique_id",
+                    "rule_id": "RULE_NAME",
+                    "message": "Description of the issue",
+                    "context": "...surrounding context...",
+                    "offset": 10,
+                    "length": 5,
+                    "text": "error",
+                    "type": "grammar|spelling|punctuation|style|other",
+                    "category": "Category name",
+                    "replacements": ["fix1", "fix2", "fix3"],
+                    "can_auto_fix": true
+                }
+            ],
+            "text_length": 123,
+            "issue_count": 5
+        }
+    """
+    from core.grammar_check import check_grammar as check_text
+    
+    try:
+        text = request.data.get('text', '')
+        
+        if not text or not text.strip():
+            return Response(
+                {'error': 'Text is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check grammar
+        issues = check_text(text)
+        
+        return Response({
+            'issues': issues,
+            'text_length': len(text),
+            'issue_count': len(issues),
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Grammar check error: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': f'Grammar check failed: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def job_interview_insights(request, job_id):
@@ -5977,6 +6087,55 @@ def job_interview_insights(request, job_id):
         logger.error(f"Error generating interview insights for job {job_id}: {str(e)}\n{traceback.format_exc()}")
         return Response(
             {'error': {'code': 'internal_error', 'message': 'Failed to generate interview insights.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def apply_grammar_fix(request):
+    """
+    Apply a grammar fix to text.
+    
+    Request body:
+        {
+            "text": "Original text",
+            "issue": {
+                "offset": 10,
+                "length": 5,
+                "replacements": ["fix1", "fix2"]
+            },
+            "replacement_index": 0
+        }
+    
+    Response:
+        {
+            "fixed_text": "Text with fix applied"
+        }
+    """
+    from core.grammar_check import apply_suggestion
+    
+    try:
+        text = request.data.get('text', '')
+        issue = request.data.get('issue', {})
+        replacement_index = request.data.get('replacement_index', 0)
+        
+        if not text or not issue:
+            return Response(
+                {'error': 'Text and issue are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        fixed_text = apply_suggestion(text, issue, replacement_index)
+        
+        return Response({
+            'fixed_text': fixed_text
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Apply fix error: {str(e)}")
+        return Response(
+            {'error': f'Failed to apply fix: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -6233,6 +6392,181 @@ def skill_progress(request, skill_id):
         )
 
 
+@api_view(['GET', 'POST'])
+@authentication_classes([SessionAuthentication, FirebaseAuthentication])
+@permission_classes([IsAuthenticated])
+def job_match_score(request, job_id):
+    """
+    UC-065: Job Matching Algorithm
+    
+    GET: Calculate comprehensive match score for a specific job
+    POST: Update user weights and recalculate match score
+    
+    GET Query Parameters:
+    - refresh: Set to 'true' to force regeneration (bypasses cache)
+    
+    POST Body:
+    {
+        "weights": {
+            "skills": 0.6,      // Custom weight for skills (0.0-1.0)
+            "experience": 0.3,  // Custom weight for experience (0.0-1.0)  
+            "education": 0.1    // Custom weight for education (0.0-1.0)
+        }
+    }
+    
+    Returns:
+    - Overall match score (0-100)
+    - Component scores (skills, experience, education)
+    - Detailed breakdown with strengths and gaps
+    - Improvement recommendations
+    - Comparison data and match grade
+    
+    Results are cached for performance optimization.
+    """
+    from core.job_matching import JobMatchingEngine
+    from core.models import JobMatchAnalysis
+    from django.utils import timezone
+    
+    try:
+        # Verify job ownership
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+        
+        if request.method == 'GET':
+            # Check if user wants to force refresh
+            force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+            
+            # Try to get cached analysis first (unless force refresh)
+            if not force_refresh:
+                cached_analysis = JobMatchAnalysis.objects.filter(
+                    job=job,
+                    candidate=profile,
+                    is_valid=True
+                ).first()
+                
+                if cached_analysis:
+                    response_data = {
+                        'overall_score': float(cached_analysis.overall_score),
+                        'skills_score': float(cached_analysis.skills_score),
+                        'experience_score': float(cached_analysis.experience_score),
+                        'education_score': float(cached_analysis.education_score),
+                        'weights_used': cached_analysis.user_weights or JobMatchingEngine.DEFAULT_WEIGHTS,
+                        'breakdown': cached_analysis.match_data.get('breakdown', {}),
+                        'match_grade': cached_analysis.match_grade,
+                        'generated_at': cached_analysis.generated_at.isoformat(),
+                        'cached': True
+                    }
+                    
+                    logger.info(f"Returning cached match analysis for job {job_id}")
+                    return Response(response_data, status=status.HTTP_200_OK)
+            
+            # Generate new analysis
+            logger.info(f"Generating match score analysis for job {job_id}")
+            analysis = JobMatchingEngine.calculate_match_score(job, profile)
+            
+            # Cache the results
+            try:
+                # Invalidate old analysis for this job/candidate pair
+                JobMatchAnalysis.objects.filter(
+                    job=job, 
+                    candidate=profile
+                ).update(is_valid=False)
+                
+                # Create new analysis entry
+                match_analysis = JobMatchAnalysis.objects.create(
+                    job=job,
+                    candidate=profile,
+                    overall_score=analysis['overall_score'],
+                    skills_score=analysis['skills_score'],
+                    experience_score=analysis['experience_score'],
+                    education_score=analysis['education_score'],
+                    match_data={'breakdown': analysis['breakdown']},
+                    user_weights=analysis['weights_used']
+                )
+                
+                analysis['match_grade'] = match_analysis.match_grade
+                analysis['cached'] = False
+                
+                logger.info(f"Cached match analysis for job {job_id}")
+            except Exception as cache_error:
+                logger.warning(f"Failed to cache match analysis: {cache_error}")
+                # Continue anyway - caching failure shouldn't break the response
+                analysis['match_grade'] = 'N/A'
+                analysis['cached'] = False
+            
+            return Response(analysis, status=status.HTTP_200_OK)
+        
+        elif request.method == 'POST':
+            # Update user weights and recalculate
+            data = request.data
+            user_weights = data.get('weights', {})
+            
+            # Validate weights
+            if not isinstance(user_weights, dict):
+                return Response(
+                    {'error': {'code': 'invalid_weights', 'message': 'Weights must be a dictionary.'}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            required_keys = {'skills', 'experience', 'education'}
+            if not required_keys.issubset(user_weights.keys()):
+                return Response(
+                    {'error': {'code': 'missing_weights', 'message': f'Weights must include: {required_keys}'}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Generate analysis with custom weights
+            logger.info(f"Generating custom weighted match analysis for job {job_id}")
+            analysis = JobMatchingEngine.calculate_match_score(job, profile, user_weights)
+            
+            # Update cached analysis with new weights
+            try:
+                # Invalidate old analysis
+                JobMatchAnalysis.objects.filter(
+                    job=job, 
+                    candidate=profile
+                ).update(is_valid=False)
+                
+                # Create new analysis with custom weights
+                match_analysis = JobMatchAnalysis.objects.create(
+                    job=job,
+                    candidate=profile,
+                    overall_score=analysis['overall_score'],
+                    skills_score=analysis['skills_score'],
+                    experience_score=analysis['experience_score'],
+                    education_score=analysis['education_score'],
+                    match_data={'breakdown': analysis['breakdown']},
+                    user_weights=user_weights
+                )
+                
+                analysis['match_grade'] = match_analysis.match_grade
+                analysis['cached'] = False
+                
+                logger.info(f"Updated match analysis with custom weights for job {job_id}")
+            except Exception as cache_error:
+                logger.warning(f"Failed to update cached match analysis: {cache_error}")
+                analysis['match_grade'] = 'N/A'
+                analysis['cached'] = False
+            
+            return Response(analysis, status=status.HTTP_200_OK)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error generating match score for job {job_id}: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to generate match score analysis.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
 # ======================
 # UC-051: RESUME EXPORT ENDPOINTS
 # ======================
@@ -6278,6 +6612,186 @@ def resume_export_themes(request):
 
 
 @api_view(['GET'])
+@authentication_classes([SessionAuthentication, FirebaseAuthentication])
+@permission_classes([IsAuthenticated])
+def bulk_job_match_scores(request):
+    """
+    UC-065: Bulk Job Matching Analysis
+    
+    GET: Calculate match scores for multiple jobs
+    
+    Query Parameters:
+    - job_ids: Comma-separated list of job IDs (optional, defaults to all user jobs)
+    - limit: Maximum number of jobs to analyze (default: 20)
+    - min_score: Minimum match score threshold (0-100)
+    - sort_by: Sort field ('score', 'date', 'title') - default: 'score'
+    - order: Sort order ('asc', 'desc') - default: 'desc'
+    
+    Returns:
+    - Array of jobs with match scores
+    - Summary statistics
+    - Top matched jobs
+    - Performance metrics
+    """
+    from core.job_matching import JobMatchingEngine
+    from core.models import JobMatchAnalysis
+    from django.db.models import Q
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        # Parse query parameters
+        job_ids_param = request.query_params.get('job_ids', '')
+        limit = min(int(request.query_params.get('limit', 20)), 50)  # Cap at 50
+        min_score = float(request.query_params.get('min_score', 0))
+        sort_by = request.query_params.get('sort_by', 'score')
+        order = request.query_params.get('order', 'desc')
+        
+        # Build job query
+        job_query = JobEntry.objects.filter(candidate=profile)
+        
+        if job_ids_param:
+            try:
+                job_ids = [int(id.strip()) for id in job_ids_param.split(',')]
+                job_query = job_query.filter(id__in=job_ids)
+            except ValueError:
+                return Response(
+                    {'error': {'code': 'invalid_job_ids', 'message': 'Invalid job IDs format.'}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        jobs = job_query[:limit]
+        
+        if not jobs:
+            return Response({
+                'jobs': [],
+                'summary': {
+                    'total_analyzed': 0,
+                    'average_score': 0,
+                    'top_score': 0,
+                    'jobs_above_threshold': 0
+                }
+            }, status=status.HTTP_200_OK)
+        
+        # Calculate match scores for all jobs
+        logger.info(f"Analyzing {len(jobs)} jobs for bulk match scoring")
+        
+        job_scores = []
+        total_score = 0
+        top_score = 0
+        above_threshold = 0
+        
+        for job in jobs:
+            try:
+                # Try to get cached analysis first
+                cached_analysis = JobMatchAnalysis.objects.filter(
+                    job=job,
+                    candidate=profile,
+                    is_valid=True
+                ).first()
+                
+                if cached_analysis:
+                    score_data = {
+                        'job_id': job.id,
+                        'title': job.title,
+                        'company_name': job.company_name,
+                        'overall_score': float(cached_analysis.overall_score),
+                        'skills_score': float(cached_analysis.skills_score),
+                        'experience_score': float(cached_analysis.experience_score),
+                        'education_score': float(cached_analysis.education_score),
+                        'match_grade': cached_analysis.match_grade,
+                        'generated_at': cached_analysis.generated_at.isoformat(),
+                        'cached': True
+                    }
+                else:
+                    # Generate new analysis
+                    analysis = JobMatchingEngine.calculate_match_score(job, profile)
+                    
+                    score_data = {
+                        'job_id': job.id,
+                        'title': job.title,
+                        'company_name': job.company_name,
+                        'overall_score': analysis['overall_score'],
+                        'skills_score': analysis['skills_score'],
+                        'experience_score': analysis['experience_score'],
+                        'education_score': analysis['education_score'],
+                        'match_grade': 'N/A',  # Will be set if cached
+                        'generated_at': analysis['generated_at'],
+                        'cached': False
+                    }
+                    
+                    # Try to cache the result
+                    try:
+                        match_analysis = JobMatchAnalysis.objects.create(
+                            job=job,
+                            candidate=profile,
+                            overall_score=analysis['overall_score'],
+                            skills_score=analysis['skills_score'],
+                            experience_score=analysis['experience_score'],
+                            education_score=analysis['education_score'],
+                            match_data={'breakdown': analysis['breakdown']},
+                            user_weights=analysis['weights_used']
+                        )
+                        score_data['match_grade'] = match_analysis.match_grade
+                    except:
+                        pass  # Don't fail on cache errors
+                
+                # Apply minimum score filter
+                if score_data['overall_score'] >= min_score:
+                    job_scores.append(score_data)
+                    total_score += score_data['overall_score']
+                    top_score = max(top_score, score_data['overall_score'])
+                    above_threshold += 1
+                
+            except Exception as job_error:
+                logger.warning(f"Failed to analyze job {job.id}: {job_error}")
+                continue
+        
+        # Sort results
+        reverse_order = (order.lower() == 'desc')
+        
+        if sort_by == 'score':
+            job_scores.sort(key=lambda x: x['overall_score'], reverse=reverse_order)
+        elif sort_by == 'date':
+            job_scores.sort(key=lambda x: x['generated_at'], reverse=reverse_order)
+        elif sort_by == 'title':
+            job_scores.sort(key=lambda x: x['title'].lower(), reverse=reverse_order)
+        
+        # Calculate summary statistics
+        summary = {
+            'total_analyzed': len(job_scores),
+            'average_score': round(total_score / len(job_scores), 2) if job_scores else 0,
+            'top_score': top_score,
+            'jobs_above_threshold': above_threshold
+        }
+        
+        return Response({
+            'jobs': job_scores,
+            'summary': summary,
+            'filters_applied': {
+                'min_score': min_score,
+                'limit': limit,
+                'sort_by': sort_by,
+                'order': order
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except ValueError as ve:
+        return Response(
+            {'error': {'code': 'invalid_parameters', 'message': str(ve)}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except Exception as e:
+        logger.error(f"Error in bulk job match analysis: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to generate bulk match analysis.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 @permission_classes([IsAuthenticated])
 def resume_export(request):
     """
@@ -6718,6 +7232,345 @@ def extract_profile_from_latex(latex_content):
     
     return profile
 
+
+# ============================================
+# UC-071: Interview Scheduling Views
+# ============================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def interview_list_create(request):
+    """
+    GET: List all interviews for the authenticated user
+    POST: Schedule a new interview
+    """
+    from core.serializers import InterviewScheduleSerializer
+    from core.models import InterviewSchedule, InterviewPreparationTask, JobEntry
+    
+    candidate = request.user.profile
+    
+    if request.method == 'GET':
+        # Get filter parameters
+        job_id = request.query_params.get('job')
+        status_filter = request.query_params.get('status')
+        upcoming_only = request.query_params.get('upcoming') == 'true'
+        
+        interviews = InterviewSchedule.objects.filter(candidate=candidate)
+        
+        if job_id:
+            interviews = interviews.filter(job_id=job_id)
+        
+        if status_filter:
+            interviews = interviews.filter(status=status_filter)
+        
+        if upcoming_only:
+            from django.utils import timezone
+            interviews = interviews.filter(
+                scheduled_at__gte=timezone.now(),
+                status__in=['scheduled', 'rescheduled']
+            )
+        
+        # Update reminder flags for all upcoming interviews
+        for interview in interviews:
+            if interview.is_upcoming:
+                interview.update_reminder_flags()
+        
+        serializer = InterviewScheduleSerializer(interviews, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        # Schedule new interview
+        data = request.data.copy()
+        
+        # Set candidate from authenticated user
+        data['candidate'] = candidate.id
+        
+        # Validate job belongs to user
+        job_id = data.get('job')
+        try:
+            job = JobEntry.objects.get(id=job_id, candidate=candidate)
+        except JobEntry.DoesNotExist:
+            return Response(
+                {'error': 'Job not found or does not belong to you'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = InterviewScheduleSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            interview = serializer.save(candidate=candidate)
+            
+            # Auto-generate preparation tasks
+            generate_preparation_tasks(interview)
+            
+            # Update reminder flags
+            interview.update_reminder_flags()
+            
+            # Return with tasks
+            response_serializer = InterviewScheduleSerializer(interview)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def interview_detail(request, pk):
+    """
+    GET: Retrieve interview details
+    PUT: Update interview (including reschedule)
+    DELETE: Cancel interview
+    """
+    from core.serializers import InterviewScheduleSerializer
+    from core.models import InterviewSchedule
+    
+    try:
+        interview = InterviewSchedule.objects.get(pk=pk, candidate=request.user.profile)
+    except InterviewSchedule.DoesNotExist:
+        return Response(
+            {'error': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == 'GET':
+        # Update reminder flags
+        if interview.is_upcoming:
+            interview.update_reminder_flags()
+        
+        serializer = InterviewScheduleSerializer(interview)
+        return Response(serializer.data)
+    
+    elif request.method == 'PUT':
+        # Check if this is a reschedule (scheduled_at changed)
+        old_datetime = interview.scheduled_at
+        
+        serializer = InterviewScheduleSerializer(
+            interview,
+            data=request.data,
+            partial=True,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            new_datetime = serializer.validated_data.get('scheduled_at')
+            
+            # Handle rescheduling
+            if new_datetime and new_datetime != old_datetime:
+                reason = request.data.get('rescheduled_reason', '')
+                interview.reschedule(new_datetime, reason)
+                # Still update other fields
+                for key, value in serializer.validated_data.items():
+                    if key != 'scheduled_at':
+                        setattr(interview, key, value)
+                interview.save()
+            else:
+                serializer.save()
+            
+            # Update reminder flags
+            interview.update_reminder_flags()
+            
+            response_serializer = InterviewScheduleSerializer(interview)
+            return Response(response_serializer.data)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        # Actually delete the interview record
+        interview.delete()
+        return Response(
+            {'message': 'Interview deleted successfully'},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def interview_complete(request, pk):
+    """Mark interview as completed and record outcome."""
+    from core.models import InterviewSchedule
+    
+    try:
+        interview = InterviewSchedule.objects.get(pk=pk, candidate=request.user.profile)
+    except InterviewSchedule.DoesNotExist:
+        return Response(
+            {'error': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    outcome = request.data.get('outcome')
+    feedback_notes = request.data.get('feedback_notes', '')
+    
+    if not outcome:
+        return Response(
+            {'error': 'Outcome is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    interview.mark_completed(outcome=outcome, feedback_notes=feedback_notes)
+    
+    from core.serializers import InterviewScheduleSerializer
+    serializer = InterviewScheduleSerializer(interview)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def dismiss_interview_reminder(request, pk):
+    """Dismiss interview reminder notification."""
+    from core.models import InterviewSchedule
+    
+    try:
+        interview = InterviewSchedule.objects.get(pk=pk, candidate=request.user.profile)
+    except InterviewSchedule.DoesNotExist:
+        return Response(
+            {'error': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    reminder_type = request.data.get('reminder_type')  # '24h' or '1h'
+    
+    if reminder_type == '24h':
+        interview.reminder_24h_dismissed = True
+        interview.show_24h_reminder = False
+    elif reminder_type == '1h':
+        interview.reminder_1h_dismissed = True
+        interview.show_1h_reminder = False
+    else:
+        return Response(
+            {'error': 'Invalid reminder_type. Must be "24h" or "1h"'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    interview.save()
+    return Response({'message': 'Reminder dismissed'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def active_interview_reminders(request):
+    """Get all active interview reminders for the user."""
+    from core.models import InterviewSchedule
+    from core.serializers import InterviewScheduleSerializer
+    from django.utils import timezone
+    
+    candidate = request.user.profile
+    
+    # Get upcoming interviews
+    upcoming_interviews = InterviewSchedule.objects.filter(
+        candidate=candidate,
+        scheduled_at__gte=timezone.now(),
+        status__in=['scheduled', 'rescheduled']
+    )
+    
+    # Update reminder flags
+    for interview in upcoming_interviews:
+        interview.update_reminder_flags()
+    
+    # Get interviews with active reminders
+    active_reminders = upcoming_interviews.filter(
+        models.Q(show_24h_reminder=True, reminder_24h_dismissed=False) |
+        models.Q(show_1h_reminder=True, reminder_1h_dismissed=False)
+    )
+    
+    serializer = InterviewScheduleSerializer(active_reminders, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def toggle_preparation_task(request, pk):
+    """Toggle completion status of a preparation task."""
+    from core.models import InterviewPreparationTask
+    
+    try:
+        task = InterviewPreparationTask.objects.get(
+            pk=pk,
+            interview__candidate=request.user.profile
+        )
+    except InterviewPreparationTask.DoesNotExist:
+        return Response(
+            {'error': 'Task not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if task.is_completed:
+        task.is_completed = False
+        task.completed_at = None
+    else:
+        task.mark_completed()
+    
+    task.save()
+    
+    from core.serializers import InterviewPreparationTaskSerializer
+    serializer = InterviewPreparationTaskSerializer(task)
+    return Response(serializer.data)
+
+
+def generate_preparation_tasks(interview):
+    """Auto-generate preparation tasks for an interview."""
+    from core.models import InterviewPreparationTask
+    
+    tasks_config = [
+        {
+            'task_type': 'research_company',
+            'title': f'Research {interview.job.company_name}',
+            'description': 'Learn about the company\'s mission, values, recent news, and culture. Check their website, LinkedIn, and recent press releases.',
+            'order': 1
+        },
+        {
+            'task_type': 'review_job',
+            'title': 'Review Job Description',
+            'description': f'Re-read the {interview.job.title} job posting. Identify key requirements and how your experience aligns.',
+            'order': 2
+        },
+        {
+            'task_type': 'prepare_questions',
+            'title': 'Prepare Questions for Interviewer',
+            'description': 'Prepare 3-5 thoughtful questions about the role, team, company culture, and growth opportunities.',
+            'order': 3
+        },
+        {
+            'task_type': 'prepare_examples',
+            'title': 'Prepare STAR Examples',
+            'description': 'Prepare specific examples of your achievements using the STAR method (Situation, Task, Action, Result).',
+            'order': 4
+        },
+        {
+            'task_type': 'review_resume',
+            'title': 'Review Your Resume',
+            'description': 'Be ready to discuss everything on your resume in detail, especially items relevant to this role.',
+            'order': 5
+        },
+    ]
+    
+    # Add type-specific tasks
+    if interview.interview_type == 'video':
+        tasks_config.append({
+            'task_type': 'test_tech',
+            'title': 'Test Video Conference Setup',
+            'description': 'Test your camera, microphone, and internet connection. Ensure good lighting and a professional background.',
+            'order': 6
+        })
+    elif interview.interview_type == 'in_person':
+        tasks_config.append({
+            'task_type': 'plan_route',
+            'title': 'Plan Your Route',
+            'description': f'Plan your route to {interview.location}. Aim to arrive 10-15 minutes early.',
+            'order': 6
+        })
+    
+    tasks_config.append({
+        'task_type': 'prepare_materials',
+        'title': 'Prepare Materials',
+        'description': 'Print extra copies of your resume, prepare a portfolio if relevant, and bring a notepad and pen.',
+        'order': 7
+    })
+    
+    # Create tasks
+    for task_data in tasks_config:
+        InterviewPreparationTask.objects.create(
+            interview=interview,
+            **task_data
+        )
 
 # UC-052: Resume Version Management Views
 
