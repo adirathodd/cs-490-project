@@ -18,8 +18,7 @@ from .models import (
     # AI & Automation
     AIGenerationLog,
     # UC-069: Automation models
-    ApplicationAutomationRule, ApplicationPackage, ScheduledSubmission, FollowUpReminder, 
-    ApplicationChecklist, ChecklistTask, BulkOperation, WorkflowAutomationLog,
+    ApplicationAutomationRule, ApplicationPackage,
     # Notifications
     Reminder, Notification,
     # Projects
@@ -244,10 +243,10 @@ class AIGenerationLogAdmin(admin.ModelAdmin):
 
 @admin.register(ApplicationAutomationRule)
 class ApplicationAutomationRuleAdmin(admin.ModelAdmin):
-    list_display = ['candidate', 'name', 'trigger_type', 'action_type', 'is_active', 'execution_count']
-    list_filter = ['trigger_type', 'action_type', 'is_active', 'priority']
+    list_display = ['candidate', 'name', 'trigger_type', 'action_type', 'is_active', 'trigger_count']
+    list_filter = ['trigger_type', 'action_type', 'is_active']
     search_fields = ['candidate__user__username', 'name', 'description']
-    readonly_fields = ['execution_count', 'last_executed', 'created_at', 'updated_at']
+    readonly_fields = ['trigger_count', 'last_triggered_at', 'created_at', 'updated_at']
 
 
 # Notifications
@@ -271,55 +270,7 @@ class NotificationAdmin(admin.ModelAdmin):
 
 @admin.register(ApplicationPackage)
 class ApplicationPackageAdmin(admin.ModelAdmin):
-    list_display = ['candidate', 'job', 'status', 'match_score', 'created_at']
+    list_display = ['candidate', 'job', 'status', 'generation_method', 'created_at']
     list_filter = ['status', 'created_at']
     search_fields = ['candidate__user__username', 'job__title', 'job__company_name']
     readonly_fields = ['created_at', 'updated_at']
-
-
-@admin.register(ScheduledSubmission)
-class ScheduledSubmissionAdmin(admin.ModelAdmin):
-    list_display = ['candidate', 'job', 'status', 'scheduled_datetime', 'priority', 'retry_count']
-    list_filter = ['status', 'scheduled_datetime', 'priority']
-    search_fields = ['candidate__user__username', 'job__title', 'job__company_name']
-    readonly_fields = ['submitted_at', 'created_at', 'updated_at']
-
-
-@admin.register(FollowUpReminder)
-class FollowUpReminderAdmin(admin.ModelAdmin):
-    list_display = ['candidate', 'job', 'reminder_type', 'status', 'scheduled_datetime', 'response_received']
-    list_filter = ['reminder_type', 'status', 'is_recurring', 'response_received']
-    search_fields = ['candidate__user__username', 'job__title', 'subject']
-    readonly_fields = ['sent_at', 'response_date', 'created_at', 'updated_at']
-
-
-@admin.register(ApplicationChecklist)
-class ApplicationChecklistAdmin(admin.ModelAdmin):
-    list_display = ['candidate', 'job', 'name', 'status', 'completion_percentage', 'total_tasks', 'completed_tasks']
-    list_filter = ['status', 'auto_update_enabled', 'created_at']
-    search_fields = ['candidate__user__username', 'job__title', 'name']
-    readonly_fields = ['completion_percentage', 'completed_at', 'created_at', 'updated_at']
-
-
-@admin.register(ChecklistTask)
-class ChecklistTaskAdmin(admin.ModelAdmin):
-    list_display = ['checklist', 'title', 'status', 'priority', 'due_date', 'completed_by_automation']
-    list_filter = ['status', 'priority', 'completed_by_automation', 'due_date']
-    search_fields = ['checklist__job__title', 'title', 'description']
-    readonly_fields = ['completed_at', 'created_at', 'updated_at']
-
-
-@admin.register(BulkOperation)
-class BulkOperationAdmin(admin.ModelAdmin):
-    list_display = ['candidate', 'operation_type', 'status', 'progress_percentage', 'total_items', 'successful_items', 'failed_items']
-    list_filter = ['operation_type', 'status', 'created_at']
-    search_fields = ['candidate__user__username', 'description']
-    readonly_fields = ['progress_percentage', 'started_at', 'completed_at', 'created_at', 'updated_at']
-
-
-@admin.register(WorkflowAutomationLog)
-class WorkflowAutomationLogAdmin(admin.ModelAdmin):
-    list_display = ['candidate', 'level', 'automation_rule', 'job', 'created_at']
-    list_filter = ['level', 'created_at']
-    search_fields = ['candidate__user__username', 'message']
-    readonly_fields = ['created_at']

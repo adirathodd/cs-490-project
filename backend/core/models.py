@@ -1867,3 +1867,431 @@ class ResumeVersionChange(models.Model):
     
     def __str__(self):
         return f"{self.change_type.title()} - {self.version.version_name} at {self.created_at}"
+
+
+# ============================================================================
+# UC-069: Application Workflow Automation Models
+# ============================================================================
+
+class ApplicationAutomationRule(models.Model):
+    """
+    UC-069: Defines automation rules for job applications
+    
+    Allows candidates to set up automated workflows that trigger
+    specific actions when certain conditions are met (like when a new job is saved).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    candidate = models.ForeignKey(
+        CandidateProfile,
+        on_delete=models.CASCADE,
+        related_name='application_automation_rules'
+    )
+    
+    # Rule identification
+    name = models.CharField(
+        max_length=255,
+        help_text="User-defined name for this automation rule"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Optional description of what this rule does"
+    )
+    
+    # Trigger configuration
+    trigger_type = models.CharField(
+        max_length=50,
+        choices=[
+            ('job_saved', 'Job Saved'),
+            ('job_updated', 'Job Updated'),
+            ('deadline_approaching', 'Application Deadline Approaching'),
+            ('status_changed', 'Application Status Changed'),
+        ],
+        help_text="Event that triggers this automation"
+    )
+    
+    trigger_conditions = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Additional conditions that must be met for trigger (e.g., job title contains keywords)"
+    )
+    
+    # Action configuration  
+    action_type = models.CharField(
+        max_length=50,
+        choices=[
+            ('generate_documents', 'Generate Application Documents'),
+            ('set_reminder', 'Set Application Reminder'),
+            ('update_status', 'Update Application Status'),
+            ('send_email', 'Send Email Notification'),
+        ],
+        help_text="Action to take when rule is triggered"
+    )
+    
+    action_parameters = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Parameters for the action (e.g., which document templates to use)"
+    )
+    
+    # Rule state
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this rule is currently active"
+    )
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Execution tracking
+    last_triggered_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this rule was last executed"
+    )
+    trigger_count = models.PositiveIntegerField(
+        default=0,
+        help_text="How many times this rule has been triggered"
+    )
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['candidate', 'is_active']),
+            models.Index(fields=['trigger_type', 'is_active']),
+            models.Index(fields=['last_triggered_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.name} ({self.get_trigger_type_display()} → {self.get_action_type_display()})"
+    
+    def can_trigger_for_job(self, job_entry):
+        """
+        Check if this rule should trigger for the given job
+        
+        Args:
+            job_entry (JobEntry): The job to check against
+            
+        Returns:
+            bool: True if the rule should trigger
+        """
+        if not self.is_active:
+            return False
+        
+        # Check trigger conditions
+        conditions = self.trigger_conditions or {}
+        
+        # Check job title keywords if specified
+        if 'job_title_keywords' in conditions:
+            keywords = conditions['job_title_keywords']
+            if isinstance(keywords, list):
+                job_title_lower = job_entry.title.lower()
+                if not any(keyword.lower() in job_title_lower for keyword in keywords):
+                    return False
+        
+        # Check company keywords if specified  
+        if 'company_keywords' in conditions:
+            keywords = conditions['company_keywords']
+            if isinstance(keywords, list):
+                company_name_lower = job_entry.company_name.lower()
+                if not any(keyword.lower() in company_name_lower for keyword in keywords):
+                    return False
+        
+        # Check salary range if specified
+        if 'min_salary' in conditions and job_entry.salary_min:
+            if job_entry.salary_min < conditions['min_salary']:
+                return False
+                
+        if 'max_salary' in conditions and job_entry.salary_max:
+            if job_entry.salary_max > conditions['max_salary']:
+                return False
+        
+        return True
+    
+    def execute_action(self, context_data=None):
+        """
+        Execute the action defined by this rule
+        
+        Args:
+            context_data (dict): Additional context for action execution
+            
+        Returns:
+            dict: Result of action execution
+        """
+        context_data = context_data or {}
+        
+        try:
+            if self.action_type == 'generate_documents':
+                return self._execute_generate_documents(context_data)
+            elif self.action_type == 'set_reminder':
+                return self._execute_set_reminder(context_data)
+            elif self.action_type == 'update_status':
+                return self._execute_update_status(context_data)
+            elif self.action_type == 'send_email':
+                return self._execute_send_email(context_data)
+            else:
+                return {'success': False, 'error': f'Unknown action type: {self.action_type}'}
+        
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    def _execute_generate_documents(self, context_data):
+        """Execute document generation action"""
+        job_entry = context_data.get('job_entry')
+        if not job_entry:
+            return {'success': False, 'error': 'No job_entry in context'}
+        
+        # Import here to avoid circular imports
+        from core.models import ApplicationPackageGenerator
+        
+        generator = ApplicationPackageGenerator(
+            candidate=self.candidate,
+            job=job_entry
+        )
+        
+        # Use action parameters to determine what to generate
+        params = self.action_parameters or {}
+        include_resume = params.get('include_resume', True)
+        include_cover_letter = params.get('include_cover_letter', True)
+        
+        try:
+            package = generator.generate_application_package(
+                include_resume=include_resume,
+                include_cover_letter=include_cover_letter
+            )
+            
+            # Update trigger statistics
+            self.last_triggered_at = timezone.now()
+            self.trigger_count += 1
+            self.save(update_fields=['last_triggered_at', 'trigger_count'])
+            
+            return {
+                'success': True,
+                'package_id': package.id,
+                'message': 'Application package generated successfully'
+            }
+            
+        except Exception as e:
+            return {'success': False, 'error': f'Failed to generate package: {str(e)}'}
+    
+    def _execute_set_reminder(self, context_data):
+        """Execute reminder setting action"""
+        # Implementation for setting reminders
+        return {'success': True, 'message': 'Reminder action not yet implemented'}
+    
+    def _execute_update_status(self, context_data):
+        """Execute status update action"""
+        # Implementation for status updates
+        return {'success': True, 'message': 'Status update action not yet implemented'}
+    
+    def _execute_send_email(self, context_data):
+        """Execute email sending action"""
+        # Implementation for email notifications
+        return {'success': True, 'message': 'Email action not yet implemented'}
+
+
+class ApplicationPackage(models.Model):
+    """
+    UC-069: Generated application package containing documents for a job
+    
+    Represents a complete application package (resume + cover letter + other docs)
+    that was generated for a specific job, either manually or via automation.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    candidate = models.ForeignKey(
+        CandidateProfile,
+        on_delete=models.CASCADE,
+        related_name='application_packages'
+    )
+    job = models.ForeignKey(
+        JobEntry,
+        on_delete=models.CASCADE,
+        related_name='application_packages'
+    )
+    
+    # Generated documents
+    resume_document = models.ForeignKey(
+        'Document',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='resume_packages',
+        help_text="Generated resume document for this application"
+    )
+    
+    cover_letter_document = models.ForeignKey(
+        'Document',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cover_letter_packages',
+        help_text="Generated cover letter document for this application"
+    )
+    
+    # Package metadata
+    generation_method = models.CharField(
+        max_length=50,
+        choices=[
+            ('manual', 'Manual Generation'),
+            ('automation_rule', 'Automation Rule'),
+            ('batch_process', 'Batch Processing'),
+        ],
+        default='manual'
+    )
+    
+    automation_rule = models.ForeignKey(
+        ApplicationAutomationRule,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='generated_packages',
+        help_text="Automation rule that generated this package (if applicable)"
+    )
+    
+    status = models.CharField(
+        max_length=50,
+        choices=[
+            ('draft', 'Draft'),
+            ('ready', 'Ready to Submit'),
+            ('submitted', 'Submitted'),
+            ('needs_review', 'Needs Review'),
+        ],
+        default='ready'
+    )
+    
+    notes = models.TextField(
+        blank=True,
+        help_text="User notes about this application package"
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    submitted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this package was submitted for the job"
+    )
+    
+    class Meta:
+        ordering = ['-created_at']
+        unique_together = ['candidate', 'job']  # One package per job per candidate
+        indexes = [
+            models.Index(fields=['candidate', 'status']),
+            models.Index(fields=['job', 'status']),
+            models.Index(fields=['automation_rule']),
+            models.Index(fields=['created_at']),
+        ]
+    
+    def __str__(self):
+        return f"Application Package: {self.job.title} at {self.job.company_name}"
+    
+    @property
+    def document_count(self):
+        """Count of documents in this package"""
+        count = 0
+        if self.resume_document:
+            count += 1
+        if self.cover_letter_document:
+            count += 1
+        return count
+    
+    @property
+    def is_complete(self):
+        """Check if package has all required documents"""
+        return bool(self.resume_document and self.cover_letter_document)
+    
+    def mark_submitted(self):
+        """Mark this package as submitted"""
+        self.status = 'submitted'
+        self.submitted_at = timezone.now()
+        self.save(update_fields=['status', 'submitted_at'])
+
+
+class ApplicationPackageGenerator:
+    """
+    UC-069: Utility class for generating application packages
+    
+    Handles the logic for creating complete application packages
+    by generating or selecting appropriate documents for a job application.
+    """
+    
+    def __init__(self, candidate, job):
+        """
+        Initialize generator
+        
+        Args:
+            candidate (CandidateProfile): The candidate applying
+            job (JobEntry): The job being applied to
+        """
+        self.candidate = candidate
+        self.job = job
+    
+    def generate_application_package(self, include_resume=True, include_cover_letter=True):
+        """
+        Generate a complete application package for the job
+        
+        Args:
+            include_resume (bool): Whether to include a resume
+            include_cover_letter (bool): Whether to include a cover letter
+            
+        Returns:
+            ApplicationPackage: The generated package
+        """
+        # Check if package already exists
+        package, created = ApplicationPackage.objects.get_or_create(
+            candidate=self.candidate,
+            job=self.job,
+            defaults={
+                'generation_method': 'automation_rule',
+                'status': 'ready'
+            }
+        )
+        
+        # Generate or select documents
+        if include_resume and not package.resume_document:
+            resume_doc = self._generate_or_select_resume()
+            if resume_doc:
+                package.resume_document = resume_doc
+        
+        if include_cover_letter and not package.cover_letter_document:
+            cover_letter_doc = self._generate_or_select_cover_letter()
+            if cover_letter_doc:
+                package.cover_letter_document = cover_letter_doc
+        
+        package.save()
+        return package
+    
+    def _generate_or_select_resume(self):
+        """
+        Generate or select the best resume for this job
+        
+        Returns:
+            Document: Resume document or None
+        """
+        # For now, use the default resume
+        # In the future, this could use AI to customize the resume
+        try:
+            return Document.objects.filter(
+                candidate=self.candidate,
+                doc_type='resume'
+            ).first()
+        except Document.DoesNotExist:
+            return None
+    
+    def _generate_or_select_cover_letter(self):
+        """
+        Generate or select the best cover letter for this job
+        
+        Returns:
+            Document: Cover letter document or None
+        """
+        # For now, use existing cover letter or create a basic one
+        # In the future, this could use AI to generate custom cover letters
+        try:
+            return Document.objects.filter(
+                candidate=self.candidate,
+                doc_type='cover_letter'
+            ).first()
+        except Document.DoesNotExist:
+            return None

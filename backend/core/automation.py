@@ -15,8 +15,7 @@ from django.conf import settings
 
 from .models import (
     JobEntry, CandidateProfile, ApplicationPackage, ApplicationAutomationRule,
-    ScheduledSubmission, FollowUpReminder, ApplicationChecklist,
-    ChecklistTask, BulkOperation, WorkflowAutomationLog, Document, CoverLetterTemplate
+    Document, CoverLetterTemplate
 )
 from .job_matching import JobMatchingEngine
 
@@ -437,13 +436,7 @@ class AutomationEngine:
                     logger.error(f"Failed to execute rule {rule.id}: {e}")
                     # Create serializable context for logging (remove non-serializable objects)
                     log_context = {k: v for k, v in context.items() if k not in ['job']}
-                    WorkflowAutomationLog.objects.create(
-                        candidate=candidate,
-                        automation_rule=rule,
-                        level='error',
-                        message=f"Rule execution failed: {str(e)}",
-                        context=log_context
-                    )
+                    logger.error(f"Rule execution failed for rule {rule.id}: {str(e)}")
         
         except Exception as e:
             logger.error(f"Failed to process automation triggers: {e}")
@@ -512,14 +505,7 @@ class AutomationEngine:
             # Log successful execution
             # Create serializable context for logging (remove non-serializable objects)
             log_context = {k: v for k, v in context.items() if k not in ['job']}
-            WorkflowAutomationLog.objects.create(
-                candidate=rule.candidate,
-                automation_rule=rule,
-                level='info',
-                message=f"Successfully executed {action_type}",
-                context=log_context,
-                job_id=context.get('job_id')
-            )
+            logger.info(f"Successfully executed {action_type} for rule {rule.id}")
             
         except Exception as e:
             logger.error(f"Failed to execute rule {rule.id}: {e}")
@@ -562,17 +548,9 @@ class AutomationEngine:
         delay_hours = parameters.get('delay_hours', 24)
         scheduled_time = timezone.now() + timedelta(hours=delay_hours)
         
-        # Create scheduled submission
-        submission = ScheduledSubmission.objects.create(
-            candidate=rule.candidate,
-            job=job,
-            application_package=package,
-            scheduled_datetime=scheduled_time,
-            submission_method=parameters.get('method', 'email'),
-            submission_parameters=parameters
-        )
-        
-        logger.info(f"Scheduled submission {submission.id} for {scheduled_time}")
+        # TODO: Create scheduled submission (ScheduledSubmission model not yet implemented)
+        # For now, just log that scheduling would happen
+        logger.info(f"Would schedule submission for {scheduled_time} (ScheduledSubmission model not implemented)")
     
     @staticmethod
     def _execute_send_followup(rule: ApplicationAutomationRule, context: Dict[str, Any],
@@ -588,19 +566,9 @@ class AutomationEngine:
         delay_days = parameters.get('delay_days', 7)
         followup_time = timezone.now() + timedelta(days=delay_days)
         
-        # Create follow-up reminder
-        reminder = FollowUpReminder.objects.create(
-            candidate=rule.candidate,
-            job=job,
-            reminder_type=parameters.get('type', 'application_followup'),
-            subject=parameters.get('subject', f"Follow up: {job.title} at {job.company_name}"),
-            message_template=parameters.get('message_template', ""),
-            scheduled_datetime=followup_time,
-            is_recurring=parameters.get('is_recurring', False),
-            interval_days=parameters.get('interval_days')
-        )
-        
-        logger.info(f"Created follow-up reminder {reminder.id} for {followup_time}")
+        # TODO: Create follow-up reminder (FollowUpReminder model not yet implemented)
+        # For now, just log that reminder would be created
+        logger.info(f"Would create follow-up reminder for {followup_time} (FollowUpReminder model not implemented)")
     
     @staticmethod
     def _execute_create_reminder(rule: ApplicationAutomationRule, context: Dict[str, Any],
