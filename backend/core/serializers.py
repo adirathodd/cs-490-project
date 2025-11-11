@@ -1168,7 +1168,7 @@ class JobEntrySerializer(serializers.ModelSerializer):
     def _doc_payload(self, doc):
         if not doc:
             return None
-        return {
+        payload = {
             'id': doc.id,
             'doc_type': doc.doc_type,
             'version': doc.version,
@@ -1177,6 +1177,14 @@ class JobEntrySerializer(serializers.ModelSerializer):
             'document_name': getattr(doc, 'document_name', ''),
             'created_at': getattr(doc, 'created_at', None),
         }
+        
+        # Add analytics data for cover letters
+        if doc.doc_type == 'cover_letter':
+            payload['ai_generation_tone'] = getattr(doc, 'ai_generation_tone', '')
+            payload['ai_generation_params'] = getattr(doc, 'ai_generation_params', {})
+            payload['generated_by_ai'] = getattr(doc, 'generated_by_ai', False)
+            
+        return payload
 
     def get_resume_doc(self, obj):
         return self._doc_payload(getattr(obj, 'resume_doc', None))
