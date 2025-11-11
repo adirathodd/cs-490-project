@@ -380,6 +380,7 @@ function VolumePatterns({ patterns }) {
         {dailyData.map((day, index) => {
           const date = new Date(day.date);
           const dayOfMonth = date.getDate();
+          const monthName = date.toLocaleDateString('en', { month: 'short' });
           
           return (
             <div key={day.date || index} style={{ flex: 1, textAlign: 'center' }}>
@@ -401,7 +402,7 @@ function VolumePatterns({ patterns }) {
                 {day.count > 0 ? day.count : ''}
               </div>
               <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>
-                {dayOfMonth}
+                {monthName} {dayOfMonth}
               </div>
             </div>
           );
@@ -462,7 +463,7 @@ function InsightsPanel({ insights }) {
 
 // Cover Letter Performance Panel Component
 function CoverLetterPerformancePanel({ analytics }) {
-  if (!analytics || !analytics.performance_by_tone) {
+  if (!analytics || !analytics.tone_performance) {
     return <div style={{ padding: 20, textAlign: 'center', color: '#6b7280' }}>
       No cover letter analytics data available. Start applying with AI-generated cover letters to see performance insights.
     </div>;
@@ -470,7 +471,7 @@ function CoverLetterPerformancePanel({ analytics }) {
 
   const { 
     total_cover_letters, 
-    performance_by_tone, 
+    tone_performance, 
     best_performing_tone, 
     insights 
   } = analytics;
@@ -501,11 +502,11 @@ function CoverLetterPerformancePanel({ analytics }) {
       </div>
 
       {/* Performance by Tone */}
-      {Object.keys(performance_by_tone).length > 0 && (
+      {Object.keys(tone_performance).length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <h4 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600 }}>Performance by Tone</h4>
           <div style={{ display: 'grid', gap: 8 }}>
-            {Object.entries(performance_by_tone).map(([tone, stats]) => (
+            {Object.entries(tone_performance).map(([tone, stats]) => (
               <div 
                 key={tone}
                 style={{ 

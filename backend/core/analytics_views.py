@@ -5,7 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from core.models import CandidateProfile, JobEntry
+from core.models import CandidateProfile, JobEntry, Document
 from django.db import models
 from django.db.models import Count, Q, F, Case, When, Value, IntegerField, Avg
 from django.db.models.functions import TruncMonth, TruncDate, Coalesce
@@ -280,10 +280,14 @@ def _calculate_goal_progress(qs):
 def _calculate_insights_recommendations(qs):
     """Generate insights and recommendations."""
     insights = []
+    recommendations = []
     
     total = qs.count()
     if total == 0:
-        return ['Start adding job applications to see insights and recommendations']
+        return {
+            'insights': ['Start adding job applications to see insights and recommendations'],
+            'recommendations': ['Apply to at least 5 jobs per week to build momentum']
+        }
     
     # Response rate insights
     applied_count = qs.filter(status__in=['applied', 'phone_screen', 'interview', 'offer']).count()
@@ -292,18 +296,67 @@ def _calculate_insights_recommendations(qs):
     if applied_count > 0:
         response_rate = (response_count / applied_count) * 100
         if response_rate < 5:
-            insights.append('Your response rate is below average. Consider improving your resume and cover letters.')
+            insights.append('Your response rate is below average ({}%). Industry average is ~12%.'.format(round(response_rate, 1)))
+            recommendations.append('Review and improve your resume and cover letters')
+            recommendations.append('Tailor each application to the specific role and company')
         elif response_rate > 15:
-            insights.append('Great response rate! Your applications are standing out.')
+            insights.append('Great response rate ({}%)! Your applications are standing out.'.format(round(response_rate, 1)))
+            recommendations.append('Continue your current application strategy')
+        else:
+            insights.append('Your response rate is {}%, which is close to industry average (12%).'.format(round(response_rate, 1)))
+            recommendations.append('Consider A/B testing different cover letter approaches')
     
     # Application volume insights
     recent_week = qs.filter(created_at__date__gte=timezone.now().date() - timedelta(days=7)).count()
     if recent_week == 0:
-        insights.append('No applications this week. Consider setting a weekly application goal.')
+        insights.append('No applications submitted this week')
+        recommendations.append('Set a goal of 5-10 applications per week')
     elif recent_week >= 10:
-        insights.append('High application volume this week! Make sure to follow up on your applications.')
+        insights.append('High application volume this week ({} applications)'.format(recent_week))
+        recommendations.append('Follow up on your recent applications')
     
-    return insights
+    # Cover letter tone analysis
+    # Get cover letters that are linked to job entries through the used_as_cover_letter_in relationship
+    cover_letter_documents = Document.objects.filter(
+        candidate=qs.first().candidate if qs.exists() else None,
+        doc_type='cover_letter',
+        ai_generation_tone__isnull=False,
+        used_as_cover_letter_in__isnull=False
+    )
+    
+    if cover_letter_documents.exists():
+        # Analyze which tones are most successful
+        from collections import defaultdict
+        tone_stats = defaultdict(lambda: {'total': 0, 'responded': 0})
+        
+        for doc in cover_letter_documents:
+            tone = doc.ai_generation_tone
+            tone_stats[tone]['total'] += 1
+            # Get the job status through the reverse relationship
+            job_entries = doc.used_as_cover_letter_in.all()
+            for job_entry in job_entries:
+                if job_entry.status in ['phone_screen', 'interview', 'offer']:
+                    tone_stats[tone]['responded'] += 1
+                    break  # Count only once per document
+        
+        # Find best performing tone
+        best_tone = None
+        best_rate = 0
+        for tone, stats in tone_stats.items():
+            if stats['total'] >= 2:  # Only consider tones with at least 2 samples
+                rate = (stats['responded'] / stats['total']) * 100
+                if rate > best_rate:
+                    best_rate = rate
+                    best_tone = tone
+        
+        if best_tone:
+            insights.append('Your {} cover letters have the highest response rate ({}%)'.format(best_tone, round(best_rate, 1)))
+            recommendations.append('Consider using the {} tone more frequently'.format(best_tone))
+    
+    return {
+        'insights': insights,
+        'recommendations': recommendations
+    }
 
 
 # Empty state functions
