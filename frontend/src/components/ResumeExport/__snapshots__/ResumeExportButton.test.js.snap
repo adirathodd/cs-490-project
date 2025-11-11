@@ -1,0 +1,15 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ResumeExportButton matches snapshot 1`] = `
+<button
+  aria-label="Export Resume"
+  class="resume-export-trigger primary "
+>
+  <span
+    class="icon"
+  >
+    📥
+  </span>
+  Export Resume
+</button>
+`;

@@ -7,6 +7,73 @@ import { resumeVersionAPI } from '../../services/api';
 import Icon from '../common/Icon';
 import './ResumeVersionControl.css';
 
+// Helper functions exported for unit testing
+const groupVersionsByResume = (allVersions) => {
+  // Group versions by source_job_id or parent relationships
+  const groups = {};
+
+  // First pass: group by job
+  allVersions.forEach(version => {
+    const key = version.source_job_id || 'generic';
+    if (!groups[key]) {
+      groups[key] = {
+        id: key,
+        title: version.source_job_title || 'Generic Resume',
+        company: version.source_job_company || '',
+        versions: []
+      };
+    }
+    groups[key].versions.push(version);
+  });
+
+  // Sort versions within each group by created_at (newest first)
+  Object.values(groups).forEach(group => {
+    group.versions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  });
+
+  return Object.values(groups);
+};
+
+const formatDate = (dateString) => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const formatChangeValue = (value) => {
+  if (value === null || value === undefined) {
+    return '(empty)';
+  }
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'object') {
+    if (Array.isArray(value)) {
+      if (value.length === 0) return '(empty list)';
+      if (value.every(v => typeof v === 'string')) return value.join(', ');
+      return `${value.length} item${value.length !== 1 ? 's' : ''}`;
+    }
+    const keys = Object.keys(value);
+    if (keys.length === 0) return '(empty)';
+    if (keys.length <= 3) return keys.map(k => `${k}: ${String(value[k]).substring(0, 50)}`).join(', ');
+    return `${keys.length} fields`;
+  }
+  const str = String(value);
+  if (str.length > 200) return str.substring(0, 200) + '...';
+  return str;
+};
+
+const formatFieldName = (field) => {
+  return field
+    .replace(/_/g, ' ')
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, str => str.toUpperCase())
+    .trim();
+};
+
 const ResumeVersionControl = () => {
   const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,33 +135,6 @@ const ResumeVersionControl = () => {
       setGroupedResumes([]);
     }
   }, [versions]);
-
-  const groupVersionsByResume = (allVersions) => {
-    // Group versions by source_job_id or parent relationships
-    const groups = {};
-    const orphans = [];
-    
-    // First pass: group by job
-    allVersions.forEach(version => {
-      const key = version.source_job_id || 'generic';
-      if (!groups[key]) {
-        groups[key] = {
-          id: key,
-          title: version.source_job_title || 'Generic Resume',
-          company: version.source_job_company || '',
-          versions: []
-        };
-      }
-      groups[key].versions.push(version);
-    });
-    
-    // Sort versions within each group by created_at (newest first)
-    Object.values(groups).forEach(group => {
-      group.versions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    });
-    
-    return Object.values(groups);
-  };
 
   const toggleGroupExpansion = (groupId) => {
     const newExpanded = new Set(expandedGroups);
@@ -313,63 +353,7 @@ const ResumeVersionControl = () => {
     }
   };
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const formatChangeValue = (value) => {
-    if (value === null || value === undefined) {
-      return '(empty)';
-    }
-    
-    if (typeof value === 'boolean') {
-      return value ? 'Yes' : 'No';
-    }
-    
-    if (typeof value === 'object') {
-      // For objects/arrays, try to format them nicely
-      if (Array.isArray(value)) {
-        if (value.length === 0) return '(empty list)';
-        // Check if it's a simple array of strings
-        if (value.every(v => typeof v === 'string')) {
-          return value.join(', ');
-        }
-        // For complex arrays, show count and first few items
-        return `${value.length} item${value.length !== 1 ? 's' : ''}`;
-      }
-      
-      // For objects, show key summary
-      const keys = Object.keys(value);
-      if (keys.length === 0) return '(empty)';
-      if (keys.length <= 3) {
-        return keys.map(k => `${k}: ${String(value[k]).substring(0, 50)}`).join(', ');
-      }
-      return `${keys.length} fields`;
-    }
-    
-    // For strings/numbers
-    const str = String(value);
-    if (str.length > 200) {
-      return str.substring(0, 200) + '...';
-    }
-    return str;
-  };
-
-  const formatFieldName = (field) => {
-    // Convert field names to readable format
-    return field
-      .replace(/_/g, ' ')
-      .replace(/([A-Z])/g, ' $1')
-      .replace(/^./, str => str.toUpperCase())
-      .trim();
-  };
+  
 
   return (
     <div className="resume-version-control">
@@ -1145,3 +1129,4 @@ const ResumeVersionControl = () => {
 };
 
 export default ResumeVersionControl;
+export { groupVersionsByResume, formatDate, formatChangeValue, formatFieldName };
