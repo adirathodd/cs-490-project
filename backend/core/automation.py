@@ -52,7 +52,7 @@ class ApplicationPackageGenerator:
                 candidate=candidate,
                 defaults={
                     'status': 'generating',
-                    'generation_parameters': parameters or {},
+                    'generation_method': 'manual',
                 }
             )
             
@@ -62,16 +62,7 @@ class ApplicationPackageGenerator:
             
             # Update status to generating
             package.status = 'generating'
-            package.generation_parameters = parameters or {}
             package.save()
-            
-            # Calculate match score for package metadata
-            try:
-                match_result = JobMatchingEngine.calculate_match_score(job, candidate)
-                package.match_score = match_result.get('overall_score', 0)
-            except Exception as e:
-                logger.warning(f"Failed to calculate match score: {e}")
-                package.match_score = None
             
             # Generate resume
             resume_doc = ApplicationPackageGenerator._generate_resume(
@@ -88,9 +79,6 @@ class ApplicationPackageGenerator:
             if cover_letter_doc:
                 package.cover_letter_document = cover_letter_doc
                 logger.info(f"Linked cover letter document {cover_letter_doc.id} to package {package.id}")
-            
-            # Set portfolio URL if available
-            package.portfolio_url = candidate.portfolio_url or ""
             
             # Mark as ready and save all changes
             package.status = 'ready'
