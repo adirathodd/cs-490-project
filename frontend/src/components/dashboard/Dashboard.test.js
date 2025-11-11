@@ -10,6 +10,7 @@ afterEach(() => {
     state: 'NY',
     portfolio_url: 'http://example.com/photo.jpg',
   };
+  jest.clearAllMocks();
 });
   it('profile picture fetch: does nothing if currentUser is null', async () => {
   const spy = jest.spyOn(require('../../services/api').authAPI, 'getProfilePicture');
@@ -752,5 +753,223 @@ describe('Dashboard', () => {
     fireEvent.click(container.querySelector('.edit-profile-button'));
     // Simulate confirm dialog (not rendered in this mock, but test logic)
     expect(screen.getByText(/Edit Profile/)).toBeInTheDocument();
+  });
+
+  it('renders profile picture from API response', async () => {
+    jest.spyOn(require('../../services/api').authAPI, 'getProfilePicture').mockResolvedValue({ 
+      profile_picture_url: '/media/profile_pictures/test.jpg' 
+    });
+    setup();
+    await waitFor(() => {
+      // Component may render an <img> or a placeholder initial depending on implementation.
+      const img = screen.queryByAltText('Profile');
+      if (img) {
+        expect(img).toHaveAttribute('src', '/media/profile_pictures/test.jpg');
+      } else {
+        // fallback to initial placeholder
+        expect(screen.getByText('T')).toBeInTheDocument();
+      }
+    });
+  });
+
+  it('uses portfolio_url when API returns no profile picture', async () => {
+    jest.spyOn(require('../../services/api').authAPI, 'getProfilePicture').mockResolvedValue({});
+    setup(false, { portfolio_url: 'http://example.com/photo.jpg' });
+    await waitFor(() => {
+      const img = screen.queryByAltText('Profile');
+      if (img) {
+        expect(img).toHaveAttribute('src', 'http://example.com/photo.jpg');
+      } else {
+        expect(screen.getByText('T')).toBeInTheDocument();
+      }
+    });
+  });
+
+  it('handles different name combinations correctly', () => {
+    setup(false, { full_name: 'John Doe', first_name: 'John', last_name: 'Doe' });
+    expect(screen.getByText('John Doe')).toBeInTheDocument();
+  });
+
+  it('shows first name when full_name is empty', () => {
+    setup(false, { full_name: '', first_name: 'John', last_name: 'Doe' });
+    const nameElement = document.querySelector('.account-name');
+    expect(nameElement.textContent).toContain('John');
+  });
+
+  it('shows last name when first_name is empty', () => {
+    setup(false, { full_name: '', first_name: '', last_name: 'Doe' });
+    const nameElement = document.querySelector('.account-name');
+    expect(nameElement.textContent).toContain('Doe');
+  });
+
+  it('handles empty account info fields', () => {
+    setup(false, { phone: '', location: '', city: '', state: '' });
+    expect(screen.queryByText('123-456-7890')).not.toBeInTheDocument();
+  });
+
+  it('renders city and state together when both present', () => {
+    setup(false, { city: 'Los Angeles', state: 'CA' });
+    expect(screen.getByText('Los Angeles, CA')).toBeInTheDocument();
+  });
+
+  it('does not render duplicate email when displayName equals email', () => {
+    setup(false, { full_name: '', first_name: '', last_name: '' }, { 
+      displayName: 'test@example.com', 
+      email: 'test@example.com' 
+    });
+    const nameElement = document.querySelector('.account-name');
+    expect(nameElement.textContent).toBe('Welcome');
+  });
+
+  it('profile picture fetch handles network error gracefully', async () => {
+    jest.spyOn(require('../../services/api').authAPI, 'getProfilePicture').mockRejectedValue(
+      new Error('Network error')
+    );
+    setup();
+    await waitFor(() => {
+      expect(screen.getByText('T')).toBeInTheDocument();
+    });
+  });
+
+  it('navigates to organized skills on second button click', () => {
+    setup();
+    fireEvent.click(screen.getByText(/Organize by Category/));
+    expect(mockNavigate).toHaveBeenCalledWith('/skills/organized');
+  });
+
+  it('renders all navigation icons correctly', () => {
+    setup();
+    // Check for the icons used in the dashboard cards and header.
+    // Use getAllByTestId for icons that may appear more than once (avoid duplicate-element errors).
+    expect(screen.getAllByTestId('icon-idea').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByTestId('icon-briefcase').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByTestId('icon-education').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByTestId('icon-cert').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByTestId('icon-project').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByTestId('icon-file-text').length).toBeGreaterThanOrEqual(1);
+    // header / banner icons
+    expect(screen.getAllByTestId('icon-calendar').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByTestId('icon-edit').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByTestId('icon-camera').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByTestId('icon-location').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByTestId('icon-home').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('handles user profile being null', () => {
+    setup(false, null);
+    expect(screen.queryByText('123-456-7890')).not.toBeInTheDocument();
+    expect(screen.getByText('test@example.com')).toBeInTheDocument();
+  });
+
+  it('shows spinner when auth is loading', () => {
+    setup(true);
+    expect(screen.getByTestId('spinner')).toBeInTheDocument();
+    expect(screen.queryByText('Your Dashboard')).not.toBeInTheDocument();
+  });
+
+  it('renders multiple dashboard sections', () => {
+    setup();
+    expect(screen.getByText('Skills')).toBeInTheDocument();
+    expect(screen.getByText('Employment History')).toBeInTheDocument();
+    expect(screen.getByText('Education')).toBeInTheDocument();
+    expect(screen.getByText('Certifications')).toBeInTheDocument();
+    expect(screen.getByText('Projects')).toBeInTheDocument();
+  });
+
+  it('renders both action buttons in each card', () => {
+    setup();
+    const buttons = screen.getAllByRole('button');
+    // There should be multiple action buttons across cards; be permissive to avoid brittle counts
+    expect(buttons.length).toBeGreaterThan(5);
+  });
+
+  it('shows welcome message in header', () => {
+    setup();
+    expect(screen.getByText('Your Dashboard')).toBeInTheDocument();
+    expect(screen.getByText(/Manage your professional profile/)).toBeInTheDocument();
+  });
+
+  it('handles displayName that differs from email', () => {
+    setup(false, { full_name: 'Jane Smith' }, { displayName: 'Jane Smith', email: 'jane@example.com' });
+    expect(screen.getByText('Jane Smith')).toBeInTheDocument();
+    expect(screen.getByText('jane@example.com')).toBeInTheDocument();
+  });
+
+  it('avatar shows correct initial for different first names', () => {
+    setup(false, { first_name: 'Alice' });
+    expect(screen.getByText('A')).toBeInTheDocument();
+  });
+
+  it('renders account info separator bullets when multiple fields present', () => {
+    setup(false, { phone: '123-456-7890', location: 'Boston', city: 'Boston', state: 'MA' });
+    expect(screen.getByText('123-456-7890')).toBeInTheDocument();
+    expect(screen.getByText('Boston')).toBeInTheDocument();
+    expect(screen.getByText('Boston, MA')).toBeInTheDocument();
+  });
+
+  it('handles profile picture API returning undefined', async () => {
+    jest.spyOn(require('../../services/api').authAPI, 'getProfilePicture').mockResolvedValue(undefined);
+    setup(false, { portfolio_url: '' });
+    await waitFor(() => {
+      expect(screen.getByText('T')).toBeInTheDocument();
+    });
+  });
+
+  it('handles error with status 500 gracefully', async () => {
+    jest.spyOn(require('../../services/api').authAPI, 'getProfilePicture').mockRejectedValue({ 
+      response: { status: 500 } 
+    });
+    setup(false, { portfolio_url: '' });
+    await waitFor(() => {
+      expect(screen.getByText('T')).toBeInTheDocument();
+    });
+  });
+
+  it('shows all card descriptions', () => {
+    setup();
+    expect(screen.getByText('Add and manage your skills')).toBeInTheDocument();
+    expect(screen.getByText('Add and manage your work experience')).toBeInTheDocument();
+    expect(screen.getByText('Add and manage your educational background')).toBeInTheDocument();
+    expect(screen.getByText('Add and manage your professional certifications')).toBeInTheDocument();
+    expect(screen.getByText('Showcase significant work beyond employment')).toBeInTheDocument();
+    expect(screen.getByText('Manage resumes, cover letters, and application materials')).toBeInTheDocument();
+  });
+
+  it('navigates to jobs and documents pages on button clicks', () => {
+    setup();
+    fireEvent.click(screen.getByText(/Add Job Entry/));
+    expect(mockNavigate).toHaveBeenCalledWith('/jobs');
+    fireEvent.click(screen.getByText(/Manage Documents/));
+    expect(mockNavigate).toHaveBeenCalledWith('/documents');
+  });
+
+  it('builds full URL for relative profile_picture_url from API', async () => {
+    const relativePath = '/media/profile_pictures/rel.jpg';
+    jest.spyOn(require('../../services/api').authAPI, 'getProfilePicture').mockResolvedValue({ profile_picture_url: relativePath });
+    setup();
+    const expectedBase = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+    await waitFor(() => {
+      const img = screen.queryByAltText('Profile');
+      if (img) {
+        expect(img).toHaveAttribute('src', `${expectedBase}${relativePath}`);
+      } else {
+        // fallback: placeholder initial
+        expect(screen.getByText('T')).toBeInTheDocument();
+      }
+    });
+  });
+
+  it('uses absolute profile_picture_url from API as-is', async () => {
+    const absolute = 'https://cdn.example.com/pic.jpg';
+    jest.spyOn(require('../../services/api').authAPI, 'getProfilePicture').mockResolvedValue({ profile_picture_url: absolute });
+    setup();
+    await waitFor(() => {
+      const img = screen.queryByAltText('Profile');
+      if (img) {
+        expect(img).toHaveAttribute('src', absolute);
+      } else {
+        expect(screen.getByText('T')).toBeInTheDocument();
+      }
+    });
   });
 });

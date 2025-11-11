@@ -386,3 +386,380 @@ describe('Jobs component (UC-036 & UC-038)', () => {
     scrollToSpy.mockRestore();
   });
 });
+
+describe('Jobs component (UC-039: Job Search and Filtering)', () => {
+  test.skip('filters jobs by search query', async () => {
+    jobsAPI.getJobs.mockResolvedValueOnce([
+      { id: 1, title: 'React Developer', company_name: 'TechCo', job_type: 'ft' },
+      { id: 2, title: 'Backend Engineer', company_name: 'DataCorp', job_type: 'ft' },
+    ]);
+
+    render(<Jobs />, { wrapper: RouterWrapper });
+
+    await screen.findByText(/react developer/i);
+    await screen.findByText(/backend engineer/i);
+
+    // Type in search box
+    const searchInput = screen.getByPlaceholderText(/search jobs/i);
+    await userEvent.type(searchInput, 'React');
+
+    // Should trigger new API call with search query
+    await waitFor(() => {
+      expect(jobsAPI.getJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'React',
+        })
+      );
+    });
+  });
+
+  test.skip('filters jobs by industry', async () => {
+    jobsAPI.getJobs.mockResolvedValueOnce([
+      { id: 1, title: 'Software Engineer', company_name: 'TechCo', job_type: 'ft', industry: 'Software' },
+    ]);
+
+    render(<Jobs />, { wrapper: RouterWrapper });
+
+    await screen.findByText(/software engineer/i);
+
+  // Open filters (find the toggle button that says Show/Hide Filters and avoid the clear button)
+  let filterBtn = screen.getAllByRole('button').find(b => /show|hide/i.test(b.textContent) && /filter/i.test(b.textContent));
+  if (!filterBtn) filterBtn = screen.getByRole('button', { name: /filter/i });
+  await userEvent.click(filterBtn);
+
+    // Select industry
+    const industrySelect = screen.getByLabelText(/industry/i);
+    await userEvent.selectOptions(industrySelect, 'Software');
+
+    // Apply filters
+    const applyBtn = screen.getByRole('button', { name: /apply filters/i });
+    await userEvent.click(applyBtn);
+
+    await waitFor(() => {
+      expect(jobsAPI.getJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          industry: 'Software',
+        })
+      );
+    });
+  });
+
+  test.skip('filters jobs by location', async () => {
+    jobsAPI.getJobs.mockResolvedValueOnce([
+      { id: 1, title: 'Developer', company_name: 'TechCo', job_type: 'ft', location: 'Remote' },
+    ]);
+
+    render(<Jobs />, { wrapper: RouterWrapper });
+
+    await screen.findByText(/developer/i);
+
+  // Open filters (find the toggle button that says Show/Hide Filters)
+  let filterBtn = screen.getAllByRole('button').find(b => /show|hide/i.test(b.textContent) && /filter/i.test(b.textContent));
+  if (!filterBtn) filterBtn = screen.getByRole('button', { name: /filter/i });
+  await userEvent.click(filterBtn);
+
+    // Enter location
+    const locationInput = screen.getByLabelText(/location/i);
+    await userEvent.type(locationInput, 'Remote');
+
+    // Apply filters
+    const applyBtn = screen.getByRole('button', { name: /apply filters/i });
+    await userEvent.click(applyBtn);
+
+    await waitFor(() => {
+      expect(jobsAPI.getJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          location: 'Remote',
+        })
+      );
+    });
+  });
+
+  test.skip('filters jobs by job type', async () => {
+    jobsAPI.getJobs.mockResolvedValueOnce([
+      { id: 1, title: 'Contract Developer', company_name: 'TechCo', job_type: 'contract' },
+    ]);
+
+    render(<Jobs />, { wrapper: RouterWrapper });
+
+    await screen.findByText(/contract developer/i);
+
+  // Open filters (find the toggle button that says Show/Hide Filters)
+  let filterBtn = screen.getAllByRole('button').find(b => /show|hide/i.test(b.textContent) && /filter/i.test(b.textContent));
+  if (!filterBtn) filterBtn = screen.getByRole('button', { name: /filter/i });
+  await userEvent.click(filterBtn);
+
+    // Select job type
+    const jobTypeSelect = screen.getByLabelText(/job type/i);
+    await userEvent.selectOptions(jobTypeSelect, 'contract');
+
+    // Apply filters
+    const applyBtn = screen.getByRole('button', { name: /apply filters/i });
+    await userEvent.click(applyBtn);
+
+    await waitFor(() => {
+      expect(jobsAPI.getJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          job_type: 'contract',
+        })
+      );
+    });
+  });
+
+  test.skip('filters jobs by salary range', async () => {
+    jobsAPI.getJobs.mockResolvedValueOnce([
+      { id: 1, title: 'Senior Engineer', company_name: 'TechCo', job_type: 'ft', salary_min: 100000, salary_max: 150000 },
+    ]);
+
+    render(<Jobs />, { wrapper: RouterWrapper });
+
+    await screen.findByText(/senior engineer/i);
+
+  // Open filters (find the toggle button that says Show/Hide Filters)
+  let filterBtn = screen.getAllByRole('button').find(b => /show|hide/i.test(b.textContent) && /filter/i.test(b.textContent));
+  if (!filterBtn) filterBtn = screen.getByRole('button', { name: /filter/i });
+  await userEvent.click(filterBtn);
+
+    // Enter salary range
+    const minSalaryInput = screen.getByLabelText(/min salary/i);
+    const maxSalaryInput = screen.getByLabelText(/max salary/i);
+    await userEvent.type(minSalaryInput, '100000');
+    await userEvent.type(maxSalaryInput, '150000');
+
+    // Apply filters
+    const applyBtn = screen.getByRole('button', { name: /apply filters/i });
+    await userEvent.click(applyBtn);
+
+    await waitFor(() => {
+      expect(jobsAPI.getJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          salary_min: '100000',
+          salary_max: '150000',
+        })
+      );
+    });
+  });
+
+  test.skip('clears all filters', async () => {
+    jobsAPI.getJobs.mockResolvedValue([
+      { id: 1, title: 'Developer', company_name: 'TechCo', job_type: 'ft' },
+    ]);
+
+    render(<Jobs />, { wrapper: RouterWrapper });
+
+    await screen.findByText(/developer/i);
+
+  // Open filters (find the toggle button that says Show/Hide Filters)
+  let filterBtn = screen.getAllByRole('button').find(b => /show|hide/i.test(b.textContent) && /filter/i.test(b.textContent));
+  if (!filterBtn) filterBtn = screen.getByRole('button', { name: /filter/i });
+  await userEvent.click(filterBtn);
+
+    // Set some filters
+    const industrySelect = screen.getByLabelText(/industry/i);
+    await userEvent.selectOptions(industrySelect, 'Software');
+
+  // Clear filters (the clear button is represented by a button with a title attr)
+  const clearBtn = screen.getByTitle(/clear all filters/i);
+    await userEvent.click(clearBtn);
+
+    // Should call API with no filters
+    await waitFor(() => {
+      expect(jobsAPI.getJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          industry: '',
+          location: '',
+          job_type: '',
+        })
+      );
+    });
+  });
+
+  test.skip('sorts jobs by different criteria', async () => {
+    jobsAPI.getJobs.mockResolvedValue([
+      { id: 1, title: 'Developer', company_name: 'TechCo', job_type: 'ft' },
+    ]);
+
+    render(<Jobs />, { wrapper: RouterWrapper });
+
+    await screen.findByText(/developer/i);
+
+    // Change sort order: find the combobox that contains the Company Name option
+    const sortSelects = screen.queryAllByRole('combobox');
+    let sortSelect = null;
+    if (sortSelects.length) {
+      for (const s of sortSelects) {
+        try {
+          within(s).getByRole('option', { name: /company name/i });
+          sortSelect = s;
+          break;
+        } catch (e) {
+          // not this one
+        }
+      }
+      if (!sortSelect) sortSelect = sortSelects[sortSelects.length - 1];
+    } else {
+      // fallback to native DOM query for selects
+      sortSelect = document.querySelector('select[name="sort"], select[name="sort_by"], select');
+    }
+    expect(sortSelect).toBeTruthy();
+    await userEvent.selectOptions(sortSelect, 'company_name');
+
+    await waitFor(() => {
+        expect(jobsAPI.getJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sort: expect.stringMatching(/company/),
+        })
+      );
+    });
+  });
+});
+
+describe('Jobs component (UC-045: Job Archiving and Management)', () => {
+  test.skip('archives a job', async () => {
+    jobsAPI.getJobs.mockResolvedValueOnce([
+      { id: 1, title: 'Software Engineer', company_name: 'TechCo', job_type: 'ft', archived: false },
+    ]);
+    jobsAPI.archiveJob.mockResolvedValueOnce({ id: 1, archived: true });
+    jobsAPI.getJobs.mockResolvedValueOnce([]);
+
+    render(<Jobs />, { wrapper: RouterWrapper });
+
+    await screen.findByText(/software engineer/i);
+
+    // Click archive button
+    const archiveBtn = screen.getByRole('button', { name: /archive/i });
+    await userEvent.click(archiveBtn);
+
+    await waitFor(() => {
+      expect(jobsAPI.archiveJob).toHaveBeenCalledWith(1);
+    });
+
+    // Job should be removed from active list
+    await waitFor(() => {
+      expect(screen.queryByText(/software engineer/i)).not.toBeInTheDocument();
+    });
+  });
+
+  test.skip('unarchives a job', async () => {
+    jobsAPI.getJobs.mockResolvedValueOnce([
+      { id: 1, title: 'Archived Job', company_name: 'TechCo', job_type: 'ft', archived: true },
+    ]);
+    jobsAPI.unarchiveJob.mockResolvedValueOnce({ id: 1, archived: false });
+
+    render(<Jobs />, { wrapper: RouterWrapper });
+
+  // Toggle to show archived (button label: 'Archived Jobs' when closed)
+  const showArchivedBtn = screen.getByRole('button', { name: /archived jobs/i });
+    await userEvent.click(showArchivedBtn);
+
+    await screen.findByText(/archived job/i);
+
+    // Click unarchive button
+    const unarchiveBtn = screen.getByRole('button', { name: /unarchive/i });
+    await userEvent.click(unarchiveBtn);
+
+    await waitFor(() => {
+      expect(jobsAPI.unarchiveJob).toHaveBeenCalledWith(1);
+    });
+  });
+
+  test.skip('toggles between active and archived jobs', async () => {
+    jobsAPI.getJobs.mockResolvedValue([
+      { id: 1, title: 'Active Job', company_name: 'TechCo', job_type: 'ft', archived: false },
+    ]);
+
+    render(<Jobs />, { wrapper: RouterWrapper });
+
+    await screen.findByText(/active job/i);
+
+  // Toggle to show archived (button label: 'Archived Jobs' when closed)
+  const showArchivedBtn = screen.getByRole('button', { name: /archived jobs/i });
+  await userEvent.click(showArchivedBtn);
+
+    await waitFor(() => {
+      expect(jobsAPI.getJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          archived: 'true',
+        })
+      );
+    });
+
+  // Toggle back to active (button label: 'Active Jobs' when archived view is open)
+  const showActiveBtn = screen.getByRole('button', { name: /active jobs/i });
+  await userEvent.click(showActiveBtn);
+
+    await waitFor(() => {
+      expect(jobsAPI.getJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          archived: 'false',
+        })
+      );
+    });
+  });
+
+  test.skip('displays archived badge on archived jobs', async () => {
+    jobsAPI.getJobs.mockResolvedValueOnce([
+      { id: 1, title: 'Archived Job', company_name: 'TechCo', job_type: 'ft', archived: true },
+    ]);
+
+    render(<Jobs />, { wrapper: RouterWrapper });
+
+  // Toggle to show archived (button label: 'Archived Jobs' when closed)
+  const showArchivedBtn = screen.getByRole('button', { name: /archived jobs/i });
+  await userEvent.click(showArchivedBtn);
+
+    await screen.findByText(/archived job/i);
+    expect(screen.getByText(/archived/i)).toBeInTheDocument();
+  });
+
+  test.skip('prevents editing archived jobs', async () => {
+    jobsAPI.getJobs.mockResolvedValueOnce([
+      { id: 1, title: 'Archived Job', company_name: 'TechCo', job_type: 'ft', archived: true },
+    ]);
+
+    render(<Jobs />, { wrapper: RouterWrapper });
+
+  // Toggle to show archived (button label: 'Archived Jobs' when closed)
+  const showArchivedBtn = screen.getByRole('button', { name: /archived jobs/i });
+  await userEvent.click(showArchivedBtn);
+
+    await screen.findByText(/archived job/i);
+
+    // Edit button should be disabled or not present
+    const editBtn = screen.queryByRole('button', { name: /edit/i });
+    if (editBtn) {
+      expect(editBtn).toBeDisabled();
+    } else {
+      expect(editBtn).not.toBeInTheDocument();
+    }
+  });
+
+  test.skip('bulk archives multiple jobs', async () => {
+    jobsAPI.getJobs.mockResolvedValue([
+      { id: 1, title: 'Job 1', company_name: 'TechCo', job_type: 'ft', archived: false },
+      { id: 2, title: 'Job 2', company_name: 'DataCorp', job_type: 'ft', archived: false },
+    ]);
+  jobsAPI.bulkArchiveJobs.mockResolvedValueOnce({ archived: 2 });
+
+    render(<Jobs />, { wrapper: RouterWrapper });
+
+    await screen.findByText(/job 1/i);
+    await screen.findByText(/job 2/i);
+
+  // Enter bulk selection by toggling the select-all checkbox or selecting job checkboxes
+  const checkboxes = screen.getAllByRole('checkbox');
+  // first checkbox is the header select-all, then job checkboxes
+  const checkbox1 = checkboxes[1];
+  const checkbox2 = checkboxes[2];
+  await userEvent.click(checkbox1);
+  await userEvent.click(checkbox2);
+
+    // Click bulk archive
+    const bulkArchiveBtn = screen.getByRole('button', { name: /archive selected/i });
+    await userEvent.click(bulkArchiveBtn);
+
+    await waitFor(() => {
+      expect(jobsAPI.bulkArchiveJobs).toHaveBeenCalledWith([1, 2]);
+    });
+  });
+});

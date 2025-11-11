@@ -24,6 +24,7 @@
   "devDependencies": {
     "@babel/preset-env": "^7.23.0",
     "@babel/preset-react": "^7.23.0",
+    "axios-mock-adapter": "^1.21.2",
     "babel-jest": "^27.5.1",
     "identity-obj-proxy": "^3.0.0",
     "jest": "^27.5.1",

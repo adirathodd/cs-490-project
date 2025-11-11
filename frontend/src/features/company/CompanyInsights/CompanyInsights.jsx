@@ -670,4 +670,21 @@ const CompanyInsights = () => {
   );
 };
 
+export {
+  formatCategoryLabel,
+  formatDate,
+  getSourceFromUrl,
+  extractKeyPoints,
+  inferCategory,
+  computePersonalRelevance,
+  enrichNewsItem,
+  getCompanyStorageKey,
+  sanitizeNewsId,
+  getSnippetTokens,
+  escapeRegExp,
+  hasNewsSnippet,
+  stripNewsSnippet,
+  PAGE_SIZE,
+};
+
 export default CompanyInsights;
