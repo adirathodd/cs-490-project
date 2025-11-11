@@ -175,7 +175,9 @@ const ResumeVersionControl = () => {
       setSuccess('Version archived successfully');
       loadVersions();
     } catch (err) {
-      setError(err.message || 'Failed to archive version');
+      // Normalize error message coming from API helper which may throw strings
+      const msg = err?.response?.data?.error || err?.message || (typeof err === 'string' ? err : null) || 'Failed to archive version';
+      setError(msg);
     }
   };
 
@@ -587,7 +589,8 @@ const ResumeVersionControl = () => {
                               <button
                                 className="action-btn"
                                 onClick={() => handleArchive(version.id)}
-                                title="Archive"
+                                title={version.is_default ? "Cannot archive default version" : "Archive"}
+                                disabled={version.is_default}
                               >
                                 <Icon name="archive" size="sm" />
                               </button>

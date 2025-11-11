@@ -1,0 +1,207 @@
+import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+
+// Mock react-router hooks before importing the component
+jest.mock('react-router-dom', () => ({
+  useNavigate: () => jest.fn(),
+  useParams: () => ({ id: 'job-1' }),
+}));
+
+// Mock the API used by the component
+const mockGetJob = jest.fn();
+const mockGetJobCompanyInsights = jest.fn();
+const mockUpdateJob = jest.fn();
+
+jest.mock('../../../../services/api', () => ({
+  jobsAPI: {
+    getJob: (...args) => mockGetJob(...args),
+    getJobCompanyInsights: (...args) => mockGetJobCompanyInsights(...args),
+    updateJob: (...args) => mockUpdateJob(...args),
+  },
+}));
+
+// Now import the component under test
+import CompanyInsights, {
+  formatCategoryLabel,
+  formatDate,
+  getSourceFromUrl,
+  extractKeyPoints,
+  inferCategory,
+  computePersonalRelevance,
+  enrichNewsItem,
+  getSnippetTokens,
+  hasNewsSnippet,
+  stripNewsSnippet,
+} from '../CompanyInsights';
+
+beforeEach(() => {
+  jest.resetAllMocks();
+  localStorage.clear();
+  // default clipboard mock
+  global.navigator.clipboard = { writeText: jest.fn().mockResolvedValue() };
+});
+
+describe('CompanyInsights integration tests', () => {
+  test('loads company and news, toggles follow, copies and exports', async () => {
+    const jobData = {
+      id: 'job-1',
+      title: 'Software Engineer',
+      company_name: 'Acme Co',
+      industry: 'AI',
+      location: 'Boston, MA',
+      personal_notes: '',
+      company_info: {
+        id: 'company-123',
+        name: 'Acme Co',
+        description: 'Acme description',
+        recent_news: [
+          { title: 'Company raises Series A', summary: 'We raised funding.', date: '2021-01-01', url: 'https://news.acme.com/1' },
+          { title: 'Hiring in Boston', summary: 'Looking for engineers in Boston.', date: '2021-02-01', url: '' },
+        ],
+        news_overview: { total_items: 2, latest_published_at: '2021-02-01', high_priority_items: 1 },
+      },
+    };
+
+    mockGetJob.mockResolvedValueOnce(jobData);
+    mockGetJobCompanyInsights.mockResolvedValueOnce(jobData.company_info);
+
+    mockUpdateJob.mockImplementation(async (id, payload) => ({ ...jobData, personal_notes: payload.personal_notes }));
+
+    render(<CompanyInsights />);
+
+    // Wait for company name to appear
+    expect(await screen.findByText('Acme Co')).toBeInTheDocument();
+
+    // News cards should be rendered
+    const cards = await screen.findAllByRole('heading', { level: 4 });
+    expect(cards.length).toBeGreaterThanOrEqual(2);
+
+    // Follow toggle should update localStorage and show status
+    const followBtn = screen.getByRole('button', { name: /Follow Company|Following Alerts/i });
+    fireEvent.click(followBtn);
+  // The component keys companies with `company-${company.id}` or name slug; verify stored key exists
+  const stored = JSON.parse(localStorage.getItem('followedCompanies'));
+  expect(stored).toBeTruthy();
+  expect(Object.keys(stored).some((k) => k.includes('company-123'))).toBe(true);
+    // Status banner appears
+    expect(await screen.findByText(/You will receive alerts for this company./i)).toBeInTheDocument();
+
+    // Copy summary: click first copy button
+    const copyButtons = screen.getAllByRole('button', { name: /Copy Summary/i });
+    expect(copyButtons.length).toBeGreaterThan(0);
+    fireEvent.click(copyButtons[0]);
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalled());
+
+    // Export summaries: ensure button enabled and clicking shows status (we don't perform download)
+    const exportBtn = screen.getByRole('button', { name: /Export Summaries/i });
+    fireEvent.click(exportBtn);
+    expect(await screen.findByText(/News summaries exported./i)).toBeInTheDocument();
+  });
+
+  test('add and remove news snippets to job notes', async () => {
+    const jobData = {
+      id: 'job-1',
+      title: 'Software Engineer',
+      company_name: 'Beta Co',
+      industry: 'AI',
+      location: 'Boston, MA',
+      personal_notes: '',
+      company_info: {
+        id: 'company-456',
+        name: 'Beta Co',
+        description: 'Beta description',
+        recent_news: [
+          { title: 'New product launch', summary: 'We launched X.', date: '2022-03-01', url: 'https://news.beta.com/1' },
+        ],
+        news_overview: { total_items: 1, latest_published_at: '2022-03-01', high_priority_items: 0 },
+      },
+    };
+
+    mockGetJob.mockResolvedValueOnce(jobData);
+    mockGetJobCompanyInsights.mockResolvedValueOnce(jobData.company_info);
+
+    // First updateJob call returns job with personal_notes containing snippet
+    mockUpdateJob.mockImplementationOnce(async (id, payload) => ({ ...jobData, personal_notes: payload.personal_notes }));
+
+    render(<CompanyInsights />);
+
+    expect(await screen.findByText('Beta Co')).toBeInTheDocument();
+
+    const addBtn = await screen.findByRole('button', { name: /Add to Notes/i });
+    fireEvent.click(addBtn);
+
+    // After save, status shown
+    expect(await screen.findByText(/News insight saved to job materials./i)).toBeInTheDocument();
+
+    // Now simulate that the job already has the snippet so Remove from Notes appears
+    const snippet = '[NEWS:news-0]';
+    mockGetJob.mockResolvedValueOnce({ ...jobData, personal_notes: `${snippet}\nSome notes` });
+    mockGetJobCompanyInsights.mockResolvedValueOnce(jobData.company_info);
+    // For removal, updateJob will be called again
+    mockUpdateJob.mockImplementationOnce(async (id, payload) => ({ ...jobData, personal_notes: payload.personal_notes }));
+
+    // Rerender component to pick up the updated job with notes
+    render(<CompanyInsights />);
+    expect(await screen.findByText('Beta Co')).toBeInTheDocument();
+
+    // Removal button should exist now (may take a moment)
+    const removeBtn = await screen.findByRole('button', { name: /Remove from Notes/i });
+    fireEvent.click(removeBtn);
+    expect(await screen.findByText(/News insight removed from job notes./i)).toBeInTheDocument();
+  });
+});
+
+describe('exported helpers unit tests', () => {
+  test('snippet tokenization and strip/has behavior', () => {
+    const newsId = 'news/1?x=1';
+    const { start, end, safeId } = getSnippetTokens(newsId);
+    expect(safeId).toBe(encodeURIComponent(newsId));
+    const notes = `Intro\n${start}\nSome content\n${end}\nEnd`;
+    expect(hasNewsSnippet(notes, newsId)).toBe(true);
+    const stripped = stripNewsSnippet(notes, newsId);
+    expect(stripped).toContain('Intro');
+    expect(stripped).not.toContain('Some content');
+  });
+
+  test('inferCategory edge cases and computePersonalRelevance extremes', () => {
+    expect(inferCategory('', '')).toBe('update');
+    expect(inferCategory('IPO announced', '')).toBe('funding');
+    const news = { title: 'Hiring remote', summary: 'Hiring remote', category: 'hiring' };
+    const job = { industry: 'Healthcare', title: 'Nurse', location: 'Remote' };
+    const score = computePersonalRelevance(news, job);
+    expect(score).toBeGreaterThanOrEqual(15);
+    const item = enrichNewsItem({ title: 'A', summary: 'B' }, job);
+    expect(item).toHaveProperty('id');
+  });
+
+  test('formatCategoryLabel and fallback behaviors', () => {
+    expect(formatCategoryLabel('unknown_tag')).toBe('Unknown Tag');
+    expect(getSourceFromUrl('http://example.org/path', null)).toBe('example.org');
+    // text fallback in extractKeyPoints
+    expect(extractKeyPoints('', 'fb')[0]).toBe('fb');
+  });
+
+  test('handleCopySummary fallback to textarea when clipboard not available', async () => {
+    // Render component and call copy functionality by invoking button when clipboard is absent
+    // Remove clipboard API to force textarea path
+    delete global.navigator.clipboard;
+    const jobData = {
+      id: 'job-1',
+      title: 'SWE',
+      company_name: 'Acme',
+      company_info: { id: 'c1', name: 'Acme', recent_news: [{ title: 'T', summary: 'S', date: '2020-01-01', url: 'https://a' }] },
+      personal_notes: '',
+    };
+    mockGetJob.mockResolvedValueOnce(jobData);
+    mockGetJobCompanyInsights.mockResolvedValueOnce(jobData.company_info);
+    mockUpdateJob.mockResolvedValueOnce(jobData);
+    render(<CompanyInsights />);
+    expect(await screen.findByText('Acme')).toBeInTheDocument();
+    const copyBtn = await screen.findByRole('button', { name: /Copy Summary/i });
+    // Ensure document.execCommand exists
+    document.execCommand = jest.fn();
+    fireEvent.click(copyBtn);
+    // execCommand should have been called in fallback
+    await waitFor(() => expect(document.execCommand).toHaveBeenCalled());
+  });
+});
