@@ -7,7 +7,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { jobsAPI, coverLetterAIAPI } from '../../../services/api';
+import { jobsAPI, coverLetterAIAPI, coverLetterExportAPI } from '../../../services/api';
 import Icon from '../../../components/common/Icon';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import { auth } from '../../../services/firebase';
@@ -592,11 +592,40 @@ const AiCoverLetterGenerator = () => {
   const [versionHistory, setVersionHistory] = useState([]);
   const [currentVersionIndex, setCurrentVersionIndex] = useState(-1);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const versionTimeoutRef = useRef(null);
+  const lastContentRef = useRef(null);
   
   // UC-060: Spell check and grammar assistance
   const [grammarIssues, setGrammarIssues] = useState([]);
   const [showGrammarPanel, setShowGrammarPanel] = useState(false);
   const isApplyingFixRef = useRef(false); // Track when we're applying a fix to prevent re-checking
+  
+  // Live text editor state
+  const [editableContent, setEditableContent] = useState({
+    header: '',
+    greeting: '',
+    opening_paragraph: '',
+    body_paragraphs: [''],
+    closing_paragraph: '',
+    complimentary_close: ''
+  });
+  
+  // UC-060: Word/character counts and readability
+  const [wordCount, setWordCount] = useState(0);
+  const [characterCount, setCharacterCount] = useState(0);
+  const [readabilityScore, setReadabilityScore] = useState(null);
+  const [readabilityLevel, setReadabilityLevel] = useState('');
+  const [showReadabilityPanel, setShowReadabilityPanel] = useState(false);
+  
+  // UC-060: Synonym suggestions
+  const [selectedText, setSelectedText] = useState('');
+  const [synonymSuggestions, setSynonymSuggestions] = useState([]);
+  const [showSynonymPanel, setShowSynonymPanel] = useState(false);
+  const [synonymLoading, setSynonymLoading] = useState(false);
+  
+  // UC-060: Restructuring suggestions
+  const [restructuringSuggestions, setRestructuringSuggestions] = useState([]);
+  const [showRestructuringPanel, setShowRestructuringPanel] = useState(false);
   
   // UC-061: Email and letterhead state
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -631,6 +660,15 @@ const AiCoverLetterGenerator = () => {
   });
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
+
+  // UC-061: Export options state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFormat, setExportFormat] = useState('docx');
+  const [exportTheme, setExportTheme] = useState('professional');
+  const [exportWatermark, setExportWatermark] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const [availableThemes, setAvailableThemes] = useState([]);
 
   const variationSectionRef = useRef(null);
   const pdfUrlRef = useRef('');
@@ -682,6 +720,22 @@ const AiCoverLetterGenerator = () => {
         }
       }, 500);
     }
+  }, []);
+
+  // UC-061: Load available export themes
+  useEffect(() => {
+    const loadThemes = async () => {
+      try {
+        const themes = await coverLetterExportAPI.getThemes();
+        if (themes && themes.length > 0) {
+          setAvailableThemes(themes);
+        }
+      } catch (error) {
+        console.error('Failed to load export themes:', error);
+        // Use default themes if API fails
+      }
+    };
+    loadThemes();
   }, []);
 
   // Save result to cache whenever it changes
@@ -850,6 +904,57 @@ const AiCoverLetterGenerator = () => {
     }
     return undefined;
   }, [activeVariation]);
+
+  // Sync editable content when active variation changes
+  useEffect(() => {
+    if (activeVariation) {
+      setEditableContent({
+        header: activeVariation.header || '',
+        greeting: activeVariation.greeting || '',
+        opening_paragraph: activeVariation.opening_paragraph || '',
+        body_paragraphs: activeVariation.body_paragraphs || [''],
+        closing_paragraph: activeVariation.closing_paragraph || '',
+        complimentary_close: activeVariation.complimentary_close || 'Sincerely,'
+      });
+    }
+  }, [activeVariation]);
+
+  // Load version history from localStorage when variation changes
+  useEffect(() => {
+    if (!activeVariationId) return;
+    
+    try {
+      const storageKey = `resumerocket_cover_letter_versions_${activeVariationId}`;
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const { versions, currentIndex } = JSON.parse(saved);
+        setVersionHistory(versions || []);
+        setCurrentVersionIndex(currentIndex || -1);
+      } else {
+        setVersionHistory([]);
+        setCurrentVersionIndex(-1);
+      }
+    } catch (err) {
+      console.error('Failed to load version history from localStorage', err);
+      setVersionHistory([]);
+      setCurrentVersionIndex(-1);
+    }
+  }, [activeVariationId]);
+
+  // Save version history to localStorage whenever it changes
+  useEffect(() => {
+    if (!activeVariationId) return;
+    
+    try {
+      const storageKey = `resumerocket_cover_letter_versions_${activeVariationId}`;
+      localStorage.setItem(storageKey, JSON.stringify({
+        versions: versionHistory,
+        currentIndex: currentVersionIndex,
+      }));
+    } catch (err) {
+      console.error('Failed to save version history to localStorage', err);
+    }
+  }, [versionHistory, currentVersionIndex, activeVariationId]);
 
   useEffect(
     () => () => {
@@ -1070,14 +1175,14 @@ const AiCoverLetterGenerator = () => {
     setVersionHistory((prev) => {
       const newHistory = prev.slice(0, currentVersionIndex + 1);
       newHistory.push(snapshot);
-      // Keep only last 20 versions
-      if (newHistory.length > 20) {
+      // Keep only last 30 versions
+      if (newHistory.length > 30) {
         newHistory.shift();
       }
       return newHistory;
     });
     setCurrentVersionIndex((prev) => {
-      const newIdx = Math.min(prev + 1, 19);
+      const newIdx = Math.min(prev + 1, 29);
       return newIdx;
     });
   }, [activeVariation, currentVersionIndex]);
@@ -1157,9 +1262,43 @@ const AiCoverLetterGenerator = () => {
       };
     });
     
+    // Discard all versions after the restored version
+    setVersionHistory((prev) => prev.slice(0, index + 1));
     setCurrentVersionIndex(index);
     setShowVersionHistory(false);
   }, [versionHistory, activeVariationId]);
+
+  // Auto-save version 30 seconds after changes stop
+  useEffect(() => {
+    if (!activeVariation) return;
+    
+    const currentContent = JSON.stringify({
+      opening: activeVariation.opening_paragraph,
+      body: activeVariation.body_paragraphs,
+      closing: activeVariation.closing_paragraph,
+    });
+    
+    // Skip if content hasn't changed
+    if (currentContent === lastContentRef.current) return;
+    
+    lastContentRef.current = currentContent;
+    
+    // Clear existing timeout
+    if (versionTimeoutRef.current) {
+      clearTimeout(versionTimeoutRef.current);
+    }
+    
+    // Set new timeout for 5 seconds
+    versionTimeoutRef.current = setTimeout(() => {
+      saveVersion();
+    }, 5000); // 5 seconds
+    
+    return () => {
+      if (versionTimeoutRef.current) {
+        clearTimeout(versionTimeoutRef.current);
+      }
+    };
+  }, [activeVariation?.opening_paragraph, activeVariation?.body_paragraphs, activeVariation?.closing_paragraph, saveVersion]);
 
   // Apply grammar fix using LanguageTool suggestion
   const applyGrammarFix = useCallback(async (issue, replacementIndex = 0) => {
@@ -1189,7 +1328,22 @@ const AiCoverLetterGenerator = () => {
     const after = originalText.substring(issue.position + issue.length);
     const fixedText = before + replacement + after;
     
-    // Update the variation
+    // Update editableContent immediately to ensure UI is in sync
+    setEditableContent((prev) => {
+      if (paragraphType === 'opening') {
+        return { ...prev, opening_paragraph: fixedText };
+      } else if (paragraphType.startsWith('body-')) {
+        const idx = parseInt(paragraphType.split('-')[1], 10);
+        const newBodyParagraphs = [...prev.body_paragraphs];
+        newBodyParagraphs[idx] = fixedText;
+        return { ...prev, body_paragraphs: newBodyParagraphs };
+      } else if (paragraphType === 'closing') {
+        return { ...prev, closing_paragraph: fixedText };
+      }
+      return prev;
+    });
+    
+    // Update the variation in result state
     setResult((prev) => {
       if (!prev?.variations) return prev;
       
@@ -1221,16 +1375,425 @@ const AiCoverLetterGenerator = () => {
     // Remove the fixed issue from the list immediately
     setGrammarIssues((prev) => prev.filter((i) => i.id !== issue.id));
     
-    // Reset flag after a short delay to allow normal grammar checking to resume
-    setTimeout(() => {
+    // Trigger a fresh grammar check after a short delay to get updated suggestions
+    setTimeout(async () => {
       isApplyingFixRef.current = false;
-    }, 300);
+      
+      // Re-check grammar with updated text
+      const opening = paragraphType === 'opening' ? fixedText : (activeVariation?.opening_paragraph || '');
+      const bodies = paragraphType.startsWith('body-') 
+        ? activeVariation?.body_paragraphs.map((p, i) => {
+            const idx = parseInt(paragraphType.split('-')[1], 10);
+            return i === idx ? fixedText : p;
+          }) || []
+        : activeVariation?.body_paragraphs || [];
+      const closing = paragraphType === 'closing' ? fixedText : (activeVariation?.closing_paragraph || '');
+      
+      const fullText = [opening, ...bodies, closing].filter(Boolean).join('\n\n');
+      
+      if (fullText.trim()) {
+        try {
+          const apiIssues = await checkGrammarAPI(fullText);
+          
+          const allIssues = apiIssues.map(apiIssue => {
+            let cumulativeLength = 0;
+            let type = 'general';
+            
+            if (opening) {
+              if (apiIssue.offset < opening.length) {
+                type = 'opening';
+              }
+              cumulativeLength += opening.length + 2;
+            }
+            
+            bodies.forEach((body, idx) => {
+              if (body && apiIssue.offset >= cumulativeLength && apiIssue.offset < cumulativeLength + body.length) {
+                type = `body-${idx}`;
+              }
+              cumulativeLength += body.length + 2;
+            });
+            
+            if (closing && apiIssue.offset >= cumulativeLength) {
+              type = 'closing';
+            }
+            
+            return transformGrammarIssue(apiIssue, type);
+          });
+          
+          setGrammarIssues(allIssues);
+        } catch (error) {
+          console.error('[Grammar Check] Re-check error:', error);
+        }
+      }
+    }, 500);
   }, [activeVariationId, activeVariation]);
 
   // UC-060: Ignore a grammar issue (remove from list without applying fix)
   const ignoreGrammarIssue = useCallback((issueId) => {
     setGrammarIssues((prev) => prev.filter((issue) => issue.id !== issueId));
   }, []);
+
+  // UC-060: Manual recheck grammar
+  const recheckGrammar = useCallback(async () => {
+    if (!activeVariation) return;
+    
+    const opening = activeVariation.opening_paragraph || '';
+    const bodies = activeVariation.body_paragraphs || [];
+    const closing = activeVariation.closing_paragraph || '';
+    
+    const fullText = [opening, ...bodies, closing].filter(Boolean).join('\n\n');
+    
+    if (!fullText.trim()) {
+      setGrammarIssues([]);
+      return;
+    }
+    
+    try {
+      const apiIssues = await checkGrammarAPI(fullText);
+      
+      const allIssues = apiIssues.map(issue => {
+        let cumulativeLength = 0;
+        let paragraphType = 'general';
+        
+        if (opening) {
+          if (issue.offset < opening.length) {
+            paragraphType = 'opening';
+          }
+          cumulativeLength += opening.length + 2;
+        }
+        
+        bodies.forEach((body, idx) => {
+          if (body && issue.offset >= cumulativeLength && issue.offset < cumulativeLength + body.length) {
+            paragraphType = `body-${idx}`;
+          }
+          cumulativeLength += body.length + 2;
+        });
+        
+        if (closing && issue.offset >= cumulativeLength) {
+          paragraphType = 'closing';
+        }
+        
+        return transformGrammarIssue(issue, paragraphType);
+      });
+      
+      setGrammarIssues(allIssues);
+    } catch (error) {
+      console.error('[Grammar Check] Manual re-check error:', error);
+    }
+  }, [activeVariation]);
+
+  // Handlers for live text editor
+  const handleContentChange = useCallback((field, value) => {
+    setEditableContent((prev) => ({
+      ...prev,
+      [field]: value
+    }));
+    
+    // Update the active variation
+    setResult((prev) => {
+      if (!prev?.variations) return prev;
+      const updatedVariations = prev.variations.map((v) => {
+        if (v.id !== activeVariationId) return v;
+        return {
+          ...v,
+          [field]: value
+        };
+      });
+      return {
+        ...prev,
+        variations: updatedVariations,
+      };
+    });
+  }, [activeVariationId]);
+
+  const handleBodyParagraphChange = useCallback((index, value) => {
+    setEditableContent((prev) => {
+      const newBodyParagraphs = [...prev.body_paragraphs];
+      newBodyParagraphs[index] = value;
+      return {
+        ...prev,
+        body_paragraphs: newBodyParagraphs
+      };
+    });
+    
+    // Update the active variation
+    setResult((prev) => {
+      if (!prev?.variations) return prev;
+      const updatedVariations = prev.variations.map((v) => {
+        if (v.id !== activeVariationId) return v;
+        const newBodyParagraphs = [...(v.body_paragraphs || [])];
+        newBodyParagraphs[index] = value;
+        return {
+          ...v,
+          body_paragraphs: newBodyParagraphs
+        };
+      });
+      return {
+        ...prev,
+        variations: updatedVariations,
+      };
+    });
+  }, [activeVariationId]);
+
+  const addBodyParagraph = useCallback(() => {
+    setEditableContent((prev) => ({
+      ...prev,
+      body_paragraphs: [...prev.body_paragraphs, '']
+    }));
+    
+    // Update the active variation
+    setResult((prev) => {
+      if (!prev?.variations) return prev;
+      const updatedVariations = prev.variations.map((v) => {
+        if (v.id !== activeVariationId) return v;
+        return {
+          ...v,
+          body_paragraphs: [...(v.body_paragraphs || []), '']
+        };
+      });
+      return {
+        ...prev,
+        variations: updatedVariations,
+      };
+    });
+  }, [activeVariationId]);
+
+  const removeBodyParagraph = useCallback((index) => {
+    setEditableContent((prev) => ({
+      ...prev,
+      body_paragraphs: prev.body_paragraphs.filter((_, i) => i !== index)
+    }));
+    
+    // Update the active variation
+    setResult((prev) => {
+      if (!prev?.variations) return prev;
+      const updatedVariations = prev.variations.map((v) => {
+        if (v.id !== activeVariationId) return v;
+        return {
+          ...v,
+          body_paragraphs: (v.body_paragraphs || []).filter((_, i) => i !== index)
+        };
+      });
+      return {
+        ...prev,
+        variations: updatedVariations,
+      };
+    });
+  }, [activeVariationId]);
+
+  // UC-060: Calculate word and character counts
+  const calculateCounts = useCallback(() => {
+    const fullText = [
+      editableContent.header,
+      editableContent.greeting,
+      editableContent.opening_paragraph,
+      ...(editableContent.body_paragraphs || []),
+      editableContent.closing_paragraph,
+      editableContent.complimentary_close
+    ].filter(Boolean).join(' ');
+    
+    const chars = fullText.length;
+    const words = fullText.trim() ? fullText.trim().split(/\s+/).length : 0;
+    
+    setCharacterCount(chars);
+    setWordCount(words);
+  }, [editableContent]);
+
+  // UC-060: Calculate readability score (Flesch Reading Ease)
+  const calculateReadability = useCallback(() => {
+    const fullText = [
+      editableContent.opening_paragraph,
+      ...(editableContent.body_paragraphs || []),
+      editableContent.closing_paragraph
+    ].filter(Boolean).join(' ');
+    
+    if (!fullText.trim()) {
+      setReadabilityScore(null);
+      setReadabilityLevel('');
+      return;
+    }
+    
+    // Count sentences
+    const sentences = fullText.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
+    
+    // Count words
+    const words = fullText.trim().split(/\s+/).length;
+    
+    // Count syllables (simplified approach)
+    const syllables = fullText
+      .toLowerCase()
+      .replace(/[^a-z]/g, '')
+      .replace(/[^aeiouy]+/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(s => s).length;
+    
+    if (sentences === 0 || words === 0) {
+      setReadabilityScore(null);
+      setReadabilityLevel('');
+      return;
+    }
+    
+    // Flesch Reading Ease formula: 206.835 - 1.015(total words/total sentences) - 84.6(total syllables/total words)
+    const score = 206.835 - 1.015 * (words / sentences) - 84.6 * (syllables / words);
+    const clampedScore = Math.max(0, Math.min(100, score));
+    
+    setReadabilityScore(Math.round(clampedScore));
+    
+    // Interpret score
+    if (clampedScore >= 90) setReadabilityLevel('Very Easy');
+    else if (clampedScore >= 80) setReadabilityLevel('Easy');
+    else if (clampedScore >= 70) setReadabilityLevel('Fairly Easy');
+    else if (clampedScore >= 60) setReadabilityLevel('Standard');
+    else if (clampedScore >= 50) setReadabilityLevel('Fairly Difficult');
+    else if (clampedScore >= 30) setReadabilityLevel('Difficult');
+    else setReadabilityLevel('Very Difficult');
+  }, [editableContent]);
+
+  // UC-060: Get restructuring suggestions
+  const generateRestructuringSuggestions = useCallback(() => {
+    const suggestions = [];
+    
+    const fullText = [
+      editableContent.opening_paragraph,
+      ...(editableContent.body_paragraphs || []),
+      editableContent.closing_paragraph
+    ].filter(Boolean).join(' ');
+    
+    const sentences = fullText.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    const avgSentenceLength = sentences.reduce((sum, s) => sum + s.trim().split(/\s+/).length, 0) / sentences.length;
+    
+    // Check for long sentences
+    sentences.forEach((sentence, idx) => {
+      const words = sentence.trim().split(/\s+/).length;
+      if (words > 25) {
+        suggestions.push({
+          id: `long-sentence-${idx}`,
+          type: 'sentence_length',
+          title: 'Long sentence detected',
+          description: `Sentence ${idx + 1} has ${words} words. Consider breaking it into shorter sentences for better readability.`,
+          severity: 'medium'
+        });
+      }
+    });
+    
+    // Check for passive voice
+    const passivePatterns = /\b(is|are|was|were|be|been|being)\s+\w+ed\b/gi;
+    const passiveMatches = fullText.match(passivePatterns);
+    if (passiveMatches && passiveMatches.length > 2) {
+      suggestions.push({
+        id: 'passive-voice',
+        type: 'passive_voice',
+        title: 'Reduce passive voice',
+        description: `Found ${passiveMatches.length} instances of passive voice. Use active voice to make your writing more direct and engaging.`,
+        severity: 'low'
+      });
+    }
+    
+    // Check paragraph length
+    editableContent.body_paragraphs.forEach((para, idx) => {
+      const words = para.trim().split(/\s+/).length;
+      if (words > 150) {
+        suggestions.push({
+          id: `long-paragraph-${idx}`,
+          type: 'paragraph_length',
+          title: 'Long paragraph',
+          description: `Body paragraph ${idx + 1} has ${words} words. Consider splitting it into 2-3 shorter paragraphs.`,
+          severity: 'low'
+        });
+      }
+    });
+    
+    // Check for varied sentence starts
+    const starterWords = sentences.map(s => s.trim().split(/\s+/)[0].toLowerCase());
+    const repeatedStarters = starterWords.filter((word, idx) => 
+      idx > 0 && word === starterWords[idx - 1]
+    );
+    if (repeatedStarters.length > 2) {
+      suggestions.push({
+        id: 'sentence-variety',
+        type: 'sentence_variety',
+        title: 'Add sentence variety',
+        description: 'Multiple consecutive sentences start with the same word. Vary your sentence structure for better flow.',
+        severity: 'low'
+      });
+    }
+    
+    setRestructuringSuggestions(suggestions);
+  }, [editableContent]);
+
+  // UC-060: Fetch synonym suggestions from API
+  const fetchSynonyms = useCallback(async (word) => {
+    if (!word || word.length < 3) return;
+    
+    setSynonymLoading(true);
+    try {
+      // Use a free synonym API (datamuse)
+      const response = await fetch(`https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=10`);
+      const data = await response.json();
+      
+      const synonyms = data.map(item => item.word).slice(0, 8);
+      setSynonymSuggestions(synonyms);
+    } catch (error) {
+      console.error('Error fetching synonyms:', error);
+      setSynonymSuggestions([]);
+    } finally {
+      setSynonymLoading(false);
+    }
+  }, []);
+
+  // UC-060: Handle text selection for synonym lookup
+  const handleTextSelection = useCallback((e) => {
+    const selection = window.getSelection();
+    const text = selection.toString().trim();
+    
+    if (text && text.split(/\s+/).length === 1) { // Single word selected
+      setSelectedText(text);
+      fetchSynonyms(text);
+      setShowSynonymPanel(true);
+    } else {
+      setShowSynonymPanel(false);
+    }
+  }, [fetchSynonyms]);
+
+  // UC-060: Replace selected word with synonym
+  const replaceSynonym = useCallback((synonym) => {
+    if (!selectedText) return;
+    
+    // Find and replace in all paragraphs
+    const replaceInText = (text) => {
+      const regex = new RegExp(`\\b${selectedText}\\b`, 'gi');
+      return text.replace(regex, synonym);
+    };
+    
+    setEditableContent((prev) => ({
+      ...prev,
+      opening_paragraph: replaceInText(prev.opening_paragraph),
+      body_paragraphs: prev.body_paragraphs.map(p => replaceInText(p)),
+      closing_paragraph: replaceInText(prev.closing_paragraph)
+    }));
+    
+    // Update active variation
+    setResult((prev) => {
+      if (!prev?.variations) return prev;
+      const updatedVariations = prev.variations.map((v) => {
+        if (v.id !== activeVariationId) return v;
+        return {
+          ...v,
+          opening_paragraph: replaceInText(v.opening_paragraph || ''),
+          body_paragraphs: (v.body_paragraphs || []).map(p => replaceInText(p)),
+          closing_paragraph: replaceInText(v.closing_paragraph || '')
+        };
+      });
+      return {
+        ...prev,
+        variations: updatedVariations,
+      };
+    });
+    
+    setShowSynonymPanel(false);
+    setSelectedText('');
+  }, [selectedText, activeVariationId]);
 
   // Save initial version when cover letter is generated
   useEffect(() => {
@@ -1239,6 +1802,15 @@ const AiCoverLetterGenerator = () => {
       saveVersion();
     }
   }, [result, activeVariation, saveVersion, versionHistory.length]);
+
+  // UC-060: Update word count, character count, readability when content changes
+  useEffect(() => {
+    if (!activeVariation) return;
+    
+    calculateCounts();
+    calculateReadability();
+    generateRestructuringSuggestions();
+  }, [editableContent, activeVariation, calculateCounts, calculateReadability, generateRestructuringSuggestions]);
 
   // Debounced auto-save version on content change
   useEffect(() => {
@@ -1302,138 +1874,141 @@ const AiCoverLetterGenerator = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo]);
 
-  // UC-060: Grammar checking on content change (debounced, API-based)
-  useEffect(() => {
-    if (!activeVariation) return undefined;
+  // UC-060: Manual grammar check function
+  const [isCheckingGrammar, setIsCheckingGrammar] = useState(false);
+  
+  const checkGrammar = async () => {
+    if (!editableContent || isCheckingGrammar) return;
     
-    // AbortController to cancel previous requests
-    const abortController = new AbortController();
+    setIsCheckingGrammar(true);
     
-    const timeout = setTimeout(async () => {
-      // Skip grammar check if we're currently applying a fix
-      if (isApplyingFixRef.current) {
-        return;
-      }
-      
-      const opening = activeVariation.opening_paragraph || '';
-      const bodies = activeVariation.body_paragraphs || [];
-      const closing = activeVariation.closing_paragraph || '';
+    try {
+      const opening = editableContent.opening_paragraph || '';
+      const bodies = editableContent.body_paragraphs || [];
+      const closing = editableContent.closing_paragraph || '';
       
       // Combine all text for checking
       const fullText = [opening, ...bodies, closing].filter(Boolean).join('\n\n');
       
       if (!fullText.trim()) {
         setGrammarIssues([]);
+        setIsCheckingGrammar(false);
         return;
       }
       
-      try {
-        const apiIssues = await checkGrammarAPI(fullText, abortController.signal);
+      const apiIssues = await checkGrammarAPI(fullText);
+      
+      // Transform API issues and assign paragraph types
+      const allIssues = apiIssues.map(issue => {
+        // Determine which paragraph this issue belongs to based on offset
+        let cumulativeLength = 0;
+        let paragraphType = 'general';
         
-        // Check if request was aborted
-        if (abortController.signal.aborted) {
-          return;
+        if (opening) {
+          if (issue.offset < opening.length) {
+            paragraphType = 'opening';
+          }
+          cumulativeLength += opening.length + 2; // +2 for newlines
         }
         
-        // Transform API issues and assign paragraph types
-        const allIssues = apiIssues.map(issue => {
-          // Determine which paragraph this issue belongs to based on offset
-          let cumulativeLength = 0;
-          let paragraphType = 'general';
-          
-          if (opening) {
-            if (issue.offset < opening.length) {
-              paragraphType = 'opening';
-            }
-            cumulativeLength += opening.length + 2; // +2 for newlines
+        bodies.forEach((body, idx) => {
+          if (body && issue.offset >= cumulativeLength && issue.offset < cumulativeLength + body.length) {
+            paragraphType = `body-${idx}`;
           }
-          
-          bodies.forEach((body, idx) => {
-            if (body && issue.offset >= cumulativeLength && issue.offset < cumulativeLength + body.length) {
-              paragraphType = `body-${idx}`;
-            }
-            cumulativeLength += body.length + 2;
-          });
-          
-          if (closing && issue.offset >= cumulativeLength) {
-            paragraphType = 'closing';
-          }
-          
-          return transformGrammarIssue(issue, paragraphType);
+          cumulativeLength += body.length + 2;
         });
         
-        setGrammarIssues(allIssues);
-      } catch (error) {
-        if (error.name !== 'AbortError') {
-          console.error('[Grammar Check] Error:', error);
-          setGrammarIssues([]);
+        if (closing && issue.offset >= cumulativeLength) {
+          paragraphType = 'closing';
         }
-      }
-    }, 800); // Check after 800ms of no changes
-    
-    return () => {
-      clearTimeout(timeout);
-      abortController.abort();
-    };
-  }, [
-    activeVariation?.opening_paragraph, 
-    activeVariation?.body_paragraphs,
-    activeVariation?.closing_paragraph,
-  ]);
+        
+        return transformGrammarIssue(issue, paragraphType);
+      });
+      
+      setGrammarIssues(allIssues);
+      setShowGrammarPanel(true); // Auto-open panel to show results
+    } catch (error) {
+      console.error('[Grammar Check] Error:', error);
+      setGrammarIssues([]);
+    } finally {
+      setIsCheckingGrammar(false);
+    }
+  };
 
-  // UC-060: Initial grammar check when variation is loaded
-  useEffect(() => {
-    if (!activeVariation) return;
-    
-    // Run initial check after a short delay to avoid racing with other initialization
-    const timeout = setTimeout(async () => {
-      const opening = activeVariation.opening_paragraph || '';
-      const bodies = activeVariation.body_paragraphs || [];
-      const closing = activeVariation.closing_paragraph || '';
-      
-      const fullText = [opening, ...bodies, closing].filter(Boolean).join('\n\n');
-      
-      if (!fullText.trim()) {
-        setGrammarIssues([]);
-        return;
-      }
-      
-      try {
-        const apiIssues = await checkGrammarAPI(fullText);
+  // UC-061: Export cover letter handler
+  const handleExportCoverLetter = async () => {
+    if (!liveLatexPreview || !activeVariation) {
+      setExportError('No cover letter content available to export');
+      return;
+    }
+
+    setIsExporting(true);
+    setExportError('');
+
+    try {
+      // Generate filename based on profile name and job details
+      let filename = '';
+      if (result?.profile?.name) {
+        const name = result.profile.name.trim();
+        const nameParts = name.split(/\s+/);
+        let namePrefix = '';
+        if (nameParts.length >= 2) {
+          const firstName = nameParts[0];
+          const lastName = nameParts[nameParts.length - 1];
+          namePrefix = `${firstName}_${lastName}`;
+        } else {
+          namePrefix = name.replace(/\s+/g, '_');
+        }
         
-        const allIssues = apiIssues.map(issue => {
-          let cumulativeLength = 0;
-          let paragraphType = 'general';
-          
-          if (opening) {
-            if (issue.offset < opening.length) {
-              paragraphType = 'opening';
-            }
-            cumulativeLength += opening.length + 2;
-          }
-          
-          bodies.forEach((body, idx) => {
-            if (body && issue.offset >= cumulativeLength && issue.offset < cumulativeLength + body.length) {
-              paragraphType = `body-${idx}`;
-            }
-            cumulativeLength += body.length + 2;
-          });
-          
-          if (closing && issue.offset >= cumulativeLength) {
-            paragraphType = 'closing';
-          }
-          
-          return transformGrammarIssue(issue, paragraphType);
-        });
+        // Add job and company details to filename
+        const jobTitle = result?.job?.title || selectedJobDetail?.title || '';
+        const companyName = result?.job?.company_name || selectedJobDetail?.company_name || '';
         
-        setGrammarIssues(allIssues);
-      } catch (error) {
-        console.error('[Grammar Check] Initial check error:', error);
+        if (companyName) {
+          const cleanCompany = companyName.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+          filename = `${namePrefix}_${cleanCompany}_Cover_Letter`;
+        } else if (jobTitle) {
+          const cleanTitle = jobTitle.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+          filename = `${namePrefix}_${cleanTitle}_Cover_Letter`;
+        } else {
+          filename = `${namePrefix}_Cover_Letter`;
+        }
+      } else {
+        // Fallback if no profile name
+        const companyName = result?.job?.company_name || selectedJobDetail?.company_name || '';
+        if (companyName) {
+          const cleanCompany = companyName.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+          filename = `${cleanCompany}_Cover_Letter`;
+        } else {
+          filename = 'Cover_Letter';
+        }
       }
-    }, 500);
-    
-    return () => clearTimeout(timeout);
-  }, [activeVariationId]); // Only run when switching variations
+
+      // Call the export API
+      await coverLetterExportAPI.exportAICoverLetter(
+        liveLatexPreview,
+        exportFormat,
+        exportTheme,
+        exportWatermark.trim() || null,
+        filename,
+        result?.profile || null,
+        result?.job || selectedJobDetail || null
+      );
+
+      // Success - close modal and reset
+      setShowExportModal(false);
+      setExportError('');
+      // Reset form for next time
+      setTimeout(() => {
+        setExportWatermark('');
+      }, 300);
+    } catch (error) {
+      // Export failed
+      setExportError(error.response?.data?.error || error.message || 'Failed to export cover letter. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!selectedJobId) {
@@ -1969,6 +2544,26 @@ const AiCoverLetterGenerator = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveLatexPreview]);
 
+  // Auto-compile when editable content changes
+  useEffect(() => {
+    if (!activeVariation) return;
+    
+    // Debounce the compilation to avoid too many API calls (2 seconds)
+    const timeoutId = setTimeout(() => {
+      compileLivePreview();
+    }, 2000);
+
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    editableContent.header,
+    editableContent.greeting,
+    editableContent.opening_paragraph,
+    editableContent.body_paragraphs,
+    editableContent.closing_paragraph,
+    editableContent.complimentary_close
+  ]);
+
   function buildSectionSnapshot(sectionId) {
     if (!activeVariation) return { jsx: null, latex: '' };
     const rewriteState = sectionRewrites[sectionId] || {};
@@ -2033,14 +2628,21 @@ const AiCoverLetterGenerator = () => {
                 </button>
                 <button
                   type="button"
-                  className={`btn btn-sm version-btn ${grammarIssues.length > 0 ? 'has-issues' : ''}`}
-                  onClick={() => setShowGrammarPanel(!showGrammarPanel)}
-                  title="Grammar & Style Check"
+                  className={`btn btn-sm version-btn ${grammarIssues.length > 0 ? 'has-issues' : ''} ${isCheckingGrammar ? 'loading' : ''}`}
+                  onClick={() => {
+                    if (!isCheckingGrammar) {
+                      checkGrammar();
+                    }
+                  }}
+                  title="Check Grammar & Style"
+                  disabled={isCheckingGrammar}
                 >
                   <Icon name="check-circle" size="sm" />
-                  {grammarIssues.length > 0 && (
+                  {isCheckingGrammar ? (
+                    <span className="loading-text">Checking...</span>
+                  ) : grammarIssues.length > 0 ? (
                     <span className="issue-count">{grammarIssues.length}</span>
-                  )}
+                  ) : null}
                 </button>
               </div>
             </div>
@@ -2600,8 +3202,343 @@ const AiCoverLetterGenerator = () => {
                       >
                         <Icon name="refresh" size="sm" /> Refresh preview
                       </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => setShowExportModal(true)}
+                        disabled={!activeVariation || !livePreviewPdfUrl}
+                        title="Export cover letter in various formats"
+                      >
+                        <Icon name="download" size="sm" /> Export
+                      </button>
                     </div>
                   </div>
+
+                  {/* Live Text Editor */}
+                  {activeVariation && (
+                    <div className="text-editor-column">
+                      <h3>Edit Content</h3>
+                      <p className="hint">
+                        Edit each section directly and watch the PDF update in real-time. 
+                        <strong> Tip:</strong> Select any word to see synonym suggestions!
+                      </p>
+                      
+                      {/* UC-060: Word and Character Count Display */}
+                      <div className="word-count-display">
+                        <div className="count-item">
+                          <Icon name="file-text" size="sm" />
+                          <span className="count-label">Words:</span>
+                          <span className="count-value">{wordCount}</span>
+                        </div>
+                        <div className="count-item">
+                          <Icon name="type" size="sm" />
+                          <span className="count-label">Characters:</span>
+                          <span className="count-value">{characterCount}</span>
+                        </div>
+                        {readabilityScore !== null && (
+                          <div className="count-item">
+                            <Icon name="activity" size="sm" />
+                            <span className="count-label">Readability:</span>
+                            <span className="count-value">{readabilityScore} ({readabilityLevel})</span>
+                            <button
+                              type="button"
+                              className="ghost tiny"
+                              onClick={() => setShowReadabilityPanel(!showReadabilityPanel)}
+                              title="View readability details"
+                            >
+                              <Icon name="info" size="sm" />
+                            </button>
+                          </div>
+                        )}
+                        
+                        {/* Spacer to push buttons to the right */}
+                        <div style={{ flexGrow: 1 }}></div>
+                        
+                        {/* Version History Controls */}
+                        <div className="version-controls">
+                          <button
+                            type="button"
+                            className="btn btn-sm version-btn"
+                            onClick={handleUndo}
+                            disabled={currentVersionIndex <= 0}
+                            title="Undo (Ctrl+Z)"
+                          >
+                            <Icon name="corner-up-left" size="sm" />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm version-btn"
+                            onClick={handleRedo}
+                            disabled={currentVersionIndex >= versionHistory.length - 1}
+                            title="Redo (Ctrl+Y)"
+                          >
+                            <Icon name="corner-up-right" size="sm" />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm version-btn"
+                            onClick={() => setShowVersionHistory(!showVersionHistory)}
+                            title="Version History"
+                          >
+                            <Icon name="clock" size="sm" />
+                            {versionHistory.length > 0 && (
+                              <span className="version-count">{versionHistory.length}</span>
+                            )}
+                          </button>
+                        </div>
+                        
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${grammarIssues.length > 0 ? 'has-issues' : ''} ${isCheckingGrammar ? 'loading' : ''}`}
+                          onClick={() => {
+                            if (!isCheckingGrammar) {
+                              checkGrammar();
+                            }
+                          }}
+                          disabled={isCheckingGrammar}
+                        >
+                          <Icon name="check-circle" size="sm" />
+                          {isCheckingGrammar ? (
+                            <span className="loading-text">Checking...</span>
+                          ) : grammarIssues.length > 0 ? (
+                            <>
+                              Check Grammar ({grammarIssues.length} {grammarIssues.length === 1 ? 'issue' : 'issues'})
+                            </>
+                          ) : (
+                            'Check Grammar & Style'
+                          )}
+                        </button>
+                      </div>
+                      
+                      {/* Synonym Hint Banner */}
+                      {!showSynonymPanel && !selectedText && (
+                        <div className="editor-hint-banner">
+                          <Icon name="book" size="sm" />
+                          <span>
+                            <strong>Pro tip:</strong> Highlight any word in your cover letter to get synonym suggestions and improve your vocabulary
+                          </span>
+                        </div>
+                      )}
+                      
+                      {/* UC-060: Readability Panel */}
+                      {showReadabilityPanel && (
+                        <div className="readability-panel">
+                          <h4>Readability Analysis</h4>
+                          <div className="readability-score">
+                            <div className="score-circle">
+                              <span className="score-number">{readabilityScore}</span>
+                              <span className="score-max">/100</span>
+                            </div>
+                            <div className="score-description">
+                              <strong>{readabilityLevel}</strong>
+                              <p>
+                                {readabilityScore >= 60 
+                                  ? 'Your cover letter is easy to read and understand.' 
+                                  : 'Consider simplifying sentences and using shorter words.'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="readability-tips">
+                            <h5>Tips to improve:</h5>
+                            <ul>
+                              <li>Use shorter sentences (15-20 words)</li>
+                              <li>Choose simple words over complex ones</li>
+                              <li>Break up long paragraphs</li>
+                              <li>Use active voice instead of passive</li>
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* UC-060: Restructuring Suggestions Panel */}
+                      {restructuringSuggestions.length > 0 && (
+                        <div className="restructuring-panel">
+                          <div className="panel-header">
+                            <h4>
+                              <Icon name="zap" size="sm" /> Improvement Suggestions ({restructuringSuggestions.length})
+                            </h4>
+                            <button
+                              type="button"
+                              className="ghost tiny"
+                              onClick={() => setShowRestructuringPanel(!showRestructuringPanel)}
+                              title={showRestructuringPanel ? 'Hide suggestions' : 'Show suggestions'}
+                            >
+                              <Icon name={showRestructuringPanel ? 'chevron-up' : 'chevron-down'} size="sm" />
+                            </button>
+                          </div>
+                          {showRestructuringPanel && (
+                            <div className="suggestions-list">
+                              {restructuringSuggestions.map((suggestion) => (
+                                <div key={suggestion.id} className={`suggestion-item severity-${suggestion.severity}`}>
+                                  <div className="suggestion-icon">
+                                    {suggestion.severity === 'medium' && <Icon name="alert-circle" size="sm" />}
+                                    {suggestion.severity === 'low' && <Icon name="info" size="sm" />}
+                                  </div>
+                                  <div className="suggestion-content">
+                                    <strong>{suggestion.title}</strong>
+                                    <p>{suggestion.description}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* UC-060: Synonym Panel */}
+                      {showSynonymPanel && selectedText && (
+                        <div className="synonym-panel">
+                          <div className="panel-header">
+                            <h4>
+                              <Icon name="book" size="sm" /> Synonyms for "{selectedText}"
+                            </h4>
+                            <button
+                              type="button"
+                              className="ghost tiny"
+                              onClick={() => setShowSynonymPanel(false)}
+                              title="Close"
+                            >
+                              <Icon name="x" size="sm" />
+                            </button>
+                          </div>
+                          {synonymLoading ? (
+                            <div className="synonym-loading">Loading synonyms...</div>
+                          ) : synonymSuggestions.length > 0 ? (
+                            <div className="synonym-list">
+                              {synonymSuggestions.map((synonym, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  className="synonym-button"
+                                  onClick={() => replaceSynonym(synonym)}
+                                  title={`Replace with "${synonym}"`}
+                                >
+                                  {synonym}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="no-synonyms">No synonyms found for this word.</p>
+                          )}
+                        </div>
+                      )}
+                      
+                      <div className="editor-sections">
+                        {/* Header Section */}
+                        <div className="editor-section">
+                          <label htmlFor="header-field">
+                            <Icon name="user" size="sm" /> Header (Name & Contact)
+                          </label>
+                          <textarea
+                            id="header-field"
+                            value={editableContent.header}
+                            onChange={(e) => handleContentChange('header', e.target.value)}
+                            placeholder="Your Name\nyour.email@example.com | (555) 123-4567 | City, State"
+                            rows={3}
+                          />
+                        </div>
+
+                        {/* Greeting Section */}
+                        <div className="editor-section">
+                          <label htmlFor="greeting-field">
+                            <Icon name="mail" size="sm" /> Greeting
+                          </label>
+                          <input
+                            id="greeting-field"
+                            type="text"
+                            value={editableContent.greeting}
+                            onChange={(e) => handleContentChange('greeting', e.target.value)}
+                            placeholder="Dear Hiring Manager,"
+                          />
+                        </div>
+
+                        {/* Opening Paragraph */}
+                        <div className="editor-section">
+                          <label htmlFor="opening-field">
+                            <Icon name="align-left" size="sm" /> Opening Paragraph
+                          </label>
+                          <textarea
+                            id="opening-field"
+                            value={editableContent.opening_paragraph}
+                            onChange={(e) => handleContentChange('opening_paragraph', e.target.value)}
+                            onMouseUp={handleTextSelection}
+                            placeholder="I am writing to express my strong interest in..."
+                            rows={4}
+                          />
+                        </div>
+
+                        {/* Body Paragraphs */}
+                        <div className="editor-section">
+                          <div className="section-header">
+                            <label>
+                              <Icon name="file-text" size="sm" /> Body Paragraphs
+                            </label>
+                            <button
+                              type="button"
+                              className="ghost tiny"
+                              onClick={addBodyParagraph}
+                              title="Add paragraph"
+                            >
+                              <Icon name="plus" size={14} /> Add Paragraph
+                            </button>
+                          </div>
+                          {editableContent.body_paragraphs.map((paragraph, index) => (
+                            <div key={index} className="paragraph-group">
+                              <div className="paragraph-header">
+                                <span className="paragraph-number">Paragraph {index + 1}</span>
+                                {editableContent.body_paragraphs.length > 1 && (
+                                  <button
+                                    type="button"
+                                    className="ghost danger"
+                                    onClick={() => removeBodyParagraph(index)}
+                                    title="Remove paragraph"
+                                  >
+                                    <Icon name="trash-2" size={14} />
+                                  </button>
+                                )}
+                              </div>
+                              <textarea
+                                value={paragraph}
+                                onChange={(e) => handleBodyParagraphChange(index, e.target.value)}
+                                onMouseUp={handleTextSelection}
+                                placeholder="Describe your experience, skills, or achievements..."
+                                rows={4}
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Closing Paragraph */}
+                        <div className="editor-section">
+                          <label htmlFor="closing-field">
+                            <Icon name="check-circle" size="sm" /> Closing Paragraph
+                          </label>
+                          <textarea
+                            id="closing-field"
+                            value={editableContent.closing_paragraph}
+                            onChange={(e) => handleContentChange('closing_paragraph', e.target.value)}
+                            onMouseUp={handleTextSelection}
+                            placeholder="Thank you for considering my application..."
+                            rows={3}
+                          />
+                        </div>
+
+                        {/* Complimentary Close */}
+                        <div className="editor-section">
+                          <label htmlFor="complimentary-close-field">
+                            <Icon name="edit-3" size="sm" /> Complimentary Close
+                          </label>
+                          <input
+                            id="complimentary-close-field"
+                            type="text"
+                            value={editableContent.complimentary_close}
+                            onChange={(e) => handleContentChange('complimentary_close', e.target.value)}
+                            placeholder="Sincerely,"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                 </div>
               </section>
@@ -2619,17 +3556,28 @@ const AiCoverLetterGenerator = () => {
           <div className="grammar-sidebar">
             <div className="grammar-sidebar-header">
               <h3>
-                <Icon name="check-circle" size="sm" />
+                <Icon name="check-circle" size="md" />
                 Grammar & Style
               </h3>
-              <button 
-                type="button" 
-                className="close-btn"
-                onClick={() => setShowGrammarPanel(false)}
-                aria-label="Close"
-              >
-                <Icon name="clear" size="md" />
-              </button>
+              <div className="header-actions">
+                <button 
+                  type="button" 
+                  className="recheck-btn"
+                  onClick={recheckGrammar}
+                  title="Recheck grammar"
+                >
+                  <Icon name="refresh-cw" size="sm" />
+                  Recheck
+                </button>
+                <button 
+                  type="button" 
+                  className="close-btn"
+                  onClick={() => setShowGrammarPanel(false)}
+                  aria-label="Close"
+                >
+                  <Icon name="x" size="md" />
+                </button>
+              </div>
             </div>
             
             <div className="grammar-sidebar-content">
@@ -2642,10 +3590,13 @@ const AiCoverLetterGenerator = () => {
               ) : (
                 <>
                   <div className="issues-summary">
-                    <span className="issue-count-large">{grammarIssues.length}</span>
-                    <span className="issue-label">
-                      {grammarIssues.length === 1 ? 'suggestion' : 'suggestions'}
-                    </span>
+                    <div className="summary-content">
+                      <span className="issue-count-large">{grammarIssues.length}</span>
+                      <span className="issue-label">
+                        {grammarIssues.length === 1 ? 'issue found' : 'issues found'}
+                      </span>
+                    </div>
+                    <Icon name="alert-circle" size="lg" />
                   </div>
                   
                   <div className="grammar-issues-list">
@@ -2926,6 +3877,142 @@ const AiCoverLetterGenerator = () => {
                 }}
               >
                 <Icon name="mail" size="sm" /> Open in Email App
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UC-061: Export Modal */}
+      {showExportModal && (
+        <div className="export-modal-overlay" onClick={() => setShowExportModal(false)}>
+          <div className="export-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="export-modal-header">
+              <div>
+                <h3>
+                  <Icon name="download" size="sm" /> Export Cover Letter
+                </h3>
+                <p className="hint">Choose format, theme, and customization options</p>
+              </div>
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setShowExportModal(false)}
+                aria-label="Close export dialog"
+              >
+                <Icon name="x" size="md" />
+              </button>
+            </div>
+
+            <div className="export-modal-body">
+              <div className="export-control-group">
+                <label htmlFor="export-format">
+                  <Icon name="file-text" size="sm" /> Format
+                </label>
+                <select
+                  id="export-format"
+                  value={exportFormat}
+                  onChange={(e) => setExportFormat(e.target.value)}
+                  disabled={isExporting}
+                >
+                  <option value="pdf">PDF Document (.pdf)</option>
+                  <option value="docx">Word Document (.docx)</option>
+                  <option value="html">HTML</option>
+                  <option value="txt">Plain Text</option>
+                </select>
+                <p className="field-hint">
+                  {exportFormat === 'pdf' && 'Professional PDF format - ready to submit'}
+                  {exportFormat === 'docx' && 'Editable Microsoft Word format'}
+                  {exportFormat === 'html' && 'Web-ready HTML with inline styles'}
+                  {exportFormat === 'txt' && 'Simple plain text for email applications'}
+                </p>
+              </div>
+
+              <div className="export-control-group">
+                <label htmlFor="export-theme">
+                  <Icon name="palette" size="sm" /> Theme
+                </label>
+                <select
+                  id="export-theme"
+                  value={exportTheme}
+                  onChange={(e) => setExportTheme(e.target.value)}
+                  disabled={isExporting}
+                >
+                  {availableThemes.length > 0 ? (
+                    availableThemes.map((theme) => (
+                      <option key={theme} value={theme}>
+                        {theme.charAt(0).toUpperCase() + theme.slice(1)}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="professional">Professional</option>
+                      <option value="modern">Modern</option>
+                      <option value="minimal">Minimal</option>
+                      <option value="creative">Creative</option>
+                      <option value="formal">Formal</option>
+                    </>
+                  )}
+                </select>
+                <p className="field-hint">Visual style and formatting</p>
+              </div>
+
+              <div className="export-control-group">
+                <label htmlFor="export-watermark">
+                  <Icon name="droplet" size="sm" /> Watermark (optional)
+                </label>
+                <input
+                  id="export-watermark"
+                  type="text"
+                  placeholder="e.g., CONFIDENTIAL, DRAFT"
+                  value={exportWatermark}
+                  onChange={(e) => setExportWatermark(e.target.value)}
+                  disabled={isExporting}
+                  maxLength={50}
+                />
+                <p className="field-hint">Adds text overlay to the document</p>
+              </div>
+
+              <div className="export-info-box">
+                <Icon name="info" size="sm" />
+                <div>
+                  <strong>Filename will be generated automatically</strong>
+                  <p>Based on your name, company, and role for easy organization</p>
+                </div>
+              </div>
+
+              {exportError && (
+                <div className="export-error-message" role="alert">
+                  <Icon name="alert-circle" size="sm" />
+                  {exportError}
+                </div>
+              )}
+            </div>
+
+            <div className="export-modal-footer">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setShowExportModal(false)}
+                disabled={isExporting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={handleExportCoverLetter}
+                disabled={isExporting || !liveLatexPreview}
+              >
+                {isExporting ? (
+                  <>
+                    <LoadingSpinner size="sm" /> Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="download" size="sm" /> Export Cover Letter
+                  </>
+                )}
               </button>
             </div>
           </div>
