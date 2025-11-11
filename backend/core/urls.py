@@ -104,6 +104,16 @@ urlpatterns = [
     path('jobs/<int:job_id>/restore', views.job_restore, name='job-restore'),
     path('jobs/<int:job_id>/delete', views.job_delete, name='job-delete'),
     path('jobs/bulk-archive', views.jobs_bulk_archive, name='jobs-bulk-archive'),
+    
+    # UC-055: Cover Letter Template Library endpoints
+    path('cover-letter-templates', views.cover_letter_template_list_create, name='cover-letter-template-list-create'),
+    path('cover-letter-templates/<uuid:pk>', views.cover_letter_template_detail, name='cover-letter-template-detail'),
+    path('cover-letter-templates/import', views.cover_letter_template_import, name='cover-letter-template-import'),
+    path('cover-letter-templates/<uuid:pk>/customize', views.cover_letter_template_customize, name='cover-letter-template-customize'),
+    path('cover-letter-templates/<uuid:pk>/share', views.cover_letter_template_share, name='cover-letter-template-share'),
+    path('cover-letter-templates/<uuid:pk>/analytics', views.cover_letter_template_analytics, name='cover-letter-template-analytics'),
+    path('cover-letter-templates/<uuid:pk>/download/<str:format_type>', views.cover_letter_template_download, name='cover-letter-template-download'),
+    path('cover-letter-templates/stats', views.cover_letter_template_stats, name='cover-letter-template-stats'),
     path('jobs/bulk-restore', views.jobs_bulk_restore, name='jobs-bulk-restore'),
     
     # UC-043: Company information endpoints
@@ -111,10 +121,19 @@ urlpatterns = [
     path('jobs/<int:job_id>/company', views.job_company_info, name='job-company-info'),
     # UC-047: AI resume generation
     path('jobs/<int:job_id>/resume/generate', views.generate_resume_for_job, name='job-resume-generate'),
+    path('jobs/<int:job_id>/resume/tailor-experience/<int:experience_id>', views.tailor_experience_variations, name='tailor-experience'),
+    path('jobs/<int:job_id>/resume/tailor-experience/<int:experience_id>/bullet', views.tailor_experience_bullet, name='tailor-experience-bullet'),
     path('resume/compile-latex/', views.compile_latex_to_pdf, name='compile-latex-to-pdf'),
     # UC-056: AI cover letter generation
     path('jobs/<int:job_id>/cover-letter/generate', views.generate_cover_letter_for_job, name='job-cover-letter-generate'),
     path('cover-letter/compile-latex/', views.compile_latex_to_pdf, name='cover-letter-compile-latex-to-pdf'),
+    # UC-061: Cover letter export
+    path('cover-letter/export-docx/', views.export_cover_letter_docx, name='cover-letter-export-docx'),
+    
+    # UC-051: Resume export endpoints
+    path('resume/export/themes', views.resume_export_themes, name='resume-export-themes'),
+    path('resume/export', views.resume_export, name='resume-export'),
+    path('resume/export/ai', views.export_ai_resume, name='export-ai-resume'),
     
     # UC-063: Automated Company Research endpoints
     path('companies/<str:company_name>/research', views.automated_company_research, name='automated-company-research'),
@@ -128,4 +147,23 @@ urlpatterns = [
     # UC-060: Grammar and Spell Checking endpoints
     path('cover-letter/check-grammar/', views.check_grammar, name='check-grammar'),
     path('cover-letter/apply-grammar-fix/', views.apply_grammar_fix, name='apply-grammar-fix'),
+    
+    # UC-068: Interview Insights and Preparation endpoints
+    path('jobs/<int:job_id>/interview-insights/', views.job_interview_insights, name='job-interview-insights'),
+    
+    # UC-066: Skills Gap Analysis endpoints
+    path('jobs/<int:job_id>/skills-gap/', views.job_skills_gap, name='job-skills-gap'),
+    path('skills/<int:skill_id>/progress/', views.skill_progress, name='skill-progress'),
+    
+    # UC-065: Job Matching Algorithm endpoints
+    path('jobs/<int:job_id>/match-score/', views.job_match_score, name='job-match-score'),
+    path('jobs/match-scores/', views.bulk_job_match_scores, name='bulk-job-match-scores'),
+    
+    # UC-071: Interview Scheduling endpoints
+    path('interviews/', views.interview_list_create, name='interview-list-create'),
+    path('interviews/<int:pk>/', views.interview_detail, name='interview-detail'),
+    path('interviews/<int:pk>/complete/', views.interview_complete, name='interview-complete'),
+    path('interviews/<int:pk>/dismiss-reminder/', views.dismiss_interview_reminder, name='dismiss-interview-reminder'),
+    path('interviews/reminders/', views.active_interview_reminders, name='active-interview-reminders'),
+    path('interviews/tasks/<int:pk>/toggle/', views.toggle_preparation_task, name='toggle-preparation-task'),
 ]

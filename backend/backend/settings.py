@@ -117,9 +117,9 @@ PASSWORD_HASHERS = [
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/New_York'  # Eastern Time
 USE_I18N = True
-USE_TZ = True
+USE_TZ = True  # Keep timezone-aware datetimes (stored as UTC, displayed in TIME_ZONE)
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
@@ -218,7 +218,7 @@ LOGGING = {
 
 # Generative AI (Gemini) configuration for resume content (UC-047)
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
-GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-1.5-flash-latest')
+GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
 TECTONIC_BINARY = os.environ.get('TECTONIC_BINARY', 'tectonic')
 
 # Email configuration

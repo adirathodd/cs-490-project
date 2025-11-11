@@ -7,7 +7,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { jobsAPI, resumeAIAPI } from '../../../services/api';
+import { jobsAPI, resumeAIAPI, resumeExportAPI } from '../../../services/api';
 import Icon from '../../../components/common/Icon';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import './AiResumeGenerator.css';
@@ -26,6 +26,7 @@ const toneOptions = [
 ];
 
 const variationChoices = [1, 2, 3];
+const EXPERIENCE_VARIATION_TARGET = 3;
 
 const SECTION_IDS = ['summary', 'skills', 'experience', 'projects', 'education', 'keywords', 'preview'];
 const rotateArray = (list = [], shift = 0) => {
@@ -33,6 +34,82 @@ const rotateArray = (list = [], shift = 0) => {
   const offset = ((shift % list.length) + list.length) % list.length;
   if (offset === 0) return list;
   return [...list.slice(offset), ...list.slice(0, offset)];
+};
+
+
+const ACTION_VERB_LIBRARY = {
+  default: ['Drove', 'Accelerated', 'Optimized', 'Championed', 'Delivered', 'Scaled'],
+  software: ['Shipped', 'Refactored', 'Scaled', 'Automated', 'Instrumented', 'Hardened'],
+  product: ['Launched', 'Prioritized', 'Roadmapped', 'Tested', 'Validated'],
+  marketing: ['Amplified', 'Orchestrated', 'Positioned', 'Activated'],
+  finance: ['Modeled', 'Audited', 'Forecasted', 'Balanced'],
+  operations: ['Streamlined', 'Standardized', 'Systematized'],
+  healthcare: ['Coordinated', 'Standardized', 'Improved compliance'],
+  education: ['Facilitated', 'Designed curriculum for', 'Assessed'],
+  sales: ['Negotiated', 'Accelerated', 'Expanded'],
+};
+
+const INDUSTRY_TERM_LIBRARY = {
+  software: ['platform reliability', 'latency budgets', 'CI/CD health'],
+  product: ['roadmap confidence', 'research-backed bets', 'launch criteria'],
+  marketing: ['funnel efficiency', 'campaign lift', 'brand resonance'],
+  finance: ['risk controls', 'audit readiness', 'portfolio hygiene'],
+  operations: ['throughput', 'capacity planning', 'SLA adherence'],
+  healthcare: ['clinical workflows', 'EMR compliance', 'patient safety'],
+  education: ['learning outcomes', 'assessment rigor', 'curriculum alignment'],
+  sales: ['pipeline velocity', 'win-rate uplift', 'account expansion'],
+  default: ['cross-functional alignment', 'stakeholder visibility', 'measurable impact'],
+};
+
+const EXPERIENCE_TAILOR_CACHE_KEY = 'resumerocket_experience_tailor_v1';
+
+const slugify = (value, fallback = 'entry') => {
+  if (!value) return fallback;
+  return value
+    .toString()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .substring(0, 48) || fallback;
+};
+
+const getIndustryBucket = (value = '') => {
+  const normalized = value.toLowerCase();
+  if (/software|engineer|developer|tech/.test(normalized)) return 'software';
+  if (/product/.test(normalized)) return 'product';
+  if (/marketing|brand|growth/.test(normalized)) return 'marketing';
+  if (/finance|bank|account/.test(normalized)) return 'finance';
+  if (/operation|supply|logistic/.test(normalized)) return 'operations';
+  if (/health|med|clinic|pharma/.test(normalized)) return 'healthcare';
+  if (/edu|school|learning/.test(normalized)) return 'education';
+  if (/sales|revenue|bizdev|business development/.test(normalized)) return 'sales';
+  return 'default';
+};
+
+const getExperienceGroupId = (exp = {}, fallbackIndex = 0) => {
+  if (exp.source_experience_id) return `experience-${exp.source_experience_id}`;
+  const slug = slugify(`${exp.role || 'experience'}-${exp.company || fallbackIndex}`);
+  return `experience-${slug}-${fallbackIndex}`;
+};
+
+const getExperienceUniqueId = (exp = {}, fallbackIndex = 0) => {
+  if (exp.source_experience_id) return `experience-${exp.source_experience_id}`;
+  const slug = slugify(`${exp.role || 'role'}-${exp.company || fallbackIndex}`);
+  return `experience-${slug}-${fallbackIndex}`;
+};
+
+const escapeRegExp = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const parseYearRange = (dates) => {
+  if (!dates) {
+    return { startYear: null, endYear: null, ongoing: false };
+  }
+  const normalized = dates.toString();
+  const matches = normalized.match(/(20\d{2}|19\d{2})/g) || [];
+  const startYear = matches.length ? Number(matches[0]) : null;
+  const ongoing = /present/i.test(normalized);
+  const endYear = ongoing ? new Date().getFullYear() : matches.length > 1 ? Number(matches[1]) : startYear;
+  return { startYear, endYear, ongoing };
 };
 
 const getBulletOrderKey = (sectionId, groupId) => `${sectionId}::${groupId}`;
@@ -77,8 +154,13 @@ const generateBulletRewrite = (text, jobTitle, companyName) => {
   return `Refined${context}: ${base}`;
 };
 
+const normalizeBulletText = (text = '') => {
+  const candidate = text == null ? '' : text;
+  return candidate.toString().replace(/\*\*(.*?)\*\*/g, '$1');
+};
+
 const latexEscape = (text = '') =>
-  text
+  normalizeBulletText(text)
     .replace(/\\/g, '\\textbackslash{}')
     .replace(/([%#$&_{}])/g, '\\$1')
     .replace(/\^/g, '\\^{}')
@@ -332,6 +414,461 @@ const sectionStatusCopy = {
   pending: 'Waiting on AI',
 };
 
+const COMMON_MISSPELLINGS = {
+  teh: 'the',
+  recieve: 'receive',
+  definately: 'definitely',
+  adress: 'address',
+  occured: 'occurred',
+  seperate: 'separate',
+  goverment: 'government',
+  happend: 'happened',
+  beleive: 'believe',
+  occurence: 'occurrence',
+};
+
+const FIRST_PERSON_PATTERN = /\b(?:I|I'm|I've|My|Me|Mine|Myself)\b/gi;
+
+const validationStatusCopy = {
+  ok: 'Looks good',
+  warn: 'Review',
+  info: 'Pending',
+};
+
+const detectMisspellings = (text = '') => {
+  if (!text) return [];
+  const matches = [];
+  const normalized = text.toLowerCase();
+  Object.entries(COMMON_MISSPELLINGS).forEach(([typo, correction]) => {
+    const regex = new RegExp(`\\b${escapeRegExp(typo)}\\b`, 'g');
+    if (regex.test(normalized)) {
+      matches.push(`Replace "${typo}" with "${correction}".`);
+    }
+  });
+  return matches;
+};
+
+const buildSummaryBody = ({ variation, rewriteState = {}, analysis = {} }) => {
+  if (!variation) return '';
+  const regenCount = rewriteState.regenerate || 0;
+  let summaryBody = variation.summary || '';
+  if (regenCount > 0) {
+    const sentences = summaryBody
+      .split(/(?<=[.!?])\s+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (sentences.length > 1) {
+      summaryBody = rotateArray(sentences, regenCount).join(' ');
+    } else {
+      const emphasisList = [
+        analysis?.job_focus_summary,
+        analysis?.skill_match_notes,
+        variation.summary_headline,
+        'Tailored highlight for this role',
+      ].filter(Boolean);
+      const rotated = rotateArray(emphasisList, regenCount);
+      summaryBody = `${rotated[0] || emphasisList[0] || ''} ${summaryBody}`.trim();
+    }
+  }
+  return summaryBody.trim();
+};
+
+const gatherExperienceBullets = ({
+  variation,
+  sectionConfig,
+  bulletOverrides,
+  bulletOrderOverrides,
+  rewriteState = {},
+}) => {
+  if (!variation?.experience_sections?.length) return [];
+  let experiences = variation.experience_sections || [];
+  if (rewriteState.regenerate) {
+    experiences = rotateArray(experiences, rewriteState.regenerate);
+  }
+  const density = sectionConfig?.formatting?.experience?.density || 'detailed';
+  return experiences.flatMap((experience, idx) => {
+    const bullets = density === 'compact'
+      ? (experience.bullets || []).slice(0, 1)
+      : experience.bullets || [];
+    if (!bullets.length) return [];
+    const groupId = getExperienceGroupId(experience, idx);
+    const bulletItems = bullets.map((bullet, bulletIdx) => {
+      const key = buildBulletKey('experience', groupId, bulletIdx);
+      return {
+        key,
+        text: bulletOverrides[key] ?? bullet,
+      };
+    });
+    const ordered = getOrderedBulletItems('experience', groupId, bulletItems, bulletOrderOverrides);
+    return ordered
+      .map((item) => item.text?.trim())
+      .filter(Boolean);
+  });
+};
+
+const gatherProjectBullets = ({
+  variation,
+  bulletOverrides,
+  bulletOrderOverrides,
+  rewriteState = {},
+}) => {
+  if (!variation?.project_sections?.length) return [];
+  let projects = variation.project_sections || [];
+  if (rewriteState.regenerate) {
+    projects = rotateArray(projects, rewriteState.regenerate);
+  }
+  return projects.flatMap((proj, idx) => {
+    const bullets = proj.bullets || [];
+    if (!bullets.length) return [];
+    const groupId = proj.source_project_id || proj.name || `project-${idx}`;
+    const bulletItems = bullets.map((bullet, bulletIdx) => {
+      const key = buildBulletKey('projects', groupId, bulletIdx);
+      return {
+        key,
+        text: bulletOverrides[key] ?? bullet,
+      };
+    });
+    const ordered = getOrderedBulletItems('projects', groupId, bulletItems, bulletOrderOverrides);
+    return ordered
+      .map((item) => item.text?.trim())
+      .filter(Boolean);
+  });
+};
+
+const gatherEducationNotes = ({
+  variation,
+  bulletOverrides,
+  bulletOrderOverrides,
+  rewriteState = {},
+}) => {
+  if (!variation?.education_highlights?.length) return [];
+  let education = variation.education_highlights || [];
+  if (rewriteState.regenerate) {
+    education = rotateArray(education, rewriteState.regenerate);
+  }
+  const educationGroupId = 'education-main';
+  const bulletItems = education.map((edu, idx) => {
+    const key = buildBulletKey('education', educationGroupId, idx);
+    return {
+      key,
+      text: bulletOverrides[key] ?? edu.notes,
+    };
+  });
+  const ordered = getOrderedBulletItems('education', educationGroupId, bulletItems, bulletOrderOverrides);
+  return ordered
+    .map((item) => item.text?.trim())
+    .filter(Boolean);
+};
+
+const gatherSkillHighlights = ({ variation, rewriteState = {} }) => {
+  if (!variation) return [];
+  let skills = chipify(variation.skills_to_highlight);
+  if (rewriteState.regenerate) {
+    skills = rotateArray(skills, rewriteState.regenerate);
+  }
+  return skills;
+};
+
+const collectLiveSegments = ({
+  variation,
+  sectionConfig,
+  bulletOverrides,
+  bulletOrderOverrides,
+  sectionRewrites = {},
+  analysis,
+}) => {
+  if (!variation) {
+    return {
+      summaryText: '',
+      experienceBullets: [],
+      projectBullets: [],
+      educationNotes: [],
+      skillHighlights: [],
+    };
+  }
+  const summaryBody = buildSummaryBody({
+    variation,
+    rewriteState: sectionRewrites.summary,
+    analysis,
+  });
+  const summaryHeadline = variation.summary_headline || variation.label;
+  const visible = (sectionConfig && sectionConfig.visibility) || {};
+  const summaryText = visible.summary ? [summaryHeadline, summaryBody].filter(Boolean).join(' ').trim() : '';
+
+  return {
+    summaryText,
+    experienceBullets: visible.experience
+      ? gatherExperienceBullets({
+          variation,
+          sectionConfig,
+          bulletOverrides,
+          bulletOrderOverrides,
+          rewriteState: sectionRewrites.experience,
+        })
+      : [],
+    projectBullets: visible.projects
+      ? gatherProjectBullets({
+          variation,
+          bulletOverrides,
+          bulletOrderOverrides,
+          rewriteState: sectionRewrites.projects,
+        })
+      : [],
+    educationNotes: visible.education
+      ? gatherEducationNotes({
+          variation,
+          bulletOverrides,
+          bulletOrderOverrides,
+          rewriteState: sectionRewrites.education,
+        })
+      : [],
+    skillHighlights: visible.skills
+      ? gatherSkillHighlights({
+          variation,
+          rewriteState: sectionRewrites.skills,
+        })
+      : [],
+  };
+};
+
+
+const buildValidationInsights = ({
+  variation,
+  profile,
+  tone,
+  sectionConfig,
+  bulletOverrides,
+  bulletOrderOverrides,
+  sectionRewrites = {},
+  analysis,
+  pdfPageCount = null,
+}) => {
+  const placeholderSummary = 'Generate a resume to run the validation checks.';
+  if (!variation) {
+    return [
+      {
+        id: 'spell',
+        label: 'Spell check & grammar',
+        status: 'info',
+        summary: placeholderSummary,
+        details: [],
+      },
+      {
+        id: 'format',
+        label: 'Format consistency',
+        status: 'info',
+        summary: placeholderSummary,
+        details: [],
+      },
+      {
+        id: 'length',
+        label: 'Length optimization',
+        status: 'info',
+        summary: placeholderSummary,
+        details: [],
+      },
+      {
+        id: 'missing',
+        label: 'Missing information',
+        status: 'info',
+        summary: placeholderSummary,
+        details: [],
+      },
+      {
+        id: 'contact',
+        label: 'Contact validation',
+        status: 'info',
+        summary: placeholderSummary,
+        details: [],
+      },
+      {
+        id: 'tone',
+        label: 'Professional tone',
+        status: 'info',
+        summary: placeholderSummary,
+        details: [],
+      },
+    ];
+  }
+
+  const segments = collectLiveSegments({
+    variation,
+    sectionConfig,
+    bulletOverrides,
+    bulletOrderOverrides,
+    sectionRewrites,
+    analysis,
+  });
+  const aggregatedText = [
+    segments.summaryText,
+    ...segments.experienceBullets,
+    ...segments.projectBullets,
+    ...segments.educationNotes,
+    ...segments.skillHighlights,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const wordMatches = aggregatedText.match(/\b\w+\b/g) || [];
+  const wordCount = wordMatches.length;
+  const pagesEstimate = Math.max(1, Math.ceil(wordCount / 380));
+  const pagesDetected = pdfPageCount || pagesEstimate;
+  const typos = detectMisspellings(aggregatedText);
+  const firstPersonMatches = aggregatedText.match(FIRST_PERSON_PATTERN) || [];
+  const bullets = [...segments.experienceBullets, ...segments.projectBullets];
+  const totalBullets = bullets.length;
+  const punctuatedBullets = bullets.filter((bullet) => /[.!?]$/.test(bullet.trim())).length;
+  const punctuationRatio = totalBullets ? punctuatedBullets / totalBullets : 0;
+  const selectedTone = toneOptions.find((option) => option.value === tone);
+
+  const lengthDetails = [];
+  let lengthStatus = 'ok';
+  let lengthSummary = `~${wordCount} words (~${pagesEstimate} page${pagesEstimate > 1 ? 's' : ''})`;
+  if (wordCount === 0) {
+    lengthStatus = 'info';
+    lengthSummary = 'No resume content is available yet.';
+  } else if (pdfPageCount) {
+    // If we have a detected page count from the generated PDF, use density to determine visual fullness
+    const density = wordCount / (pagesDetected * 420);
+    if (density >= 0.6) {
+      lengthStatus = 'ok';
+      lengthDetails.push('Visual preview fills the pages — formatting looks appropriately full.');
+      lengthSummary = `~${wordCount} words (~${pagesDetected} page${pagesDetected > 1 ? 's' : ''})`;
+    } else if (wordCount < 400) {
+      lengthStatus = 'warn';
+      lengthDetails.push('Add a few more achievements to land between 1–2 pages.');
+    } else if (wordCount > 900) {
+      lengthStatus = 'warn';
+      lengthDetails.push('Consider trimming repetition to keep the document between 1–2 pages.');
+    } else {
+      lengthDetails.push('Length is within the recommended 1–2 page range.');
+    }
+  } else if (wordCount < 400) {
+    lengthStatus = 'warn';
+    lengthDetails.push('Add a few more achievements to land between 1–2 pages.');
+  } else if (wordCount > 900) {
+    lengthStatus = 'warn';
+    lengthDetails.push('Consider trimming repetition to keep the document between 1–2 pages.');
+  } else {
+    lengthDetails.push('Length is within the recommended 1–2 page range.');
+  }
+
+  const formatStatus = totalBullets
+    ? punctuationRatio > 0.8 || punctuationRatio < 0.2
+      ? 'ok'
+      : 'warn'
+    : 'info';
+  const formatSummary =
+    totalBullets === 0
+      ? 'Add bullet points to evaluate formatting consistency.'
+      : punctuationRatio > 0.8
+      ? 'Most bullets end with punctuation—nice and consistent.'
+      : punctuationRatio < 0.2
+      ? 'Most bullets skip trailing punctuation. Choose one style and stick with it.'
+      : 'Mixed punctuation detected across bullets.';
+
+  const formatDetails = [];
+  if (formatStatus === 'warn') {
+    formatDetails.push('Some bullets end with periods while others do not. Pick one style to stay consistent.');
+  }
+
+  const missingDetails = [];
+  const visible = (sectionConfig && sectionConfig.visibility) || {};
+  // Warn if any core sections are purposely excluded from the preview
+  const coreSections = ['experience', 'projects', 'education'];
+  const excludedCores = coreSections.filter((id) => visible[id] === false);
+  if (excludedCores.length) {
+    excludedCores.forEach((sec) => {
+      const label = resumeSectionMeta[sec]?.label || sec;
+      missingDetails.push(`${label} section is excluded from the preview.`);
+    });
+  }
+  if (!segments.summaryText) {
+    missingDetails.push('Add a headline or summary to frame your story.');
+  }
+  if (!segments.experienceBullets.length && !segments.projectBullets.length) {
+    missingDetails.push('Include at least one experience or project to highlight accomplishments.');
+  }
+  if (!segments.skillHighlights.length) {
+    missingDetails.push('Highlight key skills to match the role focus.');
+  }
+  if (!segments.educationNotes.length) {
+    missingDetails.push('Document a degree or certification so credentials are visible.');
+  }
+  const missingStatus = missingDetails.length ? 'warn' : 'ok';
+  const missingSummary = missingDetails.length
+    ? `${missingDetails.length} area${missingDetails.length === 1 ? '' : 's'} need details.`
+    : 'Core sections are filled.';
+
+  const contactIssues = [];
+  const contact = profile?.contact || {};
+  if (!contact.email) contactIssues.push('Add a professional email address.');
+  if (!contact.phone) contactIssues.push('Include a phone number so recruiters can reach you.');
+  if (!contact.location) contactIssues.push('Share a location or remote preference for clarity.');
+  const contactStatus = contactIssues.length ? 'warn' : 'ok';
+  const contactSummary = contactIssues.length
+    ? 'Critical contact details are missing.'
+    : 'Contact info looks complete.';
+
+  const toneStatus = firstPersonMatches.length ? 'warn' : 'ok';
+  const toneSummary = firstPersonMatches.length
+    ? `Detected ${firstPersonMatches.length} first-person pronom${firstPersonMatches.length === 1 ? 'oun' : 'ouns'}; consider keeping the tone neutral.`
+    : `Tone aligns with the ${
+        selectedTone?.label || 'selected'
+      } style.`;
+  const toneDetails = [];
+  if (selectedTone?.hint) toneDetails.push(selectedTone.hint);
+  if (firstPersonMatches.length) {
+    toneDetails.push('Remove "I" or "my" statements to keep it impersonal.');
+  }
+
+  return [
+    {
+      id: 'spell',
+      label: 'Spell check & grammar',
+      status: typos.length ? 'warn' : 'ok',
+      summary: typos.length
+        ? `${typos.length} potential typo${typos.length === 1 ? '' : 's'} detected.`
+        : 'No common typos detected.',
+      details: typos,
+    },
+    {
+      id: 'format',
+      label: 'Format consistency',
+      status: formatStatus,
+      summary: formatSummary,
+      details: formatDetails,
+    },
+    {
+      id: 'length',
+      label: 'Length optimization',
+      status: lengthStatus,
+      summary: lengthSummary,
+      details: lengthDetails,
+    },
+    {
+      id: 'missing',
+      label: 'Missing information',
+      status: missingStatus,
+      summary: missingSummary,
+      details: missingDetails,
+    },
+    {
+      id: 'contact',
+      label: 'Contact validation',
+      status: contactStatus,
+      summary: contactSummary,
+      details: contactIssues,
+    },
+    {
+      id: 'tone',
+      label: 'Professional tone',
+      status: toneStatus,
+      summary: toneSummary,
+      details: toneDetails,
+    },
+  ];
+};
+
 const SortableSectionRow = ({
   sectionId,
   meta,
@@ -509,6 +1046,8 @@ const SortableBulletList = ({
               text={bulletOverrides[item.key] ?? item.text}
               originalText={item.text}
               onManualSave={(value) => onBulletOverride(item.key, value)}
+              // propagate live drafts to parent so validation updates while typing
+              onDraftChange={onBulletOverride}
             />
           ))}
         </div>
@@ -517,7 +1056,7 @@ const SortableBulletList = ({
   );
 };
 
-const SortableBulletItem = ({ itemKey, text, originalText, onManualSave }) => {
+const SortableBulletItem = ({ itemKey, text, originalText, onManualSave, onDraftChange }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: itemKey });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -529,6 +1068,21 @@ const SortableBulletItem = ({ itemKey, text, originalText, onManualSave }) => {
   useEffect(() => {
     setDraft(text);
   }, [text]);
+
+  // Propagate live draft changes to parent (debounced) so validation and preview update
+  useEffect(() => {
+    if (!onDraftChange) return undefined;
+    // Only propagate while editing to avoid noisy updates when parent pushes new text
+    if (!editing) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (!cancelled) onDraftChange(itemKey, draft);
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [draft, editing, itemKey, onDraftChange]);
 
   return (
     <div ref={setNodeRef} style={style} className={`bullet-row ${isDragging ? 'dragging' : ''}`}>
@@ -553,7 +1107,9 @@ const SortableBulletItem = ({ itemKey, text, originalText, onManualSave }) => {
                 type="button"
                 className="ghost"
                 onClick={() => {
+                  // revert draft to latest saved text and notify parent to revert live override
                   setDraft(text);
+                  if (onDraftChange) onDraftChange(itemKey, text);
                   setEditing(false);
                 }}
               >
@@ -591,6 +1147,23 @@ const sanitizeText = (value) => {
   return '';
 };
 
+// Heuristic to detect if a URL likely points to a profile picture or image
+const isLikelyImageUrl = (url = '') => {
+  if (!url || typeof url !== 'string') return false;
+  const lowered = url.toLowerCase();
+  // common image extensions
+  if (/\.(png|jpe?g|gif|bmp|svg)(\?.*)?$/.test(lowered)) return true;
+  // common profile picture path fragments returned by backend (relative paths)
+  if (lowered.includes('/profile_pictures/') || lowered.includes('profile_picture')) return true;
+  // url that points to Gravatar or similar: contains 'gravatar' or 'avatar'
+  if (lowered.includes('gravatar') || lowered.includes('/avatar') || lowered.includes('avatar/')) return true;
+  // common CDN/profile image hosts and patterns (Google profile images, Twitter, Facebook)
+  if (lowered.includes('googleusercontent') || lowered.includes('lh3.google') || lowered.includes('twimg.com') || lowered.includes('fbcdn.net') || lowered.includes('cdn.discordapp.com') || lowered.includes('avatars.githubusercontent')) return true;
+  // Google profile images often append =s{size} or =s{size}-c at the end
+  if (/=s\d+(-[a-z])?/.test(lowered)) return true;
+  return false;
+};
+
 const formatDate = (value) => {
   const normalized = sanitizeText(value);
   if (!normalized) return '—';
@@ -603,6 +1176,371 @@ const chipify = (items) =>
   (items || [])
     .map((item) => sanitizeText(item))
     .filter(Boolean);
+
+const buildTerminologySuggestions = (industryBucket, keywords = []) => {
+  const base = INDUSTRY_TERM_LIBRARY[industryBucket] || INDUSTRY_TERM_LIBRARY.default;
+  const normalizedKeywords = keywords.slice(0, 4).map((keyword) => keyword?.toLowerCase()).filter(Boolean);
+  const merged = [...new Set([...normalizedKeywords, ...base])];
+  return merged.slice(0, 5).map((term) => term.replace(/\b([a-z])/g, (match) => match.toUpperCase()));
+};
+
+const computeRelevanceScore = (experience = {}, keywords = []) => {
+  if (!experience) return 50;
+  const haystack = `${experience.role || ''} ${experience.company || ''} ${(experience.bullets || []).join(' ')}`.toLowerCase();
+  if (!haystack.trim()) return 45;
+  const trimmedKeywords = keywords.slice(0, 8).map((keyword) => keyword.toLowerCase());
+  const matches = new Set();
+  trimmedKeywords.forEach((keyword) => {
+    if (keyword && haystack.includes(keyword)) {
+      matches.add(keyword);
+    }
+  });
+  const keywordFactor = trimmedKeywords.length ? matches.size / Math.min(trimmedKeywords.length, 6) : 0.4;
+  const metricFactor = (experience.bullets || []).some((bullet) => /\d/.test(bullet)) ? 0.25 : 0;
+  const score = Math.round((0.55 * keywordFactor + metricFactor + 0.25) * 100);
+  return Math.max(35, Math.min(100, score));
+};
+
+const computeMetricCoverage = (bullets = []) => {
+  if (!bullets.length) return 0;
+  const numeric = bullets.filter((bullet) => /\d/.test(bullet)).length;
+  return Math.round((numeric / bullets.length) * 100);
+};
+
+const buildExperienceInsight = (experience = {}, idx = 0, jobContext = {}) => {
+  const keywords = chipify(jobContext.keywords || []);
+  const industryBucket = getIndustryBucket(jobContext.industry || jobContext.jobTitle || '');
+  const experienceId = getExperienceUniqueId(experience, idx);
+  const groupId = getExperienceGroupId(experience, idx);
+  const chronology = parseYearRange(experience.dates);
+  const relevanceScore = computeRelevanceScore(experience, keywords);
+  const metricCoverage = computeMetricCoverage(experience.bullets);
+  const actionVerbs = (ACTION_VERB_LIBRARY[industryBucket] || ACTION_VERB_LIBRARY.default).slice(0, 3);
+  const terminology = buildTerminologySuggestions(industryBucket, keywords);
+  return {
+    experience,
+    experienceId,
+    groupId,
+    variations: [],
+    chronology: { ...chronology, label: experience.dates || 'Timeline TBD' },
+    relevanceScore,
+    metricCoverage,
+    actionVerbs,
+    terminology,
+  };
+};
+
+export const ExperienceTailoringLab = ({
+  experiences = [],
+  jobContext = {},
+  selectedJobId = '',
+  onApply,
+  onSave,
+  onDeleteSaved,
+  savedVariants = {},
+  onApplySaved,
+  onNotify,
+  externalVariations = {},
+  isLoading = false,
+  loadingError = '',
+  onRegenerateBullet,
+  regeneratingBullet = null,
+}) => {
+  const insights = useMemo(
+    () => experiences.map((experience, idx) => buildExperienceInsight(experience, idx, jobContext)),
+    [experiences, jobContext],
+  );
+  const [selectedVariants, setSelectedVariants] = useState({});
+  useEffect(() => {
+    setSelectedVariants((prev) => {
+      const next = {};
+      insights.forEach((insight) => {
+        const experienceKey = insight.experienceId;
+        const serverEntry =
+          externalVariations[experienceKey] ||
+          externalVariations[insight.experience?.source_experience_id];
+        const fallbackId = `profile-${experienceKey}`;
+        const defaultVariant = serverEntry?.variations?.[0]?.id || fallbackId;
+        next[experienceKey] = prev[experienceKey] || defaultVariant;
+      });
+      return next;
+    });
+  }, [insights, externalVariations]);
+
+  const savedList = useMemo(() => {
+    return Object.entries(savedVariants || {})
+      .flatMap(([experienceId, versions = []]) =>
+        versions.map((entry) => ({ ...entry, experienceId })),
+      )
+      .sort((a, b) => new Date(b.savedAt || 0) - new Date(a.savedAt || 0));
+  }, [savedVariants]);
+
+  if (!insights.length) return null;
+
+  const keywords = chipify(jobContext.keywords || []);
+
+  const handleApply = (insight, variant) => {
+    if (!variant?.bullets?.length) {
+      onNotify?.('No tailored bullets available yet.');
+      return;
+    }
+    onApply?.(insight.experience, variant, insight);
+  };
+
+  const handleSave = (insight, variant) => {
+    if (!selectedJobId) {
+      onNotify?.('Select a job to save tailored versions.');
+      return;
+    }
+    if (!variant?.bullets?.length) {
+      onNotify?.('Generate a variation before saving.');
+      return;
+    }
+    onSave?.(insight, variant);
+  };
+
+  const handleVariationChange = (experienceId, variantId) => {
+    setSelectedVariants((prev) => ({ ...prev, [experienceId]: variantId }));
+  };
+
+  return (
+    <section className="ai-resume-card experience-tailor-lab">
+      <div className="tailor-header">
+        <div>
+          <h2>Fine-tune your work experience for this job</h2>
+          <p className="customizer-subtitle">
+            Compare AI-authored variations for each role, reinforce metrics, and apply the most relevant bullets directly into the resume preview.
+          </p>
+        </div>
+      </div>
+      {isLoading && <p className="placeholder">Generating Gemini rewrites for each experience…</p>}
+      {loadingError && <p className="inline-error">{loadingError}</p>}
+      {isLoading && <p className="placeholder">Generating Gemini rewrites for each experience…</p>}
+      {loadingError && <p className="inline-error">{loadingError}</p>}
+
+      <div className="tailor-context-grid">
+        <div className="context-card">
+          <strong>Target company</strong>
+          <p>{sanitizeText(jobContext.company) || '—'}</p>
+        </div>
+        <div className="context-card">
+          <strong>Keywords emphasized</strong>
+          {keywords.length ? (
+            <div className="chip-row compact">
+              {keywords.slice(0, 6).map((keyword) => (
+                <span key={`keyword-${keyword}`} className="chip">
+                  {keyword}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="placeholder">Job keywords will appear after selecting a job posting.</p>
+          )}
+        </div>
+        <div className="context-card timeline-card">
+          <strong>Chronological timeline</strong>
+          <div className="experience-timeline" aria-label="Experience timeline">
+            {insights.map((insight, idx) => (
+              <div key={insight.experienceId} className="timeline-item">
+                <span className="timeline-dot" />
+                <div>
+                  <p>{insight.experience.role || `Experience ${idx + 1}`}</p>
+                  <small>{insight.chronology.label}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="experience-tailor-list">
+        {insights.map((insight) => {
+          const experienceKey = insight.experienceId;
+          const sourceId = insight.experience?.source_experience_id;
+          
+          const serverEntry =
+            externalVariations[experienceKey] ||
+            externalVariations[sourceId] ||
+            externalVariations[`experience-${sourceId}`];
+          const serverVariations = serverEntry?.variations;
+          const fallbackVariantId = `profile-${experienceKey}`;
+          const fallbackVariant = {
+            id: fallbackVariantId,
+            label: 'Profile bullets',
+            description: 'Bullets pulled directly from your saved experience.',
+            bullets: insight.experience.bullets || [],
+          };
+          const variationList = [
+            ...(fallbackVariant.bullets.length ? [fallbackVariant] : []),
+            ...(serverVariations?.length ? serverVariations : []),
+          ];
+          const hasVariants = variationList.length > 0;
+          const selectedVariantId = hasVariants
+            ? selectedVariants[experienceKey] || variationList[0]?.id
+            : '';
+          const currentVariant = hasVariants
+            ? variationList.find((variant) => variant.id === selectedVariantId) || variationList[0]
+            : null;
+          const serverVariantIds = new Set((serverVariations || []).map((variant) => variant.id));
+          const isServerVariant = currentVariant ? serverVariantIds.has(currentVariant.id) : false;
+          const canRegenerate = Boolean(onRegenerateBullet && isServerVariant);
+          const showLoadingState = isLoading && !serverVariations?.length;
+          const scoreClass = insight.relevanceScore >= 75 ? 'high' : insight.relevanceScore >= 55 ? 'medium' : 'low';
+          return (
+            <article key={insight.experienceId} className="experience-tailor-card">
+              <header>
+                <div>
+                  <h4>{insight.experience.role}</h4>
+                  <p>{insight.experience.company}</p>
+                  <small>{insight.chronology.label}</small>
+                </div>
+                <div className="relevance-pill-wrapper">
+                  <span className={`relevance-pill ${scoreClass}`}>{insight.relevanceScore}% match</span>
+                  <div className="relevance-bar">
+                    <span style={{ width: `${insight.relevanceScore}%` }} />
+                  </div>
+                  <small>Metric coverage: {insight.metricCoverage}%</small>
+                </div>
+              </header>
+
+              {hasVariants ? (
+                <div className="variation-tabs-row">
+                  {variationList.map((variant) => (
+                    <button
+                      key={variant.id}
+                      type="button"
+                      className={variant.id === selectedVariantId ? 'active' : ''}
+                      onClick={() => handleVariationChange(insight.experienceId, variant.id)}
+                    >
+                      <span>{variant.label}</span>
+                      <small>{variant.tags?.length ? variant.tags.join(' · ') : 'Profile source'}</small>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="variation-tabs-row">
+                  <p className="placeholder">Add at least one bullet to unlock tailored variations.</p>
+                </div>
+              )}
+
+              <div className="variation-body">
+                <p>
+                  {currentVariant?.description ||
+                    (serverVariations?.length
+                      ? 'Gemini variation'
+                      : fallbackVariant.bullets.length
+                        ? 'Bullets from your saved profile.'
+                        : 'Provide achievements so tailoring can begin.')}
+                </p>
+                {showLoadingState ? (
+                  <p className="placeholder">Fetching tailored bullets…</p>
+                ) : currentVariant?.bullets?.length ? (
+                  <ul>
+                    {currentVariant.bullets.map((bullet, idx) => {
+                      const isRegenerating =
+                        regeneratingBullet &&
+                        regeneratingBullet.experienceId === insight.experienceId &&
+                        regeneratingBullet.variantId === currentVariant?.id &&
+                        regeneratingBullet.bulletIndex === idx;
+                      const displayBullet = normalizeBulletText(bullet);
+                      return (
+                        <li key={`${currentVariant.id}-${idx}`} className="bullet-with-action">
+                          <span>{displayBullet}</span>
+                          {canRegenerate && (
+                            <button
+                              type="button"
+                              className="ghost regen-button"
+                              onClick={() => onRegenerateBullet(insight.experienceId, currentVariant.id, idx)}
+                              disabled={isRegenerating}
+                              title="Regenerate this bullet"
+                            >
+                              <Icon name="refresh" size={12} className="regen-icon" />
+                              <span>Regenerate</span>
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="placeholder">This experience is missing bullet points. Add bullets to enable tailoring.</p>
+                )}
+              </div>
+
+              <div className="experience-tailor-actions">
+                <button type="button" className="primary" onClick={() => handleApply(insight, currentVariant)}>
+                  <Icon name="sparkles" size="sm" /> Apply to resume preview
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={!selectedJobId || !currentVariant?.bullets?.length}
+                  onClick={() => handleSave(insight, currentVariant)}
+                >
+                  <Icon name="clipboard" size="sm" /> Save tailored version
+                </button>
+              </div>
+
+              <div className="suggestion-row">
+                <div>
+                  <strong>Action verbs to try</strong>
+                  <div className="chip-row compact">
+                    {insight.actionVerbs.map((verb) => (
+                      <span key={`verb-${verb}`} className="chip neutral">
+                        {verb}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <strong>Industry terminology</strong>
+                  <div className="chip-row compact">
+                    {insight.terminology.map((term) => (
+                      <span key={`term-${term}`} className="chip accent">
+                        {term}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      {savedList.length > 0 && (
+        <div className="saved-tailored-panel">
+          <div className="saved-header">
+            <h3>Saved tailored versions</h3>
+            <p>Reuse previously approved bullets for this job without regenerating content.</p>
+          </div>
+          <div className="saved-list">
+            {savedList.map((entry) => (
+              <div key={entry.id} className="saved-row">
+                <div>
+                  <strong>
+                    {entry.role}
+                    <span> · {entry.company}</span>
+                  </strong>
+                  <p>{entry.label}</p>
+                  <small>Saved {formatDate(entry.savedAt)} · {entry.relevanceScore}% match</small>
+                </div>
+                <div className="saved-actions">
+                  <button type="button" onClick={() => onApplySaved?.(entry.experienceId, entry)}>
+                    <Icon name="sparkles" size="sm" /> Apply
+                  </button>
+                  <button type="button" className="ghost" onClick={() => onDeleteSaved?.(entry.experienceId, entry.id)}>
+                    <Icon name="trash" size="sm" /> Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+};
 
 const generationHints = [
   'Analyzing the job description and keywords…',
@@ -624,7 +1562,7 @@ const loadCachedResult = () => {
     if (cacheAge > 24 * 60 * 60 * 1000) return null;
     return parsed.data;
   } catch (err) {
-    console.error('Failed to load cached resume:', err);
+    // silently ignore cache load errors
     return null;
   }
 };
@@ -638,7 +1576,7 @@ const saveCachedResult = (data) => {
     };
     localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
   } catch (err) {
-    console.error('Failed to cache resume:', err);
+    // silently ignore cache save errors
   }
 };
 
@@ -646,7 +1584,7 @@ const clearCachedResult = () => {
   try {
     localStorage.removeItem(CACHE_KEY);
   } catch (err) {
-    console.error('Failed to clear cache:', err);
+    // silently ignore cache clear errors
   }
 };
 
@@ -688,6 +1626,30 @@ const AiResumeGenerator = () => {
   const [livePreviewPdfUrl, setLivePreviewPdfUrl] = useState('');
   const [livePreviewLoading, setLivePreviewLoading] = useState(false);
   const [livePreviewError, setLivePreviewError] = useState('');
+  const [detectedPdfPageCount, setDetectedPdfPageCount] = useState(null);
+  const [experienceVariations, setExperienceVariations] = useState({});
+  const [experienceVariationsLoading, setExperienceVariationsLoading] = useState(false);
+  const [experienceVariationsError, setExperienceVariationsError] = useState('');
+  const [regeneratingBullet, setRegeneratingBullet] = useState(null);
+  const [savedExperienceVersions, setSavedExperienceVersions] = useState(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const stored = localStorage.getItem(EXPERIENCE_TAILOR_CACHE_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+  
+  // Export options state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFormat, setExportFormat] = useState('docx');
+  const [exportTheme, setExportTheme] = useState('professional');
+  const [exportWatermark, setExportWatermark] = useState('');
+  const [exportFilename, setExportFilename] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const [availableThemes, setAvailableThemes] = useState([]);
   
   // Template management state
   const [customTemplates, setCustomTemplates] = useState(() => {
@@ -742,6 +1704,20 @@ const AiResumeGenerator = () => {
     }
   }, []);
 
+  // Fetch available themes on mount
+  useEffect(() => {
+    const fetchThemes = async () => {
+      try {
+        const themes = await resumeExportAPI.getThemes();
+        setAvailableThemes(themes);
+      } catch (error) {
+        // Failed to fetch themes; fallback to defaults
+        setAvailableThemes(['professional', 'modern', 'minimal', 'creative']);
+      }
+    };
+    fetchThemes();
+  }, []);
+
   // Save result to cache whenever it changes
   useEffect(() => {
     if (result) {
@@ -772,6 +1748,15 @@ const AiResumeGenerator = () => {
       return next;
     });
   }, [sectionConfig.order]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(EXPERIENCE_TAILOR_CACHE_KEY, JSON.stringify(savedExperienceVersions));
+    } catch {
+      // ignore storage failures
+    }
+  }, [savedExperienceVersions]);
 
   useEffect(() => {
     const loadJobs = async () => {
@@ -865,6 +1850,77 @@ const AiResumeGenerator = () => {
   }, [result, activeVariationId]);
 
   useEffect(() => {
+    
+    if (!selectedJobId || !activeVariation) {
+      setExperienceVariations({});
+      setExperienceVariationsError('');
+      return;
+    }
+    const experiences = (activeVariation.experience_sections || [])
+      .filter((exp) => exp.source_experience_id);
+    
+    if (!experiences.length) {
+      setExperienceVariations({});
+      setExperienceVariationsError('');
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadExperienceVariations = async () => {
+      
+      setExperienceVariationsLoading(true);
+      setExperienceVariationsError('');
+      try {
+        const results = await Promise.all(
+          experiences.map(async (exp, idx) => {
+            
+            try {
+              const result = await resumeAIAPI.generateExperienceVariations(selectedJobId, exp.source_experience_id, {
+                tone,
+                variation_count: EXPERIENCE_VARIATION_TARGET,
+              });
+              
+              return result;
+            } catch (err) {
+              
+              throw err;
+            }
+          }),
+        );
+        if (cancelled) return;
+        const map = {};
+        results.forEach((entry, idx) => {
+          
+          if (entry?.experience_id) {
+            const key = `experience-${entry.experience_id}`;
+            map[entry.experience_id] = entry;
+            map[key] = entry;
+          }
+        });
+        
+        setExperienceVariations(map);
+      } catch (err) {
+        
+        if (!cancelled) {
+          setExperienceVariationsError(err?.message || 'Unable to fetch tailored variations.');
+        }
+      } finally {
+        if (!cancelled) {
+          setExperienceVariationsLoading(false);
+        }
+      }
+    };
+
+    loadExperienceVariations();
+
+    return () => {
+      cancelled = true;
+      setExperienceVariationsLoading(false);
+    };
+  }, [selectedJobId, activeVariation, tone]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     if (!activeVariation?.pdf_document) {
       if (pdfUrlRef.current) {
@@ -872,10 +1928,18 @@ const AiResumeGenerator = () => {
         pdfUrlRef.current = '';
       }
       setPdfPreviewUrl('');
+      setDetectedPdfPageCount(null);
       return undefined;
     }
     try {
       const byteCharacters = window.atob(activeVariation.pdf_document);
+      // Try to estimate page count by searching for PDF page markers in the decoded stream
+      try {
+        const pageMatches = byteCharacters.match(/\/Type\s*\/Page/g) || [];
+        setDetectedPdfPageCount(pageMatches.length || 1);
+      } catch (e) {
+        setDetectedPdfPageCount(null);
+      }
       const byteNumbers = new Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i += 1) {
         byteNumbers[i] = byteCharacters.charCodeAt(i);
@@ -897,7 +1961,7 @@ const AiResumeGenerator = () => {
         }
       };
     } catch (err) {
-      console.error('Failed to render PDF preview', err); // eslint-disable-line no-console
+      // Failed to render PDF preview — ignore and clear preview URL
       setPdfPreviewUrl('');
     }
     return undefined;
@@ -1036,6 +2100,129 @@ const AiResumeGenerator = () => {
     }));
   };
 
+  const applyTailoredBulletsToExperience = (experience, tailoredBullets = []) => {
+    if (!experience) return;
+    const experiencesList = activeVariation?.experience_sections || [];
+    const fallbackIndex = Math.max(0, experiencesList.indexOf(experience));
+    const groupId = getExperienceGroupId(experience, fallbackIndex);
+    const baseBullets = experience.bullets || [];
+    const nextBullets = tailoredBullets?.length ? tailoredBullets : baseBullets;
+    baseBullets.forEach((original, idx) => {
+      const bulletKey = buildBulletKey('experience', groupId, idx);
+      handleBulletOverride(bulletKey, nextBullets[idx] || original);
+    });
+  };
+
+  const handleApplyExperienceVariant = (experience, variant) => {
+    if (!experience || !variant) return;
+    applyTailoredBulletsToExperience(experience, variant.bullets);
+    setLayoutHint(`Applied ${variant.label} variation to ${experience.role || 'experience'}`);
+  };
+
+  const handleSaveExperienceVariant = (insight, variant) => {
+    if (!insight || !variant || !selectedJobId) return;
+    setSavedExperienceVersions((prev) => {
+      const jobEntry = prev[selectedJobId] || {};
+      const existing = jobEntry[insight.experienceId] || [];
+      const nextVersion = {
+        id: `tailored_${Date.now()}`,
+        label: variant.label,
+        variationId: variant.id,
+        bullets: variant.bullets,
+        savedAt: new Date().toISOString(),
+        role: insight.experience.role,
+        company: insight.experience.company,
+        relevanceScore: insight.relevanceScore,
+      };
+      const nextJobEntry = {
+        ...jobEntry,
+        [insight.experienceId]: [nextVersion, ...existing].slice(0, 5),
+      };
+      return {
+        ...prev,
+        [selectedJobId]: nextJobEntry,
+      };
+    });
+    setLayoutHint(`Saved ${variant.label} for ${insight.experience.role || 'experience'}`);
+  };
+
+  const handleRegenerateBullet = async (experienceId, variantId, bulletIndex) => {
+    if (!selectedJobId) return;
+    setRegeneratingBullet({ experienceId, variantId, bulletIndex });
+    try {
+      // Extract numeric ID from "experience-X" format
+      const numericId = experienceId.startsWith('experience-') 
+        ? experienceId.split('-')[1] 
+        : experienceId;
+      
+      const payload = await resumeAIAPI.regenerateExperienceBullet(selectedJobId, numericId, {
+        tone,
+        variant_id: variantId,
+        bullet_index: bulletIndex,
+      });
+      const nextBullet = payload?.bullet;
+      if (nextBullet) {
+        setExperienceVariations((prev) => {
+          const entry = prev[experienceId];
+          if (!entry) return prev;
+          const nextVariations = entry.variations.map((variant) => {
+            if (variant.id !== variantId) return variant;
+            const updatedBullets = variant.bullets.map((text, idx) => (idx === bulletIndex ? nextBullet : text));
+            return { ...variant, bullets: updatedBullets };
+          });
+          return {
+            ...prev,
+            [experienceId]: {
+              ...entry,
+              variations: nextVariations,
+            },
+          };
+        });
+        setLayoutHint('Regenerated a tailored bullet with Gemini.');
+      }
+    } catch (err) {
+      setLayoutHint(err?.message || 'Unable to regenerate bullet.');
+    } finally {
+      setRegeneratingBullet(null);
+    }
+  };
+
+  const handleDeleteSavedExperienceVariant = (experienceId, versionId) => {
+    if (!selectedJobId) return;
+    setSavedExperienceVersions((prev) => {
+      const jobEntry = prev[selectedJobId];
+      if (!jobEntry || !jobEntry[experienceId]) return prev;
+      const remaining = jobEntry[experienceId].filter((entry) => entry.id !== versionId);
+      if (remaining.length === jobEntry[experienceId].length) return prev;
+      const nextJobEntry = { ...jobEntry };
+      if (remaining.length) {
+        nextJobEntry[experienceId] = remaining;
+      } else {
+        delete nextJobEntry[experienceId];
+      }
+      const nextState = { ...prev };
+      if (Object.keys(nextJobEntry).length) {
+        nextState[selectedJobId] = nextJobEntry;
+      } else {
+        delete nextState[selectedJobId];
+      }
+      return nextState;
+    });
+    setLayoutHint('Removed saved tailored version');
+  };
+
+  const handleApplySavedExperienceVariant = (experienceId, version) => {
+    if (!version) return;
+    const experiencesList = activeVariation?.experience_sections || [];
+    const target = experiencesList.find((experience, idx) => getExperienceUniqueId(experience, idx) === experienceId);
+    if (!target) {
+      setLayoutHint('Saved experience is not part of this variation.');
+      return;
+    }
+    applyTailoredBulletsToExperience(target, version.bullets);
+    setLayoutHint(`Applied saved version “${version.label}”.`);
+  };
+
   const handleBulletRegenerate = (sectionId, bulletKey, originalText) => {
     const suggestion = generateBulletRewrite(
       originalText,
@@ -1119,11 +2306,7 @@ const AiResumeGenerator = () => {
         tone,
         variation_count: variationCount,
       });
-      console.log('Received resume data:', {
-        variation_count: data?.variation_count,
-        variations_length: data?.variations?.length,
-        variation_labels: data?.variations?.map(v => v.label),
-      });
+      // Received resume data
       setResult(data);
       const firstVariation = data?.variations?.[0];
       setActiveVariationId(firstVariation?.id || '');
@@ -1241,8 +2424,57 @@ const AiResumeGenerator = () => {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Failed to download PDF:', err);
+      // Failed to download PDF
       setGenerationError('Failed to download PDF. Please try again.');
+    }
+  };
+
+  const handleExportResume = async () => {
+    if (!liveLatexPreview || !activeVariation) {
+      setExportError('No resume content available to export');
+      return;
+    }
+
+    setIsExporting(true);
+    setExportError('');
+
+    try {
+      // Generate filename based on profile name
+      let filename = '';
+      if (result?.profile?.name) {
+        const name = result.profile.name.trim();
+        const nameParts = name.split(/\s+/);
+        if (nameParts.length >= 2) {
+          const firstName = nameParts[0];
+          const lastName = nameParts[nameParts.length - 1];
+          filename = `${firstName}_${lastName}_Resume`;
+        } else {
+          filename = `${name.replace(/\s+/g, '_')}_Resume`;
+        }
+      }
+
+      // Call the export API - browser will handle the filename from Content-Disposition header
+      await resumeExportAPI.exportAIResume(
+        liveLatexPreview,
+        exportFormat,
+        exportTheme,
+        exportWatermark.trim() || null,
+        filename,
+        null  // Let backend extract from LaTeX
+      );
+
+      // Success - close modal and reset
+      setShowExportModal(false);
+      setExportError('');
+      // Reset form for next time
+      setTimeout(() => {
+        setExportWatermark('');
+      }, 300);
+    } catch (error) {
+      // Export failed
+      setExportError(error.response?.data?.error || 'Failed to export resume. Please try again.');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -1285,6 +2517,39 @@ const AiResumeGenerator = () => {
       return acc;
     }, {});
   }, [activeVariation, analysis, pdfPreviewUrl]);
+
+  const validationInsights = useMemo(
+    () =>
+      buildValidationInsights({
+        variation: activeVariation,
+        profile,
+        tone,
+        sectionConfig,
+        bulletOverrides,
+        bulletOrderOverrides,
+        sectionRewrites,
+        analysis,
+        pdfPageCount: detectedPdfPageCount,
+      }),
+    [
+      activeVariation,
+      profile,
+      tone,
+      sectionConfig,
+      visibleSections,
+      bulletOverrides,
+      bulletOrderOverrides,
+      sectionRewrites,
+      analysis,
+      detectedPdfPageCount,
+    ],
+  );
+
+  // Mirror memoized validation into state so UI updates reliably when visibility toggles
+  const [liveValidationInsights, setLiveValidationInsights] = useState(() => validationInsights);
+  useEffect(() => {
+    setLiveValidationInsights(validationInsights);
+  }, [validationInsights]);
 
   const sectionSnapshots = useMemo(() => {
     if (!activeVariation) return {};
@@ -1340,7 +2605,13 @@ const AiResumeGenerator = () => {
       }
       if (profile.contact?.portfolio_url) {
         const url = profile.contact.portfolio_url;
-        contactBits.push(`\\href{${url}}{\\underline{Portfolio}}`);
+        const picUrl = profile.profile_picture_url || profile.contact?.profile_picture_url || '';
+        const looksLikeImage = isLikelyImageUrl(url) || (picUrl && picUrl === url);
+        if (!looksLikeImage) {
+          contactBits.push(`\\href{${url}}{\\underline{Portfolio}}`);
+        } else {
+            // Skip portfolio link when it appears to point to an image/profile picture
+          }
       }
       
       const location = profile.location || profile.contact?.location;
@@ -1414,7 +2685,7 @@ const AiResumeGenerator = () => {
               lines.push(`\\resumeSubheading{${role}}{${dates}}{${company}}{${location}}`);
               
               const bullets = density === 'compact' ? (exp.bullets || []).slice(0, 1) : (exp.bullets || []);
-              const groupId = exp.source_experience_id || `${exp.role || 'experience'}-${exp.company || idx}`;
+              const groupId = getExperienceGroupId(exp, idx);
               const bulletItems = bullets.map((bullet, bulletIdx) => {
                 const key = buildBulletKey('experience', groupId, bulletIdx);
                 return {
@@ -1536,7 +2807,7 @@ const AiResumeGenerator = () => {
         setLivePreviewPdfUrl(newUrl);
       }
     } catch (err) {
-      console.error('Failed to compile live preview:', err);
+      // Failed to compile live preview
       setLivePreviewError(err?.message || 'Unable to compile LaTeX preview');
     } finally {
       setLivePreviewLoading(false);
@@ -1679,7 +2950,8 @@ const AiResumeGenerator = () => {
               <ol className={`experience-list ${density === 'compact' ? 'compact' : ''}`}>
                 {experiences.map((exp, idx) => {
                   const bullets = density === 'compact' ? (exp.bullets || []).slice(0, 1) : exp.bullets;
-                  const groupId = exp.source_experience_id || `${exp.role || 'experience'}-${exp.company || idx}`;
+                  const groupId = getExperienceGroupId(exp, idx);
+                  const experienceKey = getExperienceUniqueId(exp, idx);
                   const bulletItems = (bullets || []).map((bullet, bulletIdx) => {
                     const key = buildBulletKey('experience', groupId, bulletIdx);
                     return {
@@ -1688,7 +2960,7 @@ const AiResumeGenerator = () => {
                     };
                   });
                   return (
-                    <li key={`${exp.source_experience_id}-${exp.role}`}>
+                    <li key={experienceKey}>
                       <div className="experience-card">
                         <div className="experience-header">
                           <span className="experience-rank">#{idx + 1}</span>
@@ -1696,7 +2968,7 @@ const AiResumeGenerator = () => {
                             <strong>{exp.role}</strong>
                             <span>{exp.company}</span>
                             <small>
-                              {exp.location || 'Remote'} · {exp.dates}
+                              {exp.location || ' Remote'} · {exp.dates}
                             </small>
                           </div>
                         </div>
@@ -1726,7 +2998,7 @@ const AiResumeGenerator = () => {
         const latexLines = ['\\section*{Experience Highlights}'];
         experiences.forEach((exp, idx) => {
           const bullets = density === 'compact' ? (exp.bullets || []).slice(0, 1) : exp.bullets;
-          const groupId = exp.source_experience_id || `${exp.role || 'experience'}-${exp.company || idx}`;
+          const groupId = getExperienceGroupId(exp, idx);
           const bulletItems = (bullets || []).map((bullet, bulletIdx) => {
             const key = buildBulletKey('experience', groupId, bulletIdx);
             return {
@@ -2171,12 +3443,59 @@ const AiResumeGenerator = () => {
               </div>
 
             </div>
-            <div className="customizer-preview-grid">
-              <section className="ai-resume-card section-customizer">
+            <div className="preview-and-tools">
+              <aside className="ai-resume-card preview-panel">
+                <h3>Live PDF preview</h3>
+                <p className="hint">
+                  Reflects your current section order, visibility, formatting, and bullet edits.
+                </p>
+                {livePreviewLoading && (
+                  <div className="live-preview-loading">
+                    <LoadingSpinner size="sm" /> Compiling preview...
+                  </div>
+                )}
+                {livePreviewError && (
+                  <p className="inline-error">{livePreviewError}</p>
+                )}
+                {livePreviewPdfUrl ? (
+                  <div className="pdf-frame-wrapper live-preview">
+                    <iframe
+                      src={`${livePreviewPdfUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                      title="Live Resume PDF preview"
+                      className="pdf-preview-frame"
+                    />
+                  </div>
+                ) : !livePreviewLoading && !activeVariation ? (
+                  <p className="placeholder">Generate a resume to enable the live preview.</p>
+                ) : !livePreviewLoading && (
+                  <p className="placeholder">Adjust sections to see the preview update.</p>
+                )}
+                <div className="latex-column-actions">
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={handleCopyLiveLatex}
+                    disabled={!activeVariation}
+                  >
+                    <Icon name={latexCopied ? 'check' : 'clipboard'} size="sm" />{' '}
+                    {latexCopied ? 'Copied LaTeX' : 'Copy LaTeX source'}
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={compileLivePreview}
+                    disabled={!activeVariation || livePreviewLoading}
+                  >
+                    <Icon name="refresh" size="sm" /> Refresh preview
+                  </button>
+                </div>
+              </aside>
+              <div className="customization-column">
+                <section className="ai-resume-card section-customizer">
                 <div className="customizer-header">
                   <div className="layout-panel-heading">
                     <p className="eyebrow">Resume layout</p>
-                    <h2>Customize sections & preview</h2>
+                    <h2>Customize section arrangements</h2>
                     <p className="customizer-subtitle">
                       Toggle sections on/off, drag to reorder, adjust formatting, and watch the LaTeX preview
                       update instantly while you fine-tune each section.
@@ -2211,72 +3530,42 @@ const AiResumeGenerator = () => {
                     </button>
                   </div>
                 )}
-                <div className="customizer-body">
-                  <div className="latex-column">
-                    <h3>Live PDF preview</h3>
+                </section>
+
+                <section className="ai-resume-card validation-panel">
+                  <div className="validation-header">
+                    <p className="eyebrow">Resume health</p>
+                    <h2>Preview & validation checks</h2>
                     <p className="hint">
-                      Reflects your current section order, visibility, formatting, and bullet edits.
+                      Live PDF preview updates in real time while these checks surface issues before submission.
                     </p>
-                    {livePreviewLoading && (
-                      <div className="live-preview-loading">
-                        <LoadingSpinner size="sm" /> Compiling preview...
-                      </div>
-                    )}
-                    {livePreviewError && (
-                      <p className="inline-error">{livePreviewError}</p>
-                    )}
-                    {livePreviewPdfUrl ? (
-                      <div className="pdf-frame-wrapper live-preview">
-                        <iframe
-                          src={`${livePreviewPdfUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-                          title="Live Resume PDF preview"
-                          className="pdf-preview-frame"
-                        />
-                      </div>
-                    ) : !livePreviewLoading && !activeVariation ? (
-                      <p className="placeholder">Generate a resume to enable the live preview.</p>
-                    ) : !livePreviewLoading && (
-                      <p className="placeholder">Adjust sections to see the preview update.</p>
-                    )}
-                    <div className="latex-column-actions">
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={handleCopyLiveLatex}
-                        disabled={!activeVariation}
-                      >
-                        <Icon name={latexCopied ? 'check' : 'clipboard'} size="sm" />{' '}
-                        {latexCopied ? 'Copied LaTeX' : 'Copy LaTeX source'}
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={compileLivePreview}
-                        disabled={!activeVariation || livePreviewLoading}
-                      >
-                        <Icon name="refresh" size="sm" /> Refresh preview
-                      </button>
-                    </div>
                   </div>
+                  <div className="validation-list">
+                    {liveValidationInsights.map((insight) => (
+                      <article key={insight.id} className={`validation-item ${insight.status}`}>
+                        <header className="validation-item-header">
+                          <span className="validation-label">{insight.label}</span>
+                          <span className="validation-status">{validationStatusCopy[insight.status]}</span>
+                        </header>
+                        <p>{insight.summary}</p>
+                        {insight.details?.length > 0 && (
+                          <ul>
+                            {insight.details.map((detail, index) => (
+                              <li key={`${insight.id}-${index}`}>{detail}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </article>
+                    ))}
+                    {false && (
+                      <div />
+                    )}
+                  </div>
+                </section>
 
-                </div>
-              </section>
-
-              {activeVariation && (
-                <article className="ai-resume-card variation-card">
+                {activeVariation && (
+                  <article className="ai-resume-card variation-card">
                   <header>
-                    <div>
-                      <h3>{activeVariation.summary_headline || activeVariation.label}</h3>
-                      <div className="variation-chip-row">
-                        {activeVariation.tone && (
-                          <span className="chip tone">Tone: {activeVariation.tone}</span>
-                        )}
-                        <span className="chip layout-chip">{layoutSource.label}</span>
-                        {jobTypeSource && (
-                          <span className="chip jobtype-chip">{jobTypeSource}</span>
-                        )}
-                      </div>
-                    </div>
                     <div className="variation-action-stack">
                       <button type="button" onClick={() => handleDownloadPdf(activeVariation)}>
                         <Icon name="download" size="sm" /> Download PDF
@@ -2294,6 +3583,14 @@ const AiResumeGenerator = () => {
                       </button>
                       <button type="button" className="primary ghost" onClick={() => handleDownload(activeVariation)}>
                         <Icon name="download" size="sm" /> Download .tex
+                      </button>
+                      <button 
+                        type="button" 
+                        className="export-modal-trigger"
+                        onClick={() => setShowExportModal(true)}
+                        disabled={!liveLatexPreview}
+                      >
+                        <Icon name="download" size="sm" /> Export Other Formats
                       </button>
                       <button
                         type="button"
@@ -2318,7 +3615,7 @@ const AiResumeGenerator = () => {
                             onChange={(e) => {
                               const templateId = e.target.value;
                               const allTemplates = [...sectionTemplates, ...customTemplates];
-                              const template = allTemplates.find(t => t.id === templateId);
+                              const template = allTemplates.find((t) => t.id === templateId);
                               if (template) {
                                 handleApplyTemplate(template);
                               }
@@ -2455,9 +3752,158 @@ const AiResumeGenerator = () => {
                   </div>
                 </article>
               )}
+              {activeVariation?.experience_sections?.length > 0 && (
+              <ExperienceTailoringLab
+                experiences={activeVariation.experience_sections}
+                jobContext={{
+                  keywords: jobKeywords,
+                  jobTitle,
+                  company: jobCompanyName,
+                  industry: jobIndustry,
+                }}
+                selectedJobId={selectedJobId}
+                onApply={handleApplyExperienceVariant}
+                onSave={handleSaveExperienceVariant}
+                onDeleteSaved={handleDeleteSavedExperienceVariant}
+                onApplySaved={handleApplySavedExperienceVariant}
+                savedVariants={savedExperienceVersions[selectedJobId] || {}}
+                onNotify={setLayoutHint}
+                externalVariations={experienceVariations}
+                isLoading={experienceVariationsLoading}
+                loadingError={experienceVariationsError}
+                onRegenerateBullet={handleRegenerateBullet}
+                regeneratingBullet={regeneratingBullet}
+              />
+              )}
             </div>
-          </section>
+          </div>
+        </section>
         </>
+      )}
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="export-modal-overlay" onClick={() => setShowExportModal(false)}>
+          <div className="export-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="export-modal-header">
+              <div>
+                <h3>
+                  <Icon name="download" size="sm" /> Export Resume
+                </h3>
+                <p className="hint">Choose format, theme, and customization options</p>
+              </div>
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setShowExportModal(false)}
+                aria-label="Close export dialog"
+              >
+                <Icon name="x" size="md" />
+              </button>
+            </div>
+
+            <div className="export-modal-body">
+              <div className="export-control-group">
+                <label htmlFor="export-format">
+                  <Icon name="fileText" size="sm" /> Format
+                </label>
+                <select
+                  id="export-format"
+                  value={exportFormat}
+                  onChange={(e) => setExportFormat(e.target.value)}
+                  disabled={isExporting}
+                >
+                  <option value="docx">Word Document (.docx)</option>
+                  <option value="html">HTML</option>
+                  <option value="txt">Plain Text</option>
+                </select>
+                <p className="field-hint">
+                  {exportFormat === 'docx' && 'Editable Microsoft Word format'}
+                  {exportFormat === 'html' && 'Web-ready HTML with inline styles'}
+                  {exportFormat === 'txt' && 'Simple plain text format'}
+                </p>
+              </div>
+
+              <div className="export-control-group">
+                <label htmlFor="export-theme">
+                  <Icon name="palette" size="sm" /> Theme
+                </label>
+                <select
+                  id="export-theme"
+                  value={exportTheme}
+                  onChange={(e) => setExportTheme(e.target.value)}
+                  disabled={isExporting}
+                >
+                  {availableThemes.length > 0 ? (
+                    availableThemes.map((theme) => (
+                      <option key={theme} value={theme}>
+                        {theme.charAt(0).toUpperCase() + theme.slice(1)}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="professional">Professional</option>
+                      <option value="modern">Modern</option>
+                      <option value="minimal">Minimal</option>
+                      <option value="creative">Creative</option>
+                    </>
+                  )}
+                </select>
+                <p className="field-hint">Visual style and formatting</p>
+              </div>
+
+              <div className="export-control-group">
+                <label htmlFor="export-watermark">
+                  <Icon name="droplet" size="sm" /> Watermark (optional)
+                </label>
+                <input
+                  id="export-watermark"
+                  type="text"
+                  placeholder="e.g., CONFIDENTIAL, DRAFT"
+                  value={exportWatermark}
+                  onChange={(e) => setExportWatermark(e.target.value)}
+                  disabled={isExporting}
+                  maxLength={50}
+                />
+                <p className="field-hint">Adds text overlay to the document</p>
+              </div>
+
+              {exportError && (
+                <div className="export-error-message" role="alert">
+                  <Icon name="alertCircle" size="sm" />
+                  {exportError}
+                </div>
+              )}
+            </div>
+
+            <div className="export-modal-footer">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setShowExportModal(false)}
+                disabled={isExporting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={handleExportResume}
+                disabled={isExporting || !liveLatexPreview}
+              >
+                {isExporting ? (
+                  <>
+                    <LoadingSpinner size="sm" /> Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="download" size="sm" /> Export Resume
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

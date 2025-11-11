@@ -55,6 +55,30 @@ api.interceptors.response.use(
   }
 );
 
+const extractErrorMessage = (error, fallback) => {
+  const data = error?.response?.data;
+  if (!data) return fallback;
+
+  if (typeof data === 'string') return data;
+
+  if (typeof data.detail === 'string' && data.detail.trim()) {
+    return data.detail;
+  }
+
+  for (const value of Object.values(data)) {
+    if (!value) continue;
+    if (Array.isArray(value)) {
+      const first = value.find((v) => typeof v === 'string' && v.trim().length);
+      if (first) return first;
+    }
+    if (typeof value === 'string' && value.trim().length) {
+      return value;
+    }
+  }
+
+  return fallback;
+};
+
 // Profile API calls
 export const profileAPI = {
   getUserProfile: async (userId) => {
@@ -578,6 +602,47 @@ export const jobsAPI = {
     }
   },
 
+  getJobInterviewInsights: async (id) => {
+    try {
+      const response = await api.get(`/jobs/${id}/interview-insights/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch interview insights' };
+    }
+  },
+
+  // UC-066: Skills Gap Analysis
+  getJobSkillsGap: async (id, options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.refresh) params.append('refresh', 'true');
+      if (options.include_similar) params.append('include_similar', 'true');
+      const path = params.toString() ? `/jobs/${id}/skills-gap/?${params.toString()}` : `/jobs/${id}/skills-gap/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch skills gap analysis' };
+    }
+  },
+
+  logSkillProgress: async (skillId, data) => {
+    try {
+      const response = await api.post(`/skills/${skillId}/progress/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to log skill progress' };
+    }
+  },
+
+  getSkillProgress: async (skillId) => {
+    try {
+      const response = await api.get(`/skills/${skillId}/progress/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch skill progress' };
+    }
+  },
+
   addJob: async (data) => {
     const response = await api.post('/jobs', data);
     return response.data;
@@ -647,6 +712,44 @@ export const jobsAPI = {
       return response.data;
     } catch (error) {
       throw error.response?.data?.error || { message: 'Failed to import job from URL' };
+    }
+  },
+
+  // UC-065: Job Matching Algorithm
+  getJobMatchScore: async (id, options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.refresh) params.append('refresh', 'true');
+      const path = params.toString() ? `/jobs/${id}/match-score/?${params.toString()}` : `/jobs/${id}/match-score/`;
+      const response = await api.get(path);
+      return response;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch job match score' };
+    }
+  },
+
+  updateJobMatchWeights: async (id, data) => {
+    try {
+      const response = await api.post(`/jobs/${id}/match-score/`, data);
+      return response;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to update match weights' };
+    }
+  },
+
+  getBulkJobMatchScores: async (options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.job_ids) params.append('job_ids', options.job_ids);
+      if (options.limit) params.append('limit', options.limit);
+      if (options.min_score) params.append('min_score', options.min_score);
+      if (options.sort_by) params.append('sort_by', options.sort_by);
+      if (options.order) params.append('order', options.order);
+      const path = params.toString() ? `/jobs/match-scores/?${params.toString()}` : `/jobs/match-scores/`;
+      const response = await api.get(path);
+      return response;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch bulk job match scores' };
     }
   },
 };
@@ -807,6 +910,30 @@ export const resumeAIAPI = {
       throw error.response?.data?.error || { message: 'Failed to generate AI resume content' };
     }
   },
+  generateExperienceVariations: async (jobId, experienceId, options = {}) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/resume/tailor-experience/${experienceId}`, {
+        tone: options.tone,
+        variation_count: options.variation_count,
+        bullet_index: options.bullet_index,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to generate experience variations' };
+    }
+  },
+  regenerateExperienceBullet: async (jobId, experienceId, options = {}) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/resume/tailor-experience/${experienceId}/bullet`, {
+        tone: options.tone,
+        bullet_index: options.bullet_index,
+        variant_id: options.variant_id,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to regenerate bullet' };
+    }
+  },
   
   compileLatex: async (latexContent) => {
     try {
@@ -820,6 +947,154 @@ export const resumeAIAPI = {
   },
 };
 
+// UC-071: Interview Scheduling API calls
+export const interviewsAPI = {
+  // Get all interviews with optional filters
+  getInterviews: async (params = {}) => {
+    try {
+      const usp = new URLSearchParams();
+      Object.entries(params || {}).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') {
+          // Convert boolean to string for URL params
+          usp.append(k, String(v));
+        }
+      });
+      const path = usp.toString() ? `/interviews/?${usp.toString()}` : '/interviews/';
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch interviews' };
+    }
+  },
+
+  // Get a specific interview by ID
+  getInterview: async (id) => {
+    try {
+      const response = await api.get(`/interviews/${id}/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch interview' };
+    }
+  },
+
+  // Create a new interview
+  createInterview: async (data) => {
+    try {
+      const response = await api.post('/interviews/', data);
+      return response.data;
+    } catch (error) {
+      console.error('createInterview API error:', error);
+      console.error('error.response:', error.response);
+      console.error('error.response.data:', error.response?.data);
+      console.error('error.error:', error.error);
+      
+      // The response interceptor transforms errors, so check both error.response.data and error.error
+      // If error.error is an array, it's from the interceptor wrapping backend validation errors
+      if (error.error && Array.isArray(error.error) && error.error.length > 0) {
+        // Backend returns validation errors as strings in an array
+        // We need to wrap it in an object so the component can display it
+        const errorMessage = error.error[0];
+        if (typeof errorMessage === 'string') {
+          // This is likely a conflict message, so put it in scheduled_at field
+          throw { scheduled_at: errorMessage };
+        }
+        throw error.error[0];
+      }
+      
+      throw error.response?.data || error.error || { message: 'Failed to create interview' };
+    }
+  },
+
+  // Update an interview (including reschedule)
+  updateInterview: async (id, data) => {
+    try {
+      const response = await api.put(`/interviews/${id}/`, data);
+      return response.data;
+    } catch (error) {
+      console.error('updateInterview API error:', error);
+      console.error('error.response:', error.response);
+      console.error('error.response.data:', error.response?.data);
+      console.error('error.error:', error.error);
+      
+      // The response interceptor transforms errors, so check both error.response.data and error.error
+      if (error.error && Array.isArray(error.error) && error.error.length > 0) {
+        const errorMessage = error.error[0];
+        if (typeof errorMessage === 'string') {
+          // This is likely a conflict message, so put it in scheduled_at field
+          throw { scheduled_at: errorMessage };
+        }
+        throw error.error[0];
+      }
+      
+      throw error.response?.data || error.error || { message: 'Failed to update interview' };
+    }
+  },
+
+  // Cancel an interview
+  cancelInterview: async (id, reason = '') => {
+    try {
+      const response = await api.delete(`/interviews/${id}/`, {
+        data: { cancelled_reason: reason }
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to cancel interview' };
+    }
+  },
+
+  // Delete an interview permanently
+  deleteInterview: async (id) => {
+    try {
+      const response = await api.delete(`/interviews/${id}/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete interview' };
+    }
+  },
+
+  // Mark interview as completed with outcome
+  completeInterview: async (id, data) => {
+    try {
+      const response = await api.post(`/interviews/${id}/complete/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to complete interview' };
+    }
+  },
+
+  // Dismiss a reminder (24h or 1h)
+  dismissReminder: async (id, reminderType) => {
+    try {
+      const response = await api.post(`/interviews/${id}/dismiss-reminder/`, {
+        reminder_type: reminderType // '24h' or '1h'
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to dismiss reminder' };
+    }
+  },
+
+  // Get all active reminders for the user
+  getActiveReminders: async () => {
+    try {
+      const response = await api.get('/interviews/reminders/');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch reminders' };
+    }
+  },
+
+  // Toggle a preparation task completion
+  togglePreparationTask: async (taskId) => {
+    try {
+      const response = await api.put(`/interviews/tasks/${taskId}/toggle/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to toggle task' };
+    }
+  },
+};
+
 // UC-056: AI Cover Letter Generation API calls
 export const coverLetterAIAPI = {
   generateForJob: async (jobId, options = {}) => {
@@ -827,6 +1102,11 @@ export const coverLetterAIAPI = {
       const response = await api.post(`/jobs/${jobId}/cover-letter/generate`, {
         tone: options.tone,
         variation_count: options.variation_count,
+        length: options.length,
+        writing_style: options.writing_style,
+        company_culture: options.company_culture,
+        industry: options.industry,
+        custom_instructions: options.custom_instructions,
       });
       return response.data;
     } catch (error) {
@@ -842,6 +1122,18 @@ export const coverLetterAIAPI = {
       return response.data;
     } catch (error) {
       throw error.response?.data?.error || { message: 'Failed to compile LaTeX' };
+    }
+  },
+  
+  // UC-061: Export cover letter as Word document
+  exportDocx: async (coverLetterData) => {
+    try {
+      const response = await api.post('/cover-letter/export-docx/', coverLetterData, {
+        responseType: 'blob',
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to export Word document' };
     }
   },
 };
@@ -891,6 +1183,234 @@ authAPI.deleteEmployment = async (id) => {
   }
 };
 
+// Cover Letter Template API
+export const coverLetterTemplateAPI = {
+  // Get all templates (shared + user's custom)
+  getTemplates: async () => {
+    const response = await api.get('/cover-letter-templates');
+    return response.data;
+  },
+
+  // Get a specific template by ID
+  getTemplate: async (id) => {
+    const response = await api.get(`/cover-letter-templates/${id}`);
+    return response.data;
+  },
+
+  // Create a new template
+  createTemplate: async (templateData) => {
+    const response = await api.post('/cover-letter-templates', templateData);
+    return response.data;
+  },
+
+  // Update an existing template
+  updateTemplate: async (id, templateData) => {
+    const response = await api.put(`/cover-letter-templates/${id}`, templateData);
+    return response.data;
+  },
+
+  // Delete a template
+  deleteTemplate: async (id) => {
+    await api.delete(`/cover-letter-templates/${id}`);
+  },
+
+  // Import a custom template
+  importTemplate: async (templateData) => {
+    // For file uploads, create a new request without the default Content-Type header
+    if (templateData instanceof FormData) {
+      const token = localStorage.getItem('firebaseToken');
+      const response = await axios.post(
+        `${API_BASE_URL}/cover-letter-templates/import`, 
+        templateData,
+        {
+          headers: {
+            ...(token && { Authorization: `Bearer ${token}` }),
+            // Don't set Content-Type - let browser handle it for FormData
+          },
+        }
+      );
+      return response.data;
+    } else {
+      // For JSON data, use the normal api instance
+      const response = await api.post('/cover-letter-templates/import', templateData);
+      return response.data;
+    }
+  },
+
+  // Share a template (make it public)
+  shareTemplate: async (id) => {
+    const response = await api.post(`/cover-letter-templates/${id}/share`);
+    return response.data;
+  },
+
+  // Track template usage analytics
+  trackUsage: async (id) => {
+    const response = await api.post(`/cover-letter-templates/${id}/analytics`);
+    return response.data;
+  },
+
+  // Get comprehensive template statistics
+  getStats: async () => {
+    const response = await api.get('/cover-letter-templates/stats');
+    return response.data;
+  },
+
+  // Download template in specified format (txt, docx, pdf)
+  downloadTemplate: async (id, format = 'txt') => {
+    const response = await api.get(`/cover-letter-templates/${id}/download/${format}`, {
+      responseType: 'blob', // Important for file downloads
+    });
+    
+    // Create download link
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    
+    // Get filename from response headers or create default
+    const contentDisposition = response.headers['content-disposition'];
+    let filename = `cover-letter-template.${format}`;
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="(.+)"/);
+      if (match) filename = match[1];
+    }
+    
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    
+    return { success: true, filename };
+  },
+
+  // Customize template styling options
+  customize: async (id, customizationOptions) => {
+    const response = await api.post(`/cover-letter-templates/${id}/customize`, customizationOptions);
+    return response.data;
+  },
+};
+
+// UC-051: Resume Export API
+export const resumeExportAPI = {
+  getThemes: async () => {
+    try {
+      const response = await api.get('/resume/export/themes');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { code: 'fetch_failed', message: 'Failed to fetch themes' };
+    }
+  },
+
+  exportResume: async (format, theme = 'professional', watermark = '', filename = '') => {
+    try {
+      const params = new URLSearchParams({ format });
+      if (theme) params.append('theme', theme);
+      if (watermark) params.append('watermark', watermark);
+      if (filename) params.append('filename', filename);
+
+      const response = await api.get(`/resume/export?${params.toString()}`, {
+        responseType: 'blob', // Important for file downloads
+      });
+
+      // Create a download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+
+      // Extract filename from Content-Disposition header or use default
+      const contentDisposition = response.headers['content-disposition'];
+      let downloadFilename = `resume.${format}`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+?)"?$/);
+        if (filenameMatch && filenameMatch[1]) {
+          downloadFilename = filenameMatch[1];
+        }
+      }
+
+      link.setAttribute('download', downloadFilename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      return { success: true, filename: downloadFilename };
+    } catch (error) {
+      // For blob responses, error.response.data is a Blob, need to parse it
+      if (error.response?.data instanceof Blob) {
+        const text = await error.response.data.text();
+        try {
+          const errorData = JSON.parse(text);
+          throw errorData.error || { code: 'export_failed', message: 'Export failed' };
+        } catch {
+          throw { code: 'export_failed', message: 'Export failed' };
+        }
+      }
+      throw error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+    }
+  },
+
+  // Export AI-generated resume with custom options
+  exportAIResume: async (latexContent, format, theme = 'professional', watermark = '', filename = '', profileData = null) => {
+    try {
+      const response = await api.post('/resume/export/ai', {
+        latex_content: latexContent,
+        format,
+        theme,
+        watermark,
+        filename,
+        profile_data: profileData
+      }, {
+        responseType: 'blob', // Important for file downloads
+      });
+
+      // Create a download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+
+      // Extract filename from Content-Disposition header or use default
+      const contentDisposition = response.headers['content-disposition'];
+      let downloadFilename = `resume.${format}`;
+      if (contentDisposition) {
+        // Try multiple patterns to extract filename
+        const patterns = [
+          /filename\*=UTF-8''([^;]+)/,  // RFC 5987 format
+          /filename="([^"]+)"/,           // Quoted filename
+          /filename=([^;]+)/              // Unquoted filename
+        ];
+        
+        for (const pattern of patterns) {
+          const match = contentDisposition.match(pattern);
+          if (match && match[1]) {
+            downloadFilename = decodeURIComponent(match[1].trim());
+            break;
+          }
+        }
+      }
+
+      link.setAttribute('download', downloadFilename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      return { success: true, filename: downloadFilename };
+    } catch (error) {
+      // For blob responses, error.response.data is a Blob, need to parse it
+      if (error.response?.data instanceof Blob) {
+        const text = await error.response.data.text();
+        try {
+          const errorData = JSON.parse(text);
+          throw errorData.error || { code: 'export_failed', message: 'Export failed' };
+        } catch {
+          throw { code: 'export_failed', message: 'Export failed' };
+        }
+      }
+      throw error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+    }
+  },
+};
+
 // Provide a forgiving default export that supports both
 // - `import authAPI from './services/api'` (legacy/default import)
 // - `import { authAPI } from './services/api'` (named import)
@@ -906,8 +1426,11 @@ const _defaultExport = {
   certificationsAPI,
   projectsAPI,
   jobsAPI,
+  coverLetterTemplateAPI,
   materialsAPI,
   resumeAIAPI,
+  resumeExportAPI,
+  interviewsAPI,
 };
 
 export default _defaultExport;
@@ -924,6 +1447,8 @@ try {
     module.exports.materialsAPI = materialsAPI;
     module.exports.salaryAPI = salaryAPI;
     module.exports.resumeAIAPI = resumeAIAPI;
+    module.exports.resumeExportAPI = resumeExportAPI;
+    module.exports.interviewsAPI = interviewsAPI;
   }
 } catch (e) {
   // ignore in strict ESM environments
@@ -958,6 +1483,8 @@ try {
     _defaultExport.materialsAPI = materialsAPI;
     _defaultExport.salaryAPI = salaryAPI;
     _defaultExport.resumeAIAPI = resumeAIAPI;
+    _defaultExport.resumeExportAPI = resumeExportAPI;
+    _defaultExport.interviewsAPI = interviewsAPI;
   }
   if (typeof module !== 'undefined' && module && module.exports) {
     module.exports = _defaultExport;
@@ -966,6 +1493,8 @@ try {
     module.exports.materialsAPI = materialsAPI;
     module.exports.salaryAPI = salaryAPI;
     module.exports.resumeAIAPI = resumeAIAPI;
+    module.exports.resumeExportAPI = resumeExportAPI;
+    module.exports.interviewsAPI = interviewsAPI;
   }
 } catch (e) {
   // ignore any errors during best-effort compatibility wiring

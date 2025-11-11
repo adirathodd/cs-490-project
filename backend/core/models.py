@@ -549,6 +549,47 @@ class Contact(models.Model):
         return f"{self.name} - {self.get_relationship_type_display()}"
 
 
+class CoverLetterTemplate(models.Model):
+    """Cover letter template for different industries and styles."""
+    TEMPLATE_TYPES = [
+        ("formal", "Formal"),
+        ("creative", "Creative"),
+        ("technical", "Technical"),
+        ("industry", "Industry-specific"),
+        ("custom", "Custom"),
+    ]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    template_type = models.CharField(max_length=20, choices=TEMPLATE_TYPES, default="formal")
+    industry = models.CharField(max_length=100, blank=True)
+    content = models.TextField()
+    sample_content = models.TextField(blank=True)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="custom_templates")
+    is_shared = models.BooleanField(default=False)
+    imported_from = models.CharField(max_length=200, blank=True)
+    usage_count = models.PositiveIntegerField(default=0)
+    last_used = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    customization_options = models.JSONField(default=dict, blank=True)
+    # Fields for preserving original file content
+    original_file_content = models.BinaryField(null=True, blank=True, help_text="Original file content for Word documents")
+    original_file_type = models.CharField(max_length=10, blank=True, help_text="Original file extension (txt, docx)")
+    original_filename = models.CharField(max_length=255, blank=True, help_text="Original uploaded filename")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["template_type"]),
+            models.Index(fields=["industry"]),
+            models.Index(fields=["owner"]),
+            models.Index(fields=["is_shared"]),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.get_template_type_display()})"
+
+
 class Referral(models.Model):
     """Track referral opportunities and warm introductions"""
     STATUS_CHOICES = [
@@ -1143,3 +1184,512 @@ class SalaryResearch(models.Model):
 
     def __str__(self):
         return f"Materials@{self.changed_at} for job {self.job_id}"
+
+
+class InterviewInsightsCache(models.Model):
+    """Cached AI-generated interview insights to reduce API costs (UC-068).
+    
+    Stores interview insights generated for specific job/company combinations
+    to avoid redundant Gemini API calls.
+    """
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='interview_insights_cache')
+    
+    # Job details used for generation
+    job_title = models.CharField(max_length=220)
+    company_name = models.CharField(max_length=220)
+    
+    # Generated insights stored as JSON
+    insights_data = models.JSONField(
+        help_text="Complete interview insights JSON including process, questions, tips, checklist"
+    )
+    
+    # Generation metadata
+    generated_by = models.CharField(
+        max_length=20,
+        choices=[('ai', 'AI Generated'), ('template', 'Template Based')],
+        default='ai'
+    )
+    generated_at = models.DateTimeField(auto_now_add=True)
+    
+    # Cache invalidation
+    is_valid = models.BooleanField(
+        default=True,
+        help_text="Set to False to force regeneration"
+    )
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['job', 'is_valid']),
+            models.Index(fields=['company_name', 'job_title']),
+        ]
+        ordering = ['-generated_at']
+    
+    def __str__(self):
+        return f"Interview Insights: {self.job_title} at {self.company_name}"
+
+
+class LearningResource(models.Model):
+    """Curated learning resources for skill development (UC-066).
+    
+    Stores links to courses, tutorials, and learning materials that can be
+    recommended for specific skills in the skills gap analysis.
+    """
+    RESOURCE_TYPES = [
+        ('course', 'Online Course'),
+        ('tutorial', 'Tutorial'),
+        ('documentation', 'Documentation'),
+        ('video', 'Video'),
+        ('book', 'Book'),
+        ('practice', 'Practice Platform'),
+        ('certification', 'Certification'),
+    ]
+    
+    COST_TYPES = [
+        ('free', 'Free'),
+        ('freemium', 'Freemium'),
+        ('paid', 'Paid'),
+    ]
+    
+    skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name='learning_resources')
+    title = models.CharField(max_length=300)
+    provider = models.CharField(max_length=200)  # e.g., Coursera, freeCodeCamp, YouTube
+    url = models.URLField()
+    resource_type = models.CharField(max_length=20, choices=RESOURCE_TYPES, default='course')
+    cost_type = models.CharField(max_length=20, choices=COST_TYPES, default='free')
+    duration_hours = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
+    difficulty_level = models.CharField(max_length=20, blank=True)  # beginner, intermediate, advanced
+    description = models.TextField(blank=True)
+    
+    # Quality indicators
+    rating = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)  # 0-5.0
+    credibility_score = models.IntegerField(default=50, help_text="0-100 internal quality score")
+    
+    # Metadata
+    tags = models.JSONField(default=list, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['skill', 'is_active', '-credibility_score']),
+            models.Index(fields=['difficulty_level']),
+        ]
+        ordering = ['-credibility_score', '-rating', 'title']
+    
+    def __str__(self):
+        return f"{self.title} ({self.provider}) - {self.skill.name}"
+
+
+class SkillGapAnalysisCache(models.Model):
+    """Cached skills gap analysis results (UC-066).
+    
+    Stores computed skill gap analysis for job entries to avoid repeated
+    computation and provide consistent results.
+    """
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='skills_gap_cache')
+    
+    # Job details used for analysis
+    job_title = models.CharField(max_length=220)
+    company_name = models.CharField(max_length=220)
+    
+    # Analysis results stored as JSON
+    analysis_data = models.JSONField(
+        help_text="Complete skills gap analysis including skills, gaps, resources, learning paths"
+    )
+    
+    # Generation metadata
+    source = models.CharField(
+        max_length=20,
+        choices=[
+            ('requirements', 'Job Requirements'),
+            ('parsed', 'Parsed Description'),
+            ('ai', 'AI Analysis'),
+        ],
+        default='parsed'
+    )
+    generated_at = models.DateTimeField(auto_now_add=True)
+    
+    # Cache invalidation
+    is_valid = models.BooleanField(
+        default=True,
+        help_text="Set to False to force regeneration"
+    )
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['job', 'is_valid']),
+            models.Index(fields=['job_title']),
+        ]
+        ordering = ['-generated_at']
+    
+    def __str__(self):
+        return f"Skills Gap: {self.job_title} at {self.company_name}"
+
+
+class SkillDevelopmentProgress(models.Model):
+    """Track user progress on developing specific skills (UC-066).
+    
+    Records practice sessions, course completions, and other activities
+    that contribute to skill development.
+    """
+    ACTIVITY_TYPES = [
+        ('practice', 'Practice Session'),
+        ('course', 'Course Progress'),
+        ('project', 'Project Work'),
+        ('certification', 'Certification Earned'),
+        ('review', 'Review/Refresh'),
+    ]
+    
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name='skill_progress')
+    skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name='progress_records')
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, null=True, blank=True, related_name='skill_progress')
+    learning_resource = models.ForeignKey(LearningResource, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPES, default='practice')
+    hours_spent = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    progress_percent = models.IntegerField(default=0, help_text="0-100 completion percentage")
+    notes = models.TextField(blank=True)
+    
+    activity_date = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['candidate', 'skill', '-activity_date']),
+            models.Index(fields=['job', '-activity_date']),
+        ]
+        ordering = ['-activity_date']
+    
+    def __str__(self):
+        return f"{self.candidate.user.username} - {self.skill.name} ({self.activity_type})"
+
+
+class JobMatchAnalysis(models.Model):
+    """Store job matching analysis results with scores and breakdowns.
+    
+    Provides comprehensive match scoring for UC-065 Job Matching Algorithm:
+    - Overall match score (0-100)
+    - Component scores (skills, experience, education) 
+    - Detailed match breakdown and recommendations
+    - Personalized scoring weights
+    - Historical tracking capabilities
+    """
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='match_analysis')
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name='job_matches')
+    
+    # Overall match score (0-100)
+    overall_score = models.DecimalField(max_digits=5, decimal_places=2)
+    
+    # Component scores (0-100 each)
+    skills_score = models.DecimalField(max_digits=5, decimal_places=2)
+    experience_score = models.DecimalField(max_digits=5, decimal_places=2)
+    education_score = models.DecimalField(max_digits=5, decimal_places=2)
+    
+    # Detailed match breakdown
+    match_data = models.JSONField(help_text="Detailed analysis including strengths, gaps, and recommendations")
+    
+    # Personalized scoring weights
+    user_weights = models.JSONField(
+        default=dict, 
+        help_text="Custom category weights (skills, experience, education)"
+    )
+    
+    # Metadata
+    generated_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_valid = models.BooleanField(default=True, help_text="False if analysis is outdated due to profile changes")
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['candidate', '-overall_score']),
+            models.Index(fields=['job', '-overall_score']),
+            models.Index(fields=['candidate', '-generated_at']),
+            models.Index(fields=['-overall_score']),
+        ]
+        ordering = ['-overall_score', '-generated_at']
+        unique_together = ['job', 'candidate']
+    
+    def __str__(self):
+        return f"{self.candidate.user.username} - {self.job.title} at {self.job.company_name} ({self.overall_score}%)"
+    
+    def invalidate(self):
+        """Mark analysis as invalid when profile or job changes."""
+        self.is_valid = False
+        self.save(update_fields=['is_valid'])
+    
+    @property
+    def match_grade(self):
+        """Return letter grade based on overall score."""
+        if self.overall_score >= 90:
+            return 'A+'
+        elif self.overall_score >= 85:
+            return 'A'
+        elif self.overall_score >= 80:
+            return 'B+'
+        elif self.overall_score >= 75:
+            return 'B'
+        elif self.overall_score >= 70:
+            return 'C+'
+        elif self.overall_score >= 65:
+            return 'C'
+        elif self.overall_score >= 60:
+            return 'D+'
+        elif self.overall_score >= 55:
+            return 'D'
+        else:
+            return 'F'
+
+
+class InterviewSchedule(models.Model):
+    """Interview scheduling and tracking for job applications (UC-071).
+    
+    Manages interview scheduling with calendar integration, conflict detection,
+    preparation task generation, and reminder system.
+    """
+    INTERVIEW_TYPES = [
+        ('phone', 'Phone Interview'),
+        ('video', 'Video Interview'),
+        ('in_person', 'In-Person Interview'),
+        ('assessment', 'Technical Assessment'),
+        ('group', 'Group Interview'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('scheduled', 'Scheduled'),
+        ('rescheduled', 'Rescheduled'),
+        ('cancelled', 'Cancelled'),
+        ('completed', 'Completed'),
+        ('no_show', 'No Show'),
+    ]
+    
+    OUTCOME_CHOICES = [
+        ('', 'Not Yet Recorded'),
+        ('excellent', 'Excellent'),
+        ('good', 'Good'),
+        ('average', 'Average'),
+        ('poor', 'Poor'),
+        ('rejected', 'Rejected'),
+        ('withdrew', 'Withdrew Application'),
+    ]
+    
+    # Core relationships
+    job = models.ForeignKey(
+        'JobEntry',
+        on_delete=models.CASCADE,
+        related_name='interviews'
+    )
+    candidate = models.ForeignKey(
+        'CandidateProfile',
+        on_delete=models.CASCADE,
+        related_name='interviews'
+    )
+    
+    # Interview details
+    interview_type = models.CharField(max_length=20, choices=INTERVIEW_TYPES)
+    scheduled_at = models.DateTimeField(db_index=True, help_text="Interview date and time")
+    duration_minutes = models.PositiveIntegerField(default=60, help_text="Expected duration in minutes")
+    
+    # Location/meeting details
+    location = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Physical address for in-person interviews"
+    )
+    meeting_link = models.URLField(
+        max_length=500,
+        blank=True,
+        help_text="Video conference link (Zoom, Teams, etc.)"
+    )
+    interviewer_name = models.CharField(max_length=200, blank=True)
+    interviewer_email = models.EmailField(blank=True)
+    interviewer_phone = models.CharField(max_length=20, blank=True)
+    
+    # Status and outcome
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled')
+    outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES, blank=True, default='')
+    feedback_notes = models.TextField(blank=True, help_text="Post-interview notes and feedback")
+    
+    # Interview preparation
+    preparation_notes = models.TextField(blank=True, help_text="Preparation notes and research")
+    questions_to_ask = models.TextField(blank=True, help_text="Questions prepared for interviewer")
+    
+    # In-app reminder tracking (will appear in calendar/dashboard)
+    show_24h_reminder = models.BooleanField(default=False, help_text="Show 24h reminder in app")
+    show_1h_reminder = models.BooleanField(default=False, help_text="Show 1h reminder in app")
+    reminder_24h_dismissed = models.BooleanField(default=False)
+    reminder_1h_dismissed = models.BooleanField(default=False)
+    
+    # Rescheduling history
+    original_datetime = models.DateTimeField(null=True, blank=True, help_text="Original scheduled time if rescheduled")
+    rescheduled_reason = models.CharField(max_length=500, blank=True)
+    cancelled_reason = models.CharField(max_length=500, blank=True)
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['scheduled_at']
+        indexes = [
+            models.Index(fields=['candidate', 'scheduled_at']),
+            models.Index(fields=['job', 'scheduled_at']),
+            models.Index(fields=['candidate', 'status']),
+            models.Index(fields=['scheduled_at', 'status']),
+            models.Index(fields=['show_24h_reminder', 'show_1h_reminder']),
+        ]
+    
+    def __str__(self):
+        return f"{self.get_interview_type_display()} - {self.job.title} at {self.job.company_name} on {self.scheduled_at.strftime('%Y-%m-%d %H:%M')}"
+    
+    def get_end_time(self):
+        """Calculate interview end time based on duration."""
+        from datetime import timedelta
+        return self.scheduled_at + timedelta(minutes=self.duration_minutes)
+    
+    def has_conflict(self, exclude_self=True):
+        """Check if this interview conflicts with other scheduled interviews.
+        
+        Returns:
+            QuerySet of conflicting InterviewSchedule objects
+        """
+        from datetime import timedelta
+        
+        # Get all interviews for this candidate that aren't cancelled/no-show
+        interviews = InterviewSchedule.objects.filter(
+            candidate=self.candidate,
+            status__in=['scheduled', 'rescheduled']
+        )
+        
+        if exclude_self and self.pk:
+            interviews = interviews.exclude(pk=self.pk)
+        
+        # Check for time overlap
+        start = self.scheduled_at
+        end = self.get_end_time()
+        
+        conflicts = []
+        for interview in interviews:
+            other_start = interview.scheduled_at
+            other_end = interview.get_end_time()
+            
+            # Check if intervals overlap
+            if start < other_end and end > other_start:
+                conflicts.append(interview)
+        
+        return conflicts
+    
+    def mark_completed(self, outcome=None, feedback_notes=None):
+        """Mark interview as completed and optionally record outcome."""
+        self.status = 'completed'
+        if outcome:
+            self.outcome = outcome
+        if feedback_notes:
+            self.feedback_notes = feedback_notes
+        self.save()
+    
+    def reschedule(self, new_datetime, reason=''):
+        """Reschedule interview to new datetime."""
+        if not self.original_datetime:
+            self.original_datetime = self.scheduled_at
+        self.scheduled_at = new_datetime
+        self.status = 'rescheduled'
+        self.rescheduled_reason = reason
+        # Reset reminders
+        self.show_24h_reminder = False
+        self.show_1h_reminder = False
+        self.reminder_24h_dismissed = False
+        self.reminder_1h_dismissed = False
+        self.save()
+    
+    def cancel(self, reason=''):
+        """Cancel the interview."""
+        self.status = 'cancelled'
+        self.cancelled_reason = reason
+        self.save()
+    
+    @property
+    def is_upcoming(self):
+        """Check if interview is in the future."""
+        return self.scheduled_at > timezone.now() and self.status in ['scheduled', 'rescheduled']
+    
+    @property
+    def needs_24h_reminder(self):
+        """Check if 24-hour reminder should be shown in app."""
+        from datetime import timedelta
+        if self.reminder_24h_dismissed or self.status not in ['scheduled', 'rescheduled']:
+            return False
+        time_until = self.scheduled_at - timezone.now()
+        # Show reminder when within 24 hours
+        return timedelta(hours=0) <= time_until <= timedelta(hours=24)
+    
+    @property
+    def needs_1h_reminder(self):
+        """Check if 1-hour reminder should be shown in app."""
+        from datetime import timedelta
+        if self.reminder_1h_dismissed or self.status not in ['scheduled', 'rescheduled']:
+            return False
+        time_until = self.scheduled_at - timezone.now()
+        # Show reminder when within 1 hour
+        return timedelta(minutes=0) <= time_until <= timedelta(hours=1)
+    
+    def update_reminder_flags(self):
+        """Update reminder flags based on time until interview."""
+        if self.needs_24h_reminder:
+            self.show_24h_reminder = True
+        if self.needs_1h_reminder:
+            self.show_1h_reminder = True
+        if self.show_24h_reminder or self.show_1h_reminder:
+            self.save(update_fields=['show_24h_reminder', 'show_1h_reminder'])
+
+
+class InterviewPreparationTask(models.Model):
+    """Auto-generated preparation tasks for interviews (UC-071).
+    
+    When an interview is scheduled, helpful preparation tasks are automatically
+    created to guide the candidate through interview preparation.
+    """
+    TASK_TYPES = [
+        ('research_company', 'Research Company'),
+        ('review_job', 'Review Job Description'),
+        ('prepare_questions', 'Prepare Questions'),
+        ('practice_answers', 'Practice Common Answers'),
+        ('review_resume', 'Review Your Resume'),
+        ('prepare_examples', 'Prepare STAR Examples'),
+        ('research_interviewer', 'Research Interviewer'),
+        ('test_tech', 'Test Technology (for video)'),
+        ('plan_route', 'Plan Route (for in-person)'),
+        ('prepare_materials', 'Prepare Materials'),
+        ('custom', 'Custom Task'),
+    ]
+    
+    interview = models.ForeignKey(
+        'InterviewSchedule',
+        on_delete=models.CASCADE,
+        related_name='preparation_tasks'
+    )
+    task_type = models.CharField(max_length=30, choices=TASK_TYPES)
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    is_completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    order = models.PositiveIntegerField(default=0, help_text="Display order")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['order', 'created_at']
+        indexes = [
+            models.Index(fields=['interview', 'is_completed']),
+        ]
+    
+    def __str__(self):
+        status = "✓" if self.is_completed else "○"
+        return f"{status} {self.title}"
+    
+    def mark_completed(self):
+        """Mark task as completed."""
+        self.is_completed = True
+        self.completed_at = timezone.now()
+        self.save()

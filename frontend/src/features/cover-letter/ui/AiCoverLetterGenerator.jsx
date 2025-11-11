@@ -25,9 +25,33 @@ const toneOptions = [
   { value: 'technical', label: 'Technical', hint: 'Highlight architecture & tooling depth' },
   { value: 'leadership', label: 'Leadership', hint: 'Spotlight stakeholder and team impact' },
   { value: 'balanced', label: 'Balanced', hint: 'Blend collaboration, delivery, and metrics' },
+  // UC-058 cover letter tones
+  { value: 'formal', label: 'Formal', hint: 'Polished, professional language' },
+  { value: 'casual', label: 'Casual', hint: 'Conversational and approachable' },
+  { value: 'enthusiastic', label: 'Enthusiastic', hint: 'Upbeat and energetic' },
+  { value: 'analytical', label: 'Analytical', hint: 'Evidence-driven and logical' },
 ];
 
 const variationChoices = [1, 2, 3];
+const lengthChoices = [
+  { value: 'brief', label: 'Brief' },
+  { value: 'standard', label: 'Standard' },
+  { value: 'detailed', label: 'Detailed' },
+];
+
+const writingStyleOptions = [
+  { value: 'direct', label: 'Direct' },
+  { value: 'narrative', label: 'Narrative' },
+  { value: 'bullet_points', label: 'Bullet points' },
+];
+
+const companyCultureOptions = [
+  { value: 'auto', label: 'Auto (match company)' },
+  { value: 'startup', label: 'Startup' },
+  { value: 'corporate', label: 'Corporate' },
+];
+// UX constants
+const MAX_CUSTOM_INSTRUCTIONS = 500;
 
 // UC-060: Simplified sections for cover letter editing
 const SECTION_IDS = ['content'];
@@ -530,6 +554,12 @@ const AiCoverLetterGenerator = () => {
 
   const [tone, setTone] = useState('balanced');
   const [variationCount, setVariationCount] = useState(2);
+  // UC-058 customization state
+  const [length, setLength] = useState('standard');
+  const [writingStyle, setWritingStyle] = useState('direct');
+  const [companyCulture, setCompanyCulture] = useState('auto');
+  const [industryInput, setIndustryInput] = useState('');
+  const [customInstructions, setCustomInstructions] = useState('');
   const [generating, setGenerating] = useState(false);
   const [generationError, setGenerationError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
@@ -568,6 +598,28 @@ const AiCoverLetterGenerator = () => {
   const [showGrammarPanel, setShowGrammarPanel] = useState(false);
   const isApplyingFixRef = useRef(false); // Track when we're applying a fix to prevent re-checking
   
+  // UC-061: Email and letterhead state
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showLetterheadSettings, setShowLetterheadSettings] = useState(false);
+  const [letterheadConfig, setLetterheadConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem('resumerocket_letterhead_config');
+      return saved ? JSON.parse(saved) : {
+        header_format: 'centered',
+        font_name: 'Calibri',
+        font_size: 11,
+        header_color: null,
+      };
+    } catch {
+      return {
+        header_format: 'centered',
+        font_name: 'Calibri',
+        font_size: 11,
+        header_color: null,
+      };
+    }
+  });
+  
   // Template management state
   const [customTemplates, setCustomTemplates] = useState(() => {
     try {
@@ -595,6 +647,11 @@ const AiCoverLetterGenerator = () => {
     setLayoutSource((prev) => (prev.type === 'custom' ? prev : { type: 'custom', id: '', label: 'Custom layout' }));
   }, []);
 
+  // Save letterhead config to localStorage
+  useEffect(() => {
+    localStorage.setItem('resumerocket_letterhead_config', JSON.stringify(letterheadConfig));
+  }, [letterheadConfig]);
+
   // Load cached result on mount
   useEffect(() => {
     const cached = loadCachedResult();
@@ -604,6 +661,12 @@ const AiCoverLetterGenerator = () => {
       setActiveVariationId(cached.activeVariationId || cached.result?.variations?.[0]?.id || '');
       setTone(cached.tone || 'balanced');
       setVariationCount(cached.variationCount || 2);
+      // UC-058 cached preferences
+      setLength(cached.length || 'standard');
+      setWritingStyle(cached.writingStyle || 'direct');
+      setCompanyCulture(cached.companyCulture || 'auto');
+      setIndustryInput(cached.industry || '');
+      setCustomInstructions(cached.customInstructions || '');
       if (cached.sectionConfig) {
         setSectionConfig(hydrateSectionConfig(cached.sectionConfig));
       }
@@ -630,11 +693,17 @@ const AiCoverLetterGenerator = () => {
         activeVariationId,
         tone,
         variationCount,
+        // UC-058 preferences
+        length,
+        writingStyle,
+        companyCulture,
+        industry: industryInput,
+        customInstructions,
         sectionConfig,
         layoutSource,
       });
     }
-  }, [result, selectedJobId, activeVariationId, tone, variationCount, sectionConfig, layoutSource]);
+  }, [result, selectedJobId, activeVariationId, tone, variationCount, length, writingStyle, companyCulture, industryInput, customInstructions, sectionConfig, layoutSource]);
 
   useEffect(() => {
     if (!layoutHint) return undefined;
@@ -1379,6 +1448,12 @@ const AiCoverLetterGenerator = () => {
       const data = await coverLetterAIAPI.generateForJob(selectedJobId, {
         tone,
         variation_count: variationCount,
+        // UC-058 customization options
+        length,
+        writing_style: writingStyle,
+        company_culture: companyCulture,
+        industry: industryInput,
+        custom_instructions: customInstructions,
       });
       console.log('Received cover letter data:', {
         variation_count: data?.variation_count,
@@ -1417,6 +1492,12 @@ const AiCoverLetterGenerator = () => {
     setStatusMessage('');
     setTone('balanced');
     setVariationCount(2);
+    // reset UC-058 preferences
+    setLength('standard');
+    setWritingStyle('direct');
+    setCompanyCulture('auto');
+    setIndustryInput('');
+    setCustomInstructions('');
     applyLayoutConfig(createDefaultSectionConfig(), {
       type: 'template',
       id: 'balanced',
@@ -1435,6 +1516,91 @@ const AiCoverLetterGenerator = () => {
       setTimeout(() => setCopiedVariationId(''), 1800);
     } catch {
       setGenerationError('Clipboard permissions blocked. Try downloading instead.');
+    }
+  };
+
+  const handleDownloadText = (variation) => {
+    if (!variation) return;
+    
+    // Combine all parts of the cover letter
+    const fullText = [
+      variation.opening_paragraph,
+      ...(variation.body_paragraphs || []),
+      variation.closing_paragraph,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    
+    // Generate filename from profile name and job info
+    let filename = 'cover_letter.txt';
+    if (result?.profile?.name) {
+      const name = result.profile.name.trim();
+      const nameParts = name.split(/\s+/);
+      if (nameParts.length >= 2) {
+        const firstName = nameParts[0];
+        const lastName = nameParts[nameParts.length - 1];
+        filename = `${firstName}_${lastName}_CoverLetter.txt`;
+      } else {
+        filename = `${name.replace(/\s+/g, '_')}_CoverLetter.txt`;
+      }
+    }
+    
+    const blob = new Blob([fullText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadDocx = async (variation) => {
+    if (!variation || !result?.profile || !result?.job) return;
+    
+    const profile = result.profile;
+    const job = result.job;
+    
+    try {
+      const blob = await coverLetterAIAPI.exportDocx({
+        candidate_name: profile.name || 'Candidate',
+        candidate_email: profile.contact?.email || '',
+        candidate_phone: profile.contact?.phone || '',
+        candidate_location: profile.location || profile.contact?.location || '',
+        company_name: job.company_name || 'Company',
+        job_title: job.title || 'Position',
+        opening_paragraph: variation.opening_paragraph || '',
+        body_paragraphs: variation.body_paragraphs || [],
+        closing_paragraph: variation.closing_paragraph || '',
+        letterhead_config: letterheadConfig,
+      });
+      
+      // Generate filename
+      let filename = 'cover_letter.docx';
+      if (profile.name) {
+        const name = profile.name.trim();
+        const nameParts = name.split(/\s+/);
+        if (nameParts.length >= 2) {
+          const firstName = nameParts[0];
+          const lastName = nameParts[nameParts.length - 1];
+          filename = `${firstName}_${lastName}_CoverLetter.docx`;
+        } else {
+          filename = `${name.replace(/\s+/g, '_')}_CoverLetter.docx`;
+        }
+      }
+      
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download Word document:', err);
+      setGenerationError('Failed to download Word document. Please try again.');
     }
   };
 
@@ -1513,6 +1679,38 @@ const AiCoverLetterGenerator = () => {
       selectedJobDetail?.derived_keywords,
   );
   const analysis = result?.shared_analysis || {};
+  // Combine news references from shared analysis and the active variation highlights
+  const combinedNews = useMemo(() => {
+    const analysisNews = (analysis.news_to_reference || []).map((n) => (typeof n === 'string' ? { title: n } : n));
+    const variationNews = (activeVariation?.highlights?.news_citations || []).map((n) => (typeof n === 'string' ? { title: n } : n));
+    const merged = [];
+    const seen = new Set();
+    [...analysisNews, ...variationNews].forEach((item) => {
+      const key = (item?.title || '').trim();
+      if (!key) return;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(item);
+      }
+    });
+    return merged;
+  }, [analysis, activeVariation]);
+  // Combine key achievements from shared analysis and active variation highlights
+  const combinedAchievements = useMemo(() => {
+    const analysisItems = (analysis.key_achievements || []).map((a) => (typeof a === 'string' ? a : String(a?.text || a)));
+    const variationItems = (activeVariation?.highlights?.achievements || []).map((a) => (typeof a === 'string' ? a : String(a?.text || a)));
+    const merged = [];
+    const seen = new Set();
+    [...analysisItems, ...variationItems].forEach((item) => {
+      const key = (item || '').trim();
+      if (!key) return;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(key);
+      }
+    });
+    return merged;
+  }, [analysis, activeVariation]);
   const profile = result?.profile;
   const activeHint = generating ? generationHints[hintIndex] : '';
   const jobTypeSource = sanitizeText(selectedJobDetail?.job_type);
@@ -2031,6 +2229,61 @@ const AiCoverLetterGenerator = () => {
             </select>
           </div>
 
+          <div className="control-group">
+            <label>Length</label>
+            <select value={length} onChange={(e) => setLength(e.target.value)}>
+              {lengthChoices.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+
+            <label>Writing style</label>
+            <select value={writingStyle} onChange={(e) => setWritingStyle(e.target.value)}>
+              {writingStyleOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+
+            <div className="inline-row" style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+              <div style={{ flex: '1 1 50%' }}>
+                <label>Company culture</label>
+                <select value={companyCulture} onChange={(e) => setCompanyCulture(e.target.value)}>
+                  {companyCultureOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <p className="hint">Automatic matching will attempt to mirror the company's tone.</p>
+              </div>
+
+              <div style={{ flex: '1 1 50%' }}>
+                <label htmlFor="industry-input">Industry (optional)</label>
+                <input
+                  id="industry-input"
+                  type="text"
+                  placeholder="e.g., fintech, healthcare"
+                  value={industryInput}
+                  onChange={(e) => setIndustryInput(e.target.value)}
+                  aria-describedby="industry-hint"
+                />
+                <p id="industry-hint" className="hint">Helps the AI pick industry-specific phrasing (optional).</p>
+              </div>
+            </div>
+
+            <label htmlFor="custom-instructions">Custom instructions (optional)</label>
+            <textarea
+              id="custom-instructions"
+              placeholder="e.g., emphasize leadership in cross-functional teams"
+              value={customInstructions}
+              onChange={(e) => setCustomInstructions(e.target.value.slice(0, MAX_CUSTOM_INSTRUCTIONS))}
+              rows={4}
+              aria-describedby="custom-instructions-hint"
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p id="custom-instructions-hint" className="hint">Optional guidance for the model — keep under {MAX_CUSTOM_INSTRUCTIONS} characters.</p>
+              <small aria-live="polite">{customInstructions.length}/{MAX_CUSTOM_INSTRUCTIONS}</small>
+            </div>
+          </div>
+
           <div className="control-actions">
             <button
               type="button"
@@ -2154,40 +2407,49 @@ const AiCoverLetterGenerator = () => {
                     `Using ${result.tone || 'balanced'} tone to match the company culture.`}
                 </p>
               </div>
-              {analysis.key_achievements?.length > 0 && (
+              {combinedAchievements.length > 0 && (
                 <div>
                   <strong>Key achievements highlighted</strong>
                   <ul>
-                    {analysis.key_achievements.slice(0, 3).map((achievement, idx) => (
+                    {combinedAchievements.slice(0, 3).map((achievement, idx) => (
                       <li key={idx}>{achievement}</li>
                     ))}
                   </ul>
                 </div>
               )}
-              {analysis.news_to_reference?.length > 0 && (
+              {combinedNews.length > 0 && (
                 <div>
-                  <strong>Recent news referenced</strong>
+                  <strong>News referenced</strong>
                   <ul>
-                    {analysis.news_to_reference.map((news, idx) => (
-                      <li key={idx}>{news}</li>
+                    {combinedNews.map((news, idx) => (
+                      <li key={idx}>
+                        {news.title || news}
+                        {news.date && <span className="date"> ({news.date})</span>}
+                      </li>
                     ))}
                   </ul>
                 </div>
               )}
-              {profile && (
-                <div className="profile-preview">
-                  <strong>{profile.name}</strong>
-                  {profile.headline && <p>{profile.headline}</p>}
-                  {profile.location && <p>{profile.location}</p>}
-                  {profile.top_skills?.length > 0 && (
-                    <div className="chip-row">
-                      {profile.top_skills.map((skill) => (
-                        <span key={skill} className="chip">
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+              {/* Merge per-variation highlights into the main AI insights card to avoid duplication */}
+              {activeVariation?.highlights && (
+                <div>
+                  <strong>Variation highlights</strong>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {/* Achievements are merged into the shared 'Key achievements highlighted' section above */}
+                    {activeVariation.highlights.keywords_used?.length > 0 && (
+                      <div>
+                        <strong>Keywords emphasized</strong>
+                        <div className="chip-row">
+                          {activeVariation.highlights.keywords_used.map((keyword) => (
+                            <span key={keyword} className="chip">
+                              {keyword}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* news citations merged into the shared 'News referenced' section above */}
+                  </div>
                 </div>
               )}
             </div>
@@ -2217,51 +2479,7 @@ const AiCoverLetterGenerator = () => {
 
             </div>
             
-            {activeVariation && activeVariation.highlights && (
-              <section className="ai-resume-card insights">
-                <div>
-                  <p className="eyebrow">Experience highlighting</p>
-                  <h2>What this variation emphasizes</h2>
-                </div>
-                <div className="insight-grid">
-                  {activeVariation.highlights.achievements?.length > 0 && (
-                    <div>
-                      <strong>Achievements referenced</strong>
-                      <ul>
-                        {activeVariation.highlights.achievements.map((achievement, idx) => (
-                          <li key={idx}>{achievement}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {activeVariation.highlights.keywords_used?.length > 0 && (
-                    <div>
-                      <strong>Keywords emphasized</strong>
-                      <div className="chip-row">
-                        {activeVariation.highlights.keywords_used.map((keyword) => (
-                          <span key={keyword} className="chip">
-                            {keyword}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {activeVariation.highlights.news_citations?.length > 0 && (
-                    <div>
-                      <strong>Company news referenced</strong>
-                      <ul>
-                        {activeVariation.highlights.news_citations.map((news, idx) => (
-                          <li key={idx}>
-                            {news.title || news}
-                            {news.date && <span className="date"> ({news.date})</span>}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
+            {/* Per-variation highlights are now merged into the AI insights card above to reduce overlap. */}
             
             <div className="customizer-preview-grid">
               <section className="ai-resume-card section-customizer">
@@ -2354,61 +2572,7 @@ const AiCoverLetterGenerator = () => {
                 </div>
               </section>
 
-              {activeVariation && (
-                <article className="ai-resume-card variation-card">
-                  <header>
-                    <div>
-                      <h3>{activeVariation.summary_headline || activeVariation.label}</h3>
-                      <div className="variation-chip-row">
-                        {activeVariation.tone && (
-                          <span className="chip tone">Tone: {activeVariation.tone}</span>
-                        )}
-                        <span className="chip layout-chip">{layoutSource.label}</span>
-                        {jobTypeSource && (
-                          <span className="chip jobtype-chip">{jobTypeSource}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="variation-action-stack">
-                      <button type="button" onClick={() => handleDownloadPdf(activeVariation)}>
-                        <Icon name="download" size="sm" /> Download PDF
-                      </button>
-                      <button type="button" onClick={() => handleCopyLatex(activeVariation)}>
-                        {copiedVariationId === activeVariation.id ? (
-                          <>
-                            <Icon name="check" size="sm" /> Copied
-                          </>
-                        ) : (
-                          <>
-                            <Icon name="clipboard" size="sm" /> Copy LaTeX
-                          </>
-                        )}
-                      </button>
-                      <button type="button" className="primary ghost" onClick={() => handleDownload(activeVariation)}>
-                        <Icon name="download" size="sm" /> Download .tex
-                      </button>
-                    </div>
-                  </header>
-
-                  <div className="variation-body">
-                    {allSections.length ? (
-                      allSections.map((sectionId) => (
-                        <PreviewSectionBlock
-                          key={sectionId}
-                          sectionId={sectionId}
-                          meta={resumeSectionMeta[sectionId]}
-                        >
-                          {renderSectionById(sectionId)}
-                        </PreviewSectionBlock>
-                      ))
-                    ) : (
-                      <p className="placeholder">
-                        No sections available.
-                      </p>
-                    )}
-                  </div>
-                </article>
-              )}
+              {/* Variation/resume preview card removed — cover letter page does not include the resume variation card */}
             </div>
           </section>
         </>
@@ -2577,6 +2741,161 @@ const AiCoverLetterGenerator = () => {
             </div>
           </div>
         </>
+      )}
+
+      {/* UC-061: Letterhead Settings Modal */}
+      {showLetterheadSettings && (
+        <div className="modal-overlay" onClick={() => setShowLetterheadSettings(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Letterhead Settings</h3>
+              <button className="close-btn" onClick={() => setShowLetterheadSettings(false)}>
+                <Icon name="x" size="sm" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label htmlFor="header-format">Header Format</label>
+                <select
+                  id="header-format"
+                  value={letterheadConfig.header_format}
+                  onChange={(e) => setLetterheadConfig({ ...letterheadConfig, header_format: e.target.value })}
+                >
+                  <option value="centered">Centered</option>
+                  <option value="left">Left Aligned</option>
+                  <option value="right">Right Aligned</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label htmlFor="font-name">Font</label>
+                <select
+                  id="font-name"
+                  value={letterheadConfig.font_name}
+                  onChange={(e) => setLetterheadConfig({ ...letterheadConfig, font_name: e.target.value })}
+                >
+                  <option value="Calibri">Calibri</option>
+                  <option value="Arial">Arial</option>
+                  <option value="Times New Roman">Times New Roman</option>
+                  <option value="Georgia">Georgia</option>
+                  <option value="Helvetica">Helvetica</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label htmlFor="font-size">Font Size</label>
+                <input
+                  type="number"
+                  id="font-size"
+                  min="9"
+                  max="14"
+                  value={letterheadConfig.font_size}
+                  onChange={(e) => setLetterheadConfig({ ...letterheadConfig, font_size: parseInt(e.target.value) })}
+                />
+              </div>
+              <div className="form-group">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!!letterheadConfig.header_color}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setLetterheadConfig({ ...letterheadConfig, header_color: [102, 126, 234] });
+                      } else {
+                        setLetterheadConfig({ ...letterheadConfig, header_color: null });
+                      }
+                    }}
+                  />
+                  {' '}Use custom header color (brand purple)
+                </label>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowLetterheadSettings(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UC-061: Email Integration Modal */}
+      {showEmailModal && activeVariation && (
+        <div className="modal-overlay" onClick={() => setShowEmailModal(false)}>
+          <div className="modal-content email-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Email Cover Letter</h3>
+              <button className="close-btn" onClick={() => setShowEmailModal(false)}>
+                <Icon name="x" size="sm" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="hint">
+                <Icon name="info" size="sm" /> Copy the text below and paste it into your email client, or use the quick actions to open your default email app.
+              </p>
+              <div className="form-group">
+                <label>Email Subject</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={`Application for ${result?.job?.title || 'Position'} at ${result?.job?.company_name || 'Company'}`}
+                  onClick={(e) => e.target.select()}
+                />
+              </div>
+              <div className="form-group">
+                <label>Cover Letter Content</label>
+                <textarea
+                  readOnly
+                  rows="15"
+                  value={[
+                    activeVariation.opening_paragraph,
+                    ...(activeVariation.body_paragraphs || []),
+                    activeVariation.closing_paragraph,
+                  ]
+                    .filter(Boolean)
+                    .join('\n\n')}
+                  onClick={(e) => e.target.select()}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  const fullText = [
+                    activeVariation.opening_paragraph,
+                    ...(activeVariation.body_paragraphs || []),
+                    activeVariation.closing_paragraph,
+                  ]
+                    .filter(Boolean)
+                    .join('\n\n');
+                  navigator.clipboard.writeText(fullText);
+                  setShowEmailModal(false);
+                }}
+              >
+                <Icon name="clipboard" size="sm" /> Copy to Clipboard
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  const subject = encodeURIComponent(
+                    `Application for ${result?.job?.title || 'Position'} at ${result?.job?.company_name || 'Company'}`
+                  );
+                  const body = encodeURIComponent(
+                    [
+                      activeVariation.opening_paragraph,
+                      ...(activeVariation.body_paragraphs || []),
+                      activeVariation.closing_paragraph,
+                    ]
+                      .filter(Boolean)
+                      .join('\n\n')
+                  );
+                  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+                }}
+              >
+                <Icon name="mail" size="sm" /> Open in Email App
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

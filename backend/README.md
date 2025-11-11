@@ -209,6 +209,79 @@ docker compose stop reminders
 
 For more advanced scheduling (retry logic, precise cron expressions, distributed tasks), consider introducing Celery Beat or a dedicated cron container later.
 
+### Scheduled Interview Reminder Emails
+
+This project includes an hourly scheduler service for sending interview reminder emails. The system sends reminders in two ways:
+
+1. **Automatic reminders for interviews 24 hours away**: The management command `send_interview_reminders` runs every hour to check for upcoming interviews.
+2. **Immediate reminders for last-minute interviews**: When an interview is scheduled with less than 24 hours notice, an email is sent immediately via Django signals.
+
+Service definition can be added to `docker-compose.yaml`:
+
+```yaml
+interview-reminders:
+  build: ./backend
+  command: sh scripts/run_interview_reminder_loop.sh
+  volumes:
+    - ./backend:/app
+  depends_on:
+    - db
+  environment:
+    - INTERVIEW_REMINDER_INTERVAL=3600  # Run every hour (in seconds)
+```
+
+Behavior:
+- Runs immediately on startup, then every hour (configurable)
+- Checks for interviews scheduled 24-26 hours in the future
+- Sends formatted HTML emails with interview details, preparation notes, and meeting links
+- Immediate emails sent automatically when scheduling interviews with <24h notice
+
+#### Manual Run / Test
+```bash
+# Test the command
+docker compose exec backend python manage.py send_interview_reminders
+
+# Create a test interview to trigger immediate email (if scheduled <24h from now)
+docker compose exec backend python manage.py shell -c "
+from core.models import InterviewSchedule, JobEntry, CandidateProfile
+from django.utils import timezone
+from datetime import timedelta
+
+# Get first job and candidate
+job = JobEntry.objects.first()
+candidate = CandidateProfile.objects.first()
+
+if job and candidate:
+    # Create interview 12 hours from now
+    interview = InterviewSchedule.objects.create(
+        job=job,
+        candidate=candidate,
+        interview_type='video',
+        scheduled_at=timezone.now() + timedelta(hours=12),
+        duration_minutes=60,
+        meeting_link='https://zoom.us/test',
+        interviewer_name='Test Interviewer',
+        preparation_notes='This is a test interview',
+    )
+    print(f'Created interview: {interview}')
+    print('An immediate reminder email should have been sent!')
+else:
+    print('No job or candidate found')
+"
+```
+
+#### Adjust Run Interval
+Edit the environment variable in `docker-compose.yaml`:
+```yaml
+environment:
+  INTERVIEW_REMINDER_INTERVAL: 3600  # Seconds (3600 = 1 hour, 1800 = 30 min)
+```
+
+#### Logs
+```bash
+docker compose logs -f interview-reminders
+```
+
 ### Company Data Management
 
 Populate and manage company information for the job tracking system:

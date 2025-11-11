@@ -6,7 +6,24 @@ import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory
+from core.models import (
+    CandidateProfile, Skill, CandidateSkill, Education, Certification, 
+    Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory, 
+    CoverLetterTemplate, InterviewSchedule, InterviewPreparationTask
+)
+
+class CoverLetterTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CoverLetterTemplate
+        fields = [
+            "id", "name", "description", "template_type", "industry", "content", "sample_content",
+            "owner", "is_shared", "imported_from", "usage_count", "last_used", "created_at", "updated_at", 
+            "customization_options", "original_file_type", "original_filename"
+        ]
+        read_only_fields = [
+            "id", "owner", "usage_count", "last_used", "created_at", "updated_at", 
+            "original_file_content", "original_file_type", "original_filename"
+        ]
 
 User = get_user_model()
 
@@ -1346,6 +1363,134 @@ class CompanySerializer(serializers.Serializer):
             except Exception:
                 pass
         return []
+
+
+# UC-071: Interview Scheduling Serializers
+class InterviewPreparationTaskSerializer(serializers.ModelSerializer):
+    """Serializer for interview preparation tasks."""
+    
+    class Meta:
+        model = InterviewPreparationTask
+        fields = [
+            'id', 'task_type', 'title', 'description', 'is_completed',
+            'completed_at', 'order', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'completed_at']
+
+
+class InterviewScheduleSerializer(serializers.ModelSerializer):
+    """Serializer for interview scheduling and management."""
+    
+    preparation_tasks = InterviewPreparationTaskSerializer(many=True, read_only=True)
+    interview_type_display = serializers.CharField(source='get_interview_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    outcome_display = serializers.CharField(source='get_outcome_display', read_only=True)
+    end_time = serializers.SerializerMethodField()
+    is_upcoming = serializers.BooleanField(read_only=True)
+    conflicts = serializers.SerializerMethodField()
+    
+    # Job details for display
+    job_title = serializers.CharField(source='job.title', read_only=True)
+    job_company = serializers.CharField(source='job.company_name', read_only=True)
+    
+    class Meta:
+        model = InterviewSchedule
+        fields = [
+            'id', 'job', 'job_title', 'job_company', 'candidate',
+            'interview_type', 'interview_type_display',
+            'scheduled_at', 'duration_minutes', 'end_time',
+            'location', 'meeting_link',
+            'interviewer_name', 'interviewer_email', 'interviewer_phone',
+            'status', 'status_display', 'outcome', 'outcome_display',
+            'feedback_notes', 'preparation_notes', 'questions_to_ask',
+            'show_24h_reminder', 'show_1h_reminder',
+            'reminder_24h_dismissed', 'reminder_1h_dismissed',
+            'original_datetime', 'rescheduled_reason', 'cancelled_reason',
+            'is_upcoming', 'conflicts',
+            'preparation_tasks',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'candidate', 'created_at', 'updated_at',
+            'show_24h_reminder', 'show_1h_reminder', 'conflicts'
+        ]
+    
+    def get_end_time(self, obj):
+        """Calculate and return interview end time."""
+        return obj.get_end_time()
+    
+    def get_conflicts(self, obj):
+        """Check for scheduling conflicts."""
+        conflicts = obj.has_conflict(exclude_self=True)
+        return [{
+            'id': c.id,
+            'job_title': c.job.title,
+            'scheduled_at': c.scheduled_at,
+            'interview_type': c.get_interview_type_display()
+        } for c in conflicts]
+    
+    def validate(self, data):
+        """Validate interview data and check for conflicts."""
+        # Ensure at least location or meeting_link is provided
+        interview_type = data.get('interview_type')
+        location = data.get('location', '')
+        meeting_link = data.get('meeting_link', '')
+        
+        if interview_type == 'in_person' and not location:
+            raise serializers.ValidationError({
+                'location': 'Location is required for in-person interviews.'
+            })
+        
+        if interview_type == 'video' and not meeting_link:
+            raise serializers.ValidationError({
+                'meeting_link': 'Meeting link is required for video interviews.'
+            })
+        
+        # Check for conflicts if scheduling or rescheduling
+        from core.models import InterviewSchedule
+        from datetime import timedelta
+        
+        scheduled_at = data.get('scheduled_at')
+        duration_minutes = data.get('duration_minutes', 60)
+        
+        if scheduled_at:
+            # Create a temporary interview object to check conflicts
+            temp_interview = InterviewSchedule(
+                candidate=self.context['request'].user.profile,
+                scheduled_at=scheduled_at,
+                duration_minutes=duration_minutes
+            )
+            
+            # If updating, set the pk to exclude self from conflict check
+            if self.instance:
+                temp_interview.pk = self.instance.pk
+            
+            conflicts = temp_interview.has_conflict(exclude_self=True)
+            if conflicts:
+                from django.utils import timezone as tz
+                # Build a detailed error message with conflicting interview info
+                conflict_details = []
+                for conflict in conflicts[:3]:  # Show up to 3 conflicts
+                    # Convert to local timezone for display
+                    local_time = tz.localtime(conflict.scheduled_at)
+                    conflict_time = local_time.strftime('%b %d at %I:%M %p')
+                    conflict_details.append(f"{conflict.job.title} on {conflict_time}")
+
+                if len(conflicts) == 1:
+                    error_msg = f"This time conflicts with another interview: {conflict_details[0]}"
+                else:
+                    conflict_list = ", ".join(conflict_details)
+                    if len(conflicts) > 3:
+                        error_msg = f"This time conflicts with {len(conflicts)} other interviews including: {conflict_list}"
+                    else:
+                        error_msg = f"This time conflicts with other interviews: {conflict_list}"
+
+                raise serializers.ValidationError({
+                    'scheduled_at': error_msg,
+                    'error': error_msg,
+                })
+        
+        return data
 
 
 
