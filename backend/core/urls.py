@@ -154,4 +154,16 @@ urlpatterns = [
     # UC-065: Job Matching Algorithm endpoints
     path('jobs/<int:job_id>/match-score/', views.job_match_score, name='job-match-score'),
     path('jobs/match-scores/', views.bulk_job_match_scores, name='bulk-job-match-scores'),
+    
+    # UC-069: Application Workflow Automation endpoints
+    path('automation/rules/', views.automation_rules_list_create, name='automation-rules-list-create'),
+    path('automation/rules/<int:rule_id>/', views.automation_rule_detail, name='automation-rule-detail'),
+    path('automation/trigger/', views.trigger_automation_rules, name='trigger-automation-rules'),
+    path('automation/logs/', views.automation_logs, name='automation-logs'),
+    path('automation/bulk-actions/', views.bulk_automation_actions, name='bulk-automation-actions'),
+    path('jobs/<int:job_id>/generate-package/', views.generate_application_package, name='generate-application-package'),
+    path('automation/packages/', views.application_packages_list, name='application-packages-list'),
+    path('automation/packages/<int:package_id>/', views.application_package_detail, name='application-package-detail'),
+    path('automation/packages/<int:package_id>/download/', views.application_package_download, name='application-package-download'),
+    path('automation/packages/<int:package_id>/regenerate/', views.application_package_regenerate, name='application-package-regenerate'),
 ]

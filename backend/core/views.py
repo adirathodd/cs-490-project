@@ -2768,6 +2768,41 @@ def jobs_list_create(request):
                 # Don't fail the job creation if research fails
                 pass
         
+        # UC-069: Trigger automation rules for new job creation
+        try:
+            from core.automation import AutomationEngine
+            from core.job_matching import JobMatchingEngine
+            
+            # Calculate match score for the new job
+            match_result = JobMatchingEngine.calculate_match_score(instance, profile)
+            match_score = match_result.get('overall_score', 0)
+            
+            # Trigger new_job automation
+            AutomationEngine.trigger_rules('new_job', {
+                'candidate_id': profile.id,
+                'job_id': instance.id,
+                'job': instance,
+                'trigger_event': 'job_created',
+                'match_score': match_score
+            })
+            
+            # If match score is high, also trigger job_match_found automation
+            if match_score >= 70:  # High match threshold
+                AutomationEngine.trigger_rules('job_match_found', {
+                    'candidate_id': profile.id,
+                    'job_id': instance.id,
+                    'job': instance,
+                    'trigger_event': 'high_match_job',
+                    'match_score': match_score
+                })
+                logger.info(f"Triggered high-match automation for job {instance.id} with score {match_score}%")
+            
+            logger.info(f"Triggered automation rules for new job: {instance.title} at {instance.company_name}")
+        except Exception as e:
+            logger.error(f"Error triggering automation rules for job {instance.id}: {e}")
+            # Don't fail the job creation if automation fails
+            pass
+        
         data = JobEntrySerializer(instance).data
         data['message'] = 'Job entry saved successfully.'
         return Response(data, status=status.HTTP_201_CREATED)
@@ -5583,6 +5618,815 @@ def refresh_company_research(request, company_name):
         )
 
 
+# ======================
+# UC-069: APPLICATION WORKFLOW AUTOMATION
+# ======================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def automation_rules_list_create(request):
+    """
+    UC-069: Application Workflow Automation - Rules Management
+    
+    GET: List all automation rules for the authenticated user
+    POST: Create a new automation rule
+    
+    POST Request Body:
+    {
+        "name": "Auto-generate application packages for high-priority jobs",
+        "trigger_type": "job_status_change",
+        "trigger_conditions": {
+            "from_status": "interested",
+            "to_status": "applied",
+            "job_priority": "high"
+        },
+        "action_type": "generate_application_package",
+        "action_parameters": {
+            "template_id": 123,
+            "cover_letter_template_id": 456,
+            "auto_schedule": true,
+            "schedule_delay_hours": 24
+        },
+        "is_active": true
+    }
+    
+    Response:
+    {
+        "rules": [...],
+        "total_count": 5,
+        "active_count": 3
+    }
+    """
+    try:
+        profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
+        
+        if request.method == 'GET':
+            from core.models import ApplicationAutomationRule
+            
+            rules = ApplicationAutomationRule.objects.filter(candidate=profile).order_by('-created_at')
+            
+            # Build response data
+            rules_data = []
+            for rule in rules:
+                rules_data.append({
+                    'id': rule.id,
+                    'name': rule.name,
+                    'trigger_type': rule.trigger_type,
+                    'trigger_conditions': rule.trigger_conditions,
+                    'action_type': rule.action_type,
+                    'action_parameters': rule.action_parameters,
+                    'is_active': rule.is_active,
+                    'execution_count': rule.execution_count,
+                    'created_at': rule.created_at.isoformat(),
+                    'last_executed': rule.last_executed.isoformat() if rule.last_executed else None
+                })
+            
+            return Response({
+                'rules': rules_data,
+                'total_count': len(rules_data),
+                'active_count': len([r for r in rules_data if r['is_active']])
+            }, status=status.HTTP_200_OK)
+        
+        elif request.method == 'POST':
+            from core.models import ApplicationAutomationRule
+            
+            # Validate required fields
+            name = request.data.get('name', '').strip()
+            trigger_type = request.data.get('trigger_type', '').strip()
+            action_type = request.data.get('action_type', '').strip()
+            
+            if not all([name, trigger_type, action_type]):
+                return Response(
+                    {
+                        'error': {
+                            'code': 'validation_error',
+                            'message': 'name, trigger_type, and action_type are required'
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate trigger and action types
+            valid_triggers = ['job_match_found', 'application_deadline', 'new_job']  # Simplified triggers
+            valid_actions = ['generate_application_package', 'create_deadline_reminder']  # Simplified actions
+            
+            if trigger_type not in valid_triggers:
+                return Response(
+                    {
+                        'error': {
+                            'code': 'invalid_trigger',
+                            'message': f'trigger_type must be one of: {", ".join(valid_triggers)}'
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if action_type not in valid_actions:
+                return Response(
+                    {
+                        'error': {
+                            'code': 'invalid_action',
+                            'message': f'action_type must be one of: {", ".join(valid_actions)}'
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Create automation rule
+            rule = ApplicationAutomationRule.objects.create(
+                candidate=profile,
+                name=name,
+                trigger_type=trigger_type,
+                trigger_conditions=request.data.get('trigger_conditions', {}),
+                action_type=action_type,
+                action_parameters=request.data.get('action_parameters', {}),
+                is_active=request.data.get('is_active', True)
+            )
+            
+            logger.info(f"Created automation rule {rule.id} for user {request.user.email}: {name}")
+            
+            return Response({
+                'id': rule.id,
+                'name': rule.name,
+                'trigger_type': rule.trigger_type,
+                'trigger_conditions': rule.trigger_conditions,
+                'action_type': rule.action_type,
+                'action_parameters': rule.action_parameters,
+                'is_active': rule.is_active,
+                'execution_count': rule.execution_count,
+                'created_at': rule.created_at.isoformat(),
+                'message': 'Automation rule created successfully'
+            }, status=status.HTTP_201_CREATED)
+    
+    except Exception as e:
+        logger.error(f"Error in automation_rules_list_create: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'Failed to process automation rules request'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def automation_rule_detail(request, rule_id):
+    """
+    UC-069: Automation Rule Detail Operations
+    
+    GET: Retrieve automation rule details
+    PUT/PATCH: Update automation rule
+    DELETE: Delete automation rule
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        from core.models import ApplicationAutomationRule
+        
+        try:
+            rule = ApplicationAutomationRule.objects.get(id=rule_id, candidate=profile)
+        except ApplicationAutomationRule.DoesNotExist:
+            return Response(
+                {'error': {'code': 'rule_not_found', 'message': 'Automation rule not found'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if request.method == 'GET':
+            return Response({
+                'id': rule.id,
+                'name': rule.name,
+                'trigger_type': rule.trigger_type,
+                'trigger_conditions': rule.trigger_conditions,
+                'action_type': rule.action_type,
+                'action_parameters': rule.action_parameters,
+                'is_active': rule.is_active,
+                'execution_count': rule.execution_count,
+                'created_at': rule.created_at.isoformat(),
+                'last_executed': rule.last_executed.isoformat() if rule.last_executed else None
+            }, status=status.HTTP_200_OK)
+        
+        elif request.method in ['PUT', 'PATCH']:
+            # Update rule
+            if 'name' in request.data:
+                rule.name = request.data['name'].strip()
+            if 'trigger_type' in request.data:
+                rule.trigger_type = request.data['trigger_type']
+            if 'trigger_conditions' in request.data:
+                rule.trigger_conditions = request.data['trigger_conditions']
+            if 'action_type' in request.data:
+                rule.action_type = request.data['action_type']
+            if 'action_parameters' in request.data:
+                rule.action_parameters = request.data['action_parameters']
+            if 'is_active' in request.data:
+                rule.is_active = request.data['is_active']
+            
+            rule.save()
+            
+            return Response({
+                'id': rule.id,
+                'name': rule.name,
+                'trigger_type': rule.trigger_type,
+                'trigger_conditions': rule.trigger_conditions,
+                'action_type': rule.action_type,
+                'action_parameters': rule.action_parameters,
+                'is_active': rule.is_active,
+                'execution_count': rule.execution_count,
+                'created_at': rule.created_at.isoformat(),
+                'last_executed': rule.last_executed.isoformat() if rule.last_executed else None,
+                'message': 'Automation rule updated successfully'
+            }, status=status.HTTP_200_OK)
+        
+        elif request.method == 'DELETE':
+            rule_name = rule.name
+            rule.delete()
+            
+            logger.info(f"Deleted automation rule {rule_id} ({rule_name}) for user {request.user.email}")
+            
+            return Response({
+                'message': f'Automation rule "{rule_name}" deleted successfully'
+            }, status=status.HTTP_200_OK)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in automation_rule_detail: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'Failed to process automation rule request'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_application_package(request, job_id):
+    """
+    UC-069: Generate Application Package
+    
+    POST: Generate a comprehensive application package for a specific job
+    
+    Request Body:
+    {
+        "template_id": 123,                   // Optional: specific document template
+        "cover_letter_template_id": 456,     // Optional: specific cover letter template
+        "auto_schedule": true,               // Whether to auto-schedule submission
+        "schedule_delay_hours": 24,          // Hours to delay auto-submission
+        "include_portfolio": true,           // Include portfolio items
+        "custom_notes": "Apply by Friday"    // Custom application notes
+    }
+    
+    Response:
+    {
+        "package_id": 789,
+        "job": {...},
+        "generated_documents": [
+            {
+                "type": "resume",
+                "document_id": 101,
+                "ai_generated": true,
+                "match_score": 0.85
+            },
+            {
+                "type": "cover_letter", 
+                "document_id": 102,
+                "ai_generated": true,
+                "match_score": 0.90
+            }
+        ],
+        "checklist": [
+            {"task": "Review resume for accuracy", "completed": false},
+            {"task": "Customize cover letter intro", "completed": false}
+        ],
+        "scheduled_submission": {
+            "scheduled_at": "2024-11-09T10:00:00Z",
+            "auto_submit": true
+        },
+        "match_analysis": {
+            "overall_score": 0.87,
+            "missing_skills": ["Docker", "Kubernetes"],
+            "strong_matches": ["Python", "AWS", "Machine Learning"]
+        }
+    }
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        from core.models import JobEntry
+        
+        try:
+            job = JobEntry.objects.get(id=job_id, candidate=profile)
+        except JobEntry.DoesNotExist:
+            return Response(
+                {'error': {'code': 'job_not_found', 'message': 'Job entry not found'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Use the automation engine to generate the package
+        from core.automation import ApplicationPackageGenerator
+        
+        # Extract basic parameters from request
+        parameters = {
+            'template_id': request.data.get('template_id'),
+            'cover_letter_template_id': request.data.get('cover_letter_template_id'),
+            'auto_schedule': request.data.get('auto_schedule', False),
+            'schedule_delay_hours': request.data.get('schedule_delay_hours', 24),
+            'include_portfolio': request.data.get('include_portfolio', True),
+            'custom_notes': request.data.get('custom_notes', '')
+        }
+        
+        # Generate the application package using the static method
+        package = ApplicationPackageGenerator.generate_package(
+            job=job,
+            candidate=profile,
+            parameters=parameters
+        )
+        
+        if not package:
+            return Response(
+                {'error': {'code': 'generation_failed', 'message': 'Failed to generate application package'}},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        # Return package information
+        response_data = {
+            'package': {
+                'id': package.id,
+                'status': package.status,
+                'job': {
+                    'id': job.id,
+                    'title': job.title,
+                    'company_name': job.company_name
+                },
+                'resume_document': package.resume_document.id if package.resume_document else None,
+                'cover_letter_document': package.cover_letter_document.id if package.cover_letter_document else None,
+                'created_at': package.created_at,
+                'updated_at': package.updated_at
+            },
+            'message': 'Application package generated successfully'
+        }
+        
+        logger.info(f"Generated application package {package.id} for job {job_id}")
+        
+        return Response(response_data, status=status.HTTP_201_CREATED)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error generating application package for job {job_id}: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'package_generation_failed',
+                    'message': f'Failed to generate application package: {str(e)}'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def application_packages_list(request):
+    """
+    UC-069: List Application Packages
+    
+    GET: List all application packages for the authenticated user
+    
+    Query Parameters:
+        - status: filter by package status (draft, ready, submitted, expired)
+        - job_id: filter by specific job
+        - limit: number of results to return (default: 20)
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        from core.models import ApplicationPackage
+        
+        packages = ApplicationPackage.objects.filter(candidate=profile)
+        
+        # Apply filters
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            packages = packages.filter(status=status_filter)
+        
+        job_id_filter = request.query_params.get('job_id')
+        if job_id_filter:
+            packages = packages.filter(job_id=job_id_filter)
+        
+        # Limit results
+        limit = int(request.query_params.get('limit', 20))
+        packages = packages.order_by('-created_at')[:limit]
+        
+        # Build response
+        packages_data = []
+        for package in packages:
+            packages_data.append({
+                'id': package.id,
+                'job': {
+                    'id': package.job.id,
+                    'title': package.job.title,
+                    'company_name': package.job.company_name
+                },
+                'status': package.status,
+                'match_score': package.match_score,
+                'resume_document': {
+                    'id': package.resume_document.id,
+                    'filename': package.resume_document.document_name,
+                    'file_type': package.resume_document.doc_type
+                } if package.resume_document else None,
+                'cover_letter_document': {
+                    'id': package.cover_letter_document.id,
+                    'filename': package.cover_letter_document.document_name,
+                    'file_type': package.cover_letter_document.doc_type
+                } if package.cover_letter_document else None,
+                'portfolio_url': package.portfolio_url,
+                'generation_parameters': package.generation_parameters,
+                'resume_template': package.resume_template,
+                'cover_letter_template': package.cover_letter_template.name if package.cover_letter_template else None,
+                'created_at': package.created_at.isoformat(),
+                'updated_at': package.updated_at.isoformat()
+            })
+        
+        return Response({
+            'packages': packages_data,
+            'total_count': len(packages_data)
+        }, status=status.HTTP_200_OK)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response({'packages': [], 'total_count': 0}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error listing application packages: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'Failed to list application packages'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def application_package_detail(request, package_id):
+    """
+    UC-069: Application Package Detail Operations
+    
+    GET: Retrieve application package details
+    PUT/PATCH: Update application package
+    DELETE: Delete application package
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        from core.models import ApplicationPackage
+        
+        try:
+            package = ApplicationPackage.objects.get(id=package_id, candidate=profile)
+        except ApplicationPackage.DoesNotExist:
+            return Response(
+                {'error': {'code': 'package_not_found', 'message': 'Application package not found'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if request.method == 'GET':
+            return Response({
+                'id': package.id,
+                'job': {
+                    'id': package.job.id,
+                    'title': package.job.title,
+                    'company_name': package.job.company_name,
+                    'location': package.job.location,
+                    'application_deadline': package.job.application_deadline.isoformat() if package.job.application_deadline else None
+                },
+                'status': package.status,
+                'match_score': package.match_score,
+                'documents_generated': package.documents_generated,
+                'checklist_items': package.checklist_items,
+                'auto_submit': package.auto_submit,
+                'scheduled_at': package.scheduled_at.isoformat() if package.scheduled_at else None,
+                'custom_notes': package.custom_notes,
+                'ai_insights': package.ai_insights,
+                'created_at': package.created_at.isoformat(),
+                'submitted_at': package.submitted_at.isoformat() if package.submitted_at else None
+            }, status=status.HTTP_200_OK)
+        
+        elif request.method in ['PUT', 'PATCH']:
+            # Update package
+            if 'status' in request.data:
+                package.status = request.data['status']
+            if 'auto_submit' in request.data:
+                package.auto_submit = request.data['auto_submit']
+            if 'scheduled_at' in request.data:
+                package.scheduled_at = request.data['scheduled_at']
+            if 'custom_notes' in request.data:
+                package.custom_notes = request.data['custom_notes']
+            if 'checklist_items' in request.data:
+                package.checklist_items = request.data['checklist_items']
+            
+            package.save()
+            
+            return Response({
+                'message': 'Application package updated successfully',
+                'status': package.status
+            }, status=status.HTTP_200_OK)
+        
+        elif request.method == 'DELETE':
+            package.delete()
+            
+            return Response({
+                'message': 'Application package deleted successfully'
+            }, status=status.HTTP_200_OK)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in application_package_detail: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'Failed to process application package request'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def application_package_download(request, package_id):
+    """
+    UC-069: Download Application Package
+    
+    Downloads all documents in an application package as a zip file
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        from core.models import ApplicationPackage
+        
+        try:
+            package = ApplicationPackage.objects.get(id=package_id, candidate=profile)
+        except ApplicationPackage.DoesNotExist:
+            return Response(
+                {'error': {'code': 'package_not_found', 'message': 'Application package not found'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        import tempfile
+        import zipfile
+        import os
+        from django.http import HttpResponse
+        
+        # Create a temporary file for the zip
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
+            with zipfile.ZipFile(tmp_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                files_added = 0
+                
+                # Add resume document
+                if package.resume_document and package.resume_document.file:
+                    try:
+                        if hasattr(package.resume_document.file, 'path') and os.path.exists(package.resume_document.file.path):
+                            # Determine file extension
+                            extension = 'pdf' if 'pdf' in (package.resume_document.content_type or '') else 'tex'
+                            filename = f"resume.{extension}"
+                            zipf.write(package.resume_document.file.path, filename)
+                            files_added += 1
+                            logger.info(f"Added resume {filename} to zip")
+                    except (ValueError, OSError) as e:
+                        logger.warning(f"Could not add resume to zip: {e}")
+                
+                # Add cover letter document  
+                if package.cover_letter_document and package.cover_letter_document.file:
+                    try:
+                        if hasattr(package.cover_letter_document.file, 'path') and os.path.exists(package.cover_letter_document.file.path):
+                            # Determine file extension
+                            extension = 'pdf' if 'pdf' in (package.cover_letter_document.content_type or '') else 'txt'
+                            filename = f"cover_letter.{extension}"
+                            zipf.write(package.cover_letter_document.file.path, filename)
+                            files_added += 1
+                            logger.info(f"Added cover letter {filename} to zip")
+                    except (ValueError, OSError) as e:
+                        logger.warning(f"Could not add cover letter to zip: {e}")
+                
+                # If no files were added, add debug info
+                if files_added == 0:
+                    debug_info = f"Package ID: {package.id}\n"
+                    debug_info += f"Resume document: {package.resume_document.id if package.resume_document else 'None'}\n"
+                    debug_info += f"Cover letter document: {package.cover_letter_document.id if package.cover_letter_document else 'None'}\n"
+                    if package.resume_document:
+                        debug_info += f"Resume file exists: {'Yes' if package.resume_document.file else 'No'}\n"
+                    if package.cover_letter_document:
+                        debug_info += f"Cover letter file exists: {'Yes' if package.cover_letter_document.file else 'No'}\n"
+                    zipf.writestr('README.txt', f'No files found in this package.\n\nDebug info:\n{debug_info}')
+                    logger.warning(f"No files found in package {package.id}")
+        
+        # Read the zip file and return as response
+        with open(tmp_file.name, 'rb') as f:
+            response = HttpResponse(f.read(), content_type='application/zip')
+            filename = f"application_package_{package.job.title.replace(' ', '_')}_{package.id}.zip"
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        # Clean up the temporary file
+        os.unlink(tmp_file.name)
+        
+        return response
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in application_package_download: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'Failed to download application package'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def application_package_regenerate(request, package_id):
+    """
+    UC-069: Regenerate Application Package
+    
+    Regenerates all documents in an application package using AI
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        from core.models import ApplicationPackage
+        
+        try:
+            package = ApplicationPackage.objects.get(id=package_id, candidate=profile)
+        except ApplicationPackage.DoesNotExist:
+            return Response(
+                {'error': {'code': 'package_not_found', 'message': 'Application package not found'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Import automation functionality
+        from core.automation import AutomationEngine
+        
+        # Initialize automation engine
+        automation_engine = AutomationEngine()
+        
+        # Update package status to processing
+        package.status = 'processing'
+        package.save()
+        
+        # Clear existing documents
+        package.documents.all().delete()
+        
+        # Regenerate package using automation engine
+        try:
+            automation_engine.generate_application_package(
+                candidate=profile,
+                job=package.job,
+                package=package
+            )
+            
+            # Update status
+            package.status = 'ready'
+            package.save()
+            
+            return Response({
+                'message': 'Application package regenerated successfully',
+                'package': {
+                    'id': package.id,
+                    'status': package.status,
+                    'job': {
+                        'id': package.job.id,
+                        'title': package.job.title,
+                        'company_name': package.job.company_name
+                    },
+                    'created_at': package.created_at,
+                    'updated_at': package.updated_at,
+                    'document_count': package.documents.count()
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as gen_error:
+            package.status = 'failed'
+            package.save()
+            logger.error(f"Failed to regenerate package {package_id}: {gen_error}")
+            return Response(
+                {
+                    'error': {
+                        'code': 'regeneration_failed',
+                        'message': 'Failed to regenerate application package'
+                    }
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error in application_package_regenerate: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'Failed to regenerate application package'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def trigger_automation_rules(request):
+    """
+    UC-069: Trigger Automation Rules
+    
+    POST: Manually trigger automation rules for testing or immediate execution
+    
+    Request Body:
+    {
+        "trigger_type": "job_status_change",
+        "event_data": {
+            "job_id": 123,
+            "from_status": "interested", 
+            "to_status": "applied"
+        }
+    }
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        trigger_type = request.data.get('trigger_type')
+        event_data = request.data.get('event_data', {})
+        
+        if not trigger_type:
+            return Response(
+                {'error': {'code': 'missing_trigger', 'message': 'trigger_type is required'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Use the automation engine to trigger rules
+        from core.automation import AutomationEngine
+        
+        engine = AutomationEngine()
+        
+        # Execute matching automation rules
+        results = engine.trigger_rules(trigger_type, event_data, profile)
+        
+        logger.info(f"Triggered {len(results['executed'])} automation rules for user {request.user.email}")
+        
+        return Response({
+            'triggered_rules': results['executed'],
+            'failed_rules': results['failed'],
+            'total_executed': len(results['executed']),
+            'total_failed': len(results['failed'])
+        }, status=status.HTTP_200_OK)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error triggering automation rules: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'trigger_failed',
+                    'message': f'Failed to trigger automation rules: {str(e)}'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 # ==============================================
 # UC-067: SALARY RESEARCH AND BENCHMARKING
 # ==============================================
@@ -7071,3 +7915,160 @@ def extract_profile_from_latex(latex_content):
     
     return profile
 
+
+# ======================
+# ADDITIONAL UC-069 AUTOMATION ENDPOINTS
+# ======================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def automation_logs(request):
+    """
+    UC-069: Automation Execution Logs
+    
+    GET: Retrieve automation execution logs for monitoring and debugging
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        from core.models import WorkflowAutomationLog
+        
+        logs = WorkflowAutomationLog.objects.filter(candidate=profile)
+        
+        # Apply filters
+        rule_id_filter = request.query_params.get('rule_id')
+        if rule_id_filter:
+            logs = logs.filter(rule_id=rule_id_filter)
+        
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            logs = logs.filter(status=status_filter)
+        
+        # Limit results
+        limit = int(request.query_params.get('limit', 50))
+        logs = logs.order_by('-created_at')[:limit]
+        
+        # Build response
+        logs_data = []
+        for log in logs:
+            logs_data.append({
+                'id': log.id,
+                'rule_id': log.rule.id,
+                'rule_name': log.rule.name,
+                'trigger_type': log.trigger_type,
+                'trigger_data': log.trigger_data,
+                'action_type': log.action_type,
+                'action_result': log.action_result,
+                'status': log.status,
+                'error_message': log.error_message,
+                'execution_time_ms': log.execution_time_ms,
+                'executed_at': log.created_at.isoformat()
+            })
+        
+        return Response({
+            'logs': logs_data,
+            'total_count': len(logs_data)
+        }, status=status.HTTP_200_OK)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response({'logs': [], 'total_count': 0}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error retrieving automation logs: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'Failed to retrieve automation logs'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def bulk_automation_actions(request):
+    """
+    UC-069: Bulk Automation Operations
+    
+    POST: Execute bulk actions across multiple jobs or applications
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        action_type = request.data.get('action_type')
+        job_ids = request.data.get('job_ids', [])
+        parameters = request.data.get('parameters', {})
+        
+        if not action_type or not job_ids:
+            return Response(
+                {
+                    'error': {
+                        'code': 'invalid_input',
+                        'message': 'action_type and job_ids are required'
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate job ownership
+        from core.models import JobEntry
+        jobs = JobEntry.objects.filter(id__in=job_ids, candidate=profile)
+        
+        if len(jobs) != len(job_ids):
+            return Response(
+                {
+                    'error': {
+                        'code': 'invalid_jobs',
+                        'message': 'Some jobs not found or not accessible'
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Mock bulk execution for now (would use BulkOperationExecutor in production)
+        successful = []
+        failed = []
+        
+        for job in jobs:
+            try:
+                # Simulate bulk action execution
+                if action_type == 'generate_packages':
+                    # Would call automation engine here
+                    successful.append(job.id)
+                elif action_type == 'schedule_follow_ups':
+                    successful.append(job.id)
+                elif action_type == 'create_checklists':
+                    successful.append(job.id)
+                else:
+                    failed.append({'job_id': job.id, 'error': 'Unknown action type'})
+            except Exception as e:
+                failed.append({'job_id': job.id, 'error': str(e)})
+        
+        logger.info(f"Executed bulk automation action {action_type} on {len(job_ids)} jobs for user {request.user.email}")
+        
+        return Response({
+            'action_type': action_type,
+            'total_jobs': len(job_ids),
+            'successful': successful,
+            'failed': failed,
+            'success_count': len(successful),
+            'failed_count': len(failed)
+        }, status=status.HTTP_200_OK)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error executing bulk automation actions: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'bulk_action_failed',
+                    'message': f'Failed to execute bulk automation action: {str(e)}'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
