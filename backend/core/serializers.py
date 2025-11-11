@@ -1694,6 +1694,27 @@ class ResumeVersionListSerializer(serializers.ModelSerializer):
         return obj.applications.count()
 
 
+class ResumeVersionChangeSerializer(serializers.ModelSerializer):
+    """Serializer for ResumeVersionChange entries (history records).
+
+    Provides the timestamp and raw change payload. Kept intentionally small
+    so the frontend can pick the fields it needs without causing import errors.
+    """
+    # alias for frontend expectation (some places expect `changed_at`)
+    changed_at = serializers.DateTimeField(source='created_at', read_only=True)
+
+    class Meta:
+        model = ResumeVersionChange
+        fields = [
+            'id',
+            'change_type',
+            'changes',
+            'created_at',
+            'changed_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'changed_at']
+
+
 class ResumeVersionCompareSerializer(serializers.Serializer):
     """Serializer for comparing two resume versions"""
     
