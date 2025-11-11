@@ -124,4 +124,8 @@ urlpatterns = [
     # UC-067: Salary Research and Benchmarking endpoints
     path('jobs/<int:job_id>/salary-research/', views.salary_research, name='salary-research'),
     path('jobs/<int:job_id>/salary-research/export/', views.salary_research_export, name='salary-research-export'),
+    
+    # UC-060: Grammar and Spell Checking endpoints
+    path('cover-letter/check-grammar/', views.check_grammar, name='check-grammar'),
+    path('cover-letter/apply-grammar-fix/', views.apply_grammar_fix, name='apply-grammar-fix'),
 ]

@@ -5063,3 +5063,116 @@ def salary_research_export(request, job_id):
             {'error': {'code': 'export_failed', 'message': f'Failed to export research: {str(e)}'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# ============================================================================
+# UC-060: Grammar and Spell Checking
+# ============================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def check_grammar(request):
+    """
+    Check text for grammar, spelling, and style issues using LanguageTool.
+    
+    Request body:
+        {
+            "text": "Text to check for grammar and spelling issues."
+        }
+    
+    Response:
+        {
+            "issues": [
+                {
+                    "id": "unique_id",
+                    "rule_id": "RULE_NAME",
+                    "message": "Description of the issue",
+                    "context": "...surrounding context...",
+                    "offset": 10,
+                    "length": 5,
+                    "text": "error",
+                    "type": "grammar|spelling|punctuation|style|other",
+                    "category": "Category name",
+                    "replacements": ["fix1", "fix2", "fix3"],
+                    "can_auto_fix": true
+                }
+            ],
+            "text_length": 123,
+            "issue_count": 5
+        }
+    """
+    from core.grammar_check import check_grammar as check_text
+    
+    try:
+        text = request.data.get('text', '')
+        
+        if not text or not text.strip():
+            return Response(
+                {'error': 'Text is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check grammar
+        issues = check_text(text)
+        
+        return Response({
+            'issues': issues,
+            'text_length': len(text),
+            'issue_count': len(issues),
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Grammar check error: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': f'Grammar check failed: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def apply_grammar_fix(request):
+    """
+    Apply a grammar fix to text.
+    
+    Request body:
+        {
+            "text": "Original text",
+            "issue": {
+                "offset": 10,
+                "length": 5,
+                "replacements": ["fix1", "fix2"]
+            },
+            "replacement_index": 0
+        }
+    
+    Response:
+        {
+            "fixed_text": "Text with fix applied"
+        }
+    """
+    from core.grammar_check import apply_suggestion
+    
+    try:
+        text = request.data.get('text', '')
+        issue = request.data.get('issue', {})
+        replacement_index = request.data.get('replacement_index', 0)
+        
+        if not text or not issue:
+            return Response(
+                {'error': 'Text and issue are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        fixed_text = apply_suggestion(text, issue, replacement_index)
+        
+        return Response({
+            'fixed_text': fixed_text
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Apply fix error: {str(e)}")
+        return Response(
+            {'error': f'Failed to apply fix: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

@@ -39,6 +39,15 @@ import {
   FaGripVertical,
   FaDollarSign,
   FaChartLine,
+  FaUndo,
+  FaRedo,
+  FaClock,
+  FaCheckCircle,
+  FaArrowRight,
+  FaThumbsUp,
+  FaKeyboard,
+  FaFont,
+  FaChartBar,
 } from 'react-icons/fa';
 
 // Simple, centralized Icon wrapper used across the app.
@@ -76,6 +85,7 @@ const iconMap = {
   users: FaUsers,
   location: FaMapMarkerAlt,
   idea: FaLightbulb,
+  lightbulb: FaLightbulb,
   eye: FaEye,
   clear: FaTimesCircle,
   download: FaDownload,
@@ -95,6 +105,16 @@ const iconMap = {
   grip: FaGripVertical,
   dollar: FaDollarSign,
   chart: FaChartLine,
+  'corner-up-left': FaUndo,
+  undo: FaUndo,
+  'corner-up-right': FaRedo,
+  redo: FaRedo,
+  clock: FaClock,
+  'check-circle': FaCheckCircle,
+  'arrow-right': FaArrowRight,
+  'thumbs-up': FaThumbsUp,
+  type: FaKeyboard,
+  'bar-chart': FaChartBar,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {
