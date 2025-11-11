@@ -3,8 +3,10 @@
  * Manage multiple versions of resumes with version history and comparison
  */
 import React, { useState, useEffect } from 'react';
-import { resumeVersionAPI } from '../../services/api';
+import { resumeVersionAPI, feedbackAPI } from '../../services/api';
 import Icon from '../common/Icon';
+import ShareResumeModal from './ShareResumeModal';
+import FeedbackPanel from './FeedbackPanel';
 import './ResumeVersionControl.css';
 
 // Helper functions exported for unit testing
@@ -99,6 +101,8 @@ const ResumeVersionControl = () => {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showVersionDetailsModal, setShowVersionDetailsModal] = useState(false);
   const [showRevertModal, setShowRevertModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
   
   // Form states
   const [newVersionName, setNewVersionName] = useState('');
@@ -107,6 +111,10 @@ const ResumeVersionControl = () => {
   const [selectedResumeGroup, setSelectedResumeGroup] = useState(null);
   const [selectedVersionDetails, setSelectedVersionDetails] = useState(null);
   const [revertTarget, setRevertTarget] = useState(null);
+  const [versionToShare, setVersionToShare] = useState(null);
+  const [versionForFeedback, setVersionForFeedback] = useState(null);
+  const [incorporatedFeedback, setIncorporatedFeedback] = useState([]);
+  const [loadingFeedback, setLoadingFeedback] = useState(false);
   
   // Merge form states
   const [mergeSource, setMergeSource] = useState(null);
@@ -243,9 +251,23 @@ const ResumeVersionControl = () => {
     }
   };
 
-  const handleViewVersionDetails = (version) => {
+  const handleViewVersionDetails = async (version) => {
     setSelectedVersionDetails(version);
     setShowVersionDetailsModal(true);
+    
+    // Load feedback incorporated in this version
+    setLoadingFeedback(true);
+    try {
+      const data = await feedbackAPI.listFeedback({ 
+        incorporated_in_version_id: version.id 
+      });
+      setIncorporatedFeedback(data.feedback || []);
+    } catch (err) {
+      console.error('Failed to load incorporated feedback:', err);
+      setIncorporatedFeedback([]);
+    } finally {
+      setLoadingFeedback(false);
+    }
   };
 
   const handleRevert = (version) => {
@@ -269,6 +291,29 @@ const ResumeVersionControl = () => {
     } catch (err) {
       setError(err.message || 'Failed to revert version');
     }
+  };
+
+  const handleShareResume = (version) => {
+    setVersionToShare(version);
+    setShowShareModal(true);
+  };
+
+  const handleShareCreated = (share) => {
+    setSuccess(`Share link created successfully!`);
+    setShowShareModal(false);
+    setVersionToShare(null);
+  };
+
+  const handleViewFeedback = (version) => {
+    setVersionForFeedback(version);
+    setShowFeedbackPanel(true);
+  };
+
+  const handleFeedbackPanelClose = () => {
+    setShowFeedbackPanel(false);
+    setVersionForFeedback(null);
+    // Refresh versions to update notification badges
+    loadVersions();
   };
 
   const handleOpenMergeModal = (version) => {
@@ -527,6 +572,27 @@ const ResumeVersionControl = () => {
                           </div>
                           
                           <div className="version-actions">
+                            <button
+                              className="action-btn share-btn"
+                              onClick={() => handleShareResume(version)}
+                              title="Share for feedback"
+                            >
+                              <Icon name="link" size="sm" />
+                            </button>
+                            
+                            <button
+                              className="action-btn feedback-btn"
+                              onClick={() => handleViewFeedback(version)}
+                              title="View feedback"
+                            >
+                              <Icon name="clipboard" size="sm" />
+                              {version.unresolved_feedback_count > 0 && (
+                                <span className="notification-badge">
+                                  {version.unresolved_feedback_count}
+                                </span>
+                              )}
+                            </button>
+                            
                             <button
                               className="action-btn view-btn"
                               onClick={() => handleViewVersionDetails(version)}
@@ -934,6 +1000,62 @@ const ResumeVersionControl = () => {
                       </pre>
                     </div>
                   )}
+
+                  {/* Incorporated Feedback History */}
+                  <div className="incorporated-feedback-section">
+                    <h5>
+                      <Icon name="git-merge" size="sm" /> Feedback Incorporated in This Version
+                    </h5>
+                    {loadingFeedback ? (
+                      <div className="loading-feedback">
+                        <Icon name="loader" size="sm" /> Loading feedback...
+                      </div>
+                    ) : incorporatedFeedback.length === 0 ? (
+                      <p className="no-feedback">No feedback has been incorporated in this version yet.</p>
+                    ) : (
+                      <div className="feedback-history-list">
+                        {incorporatedFeedback.map(fb => (
+                          <div key={fb.id} className="feedback-history-item">
+                            <div className="feedback-history-header">
+                              <div className="reviewer-info">
+                                <Icon name="user" size="sm" />
+                                <strong>{fb.reviewer_name || 'Anonymous'}</strong>
+                                {fb.reviewer_title && (
+                                  <span className="reviewer-title"> • {fb.reviewer_title}</span>
+                                )}
+                              </div>
+                              {fb.rating && (
+                                <div className="rating-display">
+                                  {[...Array(fb.rating)].map((_, i) => (
+                                    <Icon key={i} name="star" size="sm" className="star-filled" />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <div className="feedback-history-body">
+                              <p>{fb.overall_feedback}</p>
+                              {fb.resolution_notes && (
+                                <div className="resolution-note">
+                                  <Icon name="check-circle" size="sm" />
+                                  <span>{fb.resolution_notes}</span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="feedback-history-meta">
+                              <span className="feedback-date">
+                                Resolved: {new Date(fb.resolved_at || fb.created_at).toLocaleDateString()}
+                              </span>
+                              {fb.comment_count > 0 && (
+                                <span className="comment-count">
+                                  <Icon name="comment" size="sm" /> {fb.comment_count} comments
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1124,6 +1246,30 @@ const ResumeVersionControl = () => {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share Resume Modal */}
+      {showShareModal && versionToShare && (
+        <ShareResumeModal
+          version={versionToShare}
+          onClose={() => {
+            setShowShareModal(false);
+            setVersionToShare(null);
+          }}
+          onShareCreated={handleShareCreated}
+        />
+      )}
+
+      {/* Feedback Panel */}
+      {showFeedbackPanel && versionForFeedback && (
+        <div className="modal-overlay" onClick={handleFeedbackPanelClose}>
+          <div className="modal-content feedback-modal" onClick={(e) => e.stopPropagation()}>
+            <FeedbackPanel
+              versionId={versionForFeedback.id}
+              onClose={handleFeedbackPanelClose}
+            />
           </div>
         </div>
       )}

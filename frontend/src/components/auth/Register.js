@@ -135,8 +135,14 @@ const Register = () => {
         localStorage.setItem('firebaseToken', token);
       }
 
-      // Step 4: Redirect to dashboard
-      navigate('/dashboard');
+      // Step 4: Check for return URL and redirect accordingly
+      const returnUrl = localStorage.getItem('returnUrl');
+      if (returnUrl) {
+        localStorage.removeItem('returnUrl');
+        navigate(returnUrl);
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error) {
       console.error('Registration error:', error);
       console.log('Error details:', error.response?.data);
@@ -169,7 +175,15 @@ const Register = () => {
       const result = await signInWithPopup(auth, provider);
       const token = await result.user.getIdToken();
       localStorage.setItem('firebaseToken', token);
-      navigate('/dashboard');
+      
+      // Check for return URL and redirect accordingly
+      const returnUrl = localStorage.getItem('returnUrl');
+      if (returnUrl) {
+        localStorage.removeItem('returnUrl');
+        navigate(returnUrl);
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error) {
       console.error(`${providerName} sign-up error:`, error);
       if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
@@ -215,7 +229,15 @@ const Register = () => {
                   }
                   const token = await auth.currentUser.getIdToken();
                   localStorage.setItem('firebaseToken', token);
-                  navigate('/dashboard');
+                  
+                  // Check for return URL and redirect accordingly
+                  const returnUrl = localStorage.getItem('returnUrl');
+                  if (returnUrl) {
+                    localStorage.removeItem('returnUrl');
+                    navigate(returnUrl);
+                  } else {
+                    navigate('/dashboard');
+                  }
                   return;
                 }
               } catch (err) {
@@ -238,13 +260,29 @@ const Register = () => {
                   await linkWithCredential(res.user, pendingCred);
                   const token = await res.user.getIdToken();
                   localStorage.setItem('firebaseToken', token);
-                  navigate('/dashboard');
+                  
+                  // Check for return URL and redirect accordingly
+                  const returnUrl = localStorage.getItem('returnUrl');
+                  if (returnUrl) {
+                    localStorage.removeItem('returnUrl');
+                    navigate(returnUrl);
+                  } else {
+                    navigate('/dashboard');
+                  }
                 } else if (oauthProvider === 'github.com') {
                   const res = await signInWithPopup(auth, githubProvider);
                   await linkWithCredential(res.user, pendingCred);
                   const token = await res.user.getIdToken();
                   localStorage.setItem('firebaseToken', token);
-                  navigate('/dashboard');
+                  
+                  // Check for return URL and redirect accordingly
+                  const returnUrl = localStorage.getItem('returnUrl');
+                  if (returnUrl) {
+                    localStorage.removeItem('returnUrl');
+                    navigate(returnUrl);
+                  } else {
+                    navigate('/dashboard');
+                  }
                 }
               } else if (methods.includes('password')) {
                 const password = window.prompt('An account with this email already exists. Please enter your password to sign in and link the OAuth provider to your account:');
@@ -257,7 +295,15 @@ const Register = () => {
                   }
                   const token = await userCred.user.getIdToken();
                   localStorage.setItem('firebaseToken', token);
-                  navigate('/dashboard');
+                  
+                  // Check for return URL and redirect accordingly
+                  const returnUrl = localStorage.getItem('returnUrl');
+                  if (returnUrl) {
+                    localStorage.removeItem('returnUrl');
+                    navigate(returnUrl);
+                  } else {
+                    navigate('/dashboard');
+                  }
                 }
               } else {
                 setApiError('An account with this email exists. Please sign in with the original provider to link accounts.');
