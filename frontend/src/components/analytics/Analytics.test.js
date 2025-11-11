@@ -5,7 +5,7 @@ import '@testing-library/jest-dom';
 // Mock the API and Auth context used by the component
 jest.mock('../../services/api', () => ({
   jobsAPI: {
-    getJobStats: jest.fn(),
+    getAnalytics: jest.fn(),
   },
 }));
 
@@ -43,7 +43,7 @@ describe('Analytics component', () => {
   });
 
   test('shows error message when API fails', async () => {
-    jobsAPI.getJobStats.mockRejectedValue(new Error('boom'));
+    jobsAPI.getAnalytics.mockRejectedValue(new Error('boom'));
 
     render(<Analytics />);
 
@@ -52,20 +52,27 @@ describe('Analytics component', () => {
   });
 
   test('renders analytics UI when API returns data', async () => {
+
     const sampleData = {
-      counts: { interested: 2, applied: 5, phone_screen: 1, interview: 1, offer: 1 },
-      monthly_applications: [
-        { month: '2025-01', count: 3 },
-        { month: '2025-02', count: 4 },
-      ],
-      daily_applications: [
-        { date: '2025-02-01', count: 2 },
-        { date: '2025-02-02', count: 0 },
-      ],
-      response_rate_percent: 30,
+      funnel_analytics: {
+        total_applications: 5,
+        success_rate: 30,
+        response_rate: 30,
+        status_breakdown: { interested: 2, applied: 5, phone_screen: 1, interview: 1, offer: 1 },
+      },
+      industry_benchmarks: {},
+      response_trends: { monthly_trends: [] },
+      volume_patterns: {},
+      goal_progress: {
+        weekly_goal: { current: 5, target: 5, progress_percent: 100 },
+      },
+      insights_recommendations: {
+        insights: ["You've applied to 5 positions; keep up the momentum!"],
+        recommendations: ["Focus more on tailored cover letters."]
+      },
     };
 
-    jobsAPI.getJobStats.mockResolvedValue(sampleData);
+    jobsAPI.getAnalytics.mockResolvedValue(sampleData);
 
     render(<Analytics />);
 
@@ -99,7 +106,7 @@ describe('Analytics component', () => {
 
   test('exportAnalytics triggers a download on successful fetch', async () => {
     const sampleData = { counts: { applied: 1 }, monthly_applications: [], daily_applications: [], response_rate_percent: 0 };
-    jobsAPI.getJobStats.mockResolvedValue(sampleData);
+  jobsAPI.getAnalytics.mockResolvedValue(sampleData);
 
     // Mock fetch to return ok and a blob
     const fakeBlob = new Blob(['a,b,c\n1,2,3'], { type: 'text/csv' });
@@ -133,7 +140,7 @@ describe('Analytics component', () => {
 
   test('exportAnalytics shows error message when fetch fails', async () => {
     const sampleData = { counts: { applied: 1 }, monthly_applications: [], daily_applications: [], response_rate_percent: 0 };
-    jobsAPI.getJobStats.mockResolvedValue(sampleData);
+  jobsAPI.getAnalytics.mockResolvedValue(sampleData);
 
     global.fetch = jest.fn().mockResolvedValue({ ok: false });
 
