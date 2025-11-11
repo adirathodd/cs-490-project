@@ -10,6 +10,7 @@ import {
 import { jobsAPI, coverLetterAIAPI } from '../../../services/api';
 import Icon from '../../../components/common/Icon';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
+import { auth } from '../../../services/firebase';
 import '../../resume/AiResumeGenerator/AiResumeGenerator.css';
 import './AiCoverLetterGenerator.css';
 
@@ -52,14 +53,10 @@ const companyCultureOptions = [
 // UX constants
 const MAX_CUSTOM_INSTRUCTIONS = 500;
 
-const SECTION_IDS = ['summary', 'skills', 'experience', 'projects', 'education', 'keywords', 'preview'];
-const rotateArray = (list = [], shift = 0) => {
-  if (!list.length) return list;
-  const offset = ((shift % list.length) + list.length) % list.length;
-  if (offset === 0) return list;
-  return [...list.slice(offset), ...list.slice(0, offset)];
-};
+// UC-060: Simplified sections for cover letter editing
+const SECTION_IDS = ['content'];
 
+// Helper functions for bullet point management (used by legacy components)
 const getBulletOrderKey = (sectionId, groupId) => `${sectionId}::${groupId}`;
 const buildBulletKey = (sectionId, groupId, idx) => `${sectionId}::${groupId}::${idx}`;
 const getOrderedBulletItems = (sectionId, groupId, items, bulletOrderOverrides) => {
@@ -77,26 +74,26 @@ const getOrderedBulletItems = (sectionId, groupId, items, bulletOrderOverrides) 
   return [...ordered, ...Array.from(map.values())];
 };
 
-const rewriteSentence = (text = '') => {
-  if (!text) return text;
-  let sentence = text.trim();
-  if (!sentence) return sentence;
-  const replacements = [
-    ['Led', 'Spearheaded'],
-    ['Responsible for', 'Accountable for'],
-    ['Worked on', 'Delivered'],
-    ['Improved', 'Lifted'],
-  ];
-  replacements.forEach(([from, to]) => {
-    const regex = new RegExp(`^${from}`, 'i');
-    if (regex.test(sentence)) {
-      sentence = sentence.replace(regex, to);
-    }
-  });
-  return sentence.endsWith('.') ? sentence : `${sentence}.`;
-};
-
 const generateBulletRewrite = (text, jobTitle, companyName) => {
+  const rewriteSentence = (txt = '') => {
+    if (!txt) return txt;
+    let sentence = txt.trim();
+    if (!sentence) return sentence;
+    const replacements = [
+      ['Led', 'Spearheaded'],
+      ['Responsible for', 'Accountable for'],
+      ['Worked on', 'Delivered'],
+      ['Improved', 'Lifted'],
+    ];
+    replacements.forEach(([from, to]) => {
+      const regex = new RegExp(`^${from}`, 'i');
+      if (regex.test(sentence)) {
+        sentence = sentence.replace(regex, to);
+      }
+    });
+    return sentence.endsWith('.') ? sentence : `${sentence}.`;
+  };
+  
   const base = rewriteSentence(text);
   const context = jobTitle || companyName ? ` (${[jobTitle, companyName].filter(Boolean).join(' · ')})` : '';
   return `Refined${context}: ${base}`;
@@ -108,16 +105,6 @@ const latexEscape = (text = '') =>
     .replace(/([%#$&_{}])/g, '\\$1')
     .replace(/\^/g, '\\^{}')
     .replace(/~/g, '\\textasciitilde{}');
-
-const buildItemizedLatex = (items = []) => {
-  if (!items.length) return '';
-  const lines = ['\\begin{itemize}'];
-  items.forEach((item) => {
-    lines.push(`  \\item ${latexEscape(item)}`);
-  });
-  lines.push('\\end{itemize}');
-  return lines.join('\n');
-};
 
 const createDefaultSectionConfig = () => ({
   order: [...SECTION_IDS],
@@ -154,50 +141,13 @@ const hydrateSectionConfig = (incomingConfig = {}) => {
   };
 };
 
+// UC-060: Simplified templates for cover letter
 const sectionTemplates = [
   {
-    id: 'balanced',
-    label: 'Balanced ATS',
-    description: 'Skills + Experience ordered for general full-time roles.',
+    id: 'standard',
+    label: 'Standard View',
+    description: 'Content editor with PDF preview',
     config: createDefaultSectionConfig(),
-  },
-  {
-    id: 'projectSpotlight',
-    label: 'Project spotlight',
-    description: 'Showcase high-impact projects before work experience.',
-    config: {
-      order: ['summary', 'projects', 'experience', 'skills', 'education', 'keywords'],
-      visibility: { education: false },
-      formatting: {
-        projects: { emphasis: 'technical' },
-        experience: { density: 'compact' },
-      },
-    },
-  },
-  {
-    id: 'academic',
-    label: 'Academic / early career',
-    description: 'Lead with education achievements and capstone work.',
-    config: {
-      order: ['summary', 'education', 'projects', 'experience', 'skills', 'keywords'],
-      formatting: {
-        education: { style: 'inline' },
-        summary: { style: 'bullet' },
-      },
-    },
-  },
-  {
-    id: 'skillsFirst',
-    label: 'Skills-first consulting',
-    description: 'Prioritize core skill blocks before experience.',
-    config: {
-      order: ['summary', 'skills', 'keywords', 'experience', 'projects', 'education'],
-      visibility: { education: false },
-      formatting: {
-        skills: { style: 'list' },
-        keywords: { badgeStyle: 'accent' },
-      },
-    },
   },
 ];
 
@@ -215,136 +165,90 @@ const jobTypeTemplateMap = {
   fulltime: 'balanced',
 };
 
+// UC-060: Cover Letter Section Metadata
 const resumeSectionMeta = {
-  summary: {
-    label: 'Summary & Tone',
-    icon: 'file-text',
-    description: 'Lead statement with tone guidance.',
-    formatOptions: [
-      {
-        field: 'style',
-        label: 'Presentation',
-        options: [
-          { value: 'paragraph', label: 'Narrative paragraph' },
-          { value: 'bullet', label: 'Bullet highlights' },
-        ],
-      },
-    ],
-  },
-  skills: {
-    label: 'Skills',
-    icon: 'sparkles',
-    description: 'Top highlighted skills for this role.',
-    formatOptions: [
-      {
-        field: 'style',
-        label: 'Badge style',
-        options: [
-          { value: 'pill', label: 'Pills (default)' },
-          { value: 'list', label: 'Compact list' },
-        ],
-      },
-    ],
-  },
-  experience: {
-    label: 'Experience',
-    icon: 'briefcase',
-    description: 'Role-specific achievements to spotlight.',
-    formatOptions: [
-      {
-        field: 'density',
-        label: 'Detail level',
-        options: [
-          { value: 'detailed', label: 'Detailed (all bullets)' },
-          { value: 'compact', label: 'Compact (top bullet only)' },
-        ],
-      },
-    ],
-  },
-  projects: {
-    label: 'Projects',
-    icon: 'project',
-    description: 'Internal or personal initiatives.',
-    formatOptions: [
-      {
-        field: 'emphasis',
-        label: 'Emphasis',
-        options: [
-          { value: 'impact', label: 'Impact narrative' },
-          { value: 'technical', label: 'Technical deep-dive' },
-        ],
-      },
-    ],
-  },
-  education: {
-    label: 'Education',
-    icon: 'education',
-    description: 'Degrees, certifications, and notable coursework.',
-    formatOptions: [
-      {
-        field: 'style',
-        label: 'Layout',
-        options: [
-          { value: 'stacked', label: 'Stacked' },
-          { value: 'inline', label: 'Inline summary' },
-        ],
-      },
-    ],
-  },
-  keywords: {
-    label: 'ATS Keywords',
-    icon: 'filter',
-    description: 'Exact phrase matches the AI is reinforcing.',
-    formatOptions: [
-      {
-        field: 'badgeStyle',
-        label: 'Badge color',
-        options: [
-          { value: 'neutral', label: 'Neutral blue' },
-          { value: 'accent', label: 'Accent green' },
-        ],
-      },
-    ],
-  },
-  preview: {
-    label: 'PDF Preview',
-    icon: 'eye',
-    description: 'Inline PDF reader of the generated resume.',
-    formatOptions: [
-      {
-        field: 'zoom',
-        label: 'Fit mode',
-        options: [
-          { value: 'fit', label: 'Fit to width' },
-          { value: 'fill', label: 'Fill height' },
-        ],
-      },
-    ],
+  content: {
+    label: 'Cover Letter Content',
+    icon: 'edit',
+    description: 'Edit and refine your cover letter with AI assistance.',
+    formatOptions: [],
   },
 };
 
+// UC-060: Grammar and spell checking utilities
+// UC-060: Grammar checking using LanguageTool API
+const checkGrammarAPI = async (text, signal = null) => {
+  if (!text || !text.trim()) return [];
+  
+  try {
+    // Get fresh Firebase token
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      console.error('[Grammar Check] No authenticated user');
+      return [];
+    }
+    
+    const token = await currentUser.getIdToken(true);
+    
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ text }),
+    };
+    
+    // Add abort signal if provided
+    if (signal) {
+      fetchOptions.signal = signal;
+    }
+    
+    const response = await fetch('/api/cover-letter/check-grammar/', fetchOptions);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Grammar Check] API error:', response.status, errorText);
+      return [];
+    }
+    
+    const data = await response.json();
+    return data.issues || [];
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      // Request was aborted, this is expected behavior
+      return [];
+    }
+    console.error('[Grammar Check] Error:', error);
+    return [];
+  }
+};
+
+// Transform API issues to match frontend format
+const transformGrammarIssue = (issue, paragraphType = 'general') => ({
+  id: issue.id,
+  ruleId: issue.rule_id,
+  message: issue.message,
+  suggestion: issue.replacements && issue.replacements.length > 0 
+    ? `Try: "${issue.replacements[0]}"` 
+    : 'Check this',
+  type: issue.type,
+  position: issue.offset,
+  length: issue.length,
+  text: issue.text,
+  paragraphType,
+  canAutoFix: issue.can_auto_fix,
+  replacements: issue.replacements || [],
+  context: issue.context,
+  category: issue.category,
+});
+
 const resolveSectionStatus = (sectionId, { variation, analysis, pdfPreviewUrl }) => {
   switch (sectionId) {
-    case 'summary':
+    case 'content':
       if (!variation) return 'pending';
-      if (variation.summary) return 'complete';
-      if (variation.summary_headline) return 'partial';
+      if (variation.cover_letter_text) return 'complete';
       return 'empty';
-    case 'skills':
-      return chipify(variation?.skills_to_highlight).length > 0 ? 'complete' : 'empty';
-    case 'experience':
-      return variation?.experience_sections?.length ? 'complete' : 'empty';
-    case 'projects':
-      return variation?.project_sections?.length ? 'complete' : 'empty';
-    case 'education':
-      return variation?.education_highlights?.length ? 'complete' : 'partial';
-    case 'keywords': {
-      const keywords = chipify(variation?.ats_keywords || analysis?.keyword_strategy);
-      if (keywords.length > 0) return 'complete';
-      return analysis?.keyword_strategy ? 'partial' : 'empty';
-    }
-    case 'preview':
-      return pdfPreviewUrl ? 'complete' : variation?.pdf_document ? 'pending' : 'empty';
     default:
       return 'pending';
   }
@@ -442,53 +346,17 @@ const SortableSectionRow = ({
 const PreviewSectionBlock = ({
   sectionId,
   meta,
-  onToggleCollapse,
-  isCollapsed,
-  isVisible,
-  onToggleVisibility,
   children,
 }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sectionId });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`preview-section-block ${isDragging ? 'dragging' : ''} ${isCollapsed ? 'collapsed' : ''} ${!isVisible ? 'hidden-section' : ''}`}
-    >
+    <div className="preview-section-block">
       <div className="preview-section-toolbar">
-        <button
-          type="button"
-          className="drag-handle"
-          aria-label={`Reorder ${meta.label} in preview`}
-          {...attributes}
-          {...listeners}
-        >
-          <Icon name="grip" size="sm" />
-        </button>
         <div className="preview-section-info">
           <strong>{meta.label}</strong>
           <small>{meta.description}</small>
         </div>
-        <div className="preview-section-actions">
-          <label className="section-visibility-toggle">
-            <input
-              type="checkbox"
-              checked={isVisible}
-              onChange={() => onToggleVisibility(sectionId)}
-            />
-            <span>{isVisible ? 'Include' : 'Exclude'}</span>
-          </label>
-          <button type="button" onClick={() => onToggleCollapse(sectionId)}>
-            <Icon name={isCollapsed ? 'chevronDown' : 'chevronUp'} size="sm" /> {isCollapsed ? 'Expand' : 'Collapse'}
-          </button>
-        </div>
       </div>
-      {!isCollapsed && children}
+      {children}
     </div>
   );
 };
@@ -719,6 +587,16 @@ const AiCoverLetterGenerator = () => {
   const [livePreviewPdfUrl, setLivePreviewPdfUrl] = useState('');
   const [livePreviewLoading, setLivePreviewLoading] = useState(false);
   const [livePreviewError, setLivePreviewError] = useState('');
+  
+  // UC-060: Version history for editing session
+  const [versionHistory, setVersionHistory] = useState([]);
+  const [currentVersionIndex, setCurrentVersionIndex] = useState(-1);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  
+  // UC-060: Spell check and grammar assistance
+  const [grammarIssues, setGrammarIssues] = useState([]);
+  const [showGrammarPanel, setShowGrammarPanel] = useState(false);
+  const isApplyingFixRef = useRef(false); // Track when we're applying a fix to prevent re-checking
   
   // UC-061: Email and letterhead state
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -1174,6 +1052,388 @@ const AiCoverLetterGenerator = () => {
     localStorage.setItem('resumerocket_custom_templates', JSON.stringify(updated));
     setLayoutHint('Template deleted');
   };
+
+  // UC-060: Version history functions
+  const saveVersion = useCallback(() => {
+    if (!activeVariation) return;
+    
+    const snapshot = {
+      timestamp: Date.now(),
+      content: {
+        opening_paragraph: activeVariation.opening_paragraph || '',
+        body_paragraphs: activeVariation.body_paragraphs || [],
+        closing_paragraph: activeVariation.closing_paragraph || '',
+      },
+      label: new Date().toLocaleTimeString(),
+    };
+    
+    setVersionHistory((prev) => {
+      const newHistory = prev.slice(0, currentVersionIndex + 1);
+      newHistory.push(snapshot);
+      // Keep only last 20 versions
+      if (newHistory.length > 20) {
+        newHistory.shift();
+      }
+      return newHistory;
+    });
+    setCurrentVersionIndex((prev) => {
+      const newIdx = Math.min(prev + 1, 19);
+      return newIdx;
+    });
+  }, [activeVariation, currentVersionIndex]);
+
+  const handleUndo = useCallback(() => {
+    if (currentVersionIndex <= 0) return;
+    
+    const previousVersion = versionHistory[currentVersionIndex - 1];
+    if (!previousVersion) return;
+    
+    setResult((prev) => {
+      if (!prev?.variations) return prev;
+      const updatedVariations = prev.variations.map((v) => {
+        if (v.id !== activeVariationId) return v;
+        return {
+          ...v,
+          opening_paragraph: previousVersion.content.opening_paragraph,
+          body_paragraphs: previousVersion.content.body_paragraphs,
+          closing_paragraph: previousVersion.content.closing_paragraph,
+        };
+      });
+      return {
+        ...prev,
+        variations: updatedVariations,
+      };
+    });
+    
+    setCurrentVersionIndex(currentVersionIndex - 1);
+  }, [currentVersionIndex, versionHistory, activeVariationId]);
+
+  const handleRedo = useCallback(() => {
+    if (currentVersionIndex >= versionHistory.length - 1) return;
+    
+    const nextVersion = versionHistory[currentVersionIndex + 1];
+    if (!nextVersion) return;
+    
+    setResult((prev) => {
+      if (!prev?.variations) return prev;
+      const updatedVariations = prev.variations.map((v) => {
+        if (v.id !== activeVariationId) return v;
+        return {
+          ...v,
+          opening_paragraph: nextVersion.content.opening_paragraph,
+          body_paragraphs: nextVersion.content.body_paragraphs,
+          closing_paragraph: nextVersion.content.closing_paragraph,
+        };
+      });
+      return {
+        ...prev,
+        variations: updatedVariations,
+      };
+    });
+    
+    setCurrentVersionIndex(currentVersionIndex + 1);
+  }, [currentVersionIndex, versionHistory, activeVariationId]);
+
+  const restoreVersion = useCallback((index) => {
+    if (index < 0 || index >= versionHistory.length) return;
+    
+    const version = versionHistory[index];
+    if (!version) return;
+    
+    setResult((prev) => {
+      if (!prev?.variations) return prev;
+      const updatedVariations = prev.variations.map((v) => {
+        if (v.id !== activeVariationId) return v;
+        return {
+          ...v,
+          opening_paragraph: version.content.opening_paragraph,
+          body_paragraphs: version.content.body_paragraphs,
+          closing_paragraph: version.content.closing_paragraph,
+        };
+      });
+      return {
+        ...prev,
+        variations: updatedVariations,
+      };
+    });
+    
+    setCurrentVersionIndex(index);
+    setShowVersionHistory(false);
+  }, [versionHistory, activeVariationId]);
+
+  // Apply grammar fix using LanguageTool suggestion
+  const applyGrammarFix = useCallback(async (issue, replacementIndex = 0) => {
+    if (!issue.canAutoFix || !issue.replacements || issue.replacements.length === 0) return;
+    
+    // Set flag to prevent grammar re-check
+    isApplyingFixRef.current = true;
+    
+    // Find which paragraph this issue is in
+    const paragraphType = issue.paragraphType;
+    let originalText = '';
+    
+    if (paragraphType === 'opening') {
+      originalText = activeVariation?.opening_paragraph || '';
+    } else if (paragraphType.startsWith('body-')) {
+      const idx = parseInt(paragraphType.split('-')[1], 10);
+      originalText = activeVariation?.body_paragraphs?.[idx] || '';
+    } else if (paragraphType === 'closing') {
+      originalText = activeVariation?.closing_paragraph || '';
+    }
+    
+    if (!originalText) return;
+    
+    // Apply the fix using simple string replacement at the offset
+    const replacement = issue.replacements[replacementIndex] || issue.replacements[0];
+    const before = originalText.substring(0, issue.position);
+    const after = originalText.substring(issue.position + issue.length);
+    const fixedText = before + replacement + after;
+    
+    // Update the variation
+    setResult((prev) => {
+      if (!prev?.variations) return prev;
+      
+      const updatedVariations = prev.variations.map((v) => {
+        if (v.id !== activeVariationId) return v;
+        
+        let updatedVariation = { ...v };
+        
+        if (paragraphType === 'opening') {
+          updatedVariation.opening_paragraph = fixedText;
+        } else if (paragraphType.startsWith('body-')) {
+          const idx = parseInt(paragraphType.split('-')[1], 10);
+          const bodies = [...(v.body_paragraphs || [])];
+          bodies[idx] = fixedText;
+          updatedVariation.body_paragraphs = bodies;
+        } else if (paragraphType === 'closing') {
+          updatedVariation.closing_paragraph = fixedText;
+        }
+        
+        return updatedVariation;
+      });
+      
+      return {
+        ...prev,
+        variations: updatedVariations,
+      };
+    });
+    
+    // Remove the fixed issue from the list immediately
+    setGrammarIssues((prev) => prev.filter((i) => i.id !== issue.id));
+    
+    // Reset flag after a short delay to allow normal grammar checking to resume
+    setTimeout(() => {
+      isApplyingFixRef.current = false;
+    }, 300);
+  }, [activeVariationId, activeVariation]);
+
+  // UC-060: Ignore a grammar issue (remove from list without applying fix)
+  const ignoreGrammarIssue = useCallback((issueId) => {
+    setGrammarIssues((prev) => prev.filter((issue) => issue.id !== issueId));
+  }, []);
+
+  // Save initial version when cover letter is generated
+  useEffect(() => {
+    if (!result || !activeVariation) return;
+    if (versionHistory.length === 0) {
+      saveVersion();
+    }
+  }, [result, activeVariation, saveVersion, versionHistory.length]);
+
+  // Debounced auto-save version on content change
+  useEffect(() => {
+    if (versionHistory.length === 0) return undefined;
+    if (!activeVariation) return undefined;
+    
+    const timeout = setTimeout(() => {
+      // Check if content actually changed
+      const currentContent = {
+        opening: activeVariation.opening_paragraph || '',
+        body: activeVariation.body_paragraphs || [],
+        closing: activeVariation.closing_paragraph || '',
+      };
+      
+      const lastVersion = versionHistory[currentVersionIndex];
+      if (!lastVersion) return;
+      
+      const lastContent = lastVersion.content;
+      
+      // Calculate text difference to check if changes are substantial
+      const currentText = currentContent.opening + 
+                         currentContent.body.join('') + 
+                         currentContent.closing;
+      const lastText = (lastContent.opening_paragraph || '') + 
+                      (lastContent.body_paragraphs || []).join('') + 
+                      (lastContent.closing_paragraph || '');
+      
+      const textDiff = Math.abs(currentText.length - lastText.length);
+      const contentChanged = JSON.stringify(currentContent) !== JSON.stringify(lastContent);
+      
+      // Only save if there are substantial changes (at least 10 characters difference)
+      // or if the structure changed significantly
+      if (contentChanged && textDiff >= 10) {
+        saveVersion();
+      }
+    }, 5000); // Save after 5 seconds of no changes
+    
+    return () => clearTimeout(timeout);
+  }, [
+    activeVariation?.opening_paragraph,
+    activeVariation?.body_paragraphs,
+    activeVariation?.closing_paragraph,
+    saveVersion,
+    versionHistory,
+    currentVersionIndex
+  ]);
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
+
+  // UC-060: Grammar checking on content change (debounced, API-based)
+  useEffect(() => {
+    if (!activeVariation) return undefined;
+    
+    // AbortController to cancel previous requests
+    const abortController = new AbortController();
+    
+    const timeout = setTimeout(async () => {
+      // Skip grammar check if we're currently applying a fix
+      if (isApplyingFixRef.current) {
+        return;
+      }
+      
+      const opening = activeVariation.opening_paragraph || '';
+      const bodies = activeVariation.body_paragraphs || [];
+      const closing = activeVariation.closing_paragraph || '';
+      
+      // Combine all text for checking
+      const fullText = [opening, ...bodies, closing].filter(Boolean).join('\n\n');
+      
+      if (!fullText.trim()) {
+        setGrammarIssues([]);
+        return;
+      }
+      
+      try {
+        const apiIssues = await checkGrammarAPI(fullText, abortController.signal);
+        
+        // Check if request was aborted
+        if (abortController.signal.aborted) {
+          return;
+        }
+        
+        // Transform API issues and assign paragraph types
+        const allIssues = apiIssues.map(issue => {
+          // Determine which paragraph this issue belongs to based on offset
+          let cumulativeLength = 0;
+          let paragraphType = 'general';
+          
+          if (opening) {
+            if (issue.offset < opening.length) {
+              paragraphType = 'opening';
+            }
+            cumulativeLength += opening.length + 2; // +2 for newlines
+          }
+          
+          bodies.forEach((body, idx) => {
+            if (body && issue.offset >= cumulativeLength && issue.offset < cumulativeLength + body.length) {
+              paragraphType = `body-${idx}`;
+            }
+            cumulativeLength += body.length + 2;
+          });
+          
+          if (closing && issue.offset >= cumulativeLength) {
+            paragraphType = 'closing';
+          }
+          
+          return transformGrammarIssue(issue, paragraphType);
+        });
+        
+        setGrammarIssues(allIssues);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('[Grammar Check] Error:', error);
+          setGrammarIssues([]);
+        }
+      }
+    }, 800); // Check after 800ms of no changes
+    
+    return () => {
+      clearTimeout(timeout);
+      abortController.abort();
+    };
+  }, [
+    activeVariation?.opening_paragraph, 
+    activeVariation?.body_paragraphs,
+    activeVariation?.closing_paragraph,
+  ]);
+
+  // UC-060: Initial grammar check when variation is loaded
+  useEffect(() => {
+    if (!activeVariation) return;
+    
+    // Run initial check after a short delay to avoid racing with other initialization
+    const timeout = setTimeout(async () => {
+      const opening = activeVariation.opening_paragraph || '';
+      const bodies = activeVariation.body_paragraphs || [];
+      const closing = activeVariation.closing_paragraph || '';
+      
+      const fullText = [opening, ...bodies, closing].filter(Boolean).join('\n\n');
+      
+      if (!fullText.trim()) {
+        setGrammarIssues([]);
+        return;
+      }
+      
+      try {
+        const apiIssues = await checkGrammarAPI(fullText);
+        
+        const allIssues = apiIssues.map(issue => {
+          let cumulativeLength = 0;
+          let paragraphType = 'general';
+          
+          if (opening) {
+            if (issue.offset < opening.length) {
+              paragraphType = 'opening';
+            }
+            cumulativeLength += opening.length + 2;
+          }
+          
+          bodies.forEach((body, idx) => {
+            if (body && issue.offset >= cumulativeLength && issue.offset < cumulativeLength + body.length) {
+              paragraphType = `body-${idx}`;
+            }
+            cumulativeLength += body.length + 2;
+          });
+          
+          if (closing && issue.offset >= cumulativeLength) {
+            paragraphType = 'closing';
+          }
+          
+          return transformGrammarIssue(issue, paragraphType);
+        });
+        
+        setGrammarIssues(allIssues);
+      } catch (error) {
+        console.error('[Grammar Check] Initial check error:', error);
+      }
+    }, 500);
+    
+    return () => clearTimeout(timeout);
+  }, [activeVariationId]); // Only run when switching variations
 
   const handleGenerate = async () => {
     if (!selectedJobId) {
@@ -1651,7 +1911,8 @@ const AiCoverLetterGenerator = () => {
       }
     } catch (err) {
       console.error('Failed to compile live preview:', err);
-      setLivePreviewError(err?.message || 'Unable to compile LaTeX preview');
+      // Don't show error message to user - LaTeX compilation errors are expected during editing
+      setLivePreviewError('');
     } finally {
       setLivePreviewLoading(false);
     }
@@ -1666,349 +1927,208 @@ const AiCoverLetterGenerator = () => {
       return;
     }
 
-    // Debounce the compilation
+    // Debounce the compilation - wait longer to avoid compiling during active editing
     const timeoutId = setTimeout(() => {
       compileLivePreview();
-    }, 1000);
+    }, 2000); // Increased from 1000ms to 2000ms
 
     return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveLatexPreview]);
 
   function buildSectionSnapshot(sectionId) {
     if (!activeVariation) return { jsx: null, latex: '' };
     const rewriteState = sectionRewrites[sectionId] || {};
+    
     switch (sectionId) {
-      case 'summary': {
-        const summaryStyle = sectionConfig.formatting.summary?.style || 'paragraph';
-        const summaryHeadline = activeVariation.summary_headline || activeVariation.label;
-        const regenCount = rewriteState.regenerate || 0;
-        let summaryBody = activeVariation.summary || '';
-        if (regenCount > 0) {
-          const sentences = summaryBody
-            .split(/(?<=[.!?])\s+/)
-            .map((entry) => entry.trim())
-            .filter(Boolean);
-          if (sentences.length > 1) {
-            summaryBody = rotateArray(sentences, regenCount).join(' ');
-          } else {
-            const emphasisList = [
-              analysis.job_focus_summary,
-              analysis.skill_match_notes,
-              activeVariation.summary_headline,
-              'Tailored highlight for this role',
-            ].filter(Boolean);
-            summaryBody = `${rotateArray(emphasisList, regenCount)[0] || emphasisList[0] || ''} ${summaryBody}`.trim();
-          }
-        }
-        const bulletItems = summaryBody
-          .split(/\n|•/)
-          .map((entry) => entry.trim())
-          .filter(Boolean);
-        const summaryGroupId = 'main';
-        let summaryBulletItems = bulletItems.map((line, idx) => ({
-          key: buildBulletKey('summary', summaryGroupId, idx),
-          text: line,
-        }));
-        if (summaryStyle === 'bullet' && regenCount > 0) {
-          summaryBulletItems = rotateArray(summaryBulletItems, regenCount);
-        }
+      case 'content': {
+        // Build cover letter text from paragraphs
+        const opening = activeVariation.opening_paragraph || '';
+        const bodies = activeVariation.body_paragraphs || [];
+        const closing = activeVariation.closing_paragraph || '';
+        const fullText = [opening, ...bodies, closing].filter(Boolean).join('\n\n');
+        
+        // Calculate word/character counts
+        const words = fullText.trim().split(/\s+/).filter(Boolean).length;
+        const chars = fullText.length;
+        
         const jsx = (
-          <section key="summary" className="resume-section card summary-block">
-            <h4>Summary & tone</h4>
-            {summaryHeadline && <p className="summary-headline">{summaryHeadline}</p>}
-            {summaryStyle === 'bullet' ? (
-              summaryBulletItems.length ? (
-                <SortableBulletList
-                  sectionId="summary"
-                  groupId={summaryGroupId}
-                  items={summaryBulletItems}
-                  bulletOrderOverrides={bulletOrderOverrides}
-                  setBulletOrderOverrides={setBulletOrderOverrides}
-                  bulletOverrides={bulletOverrides}
-                  onBulletOverride={handleBulletOverride}
-                />
-              ) : (
-                <p className="placeholder">Summary details will appear here.</p>
-              )
-            ) : (
-              <p>{summaryBody || 'Summary details will appear here.'}</p>
-            )}
-          </section>
-        );
-        const latexLines = ['\\section*{Summary & Tone}'];
-        if (summaryStyle === 'bullet' && summaryBulletItems.length) {
-          latexLines.push(buildItemizedLatex(summaryBulletItems.map((item) => item.text)));
-        } else if (summaryBody) {
-          latexLines.push(latexEscape(summaryBody));
-        }
-        return { jsx, latex: latexLines.filter(Boolean).join('\n') };
-      }
-      case 'skills': {
-        let skills = chipify(activeVariation.skills_to_highlight);
-        if (rewriteState.regenerate) {
-          skills = rotateArray(skills, rewriteState.regenerate);
-        }
-        const style = sectionConfig.formatting.skills?.style || 'pill';
-        const jsx = (
-          <section key="skills" className="resume-section card">
-            <h4>Key skills for this role</h4>
-            {skills.length ? (
-              style === 'list' ? (
-                <ul className="skills-list">
-                  {skills.map((skill) => (
-                    <li key={skill}>{skill}</li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="skill-badges">
-                  {skills.map((skill) => (
-                    <span key={skill} className="skill-pill">
-                      {skill}
-                    </span>
-                  ))}
+          <section key="content" className="resume-section card cover-letter-content">
+            <h4>Cover Letter Content</h4>
+            
+            {/* Editing Toolbar */}
+            <div className="editing-toolbar">
+              <div className="stats-group">
+                <span className="stat">
+                  <Icon name="type" size="sm" /> {words} words
+                </span>
+                <span className="stat">
+                  <Icon name="file-text" size="sm" /> {chars} characters
+                </span>
+              </div>
+              
+              {/* Version History Controls */}
+              <div className="version-controls">
+                <button
+                  type="button"
+                  className="btn btn-sm version-btn"
+                  onClick={handleUndo}
+                  disabled={currentVersionIndex <= 0}
+                  title="Undo (Ctrl+Z)"
+                >
+                  <Icon name="corner-up-left" size="sm" />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm version-btn"
+                  onClick={handleRedo}
+                  disabled={currentVersionIndex >= versionHistory.length - 1}
+                  title="Redo (Ctrl+Y)"
+                >
+                  <Icon name="corner-up-right" size="sm" />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm version-btn"
+                  onClick={() => setShowVersionHistory(!showVersionHistory)}
+                  title="Version History"
+                >
+                  <Icon name="clock" size="sm" />
+                  {versionHistory.length > 0 && (
+                    <span className="version-count">{versionHistory.length}</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm version-btn ${grammarIssues.length > 0 ? 'has-issues' : ''}`}
+                  onClick={() => setShowGrammarPanel(!showGrammarPanel)}
+                  title="Grammar & Style Check"
+                >
+                  <Icon name="check-circle" size="sm" />
+                  {grammarIssues.length > 0 && (
+                    <span className="issue-count">{grammarIssues.length}</span>
+                  )}
+                </button>
+              </div>
+            </div>
+            
+            {/* Editable Content Area */}
+            {fullText ? (
+              <div className="cover-letter-editor">
+                <div className="paragraph-section">
+                  <label className="paragraph-label">Opening Paragraph</label>
+                  <textarea
+                    className="cover-letter-textarea"
+                    value={opening}
+                    onChange={(e) => {
+                      // Update the result state with new opening paragraph
+                      setResult(prev => {
+                        if (!prev || !prev.variations) return prev;
+                        return {
+                          ...prev,
+                          variations: prev.variations.map(v => 
+                            v.id === activeVariationId 
+                              ? { ...v, opening_paragraph: e.target.value }
+                              : v
+                          )
+                        };
+                      });
+                    }}
+                    placeholder="Opening paragraph..."
+                    rows={3}
+                  />
                 </div>
-              )
-            ) : (
-              <p className="placeholder">No highlighted skills yet.</p>
-            )}
-          </section>
-        );
-        const latexLines = ['\\section*{Key Skills for this Role}'];
-        if (skills.length) {
-          latexLines.push(buildItemizedLatex(skills));
-        }
-        return { jsx, latex: latexLines.filter(Boolean).join('\n') };
-      }
-      case 'experience': {
-        const density = sectionConfig.formatting.experience?.density || 'detailed';
-        let experiences = activeVariation.experience_sections || [];
-        if (rewriteState.regenerate) {
-          experiences = rotateArray(experiences, rewriteState.regenerate);
-        }
-        const jsx = (
-          <section key="experience" className="resume-section card">
-            <h4>Experiences to spotlight</h4>
-            {experiences.length ? (
-              <ol className={`experience-list ${density === 'compact' ? 'compact' : ''}`}>
-                {experiences.map((exp, idx) => {
-                  const bullets = density === 'compact' ? (exp.bullets || []).slice(0, 1) : exp.bullets;
-                  const groupId = exp.source_experience_id || `${exp.role || 'experience'}-${exp.company || idx}`;
-                  const bulletItems = (bullets || []).map((bullet, bulletIdx) => {
-                    const key = buildBulletKey('experience', groupId, bulletIdx);
-                    return {
-                      key,
-                      text: bulletOverrides[key] ?? bullet,
-                    };
-                  });
-                  return (
-                    <li key={`${exp.source_experience_id}-${exp.role}`}>
-                      <div className="experience-card">
-                        <div className="experience-header">
-                          <span className="experience-rank">#{idx + 1}</span>
-                          <div>
-                            <strong>{exp.role}</strong>
-                            <span>{exp.company}</span>
-                            <small>
-                              {exp.location || 'Remote'} · {exp.dates}
-                            </small>
-                          </div>
-                        </div>
-                        {bulletItems?.length ? (
-                          <SortableBulletList
-                            sectionId="experience"
-                            groupId={groupId}
-                            items={bulletItems}
-                            bulletOrderOverrides={bulletOrderOverrides}
-                            setBulletOrderOverrides={setBulletOrderOverrides}
-                            bulletOverrides={bulletOverrides}
-                            onBulletOverride={handleBulletOverride}
-                          />
-                        ) : (
-                          <p className="placeholder">No bullet points provided for this role yet.</p>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            ) : (
-              <p className="placeholder">No experience sections available yet.</p>
-            )}
-          </section>
-        );
-        const latexLines = ['\\section*{Experience Highlights}'];
-        experiences.forEach((exp, idx) => {
-          const bullets = density === 'compact' ? (exp.bullets || []).slice(0, 1) : exp.bullets;
-          const groupId = exp.source_experience_id || `${exp.role || 'experience'}-${exp.company || idx}`;
-          const bulletItems = (bullets || []).map((bullet, bulletIdx) => {
-            const key = buildBulletKey('experience', groupId, bulletIdx);
-            return {
-              key,
-              text: bulletOverrides[key] ?? bullet,
-            };
-          });
-          const ordered = getOrderedBulletItems('experience', groupId, bulletItems, bulletOrderOverrides);
-          latexLines.push(`\\subsection*{${latexEscape(exp.role || 'Experience')}}`);
-          const metaParts = [exp.company, exp.location, exp.dates].filter(Boolean).map(latexEscape);
-          if (metaParts.length) {
-            latexLines.push(metaParts.join(' \\textbullet{} '));
-          }
-          if (ordered.length) {
-            latexLines.push(buildItemizedLatex(ordered.map((item) => item.text)));
-          }
-        });
-        return { jsx, latex: latexLines.filter(Boolean).join('\n') };
-      }
-      case 'projects': {
-        const emphasis = sectionConfig.formatting.projects?.emphasis || 'impact';
-        let projects = activeVariation.project_sections || [];
-        if (rewriteState.regenerate) {
-          projects = rotateArray(projects, rewriteState.regenerate);
-        }
-        const jsx = (
-          <section key="projects" className="resume-section card">
-            <h4>Projects & initiatives</h4>
-            {projects.length ? (
-              <div className="experience-grid projects">
-                {projects.map((proj) => {
-                  const groupId = proj.source_project_id || proj.name;
-                  const bulletItems = (proj.bullets || []).map((bullet, idx) => {
-                    const key = buildBulletKey('projects', groupId, idx);
-                    return {
-                      key,
-                      text: bulletOverrides[key] ?? bullet,
-                    };
-                  });
-                  return (
-                    <div
-                      key={`${proj.source_project_id}-${proj.name}`}
-                      className={`experience-card project ${emphasis === 'technical' ? 'technical' : ''}`}
-                    >
-                      <div className="experience-header">
-                        <strong>{proj.name}</strong>
-                        <small>{proj.notes || 'Project highlight'}</small>
-                      </div>
-                      {emphasis === 'technical' && <span className="format-tag">Technical focus</span>}
-                      {bulletItems.length ? (
-                        <SortableBulletList
-                          sectionId="projects"
-                          groupId={groupId}
-                          items={bulletItems}
-                          bulletOrderOverrides={bulletOrderOverrides}
-                          setBulletOrderOverrides={setBulletOrderOverrides}
-                          bulletOverrides={bulletOverrides}
-                          onBulletOverride={handleBulletOverride}
-                        />
-                      ) : (
-                        <p className="placeholder">Add a few talking points for this project.</p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="placeholder">No project sections were generated for this variation.</p>
-            )}
-          </section>
-        );
-        const latexLines = ['\\section*{Projects & Initiatives}'];
-        projects.forEach((proj) => {
-          const groupId = proj.source_project_id || proj.name;
-          const bulletItems = (proj.bullets || []).map((bullet, idx) => {
-            const key = buildBulletKey('projects', groupId, idx);
-            return {
-              key,
-              text: bulletOverrides[key] ?? bullet,
-            };
-          });
-          const ordered = getOrderedBulletItems('projects', groupId, bulletItems, bulletOrderOverrides);
-          latexLines.push(`\\subsection*{${latexEscape(proj.name || 'Project')}}`);
-          if (proj.notes) {
-            latexLines.push(`\\textit{${latexEscape(proj.notes)}}`);
-          }
-          if (ordered.length) {
-            latexLines.push(buildItemizedLatex(ordered.map((item) => item.text)));
-          }
-        });
-        return { jsx, latex: latexLines.filter(Boolean).join('\n') };
-      }
-      case 'education': {
-        let education = activeVariation.education_highlights || [];
-        if (rewriteState.regenerate) {
-          education = rotateArray(education, rewriteState.regenerate);
-        }
-        
-        // Convert education to bullet format similar to experience
-        const educationGroupId = 'education-main';
-        const bulletItems = education.map((edu, idx) => ({
-          key: buildBulletKey('education', educationGroupId, idx),
-          text: bulletOverrides[buildBulletKey('education', educationGroupId, idx)] ?? edu.notes,
-        }));
-        
-        const jsx = (
-          <section key="education" className="resume-section card">
-            <h4>Education</h4>
-            {bulletItems.length ? (
-              <SortableBulletList
-                sectionId="education"
-                groupId={educationGroupId}
-                items={bulletItems}
-                bulletOrderOverrides={bulletOrderOverrides}
-                setBulletOrderOverrides={setBulletOrderOverrides}
-                bulletOverrides={bulletOverrides}
-                onBulletOverride={handleBulletOverride}
-              />
-            ) : (
-              <p className="placeholder">Education history is not included in this variation.</p>
-            )}
-          </section>
-        );
-        
-        const orderedBullets = getOrderedBulletItems('education', educationGroupId, bulletItems, bulletOrderOverrides);
-        const latex = orderedBullets.length
-          ? [
-              '\\section*{Education}',
-              '\\begin{itemize}',
-              ...orderedBullets.map((item) => `  \\item ${latexEscape(item.text || '')}`),
-              '\\end{itemize}',
-            ].join('\n')
-          : '\\section*{Education}';
-        return { jsx, latex };
-      }
-      case 'keywords': {
-        let keywords = chipify(activeVariation.ats_keywords || analysis.keyword_strategy);
-        if (rewriteState.regenerate) {
-          keywords = rotateArray(keywords, rewriteState.regenerate);
-        }
-        const badgeStyle = sectionConfig.formatting.keywords?.badgeStyle || 'neutral';
-        const jsx = (
-          <section key="keywords" className="resume-section card">
-            <h4>ATS keywords</h4>
-            {keywords.length ? (
-              <div className="chip-row">
-                {keywords.map((keyword) => (
-                  <span
-                    key={`keyword-${keyword}`}
-                    className={`chip ${badgeStyle === 'accent' ? 'accent' : 'neutral'}`}
-                  >
-                    {keyword}
-                  </span>
+                
+                {bodies.map((body, idx) => (
+                  <div key={`body-${idx}`} className="paragraph-section">
+                    <label className="paragraph-label">Body Paragraph {idx + 1}</label>
+                    <textarea
+                      className="cover-letter-textarea"
+                      value={body}
+                      onChange={(e) => {
+                        // Update the result state with new body paragraph
+                        setResult(prev => {
+                          if (!prev || !prev.variations) return prev;
+                          return {
+                            ...prev,
+                            variations: prev.variations.map(v => {
+                              if (v.id === activeVariationId) {
+                                const newBodyParagraphs = [...(v.body_paragraphs || [])];
+                                newBodyParagraphs[idx] = e.target.value;
+                                return { ...v, body_paragraphs: newBodyParagraphs };
+                              }
+                              return v;
+                            })
+                          };
+                        });
+                      }}
+                      placeholder={`Body paragraph ${idx + 1}...`}
+                      rows={4}
+                    />
+                  </div>
                 ))}
+                
+                <div className="paragraph-section">
+                  <label className="paragraph-label">Closing Paragraph</label>
+                  <textarea
+                    className="cover-letter-textarea"
+                    value={closing}
+                    onChange={(e) => {
+                      // Update the result state with new closing paragraph
+                      setResult(prev => {
+                        if (!prev || !prev.variations) return prev;
+                        return {
+                          ...prev,
+                          variations: prev.variations.map(v => 
+                            v.id === activeVariationId 
+                              ? { ...v, closing_paragraph: e.target.value }
+                              : v
+                          )
+                        };
+                      });
+                    }}
+                    placeholder="Closing paragraph..."
+                    rows={3}
+                  />
+                </div>
+                
+                {/* Editing Tips */}
+                <div className="editing-tips">
+                  <p className="tip-header"><Icon name="lightbulb" size="sm" /> Editing Tips</p>
+                  <ul className="tips-list">
+                    <li>Keep your cover letter between 250-400 words for optimal length</li>
+                    <li>Use active voice and specific examples from your experience</li>
+                    <li>Tailor your content to match the job description</li>
+                    <li>Versions are saved automatically after substantial edits</li>
+                  </ul>
+                </div>
               </div>
             ) : (
-              <p className="placeholder">No keyword recommendations yet.</p>
+              <p className="placeholder">Generate a cover letter to begin editing.</p>
             )}
           </section>
         );
-        const latexLines = ['\\section*{ATS Keywords}'];
-        if (keywords.length) {
-          latexLines.push(`\\textit{${latexEscape(keywords.join(', '))}}`);
+        
+        // Generate LaTeX
+        const latexLines = [];
+        if (opening) latexLines.push(latexEscape(opening));
+        bodies.forEach(body => {
+          if (body) {
+            latexLines.push('');
+            latexLines.push(latexEscape(body));
+          }
+        });
+        if (closing) {
+          latexLines.push('');
+          latexLines.push(latexEscape(closing));
         }
-        return { jsx, latex: latexLines.filter(Boolean).join('\n') };
+        
+        return { jsx, latex: latexLines.join('\n') };
       }
+      
       default:
-          return { jsx: null, latex: '' };
-      }
+        return { jsx: null, latex: '' };
+    }
   }
 
   return (
@@ -2455,6 +2575,171 @@ const AiCoverLetterGenerator = () => {
               {/* Variation/resume preview card removed — cover letter page does not include the resume variation card */}
             </div>
           </section>
+        </>
+      )}
+      
+      {/* Grammar & Style Check Sidebar Modal */}
+      {showGrammarPanel && (
+        <>
+          <div className="grammar-sidebar-overlay" onClick={() => setShowGrammarPanel(false)} />
+          <div className="grammar-sidebar">
+            <div className="grammar-sidebar-header">
+              <h3>
+                <Icon name="check-circle" size="sm" />
+                Grammar & Style
+              </h3>
+              <button 
+                type="button" 
+                className="close-btn"
+                onClick={() => setShowGrammarPanel(false)}
+                aria-label="Close"
+              >
+                <Icon name="clear" size="md" />
+              </button>
+            </div>
+            
+            <div className="grammar-sidebar-content">
+              {grammarIssues.length === 0 ? (
+                <div className="no-issues-state">
+                  <Icon name="check-circle" size="xl" />
+                  <h4>Looking good!</h4>
+                  <p>No grammar or style issues detected in your cover letter.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="issues-summary">
+                    <span className="issue-count-large">{grammarIssues.length}</span>
+                    <span className="issue-label">
+                      {grammarIssues.length === 1 ? 'suggestion' : 'suggestions'}
+                    </span>
+                  </div>
+                  
+                  <div className="grammar-issues-list">
+                    {grammarIssues.map((issue) => (
+                      <div key={issue.id} className={`grammar-issue issue-${issue.type} ${issue.canAutoFix ? 'fixable' : ''}`}>
+                        <div className="issue-header">
+                          <span className="issue-type-badge">{issue.type}</span>
+                          <span className="issue-text">"{issue.text}"</span>
+                        </div>
+                        <div className="issue-details">
+                          <p className="issue-message">{issue.message}</p>
+                          <p className="issue-suggestion">
+                            <Icon name="arrow-right" size="sm" /> {issue.suggestion}
+                          </p>
+                        </div>
+                        <div className="issue-actions">
+                          {issue.canAutoFix && (
+                            <button
+                              type="button"
+                              className="fix-btn"
+                              onClick={() => applyGrammarFix(issue)}
+                            >
+                              <Icon name="check" size="sm" />
+                              Apply Fix
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="ignore-btn"
+                            onClick={() => ignoreGrammarIssue(issue.id)}
+                            title="Ignore this suggestion"
+                          >
+                            <Icon name="clear" size="sm" />
+                            Ignore
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+      
+      {/* Version History Sidebar Modal */}
+      {showVersionHistory && (
+        <>
+          <div className="grammar-sidebar-overlay" onClick={() => setShowVersionHistory(false)} />
+          <div className="grammar-sidebar">
+            <div className="grammar-sidebar-header">
+              <h3>
+                <Icon name="clock" size="sm" />
+                Version History
+              </h3>
+              <button 
+                type="button" 
+                className="close-btn"
+                onClick={() => setShowVersionHistory(false)}
+                aria-label="Close"
+              >
+                <Icon name="clear" size="md" />
+              </button>
+            </div>
+            
+            <div className="grammar-sidebar-content">
+              {versionHistory.length === 0 ? (
+                <div className="no-issues-state">
+                  <Icon name="clock" size="xl" />
+                  <h4>No versions yet</h4>
+                  <p>Start editing your cover letter to create version snapshots.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="issues-summary">
+                    <span className="issue-count-large">{versionHistory.length}</span>
+                    <span className="issue-label">
+                      {versionHistory.length === 1 ? 'version' : 'versions'} saved
+                    </span>
+                  </div>
+                  
+                  <div className="grammar-issues-list">
+                    {versionHistory.map((version, idx) => (
+                      <div 
+                        key={version.timestamp} 
+                        className={`grammar-issue ${idx === currentVersionIndex ? 'active-version' : ''}`}
+                      >
+                        <div className="issue-header">
+                          <Icon name="clock" size="sm" />
+                          <div className="issue-details">
+                            <span className="issue-type">Version {versionHistory.length - idx}</span>
+                            <span className="issue-message">{version.label}</span>
+                            {idx === currentVersionIndex && (
+                              <span className="current-badge" style={{ 
+                                display: 'inline-block',
+                                marginLeft: '8px',
+                                padding: '2px 8px',
+                                backgroundColor: '#10b981',
+                                color: 'white',
+                                borderRadius: '12px',
+                                fontSize: '11px',
+                                fontWeight: '600'
+                              }}>Current</span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {idx !== currentVersionIndex && (
+                          <div className="issue-actions">
+                            <button
+                              type="button"
+                              className="fix-btn"
+                              onClick={() => restoreVersion(idx)}
+                              title="Restore this version"
+                            >
+                              <Icon name="corner-up-left" size="sm" />
+                              Restore
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </>
       )}
 
