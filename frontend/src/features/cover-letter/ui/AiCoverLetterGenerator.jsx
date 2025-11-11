@@ -24,9 +24,33 @@ const toneOptions = [
   { value: 'technical', label: 'Technical', hint: 'Highlight architecture & tooling depth' },
   { value: 'leadership', label: 'Leadership', hint: 'Spotlight stakeholder and team impact' },
   { value: 'balanced', label: 'Balanced', hint: 'Blend collaboration, delivery, and metrics' },
+  // UC-058 cover letter tones
+  { value: 'formal', label: 'Formal', hint: 'Polished, professional language' },
+  { value: 'casual', label: 'Casual', hint: 'Conversational and approachable' },
+  { value: 'enthusiastic', label: 'Enthusiastic', hint: 'Upbeat and energetic' },
+  { value: 'analytical', label: 'Analytical', hint: 'Evidence-driven and logical' },
 ];
 
 const variationChoices = [1, 2, 3];
+const lengthChoices = [
+  { value: 'brief', label: 'Brief' },
+  { value: 'standard', label: 'Standard' },
+  { value: 'detailed', label: 'Detailed' },
+];
+
+const writingStyleOptions = [
+  { value: 'direct', label: 'Direct' },
+  { value: 'narrative', label: 'Narrative' },
+  { value: 'bullet_points', label: 'Bullet points' },
+];
+
+const companyCultureOptions = [
+  { value: 'auto', label: 'Auto (match company)' },
+  { value: 'startup', label: 'Startup' },
+  { value: 'corporate', label: 'Corporate' },
+];
+// UX constants
+const MAX_CUSTOM_INSTRUCTIONS = 500;
 
 const SECTION_IDS = ['summary', 'skills', 'experience', 'projects', 'education', 'keywords', 'preview'];
 const rotateArray = (list = [], shift = 0) => {
@@ -662,6 +686,12 @@ const AiCoverLetterGenerator = () => {
 
   const [tone, setTone] = useState('balanced');
   const [variationCount, setVariationCount] = useState(2);
+  // UC-058 customization state
+  const [length, setLength] = useState('standard');
+  const [writingStyle, setWritingStyle] = useState('direct');
+  const [companyCulture, setCompanyCulture] = useState('auto');
+  const [industryInput, setIndustryInput] = useState('');
+  const [customInstructions, setCustomInstructions] = useState('');
   const [generating, setGenerating] = useState(false);
   const [generationError, setGenerationError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
@@ -753,6 +783,12 @@ const AiCoverLetterGenerator = () => {
       setActiveVariationId(cached.activeVariationId || cached.result?.variations?.[0]?.id || '');
       setTone(cached.tone || 'balanced');
       setVariationCount(cached.variationCount || 2);
+      // UC-058 cached preferences
+      setLength(cached.length || 'standard');
+      setWritingStyle(cached.writingStyle || 'direct');
+      setCompanyCulture(cached.companyCulture || 'auto');
+      setIndustryInput(cached.industry || '');
+      setCustomInstructions(cached.customInstructions || '');
       if (cached.sectionConfig) {
         setSectionConfig(hydrateSectionConfig(cached.sectionConfig));
       }
@@ -779,11 +815,17 @@ const AiCoverLetterGenerator = () => {
         activeVariationId,
         tone,
         variationCount,
+        // UC-058 preferences
+        length,
+        writingStyle,
+        companyCulture,
+        industry: industryInput,
+        customInstructions,
         sectionConfig,
         layoutSource,
       });
     }
-  }, [result, selectedJobId, activeVariationId, tone, variationCount, sectionConfig, layoutSource]);
+  }, [result, selectedJobId, activeVariationId, tone, variationCount, length, writingStyle, companyCulture, industryInput, customInstructions, sectionConfig, layoutSource]);
 
   useEffect(() => {
     if (!layoutHint) return undefined;
@@ -1146,6 +1188,12 @@ const AiCoverLetterGenerator = () => {
       const data = await coverLetterAIAPI.generateForJob(selectedJobId, {
         tone,
         variation_count: variationCount,
+        // UC-058 customization options
+        length,
+        writing_style: writingStyle,
+        company_culture: companyCulture,
+        industry: industryInput,
+        custom_instructions: customInstructions,
       });
       console.log('Received cover letter data:', {
         variation_count: data?.variation_count,
@@ -1184,6 +1232,12 @@ const AiCoverLetterGenerator = () => {
     setStatusMessage('');
     setTone('balanced');
     setVariationCount(2);
+    // reset UC-058 preferences
+    setLength('standard');
+    setWritingStyle('direct');
+    setCompanyCulture('auto');
+    setIndustryInput('');
+    setCustomInstructions('');
     applyLayoutConfig(createDefaultSectionConfig(), {
       type: 'template',
       id: 'balanced',
@@ -1365,6 +1419,38 @@ const AiCoverLetterGenerator = () => {
       selectedJobDetail?.derived_keywords,
   );
   const analysis = result?.shared_analysis || {};
+  // Combine news references from shared analysis and the active variation highlights
+  const combinedNews = useMemo(() => {
+    const analysisNews = (analysis.news_to_reference || []).map((n) => (typeof n === 'string' ? { title: n } : n));
+    const variationNews = (activeVariation?.highlights?.news_citations || []).map((n) => (typeof n === 'string' ? { title: n } : n));
+    const merged = [];
+    const seen = new Set();
+    [...analysisNews, ...variationNews].forEach((item) => {
+      const key = (item?.title || '').trim();
+      if (!key) return;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(item);
+      }
+    });
+    return merged;
+  }, [analysis, activeVariation]);
+  // Combine key achievements from shared analysis and active variation highlights
+  const combinedAchievements = useMemo(() => {
+    const analysisItems = (analysis.key_achievements || []).map((a) => (typeof a === 'string' ? a : String(a?.text || a)));
+    const variationItems = (activeVariation?.highlights?.achievements || []).map((a) => (typeof a === 'string' ? a : String(a?.text || a)));
+    const merged = [];
+    const seen = new Set();
+    [...analysisItems, ...variationItems].forEach((item) => {
+      const key = (item || '').trim();
+      if (!key) return;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(key);
+      }
+    });
+    return merged;
+  }, [analysis, activeVariation]);
   const profile = result?.profile;
   const activeHint = generating ? generationHints[hintIndex] : '';
   const jobTypeSource = sanitizeText(selectedJobDetail?.job_type);
@@ -2023,6 +2109,61 @@ const AiCoverLetterGenerator = () => {
             </select>
           </div>
 
+          <div className="control-group">
+            <label>Length</label>
+            <select value={length} onChange={(e) => setLength(e.target.value)}>
+              {lengthChoices.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+
+            <label>Writing style</label>
+            <select value={writingStyle} onChange={(e) => setWritingStyle(e.target.value)}>
+              {writingStyleOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+
+            <div className="inline-row" style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+              <div style={{ flex: '1 1 50%' }}>
+                <label>Company culture</label>
+                <select value={companyCulture} onChange={(e) => setCompanyCulture(e.target.value)}>
+                  {companyCultureOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <p className="hint">Automatic matching will attempt to mirror the company's tone.</p>
+              </div>
+
+              <div style={{ flex: '1 1 50%' }}>
+                <label htmlFor="industry-input">Industry (optional)</label>
+                <input
+                  id="industry-input"
+                  type="text"
+                  placeholder="e.g., fintech, healthcare"
+                  value={industryInput}
+                  onChange={(e) => setIndustryInput(e.target.value)}
+                  aria-describedby="industry-hint"
+                />
+                <p id="industry-hint" className="hint">Helps the AI pick industry-specific phrasing (optional).</p>
+              </div>
+            </div>
+
+            <label htmlFor="custom-instructions">Custom instructions (optional)</label>
+            <textarea
+              id="custom-instructions"
+              placeholder="e.g., emphasize leadership in cross-functional teams"
+              value={customInstructions}
+              onChange={(e) => setCustomInstructions(e.target.value.slice(0, MAX_CUSTOM_INSTRUCTIONS))}
+              rows={4}
+              aria-describedby="custom-instructions-hint"
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p id="custom-instructions-hint" className="hint">Optional guidance for the model — keep under {MAX_CUSTOM_INSTRUCTIONS} characters.</p>
+              <small aria-live="polite">{customInstructions.length}/{MAX_CUSTOM_INSTRUCTIONS}</small>
+            </div>
+          </div>
+
           <div className="control-actions">
             <button
               type="button"
@@ -2146,40 +2287,49 @@ const AiCoverLetterGenerator = () => {
                     `Using ${result.tone || 'balanced'} tone to match the company culture.`}
                 </p>
               </div>
-              {analysis.key_achievements?.length > 0 && (
+              {combinedAchievements.length > 0 && (
                 <div>
                   <strong>Key achievements highlighted</strong>
                   <ul>
-                    {analysis.key_achievements.slice(0, 3).map((achievement, idx) => (
+                    {combinedAchievements.slice(0, 3).map((achievement, idx) => (
                       <li key={idx}>{achievement}</li>
                     ))}
                   </ul>
                 </div>
               )}
-              {analysis.news_to_reference?.length > 0 && (
+              {combinedNews.length > 0 && (
                 <div>
-                  <strong>Recent news referenced</strong>
+                  <strong>News referenced</strong>
                   <ul>
-                    {analysis.news_to_reference.map((news, idx) => (
-                      <li key={idx}>{news}</li>
+                    {combinedNews.map((news, idx) => (
+                      <li key={idx}>
+                        {news.title || news}
+                        {news.date && <span className="date"> ({news.date})</span>}
+                      </li>
                     ))}
                   </ul>
                 </div>
               )}
-              {profile && (
-                <div className="profile-preview">
-                  <strong>{profile.name}</strong>
-                  {profile.headline && <p>{profile.headline}</p>}
-                  {profile.location && <p>{profile.location}</p>}
-                  {profile.top_skills?.length > 0 && (
-                    <div className="chip-row">
-                      {profile.top_skills.map((skill) => (
-                        <span key={skill} className="chip">
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+              {/* Merge per-variation highlights into the main AI insights card to avoid duplication */}
+              {activeVariation?.highlights && (
+                <div>
+                  <strong>Variation highlights</strong>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {/* Achievements are merged into the shared 'Key achievements highlighted' section above */}
+                    {activeVariation.highlights.keywords_used?.length > 0 && (
+                      <div>
+                        <strong>Keywords emphasized</strong>
+                        <div className="chip-row">
+                          {activeVariation.highlights.keywords_used.map((keyword) => (
+                            <span key={keyword} className="chip">
+                              {keyword}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* news citations merged into the shared 'News referenced' section above */}
+                  </div>
                 </div>
               )}
             </div>
@@ -2209,51 +2359,7 @@ const AiCoverLetterGenerator = () => {
 
             </div>
             
-            {activeVariation && activeVariation.highlights && (
-              <section className="ai-resume-card insights">
-                <div>
-                  <p className="eyebrow">Experience highlighting</p>
-                  <h2>What this variation emphasizes</h2>
-                </div>
-                <div className="insight-grid">
-                  {activeVariation.highlights.achievements?.length > 0 && (
-                    <div>
-                      <strong>Achievements referenced</strong>
-                      <ul>
-                        {activeVariation.highlights.achievements.map((achievement, idx) => (
-                          <li key={idx}>{achievement}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {activeVariation.highlights.keywords_used?.length > 0 && (
-                    <div>
-                      <strong>Keywords emphasized</strong>
-                      <div className="chip-row">
-                        {activeVariation.highlights.keywords_used.map((keyword) => (
-                          <span key={keyword} className="chip">
-                            {keyword}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {activeVariation.highlights.news_citations?.length > 0 && (
-                    <div>
-                      <strong>Company news referenced</strong>
-                      <ul>
-                        {activeVariation.highlights.news_citations.map((news, idx) => (
-                          <li key={idx}>
-                            {news.title || news}
-                            {news.date && <span className="date"> ({news.date})</span>}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
+            {/* Per-variation highlights are now merged into the AI insights card above to reduce overlap. */}
             
             <div className="customizer-preview-grid">
               <section className="ai-resume-card section-customizer">
@@ -2346,215 +2452,7 @@ const AiCoverLetterGenerator = () => {
                 </div>
               </section>
 
-              {activeVariation && (
-                <article className="ai-resume-card variation-card">
-                  <header>
-                    <div>
-                      <h3>{activeVariation.summary_headline || activeVariation.label}</h3>
-                      <div className="variation-chip-row">
-                        {activeVariation.tone && (
-                          <span className="chip tone">Tone: {activeVariation.tone}</span>
-                        )}
-                        <span className="chip layout-chip">{layoutSource.label}</span>
-                        {jobTypeSource && (
-                          <span className="chip jobtype-chip">{jobTypeSource}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="variation-action-stack">
-                      <button type="button" onClick={() => handleDownloadPdf(activeVariation)}>
-                        <Icon name="download" size="sm" /> Download PDF
-                      </button>
-                      <button type="button" onClick={() => handleDownloadDocx(activeVariation)}>
-                        <Icon name="download" size="sm" /> Download Word
-                      </button>
-                      <button type="button" onClick={() => handleDownloadText(activeVariation)}>
-                        <Icon name="download" size="sm" /> Download TXT
-                      </button>
-                      <button type="button" onClick={() => handleCopyLatex(activeVariation)}>
-                        {copiedVariationId === activeVariation.id ? (
-                          <>
-                            <Icon name="check" size="sm" /> Copied
-                          </>
-                        ) : (
-                          <>
-                            <Icon name="clipboard" size="sm" /> Copy LaTeX
-                          </>
-                        )}
-                      </button>
-                      <button type="button" className="primary ghost" onClick={() => handleDownload(activeVariation)}>
-                        <Icon name="download" size="sm" /> Download .tex
-                      </button>
-                      <button type="button" onClick={() => setShowEmailModal(true)}>
-                        <Icon name="mail" size="sm" /> Email
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={() => setShowLetterheadSettings(!showLetterheadSettings)}
-                      >
-                        <Icon name="settings" size="sm" /> Letterhead
-                      </button>
-                      <button
-                        type="button"
-                        className="collapse-toggle"
-                        onClick={() => handleCollapseAll(!allVisibleCollapsed)}
-                        disabled={!visibleSections.length}
-                      >
-                        <Icon name={allVisibleCollapsed ? 'chevronDown' : 'chevronUp'} size="sm" />{' '}
-                        {allVisibleCollapsed ? 'Expand sections' : 'Collapse sections'}
-                      </button>
-                    </div>
-
-                    <div className="template-manager">
-                      <div className="template-controls">
-                        <div className="template-select-group">
-                          <label htmlFor="template-select">
-                            <Icon name="layout" size="sm" /> Section arrangement template
-                          </label>
-                          <select
-                            id="template-select"
-                            value=""
-                            onChange={(e) => {
-                              const templateId = e.target.value;
-                              const allTemplates = [...sectionTemplates, ...customTemplates];
-                              const template = allTemplates.find(t => t.id === templateId);
-                              if (template) {
-                                handleApplyTemplate(template);
-                              }
-                              e.target.value = '';
-                            }}
-                          >
-                            <option value="">— Select a template —</option>
-                            <optgroup label="Built-in Templates">
-                              {sectionTemplates.map((template) => (
-                                <option key={template.id} value={template.id}>
-                                  {template.label}
-                                </option>
-                              ))}
-                            </optgroup>
-                            {customTemplates.length > 0 && (
-                              <optgroup label="My Templates">
-                                {customTemplates.map((template) => (
-                                  <option key={template.id} value={template.id}>
-                                    {template.label}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
-                          </select>
-                        </div>
-                        <button
-                          type="button"
-                          className="save-template-btn"
-                          onClick={() => setShowSaveTemplateDialog(true)}
-                          title="Save current arrangement as template"
-                        >
-                          <Icon name="save" size="sm" /> Save arrangement
-                        </button>
-                      </div>
-
-                      {showSaveTemplateDialog && (
-                        <div className="save-template-dialog">
-                          <div className="dialog-content">
-                            <h4>Save current arrangement</h4>
-                            <p className="dialog-hint">
-                              This will save your current section order, visibility, and formatting settings.
-                            </p>
-                            <label htmlFor="template-name-input">
-                              Template name <RequiredMark />
-                            </label>
-                            <input
-                              id="template-name-input"
-                              type="text"
-                              placeholder="Template name (e.g., My Tech Resume)"
-                              value={newTemplateName}
-                              onChange={(e) => setNewTemplateName(e.target.value)}
-                              onKeyPress={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleSaveTemplate();
-                                }
-                              }}
-                              aria-required="true"
-                              autoFocus
-                            />
-                            <div className="dialog-actions">
-                              <button type="button" onClick={handleSaveTemplate} className="primary">
-                                <Icon name="check" size="sm" /> Save template
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setShowSaveTemplateDialog(false);
-                                  setNewTemplateName('');
-                                }}
-                                className="ghost"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {customTemplates.length > 0 && (
-                        <div className="custom-templates-list">
-                          <h5>My saved templates</h5>
-                          <div className="template-chips">
-                            {customTemplates.map((template) => (
-                              <div key={template.id} className="template-chip">
-                                <button
-                                  type="button"
-                                  onClick={() => handleApplyTemplate(template)}
-                                  className="template-chip-apply"
-                                  title={`Apply ${template.label}`}
-                                >
-                                  <Icon name="layout" size="sm" />
-                                  <span>{template.label}</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteTemplate(template.id)}
-                                  className="template-chip-delete"
-                                  title="Delete template"
-                                >
-                                  <Icon name="trash" size="sm" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </header>
-
-                  <div className="variation-body">
-                    {allSections.length ? (
-                      <DndContext collisionDetection={closestCenter} onDragEnd={handlePreviewSectionDragEnd}>
-                        <SortableContext items={allSections} strategy={verticalListSortingStrategy}>
-                          {allSections.map((sectionId) => (
-                            <PreviewSectionBlock
-                              key={sectionId}
-                              sectionId={sectionId}
-                              meta={resumeSectionMeta[sectionId]}
-                              onToggleCollapse={handleSectionCollapseToggle}
-                              isCollapsed={!!collapsedSections[sectionId]}
-                              isVisible={sectionConfig.visibility[sectionId]}
-                              onToggleVisibility={handleSectionToggle}
-                            >
-                              {renderSectionById(sectionId)}
-                            </PreviewSectionBlock>
-                          ))}
-                        </SortableContext>
-                      </DndContext>
-                    ) : (
-                      <p className="placeholder">
-                        All sections are hidden. Enable at least one section above to continue previewing.
-                      </p>
-                    )}
-                  </div>
-                </article>
-              )}
+              {/* Variation/resume preview card removed — cover letter page does not include the resume variation card */}
             </div>
           </section>
         </>
