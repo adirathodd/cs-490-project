@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { jobsAPI, materialsAPI } from '../services/api';
 import Icon from './Icon';
 import DeadlineCalendar from './DeadlineCalendar';
+import AutomationDashboard from './automation/AutomationDashboard';
 import './Education.css';
 
 const defaultForm = {
@@ -68,6 +69,9 @@ const Jobs = () => {
   const [archiveReason, setArchiveReason] = useState('other');
   const [itemToDelete, setItemToDelete] = useState(null);
   const [undoNotification, setUndoNotification] = useState(null);
+
+  // Automation State
+  const [showAutomation, setShowAutomation] = useState(false);
 
   // UC-041: Import from URL State
   const [importUrl, setImportUrl] = useState('');
@@ -844,6 +848,15 @@ const Jobs = () => {
           >
             Cover Letters →
           </a>
+          <button
+            className="btn-secondary"
+            onClick={() => setShowAutomation(!showAutomation)}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            title="Job Application Automation"
+          >
+            <Icon name="magic" size="sm" />
+            {showAutomation ? 'Hide Automation' : 'Automation'}
+          </button>
           <button 
             className="add-education-button"
             onClick={() => {
@@ -1724,6 +1737,13 @@ const Jobs = () => {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Automation Dashboard Section */}
+      {showAutomation && (
+        <div style={{ marginTop: '32px', borderTop: '2px solid #e5e7eb', paddingTop: '32px' }}>
+          <AutomationDashboard />
         </div>
       )}
 

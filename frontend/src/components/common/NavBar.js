@@ -8,7 +8,11 @@ const NavBar = () => {
   const { currentUser, userProfile, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [resumeDropdownOpen, setResumeDropdownOpen] = useState(false);
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const menuRef = useRef(null);
+  const resumeDropdownRef = useRef(null);
+  const profileDropdownRef = useRef(null);
 
   // Prefer backend candidate profile/user name to ensure consistency across providers
   const backendFullName = (userProfile?.full_name || '').trim();
@@ -28,6 +32,12 @@ const NavBar = () => {
     const onDocClick = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         setMenuOpen(false);
+      }
+      if (resumeDropdownRef.current && !resumeDropdownRef.current.contains(e.target)) {
+        setResumeDropdownOpen(false);
+      }
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(e.target)) {
+        setProfileDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', onDocClick);
@@ -73,13 +83,71 @@ const NavBar = () => {
         <NavLink to="/skills" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Skills</NavLink>
         <NavLink to="/employment" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Employment</NavLink>
         <NavLink to="/education" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Education</NavLink>
-  <NavLink to="/projects" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Projects</NavLink>
-  <NavLink to="/jobs" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Jobs</NavLink>
-  <NavLink to="/resume/ai" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>AI Resume</NavLink>
+        <NavLink to="/projects" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Projects</NavLink>
+        <NavLink to="/jobs" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Jobs</NavLink>
+  
+  {/* Resume dropdown */}
+  <div className="nav-dropdown" ref={resumeDropdownRef}>
+    <button 
+      className={`nav-link nav-dropdown-toggle ${(window.location.pathname.startsWith('/resume') ? 'active' : '')}`}
+      onClick={(e) => { e.stopPropagation(); setResumeDropdownOpen(v => !v); }}
+    >
+      Resume ▾
+    </button>
+    {resumeDropdownOpen && (
+      <div className="nav-dropdown-menu">
+        <NavLink 
+          to="/resume/ai" 
+          className="nav-dropdown-item"
+          onClick={() => { setResumeDropdownOpen(false); setOpen(false); }}
+        >
+          AI Resume Generator
+        </NavLink>
+        <NavLink 
+          to="/resume/versions" 
+          className="nav-dropdown-item"
+          onClick={() => { setResumeDropdownOpen(false); setOpen(false); }}
+        >
+          Resume Version Control
+        </NavLink>
+      </div>
+    )}
+  </div>
+  
   <NavLink to="/cover-letter/ai" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>AI Cover Letters</NavLink>
   <NavLink to="/documents" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Documents</NavLink>
-        <NavLink to="/certifications" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Certifications</NavLink>
-        <NavLink to="/profile" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Profile</NavLink>
+  <NavLink to="/certifications" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Certifications</NavLink>
+        
+  {/* Profile dropdown */}
+  <div className="nav-dropdown" ref={profileDropdownRef}>
+    <button 
+      className={`nav-link nav-dropdown-toggle ${(
+        window.location.pathname.startsWith('/profile') ||
+        window.location.pathname.startsWith('/analytics')
+      ) ? 'active' : ''}`}
+      onClick={(e) => { e.stopPropagation(); setProfileDropdownOpen(v => !v); }}
+    >
+      Profile ▾
+    </button>
+    {profileDropdownOpen && (
+      <div className="nav-dropdown-menu">
+        <NavLink 
+          to="/profile" 
+          className="nav-dropdown-item"
+          onClick={() => { setProfileDropdownOpen(false); setOpen(false); }}
+        >
+          Basic Profile
+        </NavLink>
+        <NavLink 
+          to="/analytics" 
+          className="nav-dropdown-item"
+          onClick={() => { setProfileDropdownOpen(false); setOpen(false); }}
+        >
+          Analytics
+        </NavLink>
+      </div>
+    )}
+  </div>
         {/* Mobile-only actions so Sign Out is accessible when the user menu is hidden */}
         <button
           type="button"

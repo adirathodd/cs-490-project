@@ -2286,6 +2286,39 @@ const AiCoverLetterGenerator = () => {
     });
     return merged;
   }, [analysis, activeVariation]);
+  // Ensure we always show at least 3 news headlines in the UI: prefer combinedNews,
+  // fall back to research recent_news (if present on the generation result),
+  // then pad with a friendly placeholder.
+  const newsToShow = useMemo(() => {
+    const primary = Array.isArray(combinedNews) ? combinedNews.slice() : [];
+    const seen = new Set();
+    const out = [];
+
+    const pushUnique = (item) => {
+      const key = (item && (item.title || item.url || item)) || JSON.stringify(item);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push(item);
+    };
+
+    primary.forEach(pushUnique);
+
+    // Try backend research payloads as a fallback (various possible shapes)
+    const researchNews = (result && result.research && Array.isArray(result.research.recent_news))
+      ? result.research.recent_news
+      : (analysis && Array.isArray(analysis.recent_news) ? analysis.recent_news : []);
+
+    if (researchNews && researchNews.length) {
+      researchNews.forEach(pushUnique);
+    }
+
+    // If still short, add placeholders so the UI always shows three list items
+    while (out.length < 3) {
+      out.push({ title: 'No recent headlines available', url: '', date: '' });
+    }
+
+    return out.slice(0, 3);
+  }, [combinedNews, result, analysis]);
   const profile = result?.profile;
   const activeHint = generating ? generationHints[hintIndex] : '';
   const jobTypeSource = sanitizeText(selectedJobDetail?.job_type);
@@ -3019,19 +3052,20 @@ const AiCoverLetterGenerator = () => {
                   </ul>
                 </div>
               )}
-              {combinedNews.length > 0 && (
-                <div>
-                  <strong>News referenced</strong>
-                  <ul>
-                    {combinedNews.map((news, idx) => (
-                      <li key={idx}>
-                        {news.title || news}
-                        {news.date && <span className="date"> ({news.date})</span>}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              <div>
+                <strong>News referenced</strong>
+                <ul>
+                  {newsToShow.map((news, idx) => (
+                    <li key={idx}>
+                      {news?.title || news}
+                      {news?.date && <span className="date"> ({news.date})</span>}
+                      {news?.url ? (
+                        <a href={news.url} target="_blank" rel="noopener noreferrer"> ↗</a>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
               {/* Merge per-variation highlights into the main AI insights card to avoid duplication */}
               {activeVariation?.highlights && (
                 <div>

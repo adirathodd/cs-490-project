@@ -20,12 +20,14 @@ import ProjectDetail from './components/profile/ProjectDetail';
 import Jobs from './components/jobs/Jobs';
 import JobsPipeline from './components/jobs/JobsPipeline';
 import JobStats from './components/jobs/JobStats';
+import Analytics from './components/analytics/Analytics';
 import JobDetailView from './components/jobs/JobDetailView';
 import JobsCalendar from './components/jobs/JobsCalendar';
 import SalaryResearch from './components/jobs/SalaryResearch';
 import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
 import { AiCoverLetterGenerator } from './features/cover-letter';
+import ResumeVersionControl from './components/resume/ResumeVersionControl';
 import ScrollToTop from './components/common/ScrollToTop';
 import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
@@ -227,6 +229,17 @@ function App() {
           />
 
           <Route
+            path="/analytics"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <Analytics />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
             path="/jobs/:id"
             element={
               <PrivateRoute>
@@ -284,6 +297,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <AiCoverLetterGenerator />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/resume/versions"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ResumeVersionControl />
               </PrivateRoute>
             }
           />

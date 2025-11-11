@@ -28,8 +28,12 @@ from core.serializers import (
     WorkExperienceSerializer,
     JobEntrySerializer,
     CoverLetterTemplateSerializer,
+    ResumeVersionSerializer,
+    ResumeVersionListSerializer,
+    ResumeVersionCompareSerializer,
+    ResumeVersionMergeSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate, ResumeVersion
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def cover_letter_template_list_create(request):
@@ -7567,3 +7571,789 @@ def generate_preparation_tasks(interview):
             interview=interview,
             **task_data
         )
+
+# UC-052: Resume Version Management Views
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def resume_versions_list_create(request):
+    """
+    GET: List all resume versions for the current user
+    POST: Create a new resume version
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        # Filter options
+        include_archived = request.query_params.get('include_archived', 'false').lower() == 'true'
+        
+        versions = ResumeVersion.objects.filter(candidate=profile)
+        if not include_archived:
+            versions = versions.filter(is_archived=False)
+        
+        serializer = ResumeVersionListSerializer(versions, many=True)
+        return Response({
+            'versions': serializer.data,
+            'count': versions.count()
+        })
+    
+    elif request.method == 'POST':
+        serializer = ResumeVersionSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(candidate=profile)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def resume_version_detail(request, version_id):
+    """
+    GET: Retrieve a specific resume version
+    PUT: Update a resume version
+    DELETE: Delete or archive a resume version
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        serializer = ResumeVersionSerializer(version)
+        return Response(serializer.data)
+    
+    elif request.method == 'PUT':
+        serializer = ResumeVersionSerializer(version, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        # Check if this is the default version
+        if version.is_default and ResumeVersion.objects.filter(candidate=profile, is_archived=False).count() > 1:
+            return Response({
+                'error': 'Cannot delete the default version. Please set another version as default first.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        version.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_set_default(request, version_id):
+    """
+    POST: Set a resume version as the default/master version
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Set as default (model save will handle unsetting others)
+    version.is_default = True
+    version.save()
+    
+    serializer = ResumeVersionSerializer(version)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_archive(request, version_id):
+    """
+    POST: Archive a resume version
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Cannot archive the default version
+    if version.is_default:
+        return Response({
+            'error': 'Cannot archive the default version. Please set another version as default first.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    version.is_archived = True
+    version.save()
+    
+    serializer = ResumeVersionSerializer(version)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_restore(request, version_id):
+    """
+    POST: Restore an archived resume version
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    version.is_archived = False
+    version.save()
+    
+    serializer = ResumeVersionSerializer(version)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_compare(request):
+    """
+    POST: Compare two resume versions side-by-side
+    Expects: version1_id, version2_id
+    Returns: Structured diff highlighting differences
+    """
+    serializer = ResumeVersionCompareSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version1 = ResumeVersion.objects.get(
+            id=serializer.validated_data['version1_id'],
+            candidate=profile
+        )
+        version2 = ResumeVersion.objects.get(
+            id=serializer.validated_data['version2_id'],
+            candidate=profile
+        )
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'One or both resume versions not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Simple comparison of content fields
+    import json
+    
+    def deep_diff(obj1, obj2, path=""):
+        """Recursively find differences between two objects"""
+        differences = []
+        
+        if type(obj1) != type(obj2):
+            differences.append({
+                'path': path,
+                'type': 'type_change',
+                'version1': str(obj1),
+                'version2': str(obj2)
+            })
+            return differences
+        
+        if isinstance(obj1, dict):
+            all_keys = set(obj1.keys()) | set(obj2.keys())
+            for key in all_keys:
+                new_path = f"{path}.{key}" if path else key
+                if key not in obj1:
+                    differences.append({
+                        'path': new_path,
+                        'type': 'added',
+                        'version2': obj2[key]
+                    })
+                elif key not in obj2:
+                    differences.append({
+                        'path': new_path,
+                        'type': 'removed',
+                        'version1': obj1[key]
+                    })
+                else:
+                    differences.extend(deep_diff(obj1[key], obj2[key], new_path))
+        elif isinstance(obj1, list):
+            max_len = max(len(obj1), len(obj2))
+            for i in range(max_len):
+                new_path = f"{path}[{i}]"
+                if i >= len(obj1):
+                    differences.append({
+                        'path': new_path,
+                        'type': 'added',
+                        'version2': obj2[i]
+                    })
+                elif i >= len(obj2):
+                    differences.append({
+                        'path': new_path,
+                        'type': 'removed',
+                        'version1': obj1[i]
+                    })
+                else:
+                    differences.extend(deep_diff(obj1[i], obj2[i], new_path))
+        elif obj1 != obj2:
+            differences.append({
+                'path': path,
+                'type': 'changed',
+                'version1': obj1,
+                'version2': obj2
+            })
+        
+        return differences
+    
+    content_diff = deep_diff(version1.content, version2.content)
+    
+    return Response({
+        'version1': ResumeVersionSerializer(version1).data,
+        'version2': ResumeVersionSerializer(version2).data,
+        'differences': content_diff,
+        'diff_count': len(content_diff)
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_merge(request):
+    """
+    POST: Merge changes from one version into another
+    Expects: source_version_id, target_version_id, merge_fields (optional), create_new, new_version_name
+    """
+    serializer = ResumeVersionMergeSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        source = ResumeVersion.objects.get(
+            id=serializer.validated_data['source_version_id'],
+            candidate=profile
+        )
+        target = ResumeVersion.objects.get(
+            id=serializer.validated_data['target_version_id'],
+            candidate=profile
+        )
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'One or both resume versions not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    import copy
+    
+    merge_fields = serializer.validated_data.get('merge_fields', [])
+    create_new = serializer.validated_data.get('create_new', False)
+    new_version_name = serializer.validated_data.get('new_version_name')
+    
+    # Create merged content
+    merged_content = copy.deepcopy(target.content)
+    
+    if merge_fields:
+        # Merge specific fields
+        for field_path in merge_fields:
+            keys = field_path.split('.')
+            # Navigate to the field in source and copy to merged
+            source_val = source.content
+            target_val = merged_content
+            
+            for key in keys[:-1]:
+                if isinstance(source_val, dict) and key in source_val:
+                    source_val = source_val[key]
+                    if key not in target_val:
+                        target_val[key] = {}
+                    target_val = target_val[key]
+                else:
+                    break
+            
+            # Set the final value
+            if isinstance(target_val, dict) and keys[-1] in source_val:
+                target_val[keys[-1]] = source_val[keys[-1]]
+    else:
+        # Merge all fields from source
+        merged_content = copy.deepcopy(source.content)
+    
+    if create_new:
+        # Create new version with merged content
+        if not new_version_name:
+            return Response({
+                'error': 'new_version_name is required when create_new is True'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        new_version = ResumeVersion.objects.create(
+            candidate=profile,
+            version_name=new_version_name,
+            description=f"Merged from '{source.version_name}' and '{target.version_name}'",
+            content=merged_content,
+            latex_content=source.latex_content if source.latex_content else target.latex_content,
+            created_from=target,
+            generated_by_ai=False
+        )
+        serializer = ResumeVersionSerializer(new_version)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    else:
+        # Update target version
+        target.content = merged_content
+        target.save()
+        serializer = ResumeVersionSerializer(target)
+        return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resume_version_duplicate(request, version_id):
+    """
+    POST: Create a duplicate of an existing resume version
+    Expects: new_version_name (optional)
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        original = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ResumeVersion.DoesNotExist:
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    new_name = request.data.get('new_version_name', f"{original.version_name} (Copy)")
+    
+    import copy
+    
+    # Create duplicate
+    duplicate = ResumeVersion.objects.create(
+        candidate=profile,
+        version_name=new_name,
+        description=original.description,
+        content=copy.deepcopy(original.content),
+        latex_content=original.latex_content,
+        source_job=original.source_job,
+        created_from=original,
+        generated_by_ai=original.generated_by_ai,
+        generation_params=copy.deepcopy(original.generation_params)
+    )
+    
+    serializer = ResumeVersionSerializer(duplicate)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def resume_version_history(request, version_id):
+    """
+    GET: Get the history and lineage of a resume version
+    Shows parent and child versions, plus all edits/changes
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except (ResumeVersion.DoesNotExist, ValueError):
+        return Response({'error': 'Resume version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Get parent chain
+    parents = []
+    current = version.created_from
+    while current:
+        parents.append(ResumeVersionListSerializer(current).data)
+        current = current.created_from
+    
+    # Get children
+    children = ResumeVersion.objects.filter(created_from=version)
+    children_data = ResumeVersionListSerializer(children, many=True).data
+    
+    # Get change history for this version
+    from .serializers import ResumeVersionChangeSerializer
+    changes = version.change_history.all()
+    changes_data = ResumeVersionChangeSerializer(changes, many=True).data
+    
+    return Response({
+        'version': ResumeVersionSerializer(version).data,
+        'parents': parents,
+        'children': children_data,
+        'changes': changes_data
+    })
+
+
+
+
+# ============================================================================
+
+
+# ============================================================================
+# UC-069: Application Workflow Automation Views
+# ============================================================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def automation_rules_list_create(request):
+    """
+    UC-069: List automation rules or create a new rule
+    
+    GET: Retrieve all automation rules for the authenticated user
+    POST: Create a new automation rule
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        if request.method == 'GET':
+            from core.models import ApplicationAutomationRule
+            rules = ApplicationAutomationRule.objects.filter(candidate=profile)
+            
+            # Apply filters
+            is_active = request.query_params.get('is_active')
+            if is_active is not None:
+                rules = rules.filter(is_active=is_active.lower() == 'true')
+            
+            trigger_type = request.query_params.get('trigger_type')
+            if trigger_type:
+                rules = rules.filter(trigger_type=trigger_type)
+            
+            rules_data = []
+            for rule in rules:
+                rules_data.append({
+                    'id': rule.id,
+                    'name': rule.name,
+                    'description': rule.description,
+                    'trigger_type': rule.trigger_type,
+                    'trigger_conditions': rule.trigger_conditions,
+                    'action_type': rule.action_type,
+                    'action_parameters': rule.action_parameters,
+                    'is_active': rule.is_active,
+                    'created_at': rule.created_at.isoformat(),
+                    'last_triggered_at': rule.last_triggered_at.isoformat() if rule.last_triggered_at else None,
+                    'trigger_count': rule.trigger_count
+                })
+            
+            return Response({'rules': rules_data}, status=status.HTTP_200_OK)
+        
+        elif request.method == 'POST':
+            from core.models import ApplicationAutomationRule
+            
+            # Create new automation rule
+            rule_data = request.data
+            
+            rule = ApplicationAutomationRule.objects.create(
+                candidate=profile,
+                name=rule_data.get('name', ''),
+                description=rule_data.get('description', ''),
+                trigger_type=rule_data.get('trigger_type', 'job_saved'),
+                trigger_conditions=rule_data.get('trigger_conditions', {}),
+                action_type=rule_data.get('action_type', 'generate_documents'),
+                action_parameters=rule_data.get('action_parameters', {}),
+                is_active=rule_data.get('is_active', True)
+            )
+            
+            return Response({
+                'id': rule.id,
+                'name': rule.name,
+                'description': rule.description,
+                'trigger_type': rule.trigger_type,
+                'trigger_conditions': rule.trigger_conditions,
+                'action_type': rule.action_type,
+                'action_parameters': rule.action_parameters,
+                'is_active': rule.is_active,
+                'created_at': rule.created_at.isoformat(),
+                'trigger_count': rule.trigger_count
+            }, status=status.HTTP_201_CREATED)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error in automation_rules_list_create: {e}\n{traceback.format_exc()}")
+        return Response(
+            {'error': 'An error occurred processing the request'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def automation_rule_detail(request, rule_id):
+    """
+    UC-069: Retrieve, update, or delete a specific automation rule
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        from core.models import ApplicationAutomationRule
+        
+        try:
+            rule = ApplicationAutomationRule.objects.get(id=rule_id, candidate=profile)
+        except ApplicationAutomationRule.DoesNotExist:
+            return Response({'error': 'Rule not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        if request.method == 'GET':
+            return Response({
+                'id': rule.id,
+                'name': rule.name,
+                'description': rule.description,
+                'trigger_type': rule.trigger_type,
+                'trigger_conditions': rule.trigger_conditions,
+                'action_type': rule.action_type,
+                'action_parameters': rule.action_parameters,
+                'is_active': rule.is_active,
+                'created_at': rule.created_at.isoformat(),
+                'last_triggered_at': rule.last_triggered_at.isoformat() if rule.last_triggered_at else None,
+                'trigger_count': rule.trigger_count
+            })
+        
+        elif request.method == 'PUT':
+            # Update rule
+            rule_data = request.data
+            
+            rule.name = rule_data.get('name', rule.name)
+            rule.description = rule_data.get('description', rule.description)
+            rule.trigger_type = rule_data.get('trigger_type', rule.trigger_type)
+            rule.trigger_conditions = rule_data.get('trigger_conditions', rule.trigger_conditions)
+            rule.action_type = rule_data.get('action_type', rule.action_type)
+            rule.action_parameters = rule_data.get('action_parameters', rule.action_parameters)
+            rule.is_active = rule_data.get('is_active', rule.is_active)
+            
+            rule.save()
+            
+            return Response({
+                'id': rule.id,
+                'name': rule.name,
+                'description': rule.description,
+                'trigger_type': rule.trigger_type,
+                'trigger_conditions': rule.trigger_conditions,
+                'action_type': rule.action_type,
+                'action_parameters': rule.action_parameters,
+                'is_active': rule.is_active,
+                'updated_at': rule.updated_at.isoformat(),
+                'trigger_count': rule.trigger_count
+            })
+        
+        elif request.method == 'DELETE':
+            rule.delete()
+            return Response({'message': 'Rule deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error in automation_rule_detail: {e}\n{traceback.format_exc()}")
+        return Response(
+            {'error': 'An error occurred processing the request'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def automation_logs(request):
+    """
+    UC-069: Automation Execution Logs
+    
+    GET: Retrieve automation execution logs for monitoring and debugging
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        
+        # Use ApplicationPackage as log source for automation activity
+        from core.models import ApplicationPackage, ApplicationAutomationRule
+        
+        packages = ApplicationPackage.objects.filter(candidate=profile).order_by('-created_at')
+        
+        # Apply filters
+        rule_id_filter = request.query_params.get('rule_id')
+        if rule_id_filter:
+            packages = packages.filter(automation_rule_id=rule_id_filter)
+        
+        limit = int(request.query_params.get('limit', 50))
+        packages = packages[:limit]
+        
+        # Build response 
+        logs_data = []
+        for package in packages:
+            logs_data.append({
+                'id': package.id,
+                'job_title': package.job.title,
+                'company_name': package.job.company_name,
+                'status': package.status,
+                'generation_method': package.generation_method,
+                'automation_rule_name': package.automation_rule.name if package.automation_rule else None,
+                'created_at': package.created_at.isoformat(),
+                'resume_doc': package.resume_document.id if package.resume_document else None,
+                'cover_letter_doc': package.cover_letter_document.id if package.cover_letter_document else None,
+            })
+        
+        return Response({
+            'logs': logs_data,
+            'total_count': len(logs_data)
+        }, status=status.HTTP_200_OK)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response({'logs': [], 'total_count': 0}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error retrieving automation logs: {e}\n{traceback.format_exc()}")
+        return Response(
+            {
+                'error': {
+                    'code': 'internal_error',
+                    'message': 'Failed to retrieve automation logs'
+                }
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def trigger_automation_rule(request, rule_id):
+    """
+    UC-069: Manually trigger a specific automation rule
+    
+    POST: Execute an automation rule manually with provided context
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        from core.models import ApplicationAutomationRule, JobEntry
+        
+        try:
+            rule = ApplicationAutomationRule.objects.get(id=rule_id, candidate=profile)
+        except ApplicationAutomationRule.DoesNotExist:
+            return Response({'error': 'Rule not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get job context if provided
+        job_id = request.data.get('job_id')
+        context_data = {}
+        
+        if job_id:
+            try:
+                job_entry = JobEntry.objects.get(id=job_id, candidate=profile)
+                context_data['job_entry'] = job_entry
+            except JobEntry.DoesNotExist:
+                return Response({'error': 'Job not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Execute the rule
+        result = rule.execute_action(context_data)
+        
+        if result.get('success'):
+            return Response({
+                'message': 'Rule executed successfully',
+                'result': result
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'error': result.get('error', 'Unknown error during execution')
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error triggering automation rule: {e}\n{traceback.format_exc()}")
+        return Response(
+            {'error': 'An error occurred executing the rule'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def application_packages_list(request):
+    """
+    UC-069: List application packages
+    
+    GET: Retrieve all application packages for the authenticated user
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        from core.models import ApplicationPackage
+        
+        packages = ApplicationPackage.objects.filter(candidate=profile).order_by('-created_at')
+        
+        # Apply filters
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            packages = packages.filter(status=status_filter)
+        
+        job_id = request.query_params.get('job_id')
+        if job_id:
+            packages = packages.filter(job_id=job_id)
+        
+        generation_method = request.query_params.get('generation_method')
+        if generation_method:
+            packages = packages.filter(generation_method=generation_method)
+        
+        packages_data = []
+        for package in packages:
+            packages_data.append({
+                'id': package.id,
+                'job_id': package.job.id,
+                'job_title': package.job.title,
+                'company_name': package.job.company_name,
+                'status': package.status,
+                'generation_method': package.generation_method,
+                'automation_rule_name': package.automation_rule.name if package.automation_rule else None,
+                'document_count': package.document_count,
+                'is_complete': package.is_complete,
+                'created_at': package.created_at.isoformat(),
+                'submitted_at': package.submitted_at.isoformat() if package.submitted_at else None,
+                'resume_document_id': package.resume_document.id if package.resume_document else None,
+                'cover_letter_document_id': package.cover_letter_document.id if package.cover_letter_document else None,
+                'notes': package.notes
+            })
+        
+        return Response({
+            'packages': packages_data,
+            'total_count': len(packages_data)
+        }, status=status.HTTP_200_OK)
+    
+    except CandidateProfile.DoesNotExist:
+        return Response({'packages': [], 'total_count': 0}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error retrieving application packages: {e}\n{traceback.format_exc()}")
+        return Response(
+            {'error': 'Failed to retrieve application packages'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_application_package(request, job_id):
+    '''
+    UC-069: Generate Application Package
+    POST: Generate a comprehensive application package for a specific job
+    '''
+    try:
+        from core.automation import generate_application_package as auto_generate_package
+        from core.models import JobEntry, CandidateProfile
+        
+        job = JobEntry.objects.get(id=job_id)
+        profile = CandidateProfile.objects.get(user=request.user)
+        parameters = request.data or {}
+        
+        package = auto_generate_package(
+            job_id=job_id, 
+            candidate_id=profile.id,
+            parameters=parameters
+        )
+        
+        response_data = {
+            'package_id': package.id,
+            'job': {
+                'id': job.id,
+                'title': job.position_name,
+                'company': job.company_name
+            },
+            'generated_documents': [],
+            'status': package.status
+        }
+        
+        if package.resume_document:
+            response_data['generated_documents'].append({
+                'type': 'resume',
+                'document_id': package.resume_document.id
+            })
+        
+        if package.cover_letter_document:
+            response_data['generated_documents'].append({
+                'type': 'cover_letter', 
+                'document_id': package.cover_letter_document.id
+            })
+        
+        return Response(response_data, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

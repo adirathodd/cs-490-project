@@ -3,6 +3,7 @@ URL configuration for core app authentication endpoints.
 """
 from django.urls import path
 from core import views
+from core import analytics_views
 
 app_name = 'core'
 
@@ -88,6 +89,7 @@ urlpatterns = [
     # SCRUM-39: Job import from URL
     path('jobs/import-from-url', views.import_job_from_url, name='import-job-from-url'),
     path('jobs/stats', views.jobs_stats, name='jobs-stats'),
+    path('jobs/analytics', analytics_views.cover_letter_analytics_view, name='cover-letter-analytics'),
     path('jobs/bulk-status', views.jobs_bulk_status, name='jobs-bulk-status'),
     path('jobs/bulk-deadline', views.jobs_bulk_deadline, name='jobs-bulk-deadline'),
     path('jobs/upcoming-deadlines', views.jobs_upcoming_deadlines, name='jobs-upcoming-deadlines'),
@@ -127,6 +129,8 @@ urlpatterns = [
     # UC-056: AI cover letter generation
     path('jobs/<int:job_id>/cover-letter/generate', views.generate_cover_letter_for_job, name='job-cover-letter-generate'),
     path('cover-letter/compile-latex/', views.compile_latex_to_pdf, name='cover-letter-compile-latex-to-pdf'),
+    # UC-069: Application package generation
+    path('jobs/<int:job_id>/generate-package/', views.generate_application_package, name='job-generate-package'),
     # UC-061: Cover letter export
     path('cover-letter/export-docx/', views.export_cover_letter_docx, name='cover-letter-export-docx'),
     
@@ -166,4 +170,23 @@ urlpatterns = [
     path('interviews/<int:pk>/dismiss-reminder/', views.dismiss_interview_reminder, name='dismiss-interview-reminder'),
     path('interviews/reminders/', views.active_interview_reminders, name='active-interview-reminders'),
     path('interviews/tasks/<int:pk>/toggle/', views.toggle_preparation_task, name='toggle-preparation-task'),
+    
+    # UC-052: Resume Version Management endpoints
+    path('resume-versions/', views.resume_versions_list_create, name='resume-versions-list-create'),
+    path('resume-versions/<uuid:version_id>/', views.resume_version_detail, name='resume-version-detail'),
+    path('resume-versions/<uuid:version_id>/set-default/', views.resume_version_set_default, name='resume-version-set-default'),
+    path('resume-versions/<uuid:version_id>/archive/', views.resume_version_archive, name='resume-version-archive'),
+    path('resume-versions/<uuid:version_id>/restore/', views.resume_version_restore, name='resume-version-restore'),
+    path('resume-versions/<uuid:version_id>/duplicate/', views.resume_version_duplicate, name='resume-version-duplicate'),
+    path('resume-versions/<uuid:version_id>/history/', views.resume_version_history, name='resume-version-history'),
+    path('resume-versions/compare/', views.resume_version_compare, name='resume-version-compare'),
+    path('resume-versions/merge/', views.resume_version_merge, name='resume-version-merge'),
+    
+    # UC-069: Application Workflow Automation endpoints
+    path('automation/rules/', views.automation_rules_list_create, name='automation-rules-list-create'),
+    path('automation/rules/<uuid:rule_id>/', views.automation_rule_detail, name='automation-rule-detail'),
+    path('automation/rules/<uuid:rule_id>/trigger/', views.trigger_automation_rule, name='trigger-automation-rule'),
+    path('automation/logs/', views.automation_logs, name='automation-logs'),
+    path('automation/packages/', views.application_packages_list, name='application-packages-list'),
+    path('automation/scheduled-submissions/', views.automation_logs, name='automation-scheduled-submissions'),
 ]

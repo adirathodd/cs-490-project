@@ -3,17 +3,23 @@
  * Generates AI-tailored resumes for specific jobs and exports them
  */
 import React, { useState } from 'react';
-import { resumeAIAPI, resumeExportAPI } from '../../services/api';
+import { resumeAIAPI, resumeExportAPI, resumeVersionAPI } from '../../services/api';
 import Icon from '../common/Icon';
 import './AIResumeGenerator.css';
 
 const AIResumeGenerator = ({ jobId, jobTitle, companyName }) => {
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [resumeData, setResumeData] = useState(null);
   const [selectedVariation, setSelectedVariation] = useState(0);
+  
+  // Save version dialog state
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [versionName, setVersionName] = useState('');
+  const [versionDescription, setVersionDescription] = useState('');
   
   // Generation options
   const [tone, setTone] = useState('balanced');
@@ -89,6 +95,51 @@ const AIResumeGenerator = ({ jobId, jobTitle, companyName }) => {
       setError(err.message || 'Failed to export resume. Please try again.');
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleSaveVersion = async () => {
+    if (!resumeData || !resumeData.variations || !resumeData.variations[selectedVariation]) {
+      setError('No resume content to save');
+      return;
+    }
+
+    if (!versionName.trim()) {
+      setError('Please enter a version name');
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+
+    try {
+      const variation = resumeData.variations[selectedVariation];
+      
+      // Create version data
+      const versionData = {
+        version_name: versionName,
+        description: versionDescription || `AI-generated resume for ${companyName} - ${jobTitle}`,
+        content: variation.structured_content || {},
+        latex_content: variation.latex_content,
+        source_job: jobId,
+        generated_by_ai: true,
+        generation_params: {
+          tone,
+          variation_count: variationCount,
+          variation_index: selectedVariation
+        }
+      };
+
+      await resumeVersionAPI.createVersion(versionData);
+      
+      setSuccess(`Resume version "${versionName}" saved successfully!`);
+      setShowSaveDialog(false);
+      setVersionName('');
+      setVersionDescription('');
+    } catch (err) {
+      setError(err.message || 'Failed to save resume version. Please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -170,12 +221,69 @@ const AIResumeGenerator = ({ jobId, jobTitle, companyName }) => {
           <div className="variation-content">
             {resumeData.variations[selectedVariation] && (
               <div className="resume-preview">
+                <div className="preview-actions">
+                  <button
+                    className="save-version-btn"
+                    onClick={() => setShowSaveDialog(true)}
+                  >
+                    <Icon name="save" size="sm" /> Save as Version
+                  </button>
+                </div>
                 <div className="latex-preview">
                   <pre>{resumeData.variations[selectedVariation].latex_content}</pre>
                 </div>
               </div>
             )}
           </div>
+
+          {/* Save Version Dialog */}
+          {showSaveDialog && (
+            <div className="modal-overlay" onClick={() => setShowSaveDialog(false)}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-header">
+                  <h3>Save Resume Version</h3>
+                  <button className="close-btn" onClick={() => setShowSaveDialog(false)}>×</button>
+                </div>
+                <div className="modal-body">
+                  <div className="form-group">
+                    <label>Version Name *</label>
+                    <input
+                      type="text"
+                      placeholder={`e.g., ${companyName} - ${jobTitle}`}
+                      value={versionName}
+                      onChange={(e) => setVersionName(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Description (optional)</label>
+                    <textarea
+                      placeholder="Add notes about this version..."
+                      value={versionDescription}
+                      onChange={(e) => setVersionDescription(e.target.value)}
+                      rows="3"
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    className="btn-secondary"
+                    onClick={() => setShowSaveDialog(false)}
+                    disabled={saving}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn-primary"
+                    onClick={handleSaveVersion}
+                    disabled={saving || !versionName.trim()}
+                  >
+                    {saving ? 'Saving...' : 'Save Version'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Export Options */}
           <div className="export-section">

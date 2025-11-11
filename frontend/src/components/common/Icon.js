@@ -56,6 +56,13 @@ import {
   FaAlignLeft,
   FaBook,
   FaPen,
+  FaStar,
+  FaCopy,
+  FaCodeBranch,
+  FaRandom,
+  FaArrowLeft,
+  FaSave,
+  FaLayerGroup,
 } from 'react-icons/fa';
 
 // Simple, centralized Icon wrapper used across the app.
@@ -110,10 +117,12 @@ const iconMap = {
   'chevron-up': FaChevronUp,
   archive: FaArchive,
   restore: FaHistory,
+  history: FaHistory,
   file: FaFile,
   'file-text': FaFileAlt,
   filter: FaFilter,
   sparkles: FaMagic,
+  stars: FaMagic,
   refresh: FaSyncAlt,
   'refresh-cw': FaSyncAlt,
   clipboard: FaClipboard,
@@ -138,6 +147,16 @@ const iconMap = {
   'align-left': FaAlignLeft,
   book: FaBook,
   activity: FaChartLine,
+  star: FaStar,
+  copy: FaCopy,
+  gitBranch: FaCodeBranch,
+  gitMerge: FaRandom,
+  compare: FaRandom,
+  rotateLeft: FaArrowLeft,
+  arrowLeft: FaArrowLeft,
+  save: FaSave,
+  layers: FaLayerGroup,
+  loader: FaSpinner,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {
