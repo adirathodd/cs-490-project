@@ -641,6 +641,7 @@ const buildValidationInsights = ({
   bulletOrderOverrides,
   sectionRewrites = {},
   analysis,
+  pdfPageCount = null,
 }) => {
   const placeholderSummary = 'Generate a resume to run the validation checks.';
   if (!variation) {
@@ -709,7 +710,8 @@ const buildValidationInsights = ({
     .join(' ');
   const wordMatches = aggregatedText.match(/\b\w+\b/g) || [];
   const wordCount = wordMatches.length;
-  const pagesEstimate = Math.max(1, Math.ceil(wordCount / 450));
+  const pagesEstimate = Math.max(1, Math.ceil(wordCount / 380));
+  const pagesDetected = pdfPageCount || pagesEstimate;
   const typos = detectMisspellings(aggregatedText);
   const firstPersonMatches = aggregatedText.match(FIRST_PERSON_PATTERN) || [];
   const bullets = [...segments.experienceBullets, ...segments.projectBullets];
@@ -724,6 +726,22 @@ const buildValidationInsights = ({
   if (wordCount === 0) {
     lengthStatus = 'info';
     lengthSummary = 'No resume content is available yet.';
+  } else if (pdfPageCount) {
+    // If we have a detected page count from the generated PDF, use density to determine visual fullness
+    const density = wordCount / (pagesDetected * 420);
+    if (density >= 0.6) {
+      lengthStatus = 'ok';
+      lengthDetails.push('Visual preview fills the pages — formatting looks appropriately full.');
+      lengthSummary = `~${wordCount} words (~${pagesDetected} page${pagesDetected > 1 ? 's' : ''})`;
+    } else if (wordCount < 400) {
+      lengthStatus = 'warn';
+      lengthDetails.push('Add a few more achievements to land between 1–2 pages.');
+    } else if (wordCount > 900) {
+      lengthStatus = 'warn';
+      lengthDetails.push('Consider trimming repetition to keep the document between 1–2 pages.');
+    } else {
+      lengthDetails.push('Length is within the recommended 1–2 page range.');
+    }
   } else if (wordCount < 400) {
     lengthStatus = 'warn';
     lengthDetails.push('Add a few more achievements to land between 1–2 pages.');
@@ -1608,6 +1626,7 @@ const AiResumeGenerator = () => {
   const [livePreviewPdfUrl, setLivePreviewPdfUrl] = useState('');
   const [livePreviewLoading, setLivePreviewLoading] = useState(false);
   const [livePreviewError, setLivePreviewError] = useState('');
+  const [detectedPdfPageCount, setDetectedPdfPageCount] = useState(null);
   const [experienceVariations, setExperienceVariations] = useState({});
   const [experienceVariationsLoading, setExperienceVariationsLoading] = useState(false);
   const [experienceVariationsError, setExperienceVariationsError] = useState('');
@@ -1909,10 +1928,18 @@ const AiResumeGenerator = () => {
         pdfUrlRef.current = '';
       }
       setPdfPreviewUrl('');
+      setDetectedPdfPageCount(null);
       return undefined;
     }
     try {
       const byteCharacters = window.atob(activeVariation.pdf_document);
+      // Try to estimate page count by searching for PDF page markers in the decoded stream
+      try {
+        const pageMatches = byteCharacters.match(/\/Type\s*\/Page/g) || [];
+        setDetectedPdfPageCount(pageMatches.length || 1);
+      } catch (e) {
+        setDetectedPdfPageCount(null);
+      }
       const byteNumbers = new Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i += 1) {
         byteNumbers[i] = byteCharacters.charCodeAt(i);
@@ -2502,6 +2529,7 @@ const AiResumeGenerator = () => {
         bulletOrderOverrides,
         sectionRewrites,
         analysis,
+        pdfPageCount: detectedPdfPageCount,
       }),
     [
       activeVariation,
@@ -2513,6 +2541,7 @@ const AiResumeGenerator = () => {
       bulletOrderOverrides,
       sectionRewrites,
       analysis,
+      detectedPdfPageCount,
     ],
   );
 
