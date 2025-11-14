@@ -1,5 +1,5 @@
 # Build stage: install dependencies and compile React
-FROM node:20-alpine as build
+FROM node:20-alpine AS build
 
 # Set the working directory inside the container
 WORKDIR /usr/src/app

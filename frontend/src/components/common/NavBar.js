@@ -80,16 +80,15 @@ const NavBar = () => {
       <button className="nav-toggle" onClick={() => setOpen(v => !v)} aria-label="Toggle navigation">☰</button>
       <div className={`nav-links ${open ? 'open' : ''}`} onClick={() => setOpen(false)}>
         <NavLink to="/dashboard" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Dashboard</NavLink>
-        <NavLink to="/skills" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Skills</NavLink>
-        <NavLink to="/employment" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Employment</NavLink>
-        <NavLink to="/education" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Education</NavLink>
-        <NavLink to="/projects" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Projects</NavLink>
         <NavLink to="/jobs" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Jobs</NavLink>
   
   {/* Resume dropdown */}
   <div className="nav-dropdown" ref={resumeDropdownRef}>
     <button 
       className={`nav-link nav-dropdown-toggle ${(window.location.pathname.startsWith('/resume') ? 'active' : '')}`}
+      type="button"
+      aria-haspopup="menu"
+      aria-expanded={resumeDropdownOpen}
       onClick={(e) => { e.stopPropagation(); setResumeDropdownOpen(v => !v); }}
     >
       Resume ▾
@@ -116,7 +115,6 @@ const NavBar = () => {
   
   <NavLink to="/cover-letter/ai" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>AI Cover Letters</NavLink>
   <NavLink to="/documents" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Documents</NavLink>
-  <NavLink to="/certifications" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Certifications</NavLink>
         
   {/* Profile dropdown */}
   <div className="nav-dropdown" ref={profileDropdownRef}>
@@ -125,12 +123,43 @@ const NavBar = () => {
         window.location.pathname.startsWith('/profile') ||
         window.location.pathname.startsWith('/analytics')
       ) ? 'active' : ''}`}
+      type="button"
+      aria-haspopup="menu"
+      aria-expanded={profileDropdownOpen}
       onClick={(e) => { e.stopPropagation(); setProfileDropdownOpen(v => !v); }}
     >
       Profile ▾
     </button>
     {profileDropdownOpen && (
       <div className="nav-dropdown-menu">
+        <NavLink 
+          to="/employment" 
+          className="nav-dropdown-item"
+          onClick={() => { setProfileDropdownOpen(false); setOpen(false); }}
+        >
+          Employment
+        </NavLink>
+        <NavLink 
+          to="/education" 
+          className="nav-dropdown-item"
+          onClick={() => { setProfileDropdownOpen(false); setOpen(false); }}
+        >
+          Education
+        </NavLink>
+        <NavLink 
+          to="/skills" 
+          className="nav-dropdown-item"
+          onClick={() => { setProfileDropdownOpen(false); setOpen(false); }}
+        >
+          Skills
+        </NavLink>
+        <NavLink 
+          to="/projects" 
+          className="nav-dropdown-item"
+          onClick={() => { setProfileDropdownOpen(false); setOpen(false); }}
+        >
+          Projects
+        </NavLink>
         <NavLink 
           to="/profile" 
           className="nav-dropdown-item"
@@ -144,6 +173,13 @@ const NavBar = () => {
           onClick={() => { setProfileDropdownOpen(false); setOpen(false); }}
         >
           Analytics
+        </NavLink>
+        <NavLink 
+          to="/certifications" 
+          className="nav-dropdown-item"
+          onClick={() => { setProfileDropdownOpen(false); setOpen(false); }}
+        >
+          Certifications
         </NavLink>
       </div>
     )}

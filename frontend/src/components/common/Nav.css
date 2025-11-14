@@ -12,6 +12,10 @@
   min-height: 56px; /* consistent header height for positioning */
 }
 
+/* Make sure the nav uses border-box sizing so padding/borders don't
+   cause unexpected overflow, and take the full available width. */
+.nav, .nav * { box-sizing: border-box; }
+
 .nav-brand {
   font-weight: 600;
   font-size: 1.1rem;
@@ -19,24 +23,43 @@
   align-items: center;
 }
 
+/* Keep the brand from growing too large and allow truncation on small widths */
+.nav-brand { flex: 0 0 auto; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+
 .nav-brand-logo { height: 28px; width: auto; margin-right: 0; display: inline-block; }
 .nav-brand-text { display: none; }
 /* By default the brand is inline; on small screens we'll center it visually */
 
 .nav-links {
-  display: flex;
+  /* Use CSS Grid so items are centered by default and rows use equal-width
+     columns when they wrap on medium screens. On wide screens (handled by
+     the media query below) this will switch to a single centered flex row. */
+  display: grid;
   gap: 1rem;
   align-items: center;
+  grid-auto-flow: row;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  justify-items: center;
+  margin: 0 auto; /* center the grid within the nav */
+  width: 100%;
 }
 
+/* Give nav-links the ability to shrink so it won't push the user menu off-screen */
+.nav-links { min-width: 0; margin: 0 0.5rem; }
 .nav-link {
   color: #e2e8f0; /* slate-200 */
   text-decoration: none;
-  padding: 0.4rem 0.6rem;
-  border-radius: 6px;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
   transition: background 0.2s ease, color 0.2s ease;
   background: transparent;
-  border: none;
+  border: 1px solid transparent; /* keep layout stable when highlighting */
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  line-height: 1.2;
 }
 
 .nav-link:hover {
@@ -59,6 +82,48 @@
   display: flex;
   align-items: center;
   cursor: pointer;
+}
+
+/* Make dropdown toggles visually match regular nav links */
+.nav-dropdown-toggle {
+  background: transparent;
+  color: #e2e8f0;
+  text-decoration: none;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  transition: background 0.2s ease, color 0.2s ease;
+  border: 1px solid transparent; /* match .nav-link to avoid shift */
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: inherit; /* match surrounding nav font */
+  line-height: 1.2;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+.nav-dropdown-toggle:hover {
+  background: #1e293b;
+  color: #fff;
+}
+
+.nav-dropdown-toggle.active {
+  background: #334155;
+  color: #fff;
+}
+
+.nav-dropdown-toggle:focus {
+  outline: none;
+}
+
+/* Visible focus ring without changing layout */
+.nav-link:focus-visible,
+.nav-dropdown-toggle:focus-visible {
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.12), 0 0 0 1px rgba(37,99,235,0.95);
+  outline: none;
+  border-color: rgba(37,99,235,0.2);
 }
 
 .nav-dropdown-menu {
@@ -101,6 +166,9 @@
   align-items: center;
   gap: 0.5rem;
 }
+
+/* Keep the user control area fixed so links shrink instead of overflow */
+.nav-user { flex: 0 0 auto; }
 
 .nav-avatar {
   width: 28px;
@@ -158,11 +226,22 @@
     z-index: 1100;
   }
 
+  /* Prevent the mobile menu from extending beyond the viewport */
+  .nav-links.open {
+    max-height: calc(100vh - 72px);
+    overflow-y: auto;
+  }
+
   /* Make links larger and touch-friendly when the menu is open */
   .nav-links.open .nav-link {
     padding: 0.75rem 1rem;
     border-radius: 8px;
     font-size: 1rem;
+    border: 1px solid transparent;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   
   /* Mobile dropdown adjustments */
@@ -181,19 +260,71 @@
     border: none;
     background: #1e293b;
   }
+
+/* Slightly larger logo on very small screens for readability */
+@media (max-width: 480px) {
+  .nav-brand-logo { height: 32px; }
+}
   
   .nav-links.open .nav-dropdown-toggle {
     width: 100%;
     justify-content: center;
     text-align: center;
+    font-size: 1rem; /* match expanded link size */
+    padding: 0.75rem 1rem;
+    border: 1px solid transparent;
+    box-sizing: border-box;
   }
   
   .nav-links.open .nav-dropdown-item {
     text-align: center;
   }
 
+/* Make dropdown items consistent sizing */
+.nav-dropdown-item {
+  padding: 0.6rem 1rem;
+  box-sizing: border-box;
+}
+
   /* Ensure logout button / user actions remain accessible */
   .nav-user { display: none; }
+}
+
+/* Hide the graphic logo on narrower windows so navigation items have more space.
+   This removes the image while keeping the brand container for accessibility. */
+@media (max-width: 1200px) {
+  .nav-brand-logo { display: none; }
+}
+
+/* Desktop: ensure everything fits on a single centered row and doesn't wrap. */
+@media (min-width: 1201px) {
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Make nav-links a centered, single-row flex container that fills available
+     space between the brand and user controls. Prevent wrapping so items stay
+     on one row in a full-window layout. */
+  .nav-links {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: nowrap;
+    flex: 1 1 auto;
+    width: auto;
+  }
+
+  /* Ensure link sizing is consistent while allowing longer labels to fit
+     by reducing minimum size. */
+  .nav-links .nav-link,
+  .nav-links .nav-dropdown-toggle {
+    min-width: 110px;
+  }
+
+  .nav-brand-logo { display: inline-block; }
 }
 
 /* Mobile-only helpers */
