@@ -5,6 +5,22 @@ import { BrowserRouter } from 'react-router-dom';
 import Jobs from './Jobs';
 import { jobsAPI } from '../../services/api';
 
+
+jest.mock('../../services/api', () => ({
+  jobsAPI: { /* ...existing jobAPI mocks... */ },
+  materialsAPI: {
+    listDocuments: jest.fn().mockResolvedValue([]), // or your desired mock data
+    getDefaults: jest.fn().mockResolvedValue({ default_resume_doc: null, default_cover_letter_doc: null }),
+    setDefaults: jest.fn(),
+    updateJobMaterials: jest.fn(),
+    getJobMaterials: jest.fn().mockResolvedValue({ resume_doc: null, cover_letter_doc: null, history: [] }),
+    getDownloadUrl: jest.fn((id) => `https://fakeurl.com/download/${id}`)
+  },
+  interviewsAPI: { getInterviews: jest.fn().mockResolvedValue([]) },
+  companyAPI: { searchCompanies: jest.fn().mockResolvedValue([]) }
+}));
+
+
 // Mock the navigate function
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
