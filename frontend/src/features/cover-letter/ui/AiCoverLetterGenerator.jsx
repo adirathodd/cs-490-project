@@ -7,7 +7,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { jobsAPI, coverLetterAIAPI, coverLetterExportAPI } from '../../../services/api';
+import { jobsAPI, coverLetterAIAPI, coverLetterExportAPI, materialsAPI } from '../../../services/api';
 import Icon from '../../../components/common/Icon';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import { auth } from '../../../services/firebase';
@@ -587,6 +587,15 @@ const AiCoverLetterGenerator = () => {
   const [livePreviewPdfUrl, setLivePreviewPdfUrl] = useState('');
   const [livePreviewLoading, setLivePreviewLoading] = useState(false);
   const [livePreviewError, setLivePreviewError] = useState('');
+  const [savingDocument, setSavingDocument] = useState(false);
+  const [savedDocument, setSavedDocument] = useState(null);
+  const [saveDocumentError, setSaveDocumentError] = useState('');
+  const [linkingCoverLetter, setLinkingCoverLetter] = useState(false);
+  const [linkDocumentError, setLinkDocumentError] = useState('');
+  const [linkSuccessMessage, setLinkSuccessMessage] = useState('');
+  const [compareSelection, setCompareSelection] = useState([]);
+  const [compareError, setCompareError] = useState('');
+  const [showCompareModal, setShowCompareModal] = useState(false);
   
   // UC-060: Version history for editing session
   const [versionHistory, setVersionHistory] = useState([]);
@@ -619,6 +628,36 @@ const AiCoverLetterGenerator = () => {
   
   // UC-060: Synonym suggestions
   const [selectedText, setSelectedText] = useState('');
+  const resetComparisonState = useCallback(() => {
+    setCompareSelection([]);
+    setCompareError('');
+    setShowCompareModal(false);
+  }, []);
+  useEffect(() => {
+    setSavedDocument(null);
+    setSaveDocumentError('');
+    setLinkDocumentError('');
+    setLinkSuccessMessage('');
+    resetComparisonState();
+  }, [selectedJobId, resetComparisonState]);
+
+  useEffect(() => {
+    if (!result?.variations?.length) {
+      resetComparisonState();
+      return;
+    }
+    setCompareSelection((prev) =>
+      prev.filter((id) => result.variations.some((variation) => variation.id === id))
+    );
+  }, [result, resetComparisonState]);
+
+  useEffect(() => {
+    if (savedDocument && savedDocument.variationId !== activeVariationId) {
+      setSavedDocument(null);
+      setLinkDocumentError('');
+      setLinkSuccessMessage('');
+    }
+  }, [activeVariationId, savedDocument]);
   const [synonymSuggestions, setSynonymSuggestions] = useState([]);
   const [showSynonymPanel, setShowSynonymPanel] = useState(false);
   const [synonymLoading, setSynonymLoading] = useState(false);
@@ -2019,6 +2058,11 @@ const AiCoverLetterGenerator = () => {
     setGenerationError('');
     setStatusMessage('Generating a tailored cover letter for this role…');
     setHintIndex(0);
+    setSavedDocument(null);
+    setSaveDocumentError('');
+    setLinkDocumentError('');
+    setLinkSuccessMessage('');
+    resetComparisonState();
     try {
       const data = await coverLetterAIAPI.generateForJob(selectedJobId, {
         tone,
@@ -2065,6 +2109,11 @@ const AiCoverLetterGenerator = () => {
     setPdfPreviewUrl('');
     setGenerationError('');
     setStatusMessage('');
+    setSavedDocument(null);
+    setSaveDocumentError('');
+    setLinkDocumentError('');
+    setLinkSuccessMessage('');
+    resetComparisonState();
     setTone('balanced');
     setVariationCount(2);
     // reset UC-058 preferences
@@ -2478,6 +2527,14 @@ const AiCoverLetterGenerator = () => {
     return lines.join('\n');
   }, [activeVariation, result]);
 
+  useEffect(() => {
+    if (savedDocument && savedDocument.latexSnapshot !== liveLatexPreview) {
+      setSavedDocument(null);
+      setLinkDocumentError('');
+      setLinkSuccessMessage('');
+    }
+  }, [liveLatexPreview, savedDocument]);
+
   const handleCopyLiveLatex = async () => {
     if (!liveLatexPreview) return;
     try {
@@ -2524,6 +2581,184 @@ const AiCoverLetterGenerator = () => {
     } finally {
       setLivePreviewLoading(false);
     }
+  };
+
+  const handleSaveCoverLetterToDocuments = async () => {
+    if (!activeVariation || !liveLatexPreview) {
+      setSaveDocumentError('Generate a cover letter to enable saving.');
+      return;
+    }
+    if (!selectedJobId) {
+      setSaveDocumentError('Select a job before saving to Documents.');
+      return;
+    }
+
+    setSavingDocument(true);
+    setSaveDocumentError('');
+    setLinkDocumentError('');
+    setLinkSuccessMessage('');
+
+    try {
+      const jobTitleValue = result?.job?.title || selectedJobDetail?.title || '';
+      const companyNameValue = result?.job?.company_name || selectedJobDetail?.company_name || '';
+      const toneLabel = toneOptions.find((option) => option.value === tone)?.label || tone;
+      const baseName = [jobTitleValue, companyNameValue].filter(Boolean).join(' - ') || 'AI Cover Letter';
+      const payload = {
+        latex_content: liveLatexPreview,
+        job_id: selectedJobId,
+        document_name: `${baseName} (${toneLabel || 'AI'})`.trim(),
+        tone,
+        generation_params: {
+          tone,
+          length,
+          writing_style: writingStyle,
+          company_culture: companyCulture,
+          industry_input: industryInput || selectedJobDetail?.industry || result?.job?.industry || '',
+          job_title: jobTitleValue,
+          company_name: companyNameValue,
+          variation_id: activeVariationId,
+          variation_label: activeVariation?.label || '',
+          readability_level: readabilityLevel,
+          word_count: wordCount,
+          character_count: characterCount,
+        },
+      };
+
+      const response = await coverLetterAIAPI.saveToDocuments(payload);
+      if (!response?.document?.id) {
+        throw new Error('Unexpected response when saving document.');
+      }
+      setSavedDocument({
+        ...response.document,
+        variationId: activeVariationId,
+        latexSnapshot: liveLatexPreview,
+      });
+      setStatusMessage('Cover letter saved to Documents.');
+    } catch (err) {
+      const message = err?.message || err?.code || 'Failed to save cover letter to Documents.';
+      setSaveDocumentError(message);
+    } finally {
+      setSavingDocument(false);
+    }
+  };
+
+  const handleSetAsCurrentCoverLetter = async () => {
+    if (!savedDocument?.id) {
+      setLinkDocumentError('Save this cover letter to Documents first.');
+      return;
+    }
+    if (!selectedJobId) {
+      setLinkDocumentError('Select a job before setting the current cover letter.');
+      return;
+    }
+    if (savedDocument?.linkedJobId === selectedJobId) {
+      setLinkSuccessMessage('Already set as the current cover letter for this job.');
+      return;
+    }
+
+    setLinkingCoverLetter(true);
+    setLinkDocumentError('');
+    try {
+      await materialsAPI.updateJobMaterials(selectedJobId, {
+        cover_letter_doc_id: savedDocument.id,
+      });
+      const jobTitleValue = selectedJobDetail?.title || result?.job?.title || 'this job';
+      const companyNameValue = selectedJobDetail?.company_name || result?.job?.company_name || '';
+      const jobLabel = companyNameValue ? `${jobTitleValue} @ ${companyNameValue}` : jobTitleValue;
+      setLinkSuccessMessage(`Set as the current cover letter for ${jobLabel || 'this job'}.`);
+      setStatusMessage('Cover letter linked to this job and ready for analytics.');
+      setSavedDocument((prev) => (prev ? { ...prev, linkedJobId: selectedJobId } : prev));
+    } catch (err) {
+      const message = err?.message || err?.code || 'Failed to set as the current cover letter.';
+      setLinkDocumentError(message);
+    } finally {
+      setLinkingCoverLetter(false);
+    }
+  };
+
+  const computeReadabilityMetrics = useCallback((text) => {
+    if (!text?.trim()) {
+      return { score: null, level: '' };
+    }
+    const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0).length || 1;
+    const words = text.trim().split(/\s+/).length || 0;
+    if (!words) {
+      return { score: null, level: '' };
+    }
+    const syllables = text
+      .toLowerCase()
+      .replace(/[^a-z]/g, '')
+      .replace(/[^aeiouy]+/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean).length || Math.round(words * 1.5);
+    const score = 206.835 - 1.015 * (words / sentences) - 84.6 * (syllables / words);
+    const clamped = Math.max(0, Math.min(100, score));
+    let level = '';
+    if (clamped >= 90) level = 'Very Easy';
+    else if (clamped >= 80) level = 'Easy';
+    else if (clamped >= 70) level = 'Fairly Easy';
+    else if (clamped >= 60) level = 'Plain English';
+    else if (clamped >= 50) level = 'Fairly Difficult';
+    else if (clamped >= 30) level = 'Difficult';
+    else level = 'Challenging';
+    return { score: Math.round(clamped), level };
+  }, []);
+
+  const buildVariantComparisonStats = useCallback((variation) => {
+    if (!variation) return null;
+    const sections = [
+      variation.opening_paragraph,
+      ...(variation.body_paragraphs || []),
+      variation.closing_paragraph,
+    ].filter(Boolean);
+    const text = sections.join(' ');
+    const wordCountValue = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const paragraphCount = sections.length;
+    const readingMinutes = wordCountValue ? Math.max(1, Math.round(wordCountValue / 200)) : 0;
+    const readability = computeReadabilityMetrics(text);
+    return {
+      wordCount: wordCountValue,
+      paragraphCount,
+      readingMinutes,
+      readabilityScore: readability.score,
+      readabilityLabel: readability.level,
+    };
+  }, [computeReadabilityMetrics]);
+
+  const toggleCompareSelection = (variationId) => {
+    setCompareSelection((prev) => {
+      if (prev.includes(variationId)) {
+        setCompareError('');
+        return prev.filter((id) => id !== variationId);
+      }
+      if (prev.length >= 2) {
+        setCompareError('Select up to two variations to compare.');
+        return prev;
+      }
+      setCompareError('');
+      return [...prev, variationId];
+    });
+  };
+
+  const openComparisonModal = () => {
+    if (compareSelection.length < 2) {
+      setCompareError('Select two variations to compare.');
+      return;
+    }
+    setCompareError('');
+    setShowCompareModal(true);
+  };
+
+  const compareVariations = useMemo(() => {
+    if (!result?.variations) return [];
+    return result.variations.filter((variation) => compareSelection.includes(variation.id)).slice(0, 2);
+  }, [compareSelection, result]);
+
+  const handleUseVariantFromComparison = (variationId) => {
+    setActiveVariationId(variationId);
+    setShowCompareModal(false);
+    setCompareError('');
   };
 
   // Auto-compile when liveLatexPreview changes
@@ -3100,19 +3335,48 @@ const AiCoverLetterGenerator = () => {
             )}
             <div className="variation-tabs-bar">
               <div className="variation-tabs">
-                {result.variations.map((variation) => (
+                {result.variations.map((variation) => {
+                  const isActive = variation.id === activeVariation?.id;
+                  const isChecked = compareSelection.includes(variation.id);
+                  return (
+                    <div key={variation.id} className={`variation-pill ${isActive ? 'active' : ''}`}>
+                      <button
+                        type="button"
+                        className={`variation-tab-button ${isActive ? 'active' : ''}`}
+                        onClick={() => setActiveVariationId(variation.id)}
+                      >
+                        <strong>{variation.label}</strong>
+                        <span>{(variation.tone || tone)?.toUpperCase()}</span>
+                      </button>
+                      {result.variations.length > 1 && (
+                        <label className="compare-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleCompareSelection(variation.id)}
+                            aria-label={`Select ${variation.label} for comparison`}
+                          />
+                          Compare
+                        </label>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {result.variations.length > 1 && (
+                <div className="compare-controls">
+                  <p className="hint">Choose any two variations to view them side by side.</p>
                   <button
                     type="button"
-                    key={variation.id}
-                    className={variation.id === activeVariation?.id ? 'active' : ''}
-                    onClick={() => setActiveVariationId(variation.id)}
+                    className="ghost"
+                    onClick={openComparisonModal}
+                    disabled={compareSelection.length !== 2}
                   >
-                    <strong>{variation.label}</strong>
-                    <span>{variation.tone?.toUpperCase()}</span>
+                    <Icon name="layers" size="sm" /> Compare selected ({Math.min(compareSelection.length, 2)}/2)
                   </button>
-                ))}
-              </div>
-
+                </div>
+              )}
+              {compareError && <p className="inline-error compact">{compareError}</p>}
             </div>
             
             {/* Per-variation highlights are now merged into the AI insights card above to reduce overlap. */}
@@ -3211,7 +3475,55 @@ const AiCoverLetterGenerator = () => {
                       >
                         <Icon name="download" size="sm" /> Export
                       </button>
+                      {savedDocument?.variationId === activeVariationId ? (
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={handleSetAsCurrentCoverLetter}
+                          disabled={!activeVariation || !selectedJobId || linkingCoverLetter || savedDocument?.linkedJobId === selectedJobId}
+                          title="Attach this cover letter to the selected job"
+                        >
+                          {linkingCoverLetter ? (
+                            <>
+                              <LoadingSpinner size="sm" /> Linking...
+                            </>
+                          ) : savedDocument?.linkedJobId === selectedJobId ? (
+                            <>
+                              <Icon name="check-circle" size="sm" /> Current cover letter
+                            </>
+                          ) : (
+                            <>
+                              <Icon name="check-circle" size="sm" /> Set as current cover letter
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={handleSaveCoverLetterToDocuments}
+                          disabled={!activeVariation || !selectedJobId || savingDocument}
+                          title="Save this AI cover letter into your Documents workspace"
+                        >
+                          {savingDocument ? (
+                            <>
+                              <LoadingSpinner size="sm" /> Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Icon name="save" size="sm" /> Save To Documents
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
+                    {(saveDocumentError || linkDocumentError || linkSuccessMessage) && (
+                      <div className="document-action-feedback">
+                        {saveDocumentError && <p className="inline-error compact">{saveDocumentError}</p>}
+                        {linkDocumentError && <p className="inline-error compact">{linkDocumentError}</p>}
+                        {linkSuccessMessage && <p className="inline-success compact">{linkSuccessMessage}</p>}
+                      </div>
+                    )}
                   </div>
 
                   {/* Live Text Editor */}
@@ -3878,6 +4190,100 @@ const AiCoverLetterGenerator = () => {
               >
                 <Icon name="mail" size="sm" /> Open in Email App
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCompareModal && (
+        <div className="compare-modal-overlay" onClick={() => setShowCompareModal(false)}>
+          <div className="compare-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="compare-modal-header">
+              <div>
+                <h3>
+                  <Icon name="layers" size="sm" /> Compare cover letter variants
+                </h3>
+                <p className="hint">Decision helper metrics make it easier to pick the strongest letter.</p>
+              </div>
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setShowCompareModal(false)}
+                aria-label="Close comparison dialog"
+              >
+                <Icon name="x" size="md" />
+              </button>
+            </div>
+            <div className="compare-modal-body">
+              {compareVariations.length === 2 ? (
+                <div className="compare-grid">
+                  {compareVariations.map((variation) => {
+                    const stats = buildVariantComparisonStats(variation);
+                    const paragraphs = [
+                      variation.opening_paragraph,
+                      ...(variation.body_paragraphs || []),
+                      variation.closing_paragraph,
+                    ].filter(Boolean);
+                    const toneLabel =
+                      toneOptions.find((option) => option.value === (variation.tone || tone))?.label ||
+                      (variation.tone || tone || 'Balanced');
+                    const keywordsUsed = variation.highlights?.keywords_used?.length || 0;
+                    return (
+                      <article key={variation.id} className="compare-column">
+                        <header>
+                          <p className="eyebrow">Variant</p>
+                          <h4>{variation.label}</h4>
+                          <p className="subhead">{toneLabel}</p>
+                        </header>
+                        <ul className="compare-metrics">
+                          <li>
+                            <span>Word count</span>
+                            <strong>{stats?.wordCount ?? '—'}</strong>
+                          </li>
+                          <li>
+                            <span>Reading time</span>
+                            <strong>{stats?.readingMinutes ? `${stats.readingMinutes} min` : '—'}</strong>
+                          </li>
+                          <li>
+                            <span>Paragraphs</span>
+                            <strong>{stats?.paragraphCount ?? '—'}</strong>
+                          </li>
+                          <li>
+                            <span>Readability</span>
+                            <strong>
+                              {stats?.readabilityScore
+                                ? `${stats.readabilityScore} (${stats.readabilityLabel})`
+                                : '—'}
+                            </strong>
+                          </li>
+                          <li>
+                            <span>Keywords emphasized</span>
+                            <strong>{keywordsUsed}</strong>
+                          </li>
+                        </ul>
+                        <div className="compare-letter">
+                          {paragraphs.length > 0 ? (
+                            paragraphs.map((paragraph, idx) => (
+                              <p key={`${variation.id}-paragraph-${idx}`}>{paragraph}</p>
+                            ))
+                          ) : (
+                            <p className="placeholder">No content available for this variation yet.</p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          className="primary"
+                          onClick={() => handleUseVariantFromComparison(variation.id)}
+                        >
+                          <Icon name="check-circle" size="sm" /> Use this variant
+                        </button>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="placeholder">Select two variations to compare side by side.</p>
+              )}
             </div>
           </div>
         </div>

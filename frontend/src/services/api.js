@@ -1141,6 +1141,15 @@ export const coverLetterAIAPI = {
       throw error.response?.data?.error || { message: 'Failed to export Word document' };
     }
   },
+
+  saveToDocuments: async (payload) => {
+    try {
+      const response = await api.post('/cover-letter/save-document/', payload);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to save cover letter to Documents' };
+    }
+  },
 };
 
 authAPI.getEmploymentTimeline = async () => {
