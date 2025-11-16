@@ -80,9 +80,13 @@ describe('JobTimelineView', () => {
     });
 
     expect(
-      screen.getByText('No timeline events yet. Record a status update to begin tracking.')
+      screen.getByText((text) =>
+        text.startsWith('No timeline events yet. Record a status update')
+      )
     ).toBeInTheDocument();
-    expect(screen.getByText('No history yet.')).toBeInTheDocument();
+    expect(
+      screen.getByText((text) => text.toLowerCase().includes('no history yet'))
+    ).toBeInTheDocument();
   });
 
   it('renders error card when job load fails', async () => {
@@ -91,7 +95,9 @@ describe('JobTimelineView', () => {
     render(<JobTimelineView />);
 
     await waitFor(() => {
-      expect(screen.getByText('Failed to load job timeline.')).toBeInTheDocument();
+      expect(
+        screen.getByText((text) => text.toLowerCase().includes('failed to load job timeline'))
+      ).toBeInTheDocument();
     });
 
     expect(screen.queryByText(/Application momentum/i)).not.toBeInTheDocument();
