@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Icon from '../common/Icon';
+import { jobsAPI } from '../../services/api';
 import './RoleQuestionBank.css';
 
 const createStarState = () => ({
@@ -20,12 +21,16 @@ const RoleQuestionBank = ({
   loading = false,
   savingQuestionId = null,
   onLogPractice,
+  jobId,
 }) => {
   const [selectedCategoryId, setSelectedCategoryId] = useState(null);
   const [difficultyFilter, setDifficultyFilter] = useState('all');
   const [activeQuestionId, setActiveQuestionId] = useState(null);
   const [responseForm, setResponseForm] = useState(() => createResponseState());
   const [showPracticeModal, setShowPracticeModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [practiceHistory, setPracticeHistory] = useState(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     if (bank?.categories?.length) {
@@ -88,6 +93,28 @@ const RoleQuestionBank = ({
         [field]: value,
       },
     }));
+  };
+
+  const handleViewHistory = async (question) => {
+    if (!jobId) return;
+    setLoadingHistory(true);
+    try {
+      const history = await jobsAPI.getQuestionPracticeHistory(jobId, question.id);
+      setPracticeHistory(history);
+      setShowHistoryModal(true);
+    } catch (error) {
+      console.error('Failed to load practice history:', error);
+      // If no history found, show empty state
+      setPracticeHistory(null);
+      setShowHistoryModal(true);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const closeHistoryModal = () => {
+    setShowHistoryModal(false);
+    setPracticeHistory(null);
   };
 
   const handleSubmitPractice = async () => {
@@ -186,59 +213,76 @@ const RoleQuestionBank = ({
             const practiced = question.practice_status?.practiced;
             return (
               <div key={question.id} className="question-card">
-                <div className="question-card-header">
-                  <span className={`difficulty-badge ${question.difficulty}`}>
-                    {question.difficulty}
-                  </span>
-                  {practiced && (
-                    <span className="practiced-pill">
-                      <Icon name="check" size="sm" /> Practiced
+                <div className="question-card-content">
+                  <div className="question-card-header">
+                    <span className={`difficulty-badge ${question.difficulty}`}>
+                      {question.difficulty}
                     </span>
+                    {practiced && (
+                      <span className="practiced-pill">
+                        <Icon name="check" size="sm" /> Practiced
+                      </span>
+                    )}
+                  </div>
+                  <p className="question-prompt">{question.prompt}</p>
+                  {question.skills?.length > 0 && (
+                    <div className="question-skills">
+                      {question.skills.map((skill) => (
+                        <span key={skill.skill_id || skill.name} className="skill-pill">
+                          {skill.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {question.concepts?.length > 0 && (
+                    <div className="question-concepts">
+                      {question.concepts.map((concept) => (
+                        <span key={concept} className="concept-pill">
+                          {concept}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {question.framework?.type === 'STAR' && (
+                    <div className="question-framework">
+                      <strong>STAR Focus:</strong>
+                      <ul>
+                        {Object.entries(question.framework.prompts).map(([key, value]) => (
+                          <li key={key}>
+                            <span>{key.toUpperCase()}:</span> {value}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </div>
-                <p className="question-prompt">{question.prompt}</p>
-                {question.skills?.length > 0 && (
-                  <div className="question-skills">
-                    {question.skills.map((skill) => (
-                      <span key={skill.skill_id || skill.name} className="skill-pill">
-                        {skill.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {question.concepts?.length > 0 && (
-                  <div className="question-concepts">
-                    {question.concepts.map((concept) => (
-                      <span key={concept} className="concept-pill">
-                        {concept}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {question.framework?.type === 'STAR' && (
-                  <div className="question-framework">
-                    <strong>STAR Focus:</strong>
-                    <ul>
-                      {Object.entries(question.framework.prompts).map(([key, value]) => (
-                        <li key={key}>
-                          <span>{key.toUpperCase()}:</span> {value}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
                 <div className="question-actions">
-                  <button
-                    type="button"
-                    className="add-education-button"
-                    onClick={() => openPracticeForm(question)}
-                  >
-                    <Icon name="edit" size="sm" /> Log Practice
-                  </button>
+                  <div className="action-buttons">
+                    <button
+                      type="button"
+                      className="add-education-button"
+                      onClick={() => openPracticeForm(question)}
+                    >
+                      <Icon name="edit" size="sm" /> Log Practice
+                    </button>
+                    {question.practice_status?.last_practiced_at && (
+                      <button
+                        type="button"
+                        className="view-history-button"
+                        onClick={() => handleViewHistory(question)}
+                        disabled={loadingHistory}
+                      >
+                        <Icon name="eye" size="sm" /> View History
+                      </button>
+                    )}
+                  </div>
                   {question.practice_status?.last_practiced_at && (
                     <div className="last-practiced">
                       Last practiced:{' '}
                       {new Date(question.practice_status.last_practiced_at).toLocaleString()}
+                      {question.practice_status.practice_count > 1 && (
+                        <span className="practice-count"> ({question.practice_status.practice_count}x)</span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -327,6 +371,83 @@ const RoleQuestionBank = ({
                   disabled={savingQuestionId === activeQuestion.id}
                 >
                   {savingQuestionId === activeQuestion.id ? 'Saving...' : 'Save Practice'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Practice History Modal */}
+        {showHistoryModal && (
+          <div className="practice-modal-backdrop">
+            <div className="practice-modal history-modal" role="dialog" aria-modal="true">
+              <div className="practice-modal-header">
+                <div>
+                  <h4>
+                    <Icon name="clock" size="sm" /> Practice History
+                  </h4>
+                  {practiceHistory && (
+                    <p>Practiced {practiceHistory.practice_count} time{practiceHistory.practice_count > 1 ? 's' : ''}</p>
+                  )}
+                </div>
+                <button type="button" className="practice-modal-close" onClick={closeHistoryModal}>
+                  <Icon name="x" size="sm" />
+                </button>
+              </div>
+
+              {practiceHistory ? (
+                <div className="history-content">
+                  <div className="history-section">
+                    <h5>Question</h5>
+                    <p>{practiceHistory.question_text}</p>
+                  </div>
+
+                  {practiceHistory.written_response && (
+                    <div className="history-section">
+                      <h5>Your Response</h5>
+                      <p className="response-text">{practiceHistory.written_response}</p>
+                    </div>
+                  )}
+
+                  {practiceHistory.star_response && Object.values(practiceHistory.star_response).some(v => v) && (
+                    <div className="history-section">
+                      <h5>STAR Method Response</h5>
+                      <div className="star-history-grid">
+                        {['situation', 'task', 'action', 'result'].map((field) => (
+                          practiceHistory.star_response[field] && (
+                            <div key={field} className="star-history-field">
+                              <strong>{field.toUpperCase()}:</strong>
+                              <p>{practiceHistory.star_response[field]}</p>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {practiceHistory.practice_notes && (
+                    <div className="history-section">
+                      <h5>Practice Notes</h5>
+                      <p className="notes-text">{practiceHistory.practice_notes}</p>
+                    </div>
+                  )}
+
+                  <div className="history-meta">
+                    <div><strong>First practiced:</strong> {new Date(practiceHistory.first_practiced_at).toLocaleString()}</div>
+                    <div><strong>Last practiced:</strong> {new Date(practiceHistory.last_practiced_at).toLocaleString()}</div>
+                    <div><strong>Practice count:</strong> {practiceHistory.practice_count}</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="no-history">
+                  <Icon name="inbox" size="lg" />
+                  <p>No practice history found for this question.</p>
+                </div>
+              )}
+
+              <div className="practice-modal-actions">
+                <button type="button" className="save-button" onClick={closeHistoryModal}>
+                  Close
                 </button>
               </div>
             </div>

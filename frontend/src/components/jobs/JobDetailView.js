@@ -8,6 +8,7 @@ import SkillGapAnalysis from './SkillGapAnalysis';
 import JobMatchAnalysis from './JobMatchAnalysis';
 import InterviewScheduler from './InterviewScheduler';
 import RoleQuestionBank from './RoleQuestionBank';
+import PreparationChecklist from './PreparationChecklist';
 
 const JobDetailView = () => {
   const { id } = useParams();
@@ -37,6 +38,8 @@ const JobDetailView = () => {
   const [loadingInterviews, setLoadingInterviews] = useState(false);
   const [editingInterviewId, setEditingInterviewId] = useState(null);
   const [interviewToDelete, setInterviewToDelete] = useState(null);
+  const [showPreparationChecklist, setShowPreparationChecklist] = useState(false);
+  const [selectedInterviewForChecklist, setSelectedInterviewForChecklist] = useState(null);
   
   const jobTypeOptions = [
     { value: 'ft', label: 'Full-time' },
@@ -1323,6 +1326,7 @@ const JobDetailView = () => {
               loading={loadingQuestionBank}
               savingQuestionId={savingPracticeQuestion}
               onLogPractice={handleLogQuestionPractice}
+              jobId={job?.id}
             />
           )}
           {!questionBank && loadingQuestionBank && (
@@ -1482,6 +1486,21 @@ const JobDetailView = () => {
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button
                             onClick={() => {
+                              setSelectedInterviewForChecklist(interview);
+                              setShowPreparationChecklist(true);
+                            }}
+                            className="btn-secondary"
+                            style={{ 
+                              padding: '6px 12px', 
+                              fontSize: '13px',
+                              color: '#667eea',
+                              borderColor: '#667eea'
+                            }}
+                          >
+                            <Icon name="check-square" size="sm" /> Prep Checklist
+                          </button>
+                          <button
+                            onClick={() => {
                               setEditingInterviewId(interview.id);
                               setShowInterviewScheduler(true);
                             }}
@@ -1596,6 +1615,17 @@ const JobDetailView = () => {
             if (activeTab === 'scheduled-interviews') {
               loadInterviews();
             }
+          }}
+        />
+      )}
+
+      {/* UC-081: Preparation Checklist Modal */}
+      {showPreparationChecklist && selectedInterviewForChecklist && (
+        <PreparationChecklist
+          interview={selectedInterviewForChecklist}
+          onClose={() => {
+            setShowPreparationChecklist(false);
+            setSelectedInterviewForChecklist(null);
           }}
         />
       )}

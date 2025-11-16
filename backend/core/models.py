@@ -820,6 +820,46 @@ class PreparationChecklistProgress(models.Model):
         return f"ChecklistProgress(job={self.job_id}, task={self.task[:32]})"
 
 
+class InterviewChecklistProgress(models.Model):
+    """
+    UC-081: Track completion status for interview preparation checklist items.
+    
+    Stores user progress on comprehensive preparation checklist including:
+    - Company research tasks
+    - Role-specific preparation
+    - Questions to ask
+    - Attire/presentation
+    - Logistics
+    - Confidence building
+    - Portfolio preparation
+    - Post-interview follow-up
+    """
+    interview = models.ForeignKey(
+        'InterviewSchedule',
+        on_delete=models.CASCADE,
+        related_name='checklist_progress'
+    )
+    task_id = models.CharField(max_length=64, help_text="Unique identifier for the task")
+    category = models.CharField(max_length=200, help_text="Checklist category (e.g., 'Company Research')")
+    task = models.CharField(max_length=500, help_text="Task description")
+    completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [('interview', 'task_id')]
+        indexes = [
+            models.Index(fields=['interview', 'completed']),
+            models.Index(fields=['interview', 'task_id']),
+        ]
+        ordering = ['category', 'created_at']
+
+    def __str__(self):
+        status = "✓" if self.completed else "○"
+        return f"{status} {self.task[:50]}..."
+
+
 # ======================
 # ANALYTICS & TRACKING MODELS
 # ======================

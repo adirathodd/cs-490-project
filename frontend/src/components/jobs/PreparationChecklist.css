@@ -1,0 +1,263 @@
+.preparation-checklist {
+  max-width: 800px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.checklist-subtitle {
+  margin: 4px 0 0 0;
+  color: #6b7280;
+  font-size: 0.95rem;
+  font-weight: normal;
+}
+
+.checklist-interview-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0 0;
+  color: #9ca3af;
+  font-size: 0.875rem;
+  font-weight: normal;
+  text-transform: capitalize;
+}
+
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #6b7280;
+}
+
+.loading-state p {
+  margin-top: 12px;
+  font-size: 0.95rem;
+}
+
+.checklist-progress-section {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  color: white;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.progress-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.progress-stats {
+  font-size: 0.875rem;
+  opacity: 0.85;
+}
+
+.progress-bar-container {
+  background: rgba(255, 255, 255, 0.2);
+  height: 28px;
+  border-radius: 14px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: white;
+  border-radius: 14px;
+  transition: width 0.4s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+}
+
+.progress-percentage {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #667eea;
+}
+
+.checklist-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.checklist-category {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+  background: white;
+  transition: box-shadow 0.2s;
+}
+
+.checklist-category:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.category-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: pointer;
+  background: #f9fafb;
+  transition: background 0.2s;
+  user-select: none;
+}
+
+.category-header:hover {
+  background: #f3f4f6;
+}
+
+.category-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  color: #374151;
+  font-size: 0.95rem;
+}
+
+.category-count {
+  background: #e5e7eb;
+  color: #6b7280;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.category-tasks {
+  padding: 8px;
+  background: white;
+}
+
+.checklist-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border-radius: 6px;
+  transition: background 0.2s;
+  gap: 12px;
+}
+
+.checklist-item:hover {
+  background: #f9fafb;
+}
+
+.checklist-item.completed {
+  background: #f0fdf4;
+}
+
+.checklist-item.completed .task-text {
+  color: #6b7280;
+  text-decoration: line-through;
+}
+
+.checklist-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checklist-checkbox {
+  display: none;
+}
+
+.checkbox-custom {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border: 2px solid #d1d5db;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  background: white;
+}
+
+.checklist-checkbox:checked + .checkbox-custom {
+  background: #10b981;
+  border-color: #10b981;
+}
+
+.checklist-checkbox:checked + .checkbox-custom::after {
+  content: '✓';
+  color: white;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.task-text {
+  font-size: 0.9rem;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.task-completed-time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: #10b981;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+/* Scrollbar styling for checklist */
+.preparation-checklist::-webkit-scrollbar {
+  width: 8px;
+}
+
+.preparation-checklist::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+.preparation-checklist::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+.preparation-checklist::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .preparation-checklist {
+    max-width: 95vw;
+  }
+
+  .checklist-progress-section {
+    padding: 16px;
+  }
+
+  .category-title {
+    font-size: 0.875rem;
+  }
+
+  .task-text {
+    font-size: 0.85rem;
+  }
+
+  .task-completed-time {
+    font-size: 0.7rem;
+  }
+}
