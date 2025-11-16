@@ -119,6 +119,7 @@ urlpatterns = [
     path('jobs/bulk-restore', views.jobs_bulk_restore, name='jobs-bulk-restore'),
     
     # UC-043: Company information endpoints
+    path('companies/search', views.company_search, name='company-search'),
     path('companies/<str:company_name>', views.company_info, name='company-info'),
     path('jobs/<int:job_id>/company', views.job_company_info, name='job-company-info'),
     # UC-047: AI resume generation

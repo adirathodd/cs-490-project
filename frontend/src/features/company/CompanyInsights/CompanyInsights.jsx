@@ -88,11 +88,6 @@ const enrichNewsItem = (item, job, index = 0) => {
   };
 };
 
-const getCompanyStorageKey = (company) => {
-  if (!company) return 'company-unknown';
-  if (company.id) return `company-${company.id}`;
-  return `company-${(company.name || '').toLowerCase()}`;
-};
 
 const sanitizeNewsId = (newsId) => encodeURIComponent(newsId || 'news');
 
@@ -121,6 +116,132 @@ const stripNewsSnippet = (notes, newsId) => {
 
 const PAGE_SIZE = 10;
 
+// Helpers to sanitize AI-provided arrays/objects before rendering
+const isValidText = (s) => typeof s === 'string' && s.trim().length >= 2 && s.trim().length <= 200 && !s.includes('\n');
+
+const sanitizeList = (list) => Array.isArray(list) ? list.map(String).map(s => s.trim()).filter(isValidText) : [];
+
+const sanitizeProducts = (products) => {
+  if (!Array.isArray(products)) return [];
+  return products
+    .map((p) => ({
+      name: (p && (p.name || p.title || '')).toString().trim(),
+      description: (p && (p.description || '')).toString().trim(),
+    }))
+    .filter((p) => isValidText(p.name));
+};
+
+const formatMarketCap = (n) => {
+  try {
+    if (n === null || n === undefined) return null;
+    const num = Number(n);
+    if (!Number.isFinite(num)) return String(n);
+    if (Math.abs(num) >= 1e12) return `${(num / 1e12).toFixed(2)}T`;
+    if (Math.abs(num) >= 1e9) return `${(num / 1e9).toFixed(2)}B`;
+    if (Math.abs(num) >= 1e6) return `${(num / 1e6).toFixed(2)}M`;
+    return num.toLocaleString();
+  } catch {
+    return String(n);
+  }
+};
+
+const sanitizeDevelopments = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items.map((item) => ({
+    title: (item && item.title ? String(item.title) : '').trim(),
+    summary: (item && item.summary ? String(item.summary) : '').trim(),
+    date: item?.date,
+    category: item?.category || 'update',
+    source: item?.source || '',
+    key_points: Array.isArray(item?.key_points) ? item.key_points.slice(0, 3) : [],
+  })).filter((item) => isValidText(item.title) || isValidText(item.summary));
+};
+
+const sanitizeTalkingPoints = (points) => {
+  if (!Array.isArray(points)) return [];
+  return points.map((point) => String(point || '').trim()).filter(isValidText);
+};
+
+const sanitizeInterviewQuestions = (questions) => {
+  if (!Array.isArray(questions)) return [];
+  return questions.map((question) => String(question || '').trim()).filter(isValidText);
+};
+
+// Robust getters that look in multiple places for legacy/flattened shapes
+const getLeadership = (company) => {
+  if (!company) return [];
+  const candidates = company.leadership || company.executives || (company.research && company.research.executives) || [];
+  if (!Array.isArray(candidates)) return [];
+  return candidates.map((c) => ({ name: c.name || c.full_name || '', title: c.title || '' })).filter(l => isValidText(l.name));
+};
+
+const getProducts = (company) => {
+  if (!company) return [];
+  const candidates = company.products || (company.research && company.research.products) || [];
+  return sanitizeProducts(candidates);
+};
+
+const getCompanyValues = (company) => {
+  if (!company) return [];
+  return sanitizeList(company.company_values || company.values || (company.research && company.research.company_values) || []);
+};
+
+const getTechStack = (company) => {
+  if (!company) return [];
+  return sanitizeList(company.tech_stack || (company.research && company.research.tech_stack) || []);
+};
+
+const getCompanyMission = (company) => {
+  if (!company) return '';
+  return (company.mission || company.mission_statement || (company.research && company.research.mission_statement) || '').trim();
+};
+
+const getCompanyHistory = (company) => {
+  if (!company) return '';
+  return (
+    company.history
+    || company.company_history
+    || (company.research && company.research.company_history)
+    || company.description
+    || (company.research && company.research.description)
+    || ''
+  ).trim();
+};
+
+const getRecentDevelopments = (company) => {
+  if (!company) return [];
+  return sanitizeDevelopments(company.recent_developments || (company.research && company.research.recent_developments) || []);
+};
+
+const getStrategicInitiatives = (company) => {
+  if (!company) return [];
+  return sanitizeDevelopments(company.strategic_initiatives || (company.research && company.research.strategic_initiatives) || []);
+};
+
+const getTalkingPointsList = (company) => {
+  if (!company) return [];
+  return sanitizeTalkingPoints(company.talking_points || (company.research && company.research.talking_points) || []);
+};
+
+const getInterviewQuestionList = (company) => {
+  if (!company) return [];
+  return sanitizeInterviewQuestions(company.interview_questions || (company.research && company.research.interview_questions) || []);
+};
+
+const getCompetitorsList = (company) => {
+  if (!company) return [];
+  const data = company.competitors || (company.research && company.research.competitors) || {};
+  if (Array.isArray(data.companies) && data.companies.length) {
+    return data.companies;
+  }
+  return [];
+};
+
+const getExportSummary = (company) => {
+  if (!company) return '';
+  return (company.export_summary || (company.research && company.research.export_summary) || '').trim();
+};
+
 const CompanyInsights = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -133,7 +254,7 @@ const CompanyInsights = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
-  const [isFollowed, setIsFollowed] = useState(false);
+  const [generatingProfile, setGeneratingProfile] = useState(false);
   const [savingNotesFor, setSavingNotesFor] = useState(null);
   const newsSectionRef = useRef(null);
   const hasScrolledNewsRef = useRef(false);
@@ -145,6 +266,7 @@ const CompanyInsights = () => {
       try {
         const jobData = await jobsAPI.getJob(id);
         setJob(jobData);
+
         let companyData = jobData.company_info;
         try {
           const latestCompany = await jobsAPI.getJobCompanyInsights(id);
@@ -154,10 +276,122 @@ const CompanyInsights = () => {
         } catch (innerError) {
           console.warn('Company insights endpoint unavailable:', innerError);
         }
-        setCompany(companyData);
-        const normalizedNews = (companyData?.recent_news || [])
+
+        // If the insights API returns a nested `research` object (CompanyResearch),
+        // flatten commonly-used research fields onto the top-level so the UI
+        // (which expects fields like `mission`, `leadership`, `recent_news`) can
+        // display them without additional branching.
+        const flattenResearch = (data = {}) => {
+          if (!data || typeof data !== 'object') return data;
+          const research = data.research || {};
+          const flattened = { ...(data || {}) };
+
+          const prefer = (sourceValue, key, targetKey = key) => {
+            if (!flattened[targetKey] && sourceValue) {
+              flattened[targetKey] = sourceValue;
+            }
+          };
+
+          // From nested research
+          prefer(research.description, 'description');
+          prefer(research.profile_overview, 'profile_overview');
+          prefer(research.company_history, 'history');
+          prefer(research.mission_statement, 'mission');
+          prefer(research.company_values, 'company_values');
+          prefer(research.culture_keywords, 'culture_keywords');
+          prefer(research.tech_stack, 'tech_stack');
+          prefer(research.funding_info, 'funding_info');
+          prefer(research.employee_count, 'employee_count');
+          prefer(research.glassdoor_rating, 'glassdoor_rating');
+          prefer(research.competitive_landscape, 'competitive_landscape');
+          prefer(research.export_summary, 'export_summary');
+          prefer(research.strategic_initiatives, 'strategic_initiatives');
+          prefer(research.talking_points, 'talking_points');
+          prefer(research.interview_questions, 'interview_questions');
+          prefer(research.recent_developments, 'recent_developments');
+
+          if (Array.isArray(research.recent_news) && (!Array.isArray(flattened.recent_news) || !flattened.recent_news.length)) {
+            flattened.recent_news = research.recent_news;
+          }
+
+          prefer(research.executives, 'leadership');
+          prefer(research.executives, 'executives');
+          prefer(research.products, 'products');
+          prefer(research.competitors, 'competitors');
+
+          // Provide a human-friendly competitive landscape summary if available
+          if (!flattened.competitive_landscape && research.competitors) {
+            if (research.competitors.market_position) {
+              flattened.competitive_landscape = research.competitors.market_position;
+            } else if (Array.isArray(research.competitors.companies) && research.competitors.companies.length) {
+              flattened.competitive_landscape = research.competitors.companies.slice(0, 5).join(', ');
+            }
+          }
+
+          // Flatten top-level convenience fields returned by API (outside research key)
+          prefer(data.description, 'description');
+          prefer(data.profile_overview, 'profile_overview');
+          prefer(data.company_history || data.history, 'history');
+          prefer(data.mission_statement || data.mission, 'mission');
+          prefer(data.company_values || data.values, 'company_values');
+          prefer(data.executives, 'leadership');
+          prefer(data.executives, 'executives');
+          prefer(data.competitors, 'competitors');
+          prefer(data.competitive_landscape, 'competitive_landscape');
+          prefer(data.recent_developments, 'recent_developments');
+          prefer(data.strategic_initiatives, 'strategic_initiatives');
+          prefer(data.talking_points, 'talking_points');
+          prefer(data.interview_questions, 'interview_questions');
+          prefer(data.export_summary, 'export_summary');
+
+          return flattened;
+        };
+
+        companyData = flattenResearch(companyData);
+
+        // If there is company info on the Job record, map commonly used keys
+        // into the insights shape and merge without overwriting any explicit
+        // fields returned by the insights endpoint. This ensures the data
+        // shown on the JobDetailView's company card is available here.
+        const mapJobCompanyInfoToInsights = (jobInfo = {}) => {
+          if (!jobInfo || typeof jobInfo !== 'object') return {};
+          const source = flattenResearch(jobInfo) || {};
+          const mapped = {};
+          if (source.name) mapped.name = source.name;
+          if (source.description) mapped.description = source.description;
+          if (source.profile_overview) mapped.profile_overview = source.profile_overview;
+          if (source.mission_statement) mapped.mission = source.mission_statement;
+          if (source.mission && !mapped.mission) mapped.mission = source.mission;
+          if (source.history) mapped.history = source.history;
+          if (source.size) mapped.size = source.size;
+          if (source.hq_location) mapped.hq_location = source.hq_location;
+          if (source.domain && !source.website) mapped.website = source.domain.startsWith('http') ? source.domain : `https://${source.domain}`;
+          if (source.website) mapped.website = source.website;
+          if (source.linkedin_url) mapped.linkedin_url = source.linkedin_url;
+          if (source.glassdoor_rating) mapped.glassdoor_rating = source.glassdoor_rating;
+          if (source.employee_count) mapped.employee_count = source.employee_count;
+          if (Array.isArray(source.recent_news)) mapped.recent_news = source.recent_news;
+          if (Array.isArray(source.recent_developments)) mapped.recent_developments = source.recent_developments;
+          if (Array.isArray(source.strategic_initiatives)) mapped.strategic_initiatives = source.strategic_initiatives;
+          if (Array.isArray(source.talking_points)) mapped.talking_points = source.talking_points;
+          if (Array.isArray(source.interview_questions)) mapped.interview_questions = source.interview_questions;
+          if (Array.isArray(source.leadership)) mapped.leadership = source.leadership;
+          if (source.competitive_landscape) mapped.competitive_landscape = source.competitive_landscape;
+          if (source.export_summary) mapped.export_summary = source.export_summary;
+          return mapped;
+        };
+
+        const jobMapped = mapJobCompanyInfoToInsights(jobData.company_info || {});
+
+        // Merge: start with job-mapped values and overlay any insights API fields
+        // so the insights endpoint remains authoritative when available.
+        const mergedCompany = { ...(jobMapped || {}), ...(companyData || {}) };
+
+        setCompany(mergedCompany);
+
+        const normalizedNews = ((mergedCompany?.recent_news || companyData?.recent_news || [])
           .map((item, index) => enrichNewsItem(item, jobData, index))
-          .filter(Boolean);
+          .filter(Boolean));
         setNewsItems(normalizedNews);
         setSelectedCategories([]);
         setIsFilterOpen(false);
@@ -177,15 +411,6 @@ const CompanyInsights = () => {
     hasScrolledNewsRef.current = false;
   }, [id]);
 
-  useEffect(() => {
-    if (!company) return;
-    try {
-      const stored = JSON.parse(localStorage.getItem('followedCompanies') || '{}');
-      setIsFollowed(Boolean(stored[getCompanyStorageKey(company)]));
-    } catch {
-      setIsFollowed(false);
-    }
-  }, [company]);
 
   const categoryCounts = useMemo(() => {
     return newsItems.reduce((acc, item) => {
@@ -260,22 +485,6 @@ const CompanyInsights = () => {
     });
   };
 
-  const handleFollowToggle = () => {
-    if (!company) return;
-    const key = getCompanyStorageKey(company);
-    const existing = JSON.parse(localStorage.getItem('followedCompanies') || '{}');
-    if (isFollowed) {
-      delete existing[key];
-      setIsFollowed(false);
-      setStatus('Company removed from alerts.');
-    } else {
-      existing[key] = { followedAt: new Date().toISOString() };
-      setIsFollowed(true);
-      setStatus('You will receive alerts for this company.');
-    }
-    localStorage.setItem('followedCompanies', JSON.stringify(existing));
-    setTimeout(() => setStatus(''), 3000);
-  };
 
   const handleCopySummary = async (news) => {
     const snippet = [
@@ -349,37 +558,193 @@ const CompanyInsights = () => {
     }
   };
 
-  const handleExportNews = () => {
-    if (!filteredNews.length || !company) return;
+  const handleExportResearch = () => {
+    if (!company) return;
+    const filename = `${(company.name || 'company').toLowerCase().replace(/\s+/g, '-')}-research.md`;
     const lines = [
-      `# ${company.name} — News Summary`,
+      `# ${company.name} — Interview Research`,
       `Generated: ${new Date().toLocaleString()}`,
       `Tracking Job: ${job?.title || 'Unknown role'}`,
       '',
     ];
-    filteredNews.forEach((news) => {
-      lines.push(`## ${news.title}`);
-      lines.push(`- Date: ${news.formattedDate}`);
-      lines.push(`- Category: ${formatCategoryLabel(news.category)}`);
-      lines.push(`- Source: ${news.source}`);
-      lines.push(`- Relevance: ${news.personalRelevance}/100 (${news.impactLevel})`);
+
+    const overview = getExportSummary(company) || company.profile_overview || company.description;
+    const products = getProducts(company);
+    const techStack = getTechStack(company);
+    if (overview) {
+      lines.push('## Overview', overview.trim(), '');
+    }
+
+    const historyText = getCompanyHistory(company);
+    if (historyText) {
+      lines.push('## Company History', historyText, '');
+    }
+
+    const missionText = getCompanyMission(company);
+    const values = getCompanyValues(company);
+    if (missionText || values.length) {
+      lines.push('## Mission & Values');
+      if (missionText) lines.push(`Mission: ${missionText}`);
+      if (values.length) lines.push(`Values: ${values.join(', ')}`);
       lines.push('');
-      lines.push(news.summary || 'No summary provided.');
-      lines.push('');
-      lines.push('Key Points:');
-      news.keyPoints.forEach((point) => lines.push(`- ${point}`));
-      lines.push('');
-    });
+    }
+
+    const developments = getRecentDevelopments(company);
+    lines.push('## Recent Developments');
+    if (developments.length) {
+      developments.forEach((dev) => {
+        lines.push(`- ${dev.title || dev.summary} (${formatDate(dev.date)} – ${formatCategoryLabel(dev.category)})`);
+        if (dev.summary) lines.push(`  ${dev.summary}`);
+      });
+    } else {
+      lines.push('- None available');
+    }
+    lines.push('');
+
+    const initiatives = getStrategicInitiatives(company);
+    lines.push('## Strategic Initiatives');
+    if (initiatives.length) {
+      initiatives.forEach((item) => {
+        lines.push(`- ${item.title} (${formatCategoryLabel(item.category)})`);
+        if (item.summary) lines.push(`  ${item.summary}`);
+      });
+    } else {
+      lines.push('- None available');
+    }
+    lines.push('');
+
+    const talkingPoints = getTalkingPointsList(company);
+    lines.push('## Talking Points');
+    if (talkingPoints.length) {
+      talkingPoints.forEach((point) => lines.push(`- ${point}`));
+    } else {
+      lines.push('- None available');
+    }
+    lines.push('');
+
+    const questions = getInterviewQuestionList(company);
+    lines.push('## Intelligent Questions');
+    if (questions.length) {
+      questions.forEach((question) => lines.push(`- ${question}`));
+    } else {
+      lines.push('- None available');
+    }
+    lines.push('');
+
+    const leadershipList = getLeadership(company);
+    lines.push('## Leadership');
+    if (leadershipList.length) {
+      leadershipList.forEach((leader) => lines.push(`- ${leader.name}${leader.title ? ` — ${leader.title}` : ''}`));
+    } else {
+      lines.push('- Not available');
+    }
+    lines.push('');
+
+    lines.push('## Products / Offerings');
+    if (products.length) {
+      products.forEach((product) => lines.push(`- ${product.name}${product.description ? ` — ${product.description}` : ''}`));
+    } else {
+      lines.push('- Not available');
+    }
+    lines.push('');
+
+    lines.push('## Tech Stack');
+    if (techStack.length) {
+      lines.push(`- ${techStack.join(', ')}`);
+    } else {
+      lines.push('- Not available');
+    }
+    lines.push('');
+
+    lines.push('## Competitive Landscape');
+    if (company.competitive_landscape) {
+      lines.push(company.competitive_landscape);
+    } else {
+      lines.push('Not available.');
+    }
+    const competitorNames = getCompetitorsList(company);
+    if (competitorNames.length) {
+      lines.push(`Competitors: ${competitorNames.join(', ')}`);
+    }
+    lines.push('');
+
+    lines.push('## Funding / Market');
+    if (company?.funding_info) {
+      if (company.funding_info.market_cap) lines.push(`- Market cap: ${formatMarketCap(company.funding_info.market_cap)}`);
+      if (company.funding_info.price_to_earnings) lines.push(`- P/E: ${Number(company.funding_info.price_to_earnings).toFixed(2)}`);
+      if (company.funding_info.beta) lines.push(`- Beta: ${Number(company.funding_info.beta).toFixed(2)}`);
+      if (!company.funding_info.market_cap && !company.funding_info.price_to_earnings && !company.funding_info.beta) {
+        lines.push('- Not available');
+      }
+    } else {
+      lines.push('- Not available');
+    }
+    lines.push('');
+
+    lines.push('## Latest News Insights');
+    if (filteredNews.length) {
+      filteredNews.forEach((news) => {
+        lines.push(`### ${news.title}`);
+        lines.push(`- Date: ${news.formattedDate}`);
+        lines.push(`- Category: ${formatCategoryLabel(news.category)}`);
+        lines.push(`- Source: ${news.source}`);
+        lines.push(`- Relevance: ${news.personalRelevance}/100 (${news.impactLevel})`);
+        lines.push('');
+        lines.push(news.summary || 'No summary provided.');
+        if (news.keyPoints?.length) {
+          lines.push('');
+          lines.push('Key Points:');
+          news.keyPoints.forEach((point) => lines.push(`- ${point}`));
+        }
+        lines.push('');
+      });
+    } else {
+      lines.push('- No news items available.');
+    }
+
     const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `${(company.name || 'company').toLowerCase().replace(/\s+/g, '-')}-news.md`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
-    setStatus('News summaries exported.');
+    setStatus('Research packet exported.');
     setTimeout(() => setStatus(''), 3000);
+  };
+
+  const generateMissingProfile = async () => {
+    if (!job) return;
+    setGeneratingProfile(true);
+    setStatus('Generating missing company profile using AI...');
+    try {
+      const generated = await jobsAPI.generateCompanyProfile(id);
+      // Merge generated fields into company and newsItems if returned
+      if (generated) {
+        setCompany((prev) => ({ ...(prev || {}), ...generated.company }));
+        if (Array.isArray(generated.recent_news) && generated.recent_news.length) {
+          const normalizedNews = (generated.recent_news || [])
+            .map((item, index) => enrichNewsItem(item, job, index))
+            .filter(Boolean);
+          setNewsItems((prev) => {
+            // merge unique by id
+            const existingIds = new Set((prev || []).map((n) => n.id));
+            const merged = [...(prev || [])];
+            normalizedNews.forEach((n) => { if (!existingIds.has(n.id)) merged.push(n); });
+            return merged;
+          });
+        }
+        setStatus('Generated company profile — updated view.');
+      }
+    } catch (err) {
+      const msg = err?.message || 'Failed to generate profile.';
+      setError(msg);
+      setStatus('');
+    } finally {
+      setGeneratingProfile(false);
+      setTimeout(() => setStatus(''), 3000);
+    }
   };
 
   useEffect(() => {
@@ -434,26 +799,206 @@ const CompanyInsights = () => {
             <p className="insights-subtitle">Company Research</p>
             <h2>{company?.name || job?.company_name}</h2>
             <p className="insights-description">
-              {company?.description || 'Stay informed with curated news to personalize your outreach.'}
+              {company?.profile_overview || company?.description || 'Stay informed with curated news to personalize your outreach.'}
             </p>
           </div>
           <div className="insights-header-actions">
             <button
-              className={`btn-secondary follow-button ${isFollowed ? 'is-following' : ''}`}
-              onClick={handleFollowToggle}
-            >
-              <Icon name="bell" size="sm" />
-              {isFollowed ? 'Following Alerts' : 'Follow Company'}
-            </button>
-            <button
               className="btn-secondary export-button"
-              onClick={handleExportNews}
-              disabled={!filteredNews.length}
+              onClick={handleExportResearch}
+              disabled={!company}
             >
               <Icon name="download" size="sm" />
-              Export Summaries
+              Export Research
             </button>
           </div>
+        </div>
+
+        <div className="insights-detail-grid">
+          <section className="insights-detail-card">
+            <div className="insights-card-header">Mission & Values</div>
+            {(() => {
+              const mission = getCompanyMission(company);
+              const values = getCompanyValues(company);
+              return (
+                <>
+                  <p className="insights-card-body">
+                    {mission || <span className="insights-card-empty">Mission not available</span>}
+                  </p>
+                  {values.length ? (
+                    <ul className="insights-bullets">{values.map((value, idx) => <li key={`value-${idx}`}>{value}</li>)}</ul>
+                  ) : (
+                    <p className="insights-card-empty">Values not available</p>
+                  )}
+                </>
+              );
+            })()}
+          </section>
+          <section className="insights-detail-card">
+            <div className="insights-card-header">Company History</div>
+            {getCompanyHistory(company) ? (
+              <p className="insights-card-body">{getCompanyHistory(company)}</p>
+            ) : (
+              <p className="insights-card-empty">Not available</p>
+            )}
+          </section>
+        </div>
+
+        <div className="insights-detail-grid insights-detail-grid--three">
+          <section className="insights-detail-card">
+            <div className="insights-card-header">Leadership</div>
+            {(() => {
+              const leadershipList = getLeadership(company);
+              return leadershipList.length ? (
+                <ul className="insights-list">{leadershipList.map((leader, idx) => (
+                  <li key={`leader-${idx}`}>
+                    <strong>{leader.name}</strong>{leader.title ? ` — ${leader.title}` : ''}
+                  </li>
+                ))}</ul>
+              ) : (
+                <p className="insights-card-empty">Not available</p>
+              );
+            })()}
+          </section>
+          <section className="insights-detail-card">
+            <div className="insights-card-header">Products / Offerings</div>
+            {(() => {
+              const products = getProducts(company);
+              return products.length ? (
+                <ul className="insights-list">
+                  {products.map((product, idx) => (
+                    <li key={`product-${idx}`}>
+                      <strong>{product.name}</strong>{product.description ? ` — ${product.description}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="insights-card-empty">Not available</p>
+              );
+            })()}
+          </section>
+          <section className="insights-detail-card">
+            <div className="insights-card-header">Tech Stack</div>
+            {(() => {
+              const stack = getTechStack(company);
+              return stack.length ? (
+                <div className="tech-stack-tags">
+                  {stack.map((tech, idx) => (
+                    <span key={`tech-${idx}`}>{tech}</span>
+                  ))}
+                </div>
+              ) : (
+                <p className="insights-card-empty">Not available</p>
+              );
+            })()}
+          </section>
+        </div>
+
+        <div className="insights-detail-grid insights-detail-grid--three">
+          <section className="insights-detail-card">
+            <div className="insights-card-header">Competitive Landscape</div>
+            {company?.competitive_landscape ? (
+              <p className="insights-card-body">{company.competitive_landscape}</p>
+            ) : (
+              <p className="insights-card-empty">Not available</p>
+            )}
+            {(() => {
+              const competitors = getCompetitorsList(company);
+              return competitors.length ? (
+                <ul className="insights-bullets">{competitors.map((name, idx) => <li key={`comp-${idx}`}>{name}</li>)}</ul>
+              ) : null;
+            })()}
+          </section>
+          <section className="insights-detail-card">
+            <div className="insights-card-header">Funding / Market</div>
+            {company?.funding_info ? (
+              <ul className="insights-list insights-list--compact">
+                {company.funding_info.market_cap ? (
+                  <li><strong>Market cap</strong> {formatMarketCap(company.funding_info.market_cap)}</li>
+                ) : null}
+                {company.funding_info.price_to_earnings ? (
+                  <li><strong>P/E</strong> {Number(company.funding_info.price_to_earnings).toFixed(2)}</li>
+                ) : null}
+                {company.funding_info.beta ? (
+                  <li><strong>Beta</strong> {Number(company.funding_info.beta).toFixed(2)}</li>
+                ) : null}
+              </ul>
+            ) : (
+              <p className="insights-card-empty">Not available</p>
+            )}
+          </section>
+          <section className="insights-detail-card">
+            <div className="insights-card-header">Recent Developments</div>
+            {(() => {
+              const developments = getRecentDevelopments(company);
+              return developments.length ? (
+                <ul className="insights-list">
+                  {developments.map((dev, idx) => (
+                    <li key={`dev-${idx}`}>
+                      <strong>{dev.title || dev.summary}</strong>
+                      <div className="insights-list-meta">
+                        <span>{formatDate(dev.date)}</span>
+                        <span>{formatCategoryLabel(dev.category)}</span>
+                      </div>
+                      {dev.summary ? <p>{dev.summary}</p> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="insights-card-empty">Not available</p>
+              );
+            })()}
+          </section>
+        </div>
+
+        <div className="insights-detail-grid">
+          <section className="insights-detail-card">
+            <div className="insights-card-header">Strategic Initiatives</div>
+            {(() => {
+              const initiatives = getStrategicInitiatives(company);
+              return initiatives.length ? (
+                <ul className="insights-list">
+                  {initiatives.map((item, idx) => (
+                    <li key={`initiative-${idx}`}>
+                      <strong>{item.title}</strong>
+                      <div className="insights-list-meta">
+                        <span>{formatDate(item.date)}</span>
+                        <span>{formatCategoryLabel(item.category)}</span>
+                      </div>
+                      {item.summary ? <p>{item.summary}</p> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="insights-card-empty">Not available</p>
+              );
+            })()}
+          </section>
+        </div>
+
+        <div className="insights-detail-grid">
+          <section className="insights-detail-card">
+            <div className="insights-card-header">Talking Points</div>
+            {(() => {
+              const talkingPoints = getTalkingPointsList(company);
+              return talkingPoints.length ? (
+                <ul className="insights-bullets">{talkingPoints.map((point, idx) => <li key={`tp-${idx}`}>{point}</li>)}</ul>
+              ) : (
+                <p className="insights-card-empty">Not available</p>
+              );
+            })()}
+          </section>
+          <section className="insights-detail-card">
+            <div className="insights-card-header">Intelligent Questions</div>
+            {(() => {
+              const questions = getInterviewQuestionList(company);
+              return questions.length ? (
+                <ul className="insights-bullets">{questions.map((question, idx) => <li key={`iq-${idx}`}>{question}</li>)}</ul>
+              ) : (
+                <p className="insights-card-empty">Not available</p>
+              );
+            })()}
+          </section>
         </div>
 
         <div className="insight-stats-grid">
@@ -480,15 +1025,7 @@ const CompanyInsights = () => {
         </div>
       </div>
 
-      {isFollowed && alertNews.length > 0 && (
-        <div className="alert-banner">
-          <Icon name="bullhorn" size="sm" />
-          <div>
-            <strong>{alertNews.length} new alert{alertNews.length > 1 ? 's' : ''} for followed company</strong>
-            <p>{alertNews[0].title}</p>
-          </div>
-        </div>
-      )}
+      {/* Follow feature removed: alerts are still available in the news list */}
 
       <div className="education-form-card" ref={newsSectionRef}>
         <div className="insights-section-heading">
@@ -678,7 +1215,6 @@ export {
   inferCategory,
   computePersonalRelevance,
   enrichNewsItem,
-  getCompanyStorageKey,
   sanitizeNewsId,
   getSnippetTokens,
   escapeRegExp,

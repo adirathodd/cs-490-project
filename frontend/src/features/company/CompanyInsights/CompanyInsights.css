@@ -54,6 +54,127 @@
   justify-content: flex-end;
 }
 
+.insights-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.insights-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.insights-detail-grid--three {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.insights-detail-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.insights-card-header {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+  color: #111827;
+}
+
+.insights-card-body {
+  margin: 0;
+  color: #374151;
+}
+
+.insights-card-empty {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.tech-stack-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tech-stack-tags span {
+  background: #f3f4f6;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: #111827;
+  border: 1px solid #e5e7eb;
+}
+
+.insights-two-column {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.insights-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.insights-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.insights-list li {
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.insights-list li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.insights-list--compact {
+  gap: 8px;
+}
+
+.insights-list--compact li {
+  border: none;
+  padding: 0;
+}
+
+.insights-list p {
+  margin: 4px 0 0 0;
+  color: #4b5563;
+}
+
+.insights-list-meta {
+  font-size: 12px;
+  color: #6b7280;
+  display: flex;
+  gap: 12px;
+  margin: 4px 0;
+}
+
+.insights-bullets {
+  margin: 0;
+  padding-left: 18px;
+  color: #374151;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .follow-button {
   display: inline-flex;
   align-items: center;
@@ -505,4 +626,30 @@
   .filter-options {
     grid-template-columns: 1fr;
   }
+}
+
+/* Ensure buttons/links inside Company Insights keep readable text on hover
+   (some global .btn-secondary hover rules set text to white which can
+   blend with gradients). These overrides are scoped to this page. */
+.company-insights-page .btn-secondary,
+.company-insights-page .btn-link,
+.company-insights-page .add-to-notes-button,
+.company-insights-page .remove-notes-button,
+.company-insights-page .filter-clear,
+.company-insights-page .filter-dropdown-header button {
+  color: inherit;
+}
+
+.company-insights-page .btn-secondary:hover,
+.company-insights-page .btn-link:hover,
+.company-insights-page .add-to-notes-button:hover,
+.company-insights-page .remove-notes-button:hover,
+.company-insights-page .filter-clear:hover,
+.company-insights-page .filter-dropdown-header button:hover {
+  color: #0f172a; /* dark navy for readability */
+  text-decoration: none;
+}
+
+.company-insights-page .btn-link:hover {
+  text-decoration: underline;
 }

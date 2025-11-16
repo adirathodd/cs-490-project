@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.authentication import SessionAuthentication
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.core.management import call_command
 from core.authentication import FirebaseAuthentication
 from core.serializers import (
     UserRegistrationSerializer,
@@ -33,7 +34,8 @@ from core.serializers import (
     ResumeVersionCompareSerializer,
     ResumeVersionMergeSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate, ResumeVersion, ResumeShare, ShareAccessLog, ResumeFeedback, FeedbackComment, FeedbackNotification
+from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate, ResumeVersion, ResumeShare, ShareAccessLog, ResumeFeedback, FeedbackComment, FeedbackNotification, Company, CompanyResearch
+from core.research.enrichment import fallback_domain
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def cover_letter_template_list_create(request):
@@ -2713,17 +2715,32 @@ def jobs_list_create(request):
             )
         instance = serializer.save(candidate=profile)
         
-        # UC-063: Automatically research company if it's new or hasn't been researched recently
-        company_name = instance.company_name
-        if company_name and company_name.strip():
+        # UC-063: Ensure company record exists immediately so dropdown search has data
+        company_name = (instance.company_name or '').strip()
+        new_company = None
+        if company_name:
             try:
-                from core.models import Company, CompanyResearch
+                company_obj = Company.objects.filter(name__iexact=company_name).first()
+                created_company = False
+                if not company_obj:
+                    company_defaults = {'domain': fallback_domain(company_name)}
+                    company_obj = Company.objects.create(name=company_name, **company_defaults)
+                    created_company = True
+                if created_company:
+                    CompanyResearch.objects.get_or_create(company=company_obj)
+                new_company = company_obj
+            except Exception as exc:
+                logger.warning("Failed to bootstrap company record for %s: %s", company_name, exc)
+        
+        # UC-063: Automatically research company if it's new or hasn't been researched recently
+        if company_name:
+            try:
                 from core.research import automated_company_research
                 from django.utils import timezone
                 from datetime import timedelta
                 
                 # Check if company exists and has recent research
-                company = Company.objects.filter(name__iexact=company_name).first()
+                company = new_company or Company.objects.filter(name__iexact=company_name).first()
                 should_research = False
                 
                 if not company:
@@ -2757,6 +2774,21 @@ def jobs_list_create(request):
                                 logger.info(f"Successfully researched company: {company_name}")
                             except Exception as e:
                                 logger.error(f"Error researching company {company_name}: {e}")
+                            try:
+                                company_record = Company.objects.filter(name__iexact=company_name).first()
+                                if company_record:
+                                    try:
+                                        call_command('populate_company_research', company_id=company_record.id, force=True)
+                                        logger.info(f"populate_company_research completed for {company_name}")
+                                    except Exception as populate_exc:
+                                        logger.error(f"populate_company_research failed for {company_name}: {populate_exc}")
+                                    try:
+                                        call_command('fetch_company_news', company=company_record.name, limit=1, max_news=8, sleep=0)
+                                        logger.info(f"fetch_company_news completed for {company_name}")
+                                    except Exception as news_exc:
+                                        logger.error(f"fetch_company_news failed for {company_name}: {news_exc}")
+                            except Exception as followup_exc:
+                                logger.error(f"Post-research enrichment failed for {company_name}: {followup_exc}")
                         
                         # Start research in background thread
                         thread = Thread(target=research_company_async, args=(company_name,))
@@ -4811,6 +4843,60 @@ def company_info(request, company_name):
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def company_search(request):
+    """Search companies by name (fuzzy) or domain using PostgreSQL trigram similarity.
+
+    Query params:
+      - q or name: search string
+      - domain: optional domain filter
+      - limit: max results (default 10)
+    """
+    try:
+        q = (request.GET.get('q') or request.GET.get('name') or '').strip()
+        domain = (request.GET.get('domain') or '').strip()
+        try:
+            limit = int(request.GET.get('limit', 10))
+        except Exception:
+            limit = 10
+
+        if not q and not domain:
+            return Response({'error': {'code': 'missing_parameters', 'message': 'Provide q (name) or domain.'}}, status=status.HTTP_400_BAD_REQUEST)
+
+        from core.models import Company
+        from core.utils.company_matching import normalize_name
+        try:
+            from django.contrib.postgres.search import TrigramSimilarity
+            pg_trgm_available = True
+        except Exception:
+            pg_trgm_available = False
+
+        qs = Company.objects.all()
+        if domain:
+            qs = qs.filter(domain__icontains=domain)
+
+        results = []
+        if q and pg_trgm_available:
+            normalized_q = normalize_name(q)
+            qs = qs.annotate(similarity=TrigramSimilarity('normalized_name', normalized_q)).filter(similarity__gt=0.0).order_by('-similarity')
+            for c in qs[:limit]:
+                sim = getattr(c, 'similarity', None)
+                results.append({'id': c.id, 'name': c.name, 'domain': c.domain, 'similarity': float(sim) if sim is not None else None})
+        else:
+            # Fallback: simple icontains name search
+            if q:
+                qs = qs.filter(name__icontains=q)
+            qs = qs.order_by('name')
+            for c in qs[:limit]:
+                results.append({'id': c.id, 'name': c.name, 'domain': c.domain, 'similarity': None})
+
+        return Response({'results': results}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.exception(f"Company search failed: {e}")
+        return Response({'error': {'code': 'internal_error', 'message': 'Company search failed.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
@@ -9211,4 +9297,3 @@ def generate_application_package(request, job_id):
         
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
