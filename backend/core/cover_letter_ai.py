@@ -414,6 +414,12 @@ def generate_cover_letter_latex(
         r'',
         f'{today}',
         r'',
+        # Candidate header (name + contact)
+        f'{name} \\\\',
+        f'{email} \\\\',
+        f'{phone} \\\\',
+        f'{location} \\\\',
+        r'',
         f'Hiring Manager \\\\',
         f'{company} \\\\',
         f'{title}',

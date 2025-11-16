@@ -437,3 +437,27 @@
 
 .breadcrumbs a:hover { text-decoration: underline; }
 
+
+/* Contacts floating button */
+
+.contacts-button {
+  position: fixed;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1300;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 26px rgba(2,6,23,0.12);
+  cursor: pointer;
+}
+
+.contacts-button:hover { transform: translateY(-50%) scale(1.03); box-shadow: 0 10px 30px rgba(2,6,23,0.16); }
+

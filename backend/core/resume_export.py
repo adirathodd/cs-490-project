@@ -697,9 +697,21 @@ def export_html(profile_data: Dict[str, Any], theme: str = 'professional', water
     """
     theme_config = THEMES.get(theme, THEMES['professional'])
     
+    # Ensure user-provided text is escaped to prevent XSS in generated HTML.
+    def _escape_value(v):
+        if isinstance(v, str):
+            return escape(v)
+        if isinstance(v, dict):
+            return {k: _escape_value(val) for k, val in v.items()}
+        if isinstance(v, list):
+            return [_escape_value(i) for i in v]
+        return v
+
+    safe_profile = _escape_value(profile_data)
+
     template = Template(HTML_TEMPLATE)
     html = template.render(
-        **profile_data,
+        **safe_profile,
         theme=theme_config,
         watermark=escape(watermark) if watermark else '',
     )

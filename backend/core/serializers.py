@@ -13,6 +13,9 @@ from core.models import (
     ResumeVersion, ResumeVersionChange, ResumeShare, ShareAccessLog,
     ResumeFeedback, FeedbackComment, FeedbackNotification
 )
+from core.models import (
+    Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink
+)
 
 class CoverLetterTemplateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -123,13 +126,117 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_full_name(self, obj):
         """Get user's full name with sensible fallback to email/username."""
         name = f"{obj.user.first_name} {obj.user.last_name}".strip()
-        if not name:
+        if not name and obj.user:
             return obj.user.email or obj.user.username or ""
         return name
     
     def get_full_location(self, obj):
         """Get formatted location."""
         return obj.get_full_location()
+
+    def update(self, instance, validated_data):
+        """Update user and profile information, supporting nested user dict."""
+        user_data = validated_data.pop('user', {})
+
+        # Update user fields
+        if user_data:
+            user = instance.user
+            for attr, value in user_data.items():
+                setattr(user, attr, value)
+            user.save()
+
+        # Update profile fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        return instance
+
+    def validate_phone(self, value):
+        """Validate phone number format for user profile."""
+        if value:
+            cleaned = re.sub(r'[\s\-\(\)\.]', '', value)
+            if not re.match(r'^\+?1?\d{10,15}$', cleaned):
+                raise serializers.ValidationError("Please enter a valid phone number.")
+        return value
+
+class TagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tag
+        fields = ['id', 'name', 'type']
+        read_only_fields = ['id']
+
+
+class ContactNoteSerializer(serializers.ModelSerializer):
+    author = serializers.ReadOnlyField(source='author.id')
+
+    class Meta:
+        model = ContactNote
+        fields = ['id', 'contact', 'author', 'content', 'interests', 'created_at']
+        read_only_fields = ['id', 'author', 'created_at']
+
+
+class InteractionSerializer(serializers.ModelSerializer):
+    owner = serializers.ReadOnlyField(source='owner.id')
+
+    class Meta:
+        model = Interaction
+        fields = ['id', 'contact', 'owner', 'type', 'date', 'duration_minutes', 'summary', 'follow_up_needed', 'metadata', 'created_at']
+        read_only_fields = ['id', 'owner', 'created_at']
+
+
+class ReminderSerializer(serializers.ModelSerializer):
+    owner = serializers.ReadOnlyField(source='owner.id')
+
+    class Meta:
+        model = Reminder
+        fields = ['id', 'contact', 'owner', 'message', 'due_date', 'recurrence', 'completed', 'created_at']
+        read_only_fields = ['id', 'owner', 'created_at']
+
+
+class ImportJobSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ImportJob
+        fields = ['id', 'owner', 'provider', 'status', 'started_at', 'completed_at', 'errors', 'result_summary', 'created_at']
+        read_only_fields = ['id', 'owner', 'status', 'started_at', 'completed_at', 'errors', 'result_summary', 'created_at']
+
+
+class ContactCompanyLinkSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactCompanyLink
+        fields = ['id', 'contact', 'company', 'role_title', 'start_date', 'end_date']
+        read_only_fields = ['id']
+
+
+class ContactJobLinkSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactJobLink
+        fields = ['id', 'contact', 'job', 'relationship_to_job']
+        read_only_fields = ['id']
+
+
+class MutualConnectionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MutualConnection
+        fields = ['id', 'contact', 'related_contact', 'context', 'source', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class ContactSerializer(serializers.ModelSerializer):
+    tags = TagSerializer(many=True, read_only=True)
+    notes = ContactNoteSerializer(many=True, read_only=True)
+    interactions = InteractionSerializer(many=True, read_only=True)
+    reminders = ReminderSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Contact
+        fields = [
+            'id', 'owner', 'first_name', 'last_name', 'display_name', 'title', 'email', 'phone', 'location',
+            'company_name', 'company', 'linkedin_url', 'profile_url', 'photo_url', 'industry', 'role',
+            'relationship_type', 'relationship_strength', 'last_interaction', 'tags', 'external_id', 'metadata',
+            'is_private', 'created_at', 'updated_at', 'notes', 'interactions', 'reminders'
+        ]
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
     
     def validate_summary(self, value):
         """Validate summary is within 500 character limit."""

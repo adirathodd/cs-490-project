@@ -1,7 +1,7 @@
 """
 URL configuration for core app authentication endpoints.
 """
-from django.urls import path
+from django.urls import path, re_path
 from core import views
 from core import analytics_views
 
@@ -40,6 +40,16 @@ urlpatterns = [
     # Projects endpoints
     path('profile/projects', views.projects_list_create, name='projects-list-create'),
     path('profile/projects/<int:pk>', views.projects_detail, name='projects-detail'),
+
+    # UC-086: Contacts / Professional Network
+    path('contacts', views.contacts_list_create, name='contacts-list-create'),
+    path('contacts/<uuid:contact_id>', views.contact_detail, name='contact-detail'),
+    path('contacts/<uuid:contact_id>/interactions', views.contact_interactions_list_create, name='contact-interactions'),
+    path('contacts/<uuid:contact_id>/notes', views.contact_notes_list_create, name='contact-notes'),
+    path('contacts/<uuid:contact_id>/reminders', views.contact_reminders_list_create, name='contact-reminders'),
+    path('contacts/import/start', views.contacts_import_start, name='contacts-import-start'),
+    path('contacts/import/callback', views.contacts_import_callback, name='contacts-import-callback'),
+    path('contacts/<uuid:contact_id>/mutuals', views.contact_mutuals, name='contact-mutuals'),
 
     # Profile Picture endpoints (UC-022)
     path('profile/picture', views.get_profile_picture, name='get-profile-picture'),
@@ -139,6 +149,8 @@ urlpatterns = [
     # UC-051: Resume export endpoints
     path('resume/export/themes', views.resume_export_themes, name='resume-export-themes'),
     path('resume/export', views.resume_export, name='resume-export'),
+    # Ensure exact-match export route is available for tests and clients
+    re_path(r'^resume/export$', views.resume_export, name='resume-export-exact'),
     path('resume/export/ai', views.export_ai_resume, name='export-ai-resume'),
     
     # UC-063: Automated Company Research endpoints

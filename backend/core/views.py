@@ -39,6 +39,18 @@ from core.serializers import (
     ResumeVersionListSerializer,
     ResumeVersionCompareSerializer,
     ResumeVersionMergeSerializer,
+    ResumeShareListSerializer,
+)
+from core.serializers import (
+    ContactSerializer,
+    InteractionSerializer,
+    ContactNoteSerializer,
+    ReminderSerializer,
+    ImportJobSerializer,
+    TagSerializer,
+    MutualConnectionSerializer,
+    ContactCompanyLinkSerializer,
+    ContactJobLinkSerializer,
 )
 from core.models import (
     CandidateProfile,
@@ -66,7 +78,17 @@ from core.models import (
     JobQuestionPractice,
     QuestionBankCache,
     PreparationChecklistProgress,
+    Contact,
+    Interaction,
+    ContactNote,
+    Reminder,
+    ImportJob,
+    Tag,
+    MutualConnection,
+    ContactCompanyLink,
+    ContactJobLink,
 )
+from core import google_import, tasks
 from core.research.enrichment import fallback_domain
 from core.question_bank import build_question_bank
 @api_view(["GET", "POST"])
@@ -363,6 +385,9 @@ def cover_letter_template_download(request, pk, format_type):
         response = HttpResponse(content, content_type='text/plain')
         response['Content-Disposition'] = f'attachment; filename="{template.name}.txt"'
         return response
+
+
+    # end of txt branch
     
     elif format_type == 'docx':
         # Word document download - use original file if available, otherwise generate new one
@@ -770,6 +795,197 @@ def _delete_user_and_data(user):
             msg.send(fail_silently=True)
     except Exception as e:
         logger.warning(f"Failed to send account deletion email to {email}: {e}")
+
+
+# ======================
+# Contacts / Network API (UC-086)
+# Module-level API views for contact management
+# ======================
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def contacts_list_create(request):
+    """List user's contacts or create a new one."""
+    if request.method == "GET":
+        qs = Contact.objects.filter(owner=request.user).order_by('-updated_at')
+        # basic search
+        q = request.query_params.get('q')
+        if q:
+            qs = qs.filter(models.Q(first_name__icontains=q) | models.Q(last_name__icontains=q) | models.Q(display_name__icontains=q) | models.Q(email__icontains=q) | models.Q(company_name__icontains=q))
+        serializer = ContactSerializer(qs, many=True, context={'request': request})
+        return Response(serializer.data)
+    else:
+        data = request.data.copy()
+        serializer = ContactSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            contact = serializer.save(owner=request.user)
+            return Response(ContactSerializer(contact, context={'request': request}).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+@api_view(["GET", "PUT", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def contact_detail(request, contact_id):
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(ContactSerializer(contact, context={'request': request}).data)
+    elif request.method in ('PUT', 'PATCH'):
+        serializer = ContactSerializer(contact, data=request.data, partial=(request.method == 'PATCH'), context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        contact.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def contact_interactions_list_create(request, contact_id):
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        qs = contact.interactions.all().order_by('-date')
+        serializer = InteractionSerializer(qs, many=True)
+        return Response(serializer.data)
+    else:
+        data = request.data.copy()
+        data['contact'] = str(contact.id)
+        serializer = InteractionSerializer(data=data)
+        if serializer.is_valid():
+            interaction = serializer.save(owner=request.user)
+            # update contact last_interaction and possibly strength heuristics
+            contact.last_interaction = interaction.date
+            contact.save(update_fields=['last_interaction'])
+            return Response(InteractionSerializer(interaction).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def contact_notes_list_create(request, contact_id):
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        qs = contact.notes.all().order_by('-created_at')
+        serializer = ContactNoteSerializer(qs, many=True)
+        return Response(serializer.data)
+    else:
+        data = request.data.copy()
+        data['contact'] = str(contact.id)
+        serializer = ContactNoteSerializer(data=data)
+        if serializer.is_valid():
+            note = serializer.save(author=request.user)
+            return Response(ContactNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def contact_reminders_list_create(request, contact_id):
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        qs = contact.reminders.all().order_by('due_date')
+        serializer = ReminderSerializer(qs, many=True)
+        return Response(serializer.data)
+    else:
+        data = request.data.copy()
+        data['contact'] = str(contact.id)
+        serializer = ReminderSerializer(data=data)
+        if serializer.is_valid():
+            reminder = serializer.save(owner=request.user)
+            return Response(ReminderSerializer(reminder).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def contacts_import_start(request):
+    """Start an import job. For Google we return an auth_url to redirect user to.
+    This is a lightweight starter implementation; full OAuth flow will be added separately.
+    """
+    provider = request.data.get('provider') or request.query_params.get('provider') or 'google'
+    job = ImportJob.objects.create(owner=request.user, provider=provider, status='pending')
+    auth_url = None
+    if provider == 'google':
+        redirect = request.build_absolute_uri('/api/core/contacts/import/callback') + f'?job_id={job.id}'
+        auth_url = google_import.build_google_auth_url(redirect, state=str(job.id))
+    return Response({'job_id': str(job.id), 'auth_url': auth_url, 'status': job.status})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def contacts_import_callback(request):
+    code = request.data.get('code') or request.query_params.get('code')
+    job_id = request.data.get('job_id') or request.query_params.get('job_id') or request.data.get('state') or request.query_params.get('state')
+    if not job_id:
+        return Response({'error': 'Missing job_id/state'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        job = ImportJob.objects.get(id=job_id, owner=request.user)
+    except ImportJob.DoesNotExist:
+        return Response({'error': 'Import job not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not code:
+        # If no code present, return job info so frontend can surface an error
+        return Response({'job_id': str(job.id), 'status': job.status})
+
+    redirect = request.build_absolute_uri('/api/core/contacts/import/callback') + f'?job_id={job.id}'
+    try:
+        tokens = google_import.exchange_code_for_tokens(code, redirect)
+        access_token = tokens.get('access_token')
+        refresh_token = tokens.get('refresh_token')
+        # Save some metadata for auditing (do NOT log tokens in production)
+        job.metadata = {'tokens_obtained_at': timezone.now().isoformat(), 'has_refresh_token': bool(refresh_token)}
+        job.save(update_fields=['metadata'])
+
+        # Enqueue background processing via Celery if available, otherwise run synchronously
+        try:
+            tasks.process_import_job.delay(str(job.id), access_token)  # type: ignore[attr-defined]
+            started = True
+        except Exception:
+            # Fallback: call synchronously
+            tasks.process_import_job(str(job.id), access_token)
+            started = False
+
+        return Response({'job_id': str(job.id), 'status': 'processing', 'enqueued': started})
+    except Exception as exc:
+        job.status = 'failed'
+        job.errors = [str(exc)]
+        job.save(update_fields=['status', 'errors'])
+        return Response({'error': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def contact_mutuals(request, contact_id):
+    """Return simple mutual connections based on company or shared tags for now."""
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    # Find other contacts owned by user with same company_name or shared tag
+    mutuals = Contact.objects.filter(owner=request.user).exclude(id=contact.id)
+    mutuals = mutuals.filter(models.Q(company_name__iexact=contact.company_name) | models.Q(tags__in=contact.tags.all())).distinct()
+    serializer = ContactSerializer(mutuals, many=True, context={'request': request})
+    return Response(serializer.data)
 
 
 @api_view(['POST'])
@@ -7393,6 +7609,8 @@ def bulk_job_match_scores(request):
             {'error': {'code': 'internal_error', 'message': 'Failed to generate bulk match analysis.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+@api_view(['GET'])
+@authentication_classes([SessionAuthentication, FirebaseAuthentication])
 @permission_classes([IsAuthenticated])
 def resume_export(request):
     """
@@ -7417,11 +7635,28 @@ def resume_export(request):
         from core import resume_export
         from django.http import HttpResponse
         
-        # Get or create authenticated user's profile
-        profile, created = CandidateProfile.objects.get_or_create(
-            user=request.user,
-            defaults={'email': request.user.email}
-        )
+        # Debug: log incoming request for diagnostics
+        logger.debug(f"resume_export called: GET={request.GET} user={request.user}")
+        # Print to stdout during tests to make debugging obvious
+        print('DEBUG resume_export called:', request.method, request.get_full_path(), 'user=', getattr(request, 'user', None))
+
+        # Lookup authenticated user's profile. Do NOT attempt to create a
+        # CandidateProfile here because the model does not include an
+        # 'email' field and creating with invalid defaults raises FieldError.
+        print('DEBUG before profile lookup: user=', getattr(request, 'user', None))
+        profile = CandidateProfile.objects.filter(user=request.user).first()
+        if not profile:
+            # Match test expectations: when the profile is missing, return 404
+            return Response(
+                {
+                    'error': {
+                        'code': 'profile_not_found',
+                        'message': 'User profile not found.'
+                    }
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        print('DEBUG after profile lookup: profile=', getattr(profile, 'id', None))
         
         # Get query parameters
         format_type = request.GET.get('format', '').lower()
@@ -7512,6 +7747,43 @@ def resume_export(request):
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# Wrapper to ensure DRF function-based view handling and avoid routing edge-cases
+@api_view(['GET'])
+@authentication_classes([SessionAuthentication, FirebaseAuthentication])
+@permission_classes([IsAuthenticated])
+def resume_export_wrapper(request):
+    """Thin wrapper that forwards to the main resume_export logic."""
+    # Quick-validate 'format' parameter here to avoid routing/auth edge-cases
+    format_type = request.GET.get('format', '').lower()
+    if not format_type:
+        return Response(
+            {
+                'error': {
+                    'code': 'missing_parameter',
+                    'message': 'format parameter is required. Valid options: docx, html, txt'
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    valid_formats = ['docx', 'html', 'txt']
+    if format_type not in valid_formats:
+        return Response(
+            {
+                'error': {
+                    'code': 'invalid_format',
+                    'message': f'Invalid format: {format_type}. Valid options: {", ".join(valid_formats)}'
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Call the underlying function while ensuring we pass a Django HttpRequest
+    target = getattr(resume_export, '__wrapped__', resume_export)
+    django_req = getattr(request, '_request', request)
+    return target(django_req)
 
 
 @api_view(['POST'])

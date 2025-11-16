@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import './Nav.css';
+import ContactsPanel from '../contacts/ContactsPanel';
 
 const NavBar = () => {
   const navigate = useNavigate();
@@ -10,6 +11,7 @@ const NavBar = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [resumeDropdownOpen, setResumeDropdownOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [contactsOpen, setContactsOpen] = useState(false);
   const menuRef = useRef(null);
   const resumeDropdownRef = useRef(null);
   const profileDropdownRef = useRef(null);
@@ -168,18 +170,18 @@ const NavBar = () => {
           Basic Profile
         </NavLink>
         <NavLink 
-          to="/analytics" 
-          className="nav-dropdown-item"
-          onClick={() => { setProfileDropdownOpen(false); setOpen(false); }}
-        >
-          Analytics
-        </NavLink>
-        <NavLink 
           to="/certifications" 
           className="nav-dropdown-item"
           onClick={() => { setProfileDropdownOpen(false); setOpen(false); }}
         >
           Certifications
+        </NavLink>
+        <NavLink 
+          to="/analytics" 
+          className="nav-dropdown-item"
+          onClick={() => { setProfileDropdownOpen(false); setOpen(false); }}
+        >
+          Analytics
         </NavLink>
       </div>
     )}
@@ -201,6 +203,15 @@ const NavBar = () => {
         </button>
       </div>
       <div className="nav-user" ref={menuRef}>
+        <button
+          type="button"
+          className="contacts-button"
+          onClick={() => setContactsOpen(v => !v)}
+          aria-label="Open contacts"
+        >
+          📇
+        </button>
+        <ContactsPanel open={contactsOpen} onClose={() => setContactsOpen(false)} />
         <button className="nav-btn" onClick={() => setMenuOpen(v => !v)} aria-haspopup="menu" aria-expanded={menuOpen}>
           {displayName} ▾
         </button>
