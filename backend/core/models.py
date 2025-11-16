@@ -742,6 +742,84 @@ class MockInterview(models.Model):
         ordering = ['-created_at']
 
 
+class JobQuestionPractice(models.Model):
+    """Track practiced interview questions for a specific job entry (UC-075)."""
+
+    DIFFICULTY_CHOICES = [
+        ('entry', 'Entry'),
+        ('mid', 'Mid-level'),
+        ('senior', 'Senior'),
+    ]
+
+    job = models.ForeignKey('JobEntry', on_delete=models.CASCADE, related_name='question_practice_logs')
+    question_id = models.CharField(max_length=64)
+    category = models.CharField(max_length=32)
+    question_text = models.TextField()
+    difficulty = models.CharField(max_length=16, choices=DIFFICULTY_CHOICES, default='mid')
+    skills = models.JSONField(default=list, blank=True)
+    written_response = models.TextField(blank=True)
+    star_response = models.JSONField(default=dict, blank=True)
+    practice_notes = models.TextField(blank=True)
+    practice_count = models.PositiveIntegerField(default=1)
+    first_practiced_at = models.DateTimeField(auto_now_add=True)
+    last_practiced_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [('job', 'question_id')]
+        indexes = [
+            models.Index(fields=['job', 'category']),
+            models.Index(fields=['job', 'question_id']),
+        ]
+        ordering = ['-last_practiced_at']
+
+    def increment_count(self):
+        self.practice_count = (self.practice_count or 0) + 1
+
+
+class QuestionBankCache(models.Model):
+    """Cache generated question bank data per job."""
+
+    job = models.ForeignKey('JobEntry', on_delete=models.CASCADE, related_name='question_bank_caches')
+    bank_data = models.JSONField(default=dict, blank=True)
+    source = models.CharField(max_length=32, default='template')
+    generated_at = models.DateTimeField(default=timezone.now)
+    is_valid = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-generated_at']
+        indexes = [
+            models.Index(fields=['job', 'is_valid']),
+        ]
+
+    def __str__(self):
+        return f"QuestionBankCache(job={self.job_id}, source={self.source}, generated_at={self.generated_at})"
+
+
+class PreparationChecklistProgress(models.Model):
+    """Track completion status for preparation checklist items per job."""
+
+    job = models.ForeignKey('JobEntry', on_delete=models.CASCADE, related_name='preparation_checklist')
+    task_id = models.CharField(max_length=64)
+    category = models.CharField(max_length=200)
+    task = models.CharField(max_length=500)
+    completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [('job', 'task_id')]
+        indexes = [
+            models.Index(fields=['job', 'completed']),
+            models.Index(fields=['job', 'task_id']),
+        ]
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"ChecklistProgress(job={self.job_id}, task={self.task[:32]})"
+
+
 # ======================
 # ANALYTICS & TRACKING MODELS
 # ======================

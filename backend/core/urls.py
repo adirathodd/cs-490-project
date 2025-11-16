@@ -156,6 +156,10 @@ urlpatterns = [
     
     # UC-068: Interview Insights and Preparation endpoints
     path('jobs/<int:job_id>/interview-insights/', views.job_interview_insights, name='job-interview-insights'),
+    path('jobs/<int:job_id>/preparation-checklist/', views.job_preparation_checklist_toggle, name='job-preparation-checklist'),
+    # UC-075: Role-specific question bank endpoints
+    path('jobs/<int:job_id>/question-bank/', views.job_question_bank, name='job-question-bank'),
+    path('jobs/<int:job_id>/question-bank/practice/', views.job_question_practice, name='job-question-practice'),
     
     # UC-066: Skills Gap Analysis endpoints
     path('jobs/<int:job_id>/skills-gap/', views.job_skills_gap, name='job-skills-gap'),
@@ -205,4 +209,3 @@ urlpatterns = [
     path('feedback-notifications/<uuid:notification_id>/read/', views.mark_notification_read, name='mark-notification-read'),
     path('feedback/export/', views.export_feedback_summary, name='export-feedback-summary'),
 ]
-

@@ -52,6 +52,44 @@ const mockJob = {
   },
 };
 
+const mockQuestionBank = {
+  job_title: 'Software Engineer',
+  company_name: 'Test Corp',
+  industry: 'Software',
+  generated_at: '2025-01-01T00:00:00Z',
+  difficulty_levels: [
+    { value: 'entry', label: 'Entry' },
+    { value: 'mid', label: 'Mid' },
+  ],
+  star_framework: {
+    overview: 'Use STAR',
+    steps: [
+      { id: 'situation', title: 'Situation', tip: 'Context' },
+      { id: 'task', title: 'Task', tip: 'Responsibility' },
+    ],
+  },
+  company_focus: [],
+  categories: [
+    {
+      id: 'technical',
+      label: 'Technical',
+      guidance: 'Share detailed architecture decisions.',
+      questions: [
+        {
+          id: 'q1',
+          prompt: 'Explain how you scaled an API under heavy load.',
+          category: 'technical',
+          difficulty: 'mid',
+          skills: [{ skill_id: 1, name: 'APIs' }],
+          concepts: ['scalability'],
+          framework: null,
+          practice_status: { practiced: false, practice_count: 0 },
+        },
+      ],
+    },
+  ],
+};
+
 describe('JobDetailView (UC-042: Job Application Materials)', () => {
   test('renders job details correctly', async () => {
     jobsAPI.getJob.mockResolvedValueOnce(mockJob);
@@ -78,6 +116,7 @@ describe('JobDetailView (UC-042: Job Application Materials)', () => {
 
   test('switches between tabs correctly', async () => {
     jobsAPI.getJob.mockResolvedValueOnce(mockJob);
+    jobsAPI.getJobQuestionBank.mockResolvedValue(mockQuestionBank);
 
     render(<JobDetailView />, { wrapper: RouterWrapper });
 
@@ -90,6 +129,77 @@ describe('JobDetailView (UC-042: Job Application Materials)', () => {
     // Tab should be active (has active styling)
     await waitFor(() => {
       expect(insightsTab).toHaveStyle('border-bottom: 3px solid #667eea');
+    });
+  });
+
+  test('renders question bank and logs practice responses', async () => {
+    jobsAPI.getJob.mockResolvedValueOnce(mockJob);
+    jobsAPI.getJobQuestionBank.mockResolvedValueOnce(mockQuestionBank);
+    jobsAPI.logQuestionPractice.mockResolvedValueOnce({
+      practice_status: {
+        practiced: true,
+        practice_count: 1,
+        last_practiced_at: '2025-01-05T12:00:00Z',
+        written_response: 'Handled scale',
+        star_response: {},
+        practice_notes: '',
+      },
+    });
+
+    render(<JobDetailView />, { wrapper: RouterWrapper });
+
+    await screen.findByText('Software Engineer');
+
+    const interviewTab = screen.getByRole('button', { name: /interview insights/i });
+    await userEvent.click(interviewTab);
+
+    const practiceBtn = await screen.findByRole('button', { name: /log practice/i });
+    await userEvent.click(practiceBtn);
+
+    const practiceModal = await screen.findByRole('dialog');
+    const summaryInput = within(practiceModal).getByPlaceholderText(/overall summary/i);
+    await userEvent.type(summaryInput, 'Handled large scale traffic');
+
+    const savePracticeBtn = within(practiceModal).getByRole('button', { name: /save practice/i });
+    await userEvent.click(savePracticeBtn);
+
+    await waitFor(() => {
+      expect(jobsAPI.logQuestionPractice).toHaveBeenCalledWith(1, expect.objectContaining({
+        question_id: 'q1',
+      }));
+    });
+  });
+
+  test('saves preparation checklist toggle', async () => {
+    jobsAPI.getJob.mockResolvedValueOnce(mockJob);
+    jobsAPI.getJobInterviewInsights.mockResolvedValueOnce({
+      has_data: true,
+      preparation_checklist: [
+        {
+          category: 'General Prep',
+          items: [
+            { task_id: 'task-1', task: 'Review job description thoroughly', completed: false },
+          ],
+        },
+      ],
+    });
+    jobsAPI.getJobQuestionBank.mockResolvedValueOnce(mockQuestionBank);
+    jobsAPI.togglePreparationChecklist.mockResolvedValueOnce({ task_id: 'task-1', completed: true });
+
+    render(<JobDetailView />, { wrapper: RouterWrapper });
+
+    await screen.findByText('Software Engineer');
+    const interviewTab = screen.getByRole('button', { name: /interview insights/i });
+    await userEvent.click(interviewTab);
+
+    const checklistItem = await screen.findByLabelText(/review job description thoroughly/i);
+    await userEvent.click(checklistItem);
+
+    await waitFor(() => {
+      expect(jobsAPI.togglePreparationChecklist).toHaveBeenCalledWith(1, expect.objectContaining({
+        task_id: 'task-1',
+        completed: true,
+      }));
     });
   });
 

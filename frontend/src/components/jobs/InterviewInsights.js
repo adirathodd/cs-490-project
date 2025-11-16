@@ -12,7 +12,7 @@ import Icon from '../common/Icon';
  * - Success tips
  * - Interview preparation checklist
  */
-const InterviewInsights = ({ insights }) => {
+const InterviewInsights = ({ insights, onToggleChecklistItem, savingChecklistId }) => {
   if (!insights || !insights.has_data) {
     return null;
   }
@@ -415,7 +415,7 @@ const InterviewInsights = ({ insights }) => {
                   </h5>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {category.items.map((item, itemIndex) => (
-                      <label key={itemIndex} style={{
+                      <label key={item.task_id || itemIndex} style={{
                         display: 'flex',
                         alignItems: 'flex-start',
                         gap: '12px',
@@ -429,13 +429,25 @@ const InterviewInsights = ({ insights }) => {
                       >
                         <input
                           type="checkbox"
-                          defaultChecked={item.completed}
+                          checked={!!item.completed}
+                          onChange={(e) => {
+                            if (onToggleChecklistItem) {
+                              onToggleChecklistItem({
+                                taskId: item.task_id,
+                                category: category.category,
+                                task: item.task,
+                                completed: e.target.checked,
+                              });
+                            }
+                          }}
+                          disabled={!onToggleChecklistItem || savingChecklistId === item.task_id}
                           style={{
                             width: '18px',
                             height: '18px',
                             marginTop: '2px',
-                            cursor: 'pointer',
-                            accentColor: '#667eea'
+                            cursor: onToggleChecklistItem ? 'pointer' : 'not-allowed',
+                            accentColor: '#667eea',
+                            opacity: savingChecklistId === item.task_id ? 0.6 : 1,
                           }}
                         />
                         <span style={{
