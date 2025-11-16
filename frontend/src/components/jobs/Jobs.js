@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { jobsAPI, materialsAPI, interviewsAPI } from '../../services/api';
+import { jobsAPI, materialsAPI, interviewsAPI, companyAPI } from '../../services/api';
 import Icon from '../common/Icon';
 import DeadlineCalendar from '../common/DeadlineCalendar';
 import AutomationDashboard from '../automation/AutomationDashboard';
@@ -59,9 +59,12 @@ const Jobs = () => {
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [fieldErrors, setFieldErrors] = useState({});
-  const [success, setSuccess] = useState('');
+const [error, setError] = useState('');
+const [fieldErrors, setFieldErrors] = useState({});
+const [success, setSuccess] = useState('');
+const [companyMatches, setCompanyMatches] = useState([]);
+const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
+const [companySearchStatus, setCompanySearchStatus] = useState('');
   const [charCount, setCharCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
@@ -116,7 +119,9 @@ const Jobs = () => {
   const [jobMaterials, setJobMaterials] = useState({ resume_doc: null, cover_letter_doc: null, history: [] });
   const [materialsForm, setMaterialsForm] = useState({ resume_doc_id: null, cover_letter_doc_id: null });
   const [savingMaterials, setSavingMaterials] = useState(false);
-  const initialFetchRef = useRef(true);
+const initialFetchRef = useRef(true);
+const companySearchTimerRef = useRef(null);
+const companyDropdownRef = useRef(null);
 
   // UC-039: Load saved search preferences from localStorage on mount
   useEffect(() => {
@@ -236,6 +241,22 @@ const Jobs = () => {
     };
   }, [searchQuery, filters, sortBy, showArchived, prefsLoaded]);
 
+  useEffect(() => () => {
+    if (companySearchTimerRef.current) {
+      clearTimeout(companySearchTimerRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (companyDropdownRef.current && !companyDropdownRef.current.contains(event.target)) {
+        setCompanyDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Helper: days difference (deadline - today), and urgency color
   const daysUntil = (dateStr) => {
     if (!dateStr) return null;
@@ -252,6 +273,50 @@ const Jobs = () => {
     return '#059669'; // safe
   };
 
+  const triggerCompanySearch = (query) => {
+    if (companySearchTimerRef.current) {
+      clearTimeout(companySearchTimerRef.current);
+    }
+    const trimmed = (query || '').trim();
+    if (trimmed.length < 2) {
+      setCompanyMatches([]);
+      setCompanySearchStatus(trimmed ? 'Type at least 2 characters to search.' : '');
+      return;
+    }
+    companySearchTimerRef.current = setTimeout(async () => {
+      setCompanySearchStatus('Searching…');
+      try {
+        const results = await companyAPI.searchCompanies(trimmed);
+        setCompanyMatches(results);
+        setCompanySearchStatus(results.length ? '' : 'No matching companies.');
+      } catch (err) {
+        const msg = err?.error?.message || 'Search unavailable. Please try again.';
+        setCompanySearchStatus(msg);
+      }
+    }, 250);
+  };
+
+  const handleCompanyInputChange = (value) => {
+    setForm((prev) => ({ ...prev, company_name: value }));
+    setFieldErrors((prev) => ({ ...prev, company_name: '' }));
+    setCompanyDropdownOpen(Boolean(value));
+    triggerCompanySearch(value);
+  };
+
+  const handleSelectCompany = (company) => {
+    setForm((prev) => ({ ...prev, company_name: company?.name || '' }));
+    setCompanyMatches([]);
+    setCompanyDropdownOpen(false);
+    setCompanySearchStatus('');
+  };
+
+  const handleCompanyInputFocus = () => {
+    if (form.company_name.trim().length >= 2) {
+      setCompanyDropdownOpen(true);
+      triggerCompanySearch(form.company_name);
+    }
+  };
+
   const resetForm = () => {
     setForm(defaultForm);
     setFieldErrors({});
@@ -262,6 +327,9 @@ const Jobs = () => {
     setImportUrl('');
     setImportStatus(null);
     setImportedFields([]);
+    setCompanyMatches([]);
+    setCompanySearchStatus('');
+    setCompanyDropdownOpen(false);
   };
 
   // UC-039: Clear all filters and search
@@ -295,6 +363,10 @@ const Jobs = () => {
 
   const onChange = (e) => {
     const { name, value } = e.target;
+    if (name === 'company_name') {
+      handleCompanyInputChange(value);
+      return;
+    }
     if (name === 'description') {
       if (value.length > MAX_DESC) return;
       setCharCount(value.length);
@@ -924,6 +996,8 @@ const Jobs = () => {
               });
               setShowDefaultsModal(true);
             }}
+            onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
             style={responsiveActionButtonStyle}
             title="Set default resume and cover letter for new jobs"
           >
@@ -934,6 +1008,8 @@ const Jobs = () => {
           <button
             className="btn-secondary"
             onClick={() => setShowAutomation(!showAutomation)}
+            onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
             style={responsiveActionButtonStyle}
             title="Manage application automation and scheduled submissions"
           >
@@ -952,6 +1028,8 @@ const Jobs = () => {
                 await fetchJobMatchScores();
               }
             }}
+            onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
             style={responsiveActionButtonStyle}
             title="View jobs ranked by match percentage"
             disabled={loadingMatchScores}
@@ -966,6 +1044,8 @@ const Jobs = () => {
               setShowArchived(!showArchived);
               setSelectedJobs([]);
             }}
+            onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
             style={{ ...responsiveActionButtonStyle, minWidth: '160px' }}
           >
             <Icon name={showArchived ? 'briefcase' : 'archive'} size="sm" />
@@ -976,6 +1056,8 @@ const Jobs = () => {
             href="/jobs/stats"
             title="Job statistics"
             aria-label="Job statistics"
+            onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
             style={{ ...responsiveActionButtonStyle, textDecoration: 'none' }}
           >
             Statistics
@@ -985,6 +1067,8 @@ const Jobs = () => {
             href="/jobs/pipeline"
             title="Open Pipeline"
             aria-label="Open job status pipeline"
+            onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
             style={{ ...responsiveActionButtonStyle, textDecoration: 'none' }}
           >
             Pipeline →
@@ -994,6 +1078,8 @@ const Jobs = () => {
             href="/documents?tab=templates"
             title="Cover Letter Templates"
             aria-label="Browse cover letter templates"
+            onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
             style={{ textDecoration: 'none' }}
           >
             Cover Letters →
@@ -1007,6 +1093,8 @@ const Jobs = () => {
               setCharCount(0);
               setShowForm(true);
             }}
+            onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
             style={{ ...responsiveActionButtonStyle, flex: '1 1 150px' }}
           >
             + Add Job
@@ -1381,7 +1469,7 @@ const Jobs = () => {
 
       {/* 3. Edit/add form if user prompts */}
       {showForm && (
-        <div className="education-form-card">
+        <div className="education-form-card" style={{ overflow: 'visible' }}>
           <div className="form-header">
             <h3>{editingId ? 'Edit Job' : 'Add Job'}</h3>
             <button className="close-button" onClick={resetForm}><Icon name="trash" size="sm" ariaLabel="Close" /></button>
@@ -1550,7 +1638,7 @@ const Jobs = () => {
                 />
                 {fieldErrors.title && <div className="error-message">{fieldErrors.title}</div>}
               </div>
-              <div className="form-group">
+              <div className="form-group" style={{ position: 'relative' }} ref={companyDropdownRef}>
                 <label htmlFor="company_name">
                   Company <span className="required">*</span>
                 </label>
@@ -1559,11 +1647,63 @@ const Jobs = () => {
                   name="company_name"
                   value={form.company_name}
                   onChange={onChange}
+                  onFocus={handleCompanyInputFocus}
                   placeholder="e.g., Acme Inc"
                   className={fieldErrors.company_name ? 'error' : ''}
                   style={getFieldStyle('company_name')}
+                  autoComplete="off"
                 />
                 {fieldErrors.company_name && <div className="error-message">{fieldErrors.company_name}</div>}
+                {companyDropdownOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      background: '#fff',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      boxShadow: '0 10px 30px rgba(15,23,42,0.12)',
+                      marginTop: '4px',
+                      zIndex: 25,
+                      maxHeight: '220px',
+                      overflowY: 'auto',
+                    }}
+                  >
+                    {companyMatches.length === 0 && companySearchStatus ? (
+                      <div style={{ padding: '10px 12px', fontSize: '13px', color: '#6b7280' }}>
+                        {companySearchStatus}
+                      </div>
+                    ) : (
+                      companyMatches.map((company) => (
+                        <button
+                          key={company.id || company.name}
+                          type="button"
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            handleSelectCompany(company);
+                          }}
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '10px 12px',
+                            border: 'none',
+                            background: 'transparent',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <span style={{ fontWeight: 600, color: '#0f172a' }}>{company.name}</span>
+                          {company.domain ? (
+                            <span style={{ fontSize: '12px', color: '#6b7280' }}>{company.domain}</span>
+                          ) : null}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

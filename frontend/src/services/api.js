@@ -602,6 +602,16 @@ export const jobsAPI = {
     }
   },
 
+  // UC-074: Generate company profile using AI when DB fields are missing
+  generateCompanyProfile: async (id, options = {}) => {
+    try {
+      const response = await api.post(`/jobs/${id}/company/generate`, options);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to generate company profile' };
+    }
+  },
+
   getJobInterviewInsights: async (id) => {
     try {
       const response = await api.get(`/jobs/${id}/interview-insights/`);
@@ -755,6 +765,21 @@ export const jobsAPI = {
       return response;
     } catch (error) {
       throw error.response?.data?.error || { message: 'Failed to fetch bulk job match scores' };
+    }
+  },
+};
+
+export const companyAPI = {
+  searchCompanies: async (query = '') => {
+    try {
+      const params = new URLSearchParams();
+      if (query) params.append('q', query);
+      params.append('limit', '10');
+      const path = params.toString() ? `/companies/search?${params.toString()}` : '/companies/search';
+      const response = await api.get(path);
+      return response.data?.results || [];
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to search companies' };
     }
   },
 };
@@ -1972,5 +1997,4 @@ try {
 } catch (e) {
   // ignore
 }
-
 

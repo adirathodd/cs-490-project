@@ -1272,14 +1272,27 @@ class JobEntrySerializer(serializers.ModelSerializer):
 class CompanyResearchSerializer(serializers.Serializer):
     """Serializer for company research data."""
     description = serializers.CharField(allow_blank=True, required=False)
+    profile_overview = serializers.CharField(allow_blank=True, required=False)
+    company_history = serializers.CharField(allow_blank=True, required=False)
     mission_statement = serializers.CharField(allow_blank=True, required=False)
     culture_keywords = serializers.ListField(child=serializers.CharField(), required=False)
+    company_values = serializers.ListField(child=serializers.CharField(), required=False)
     recent_news = serializers.ListField(child=serializers.DictField(), required=False)
+    recent_developments = serializers.ListField(child=serializers.DictField(), required=False)
+    executives = serializers.ListField(child=serializers.DictField(), required=False)
+    products = serializers.ListField(child=serializers.DictField(), required=False)
+    competitors = serializers.DictField(required=False)
+    social_media = serializers.DictField(required=False)
     funding_info = serializers.DictField(required=False)
     tech_stack = serializers.ListField(child=serializers.CharField(), required=False)
     employee_count = serializers.IntegerField(required=False, allow_null=True)
     growth_rate = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
     glassdoor_rating = serializers.DecimalField(max_digits=2, decimal_places=1, required=False, allow_null=True)
+    competitive_landscape = serializers.CharField(allow_blank=True, required=False)
+    strategic_initiatives = serializers.ListField(child=serializers.DictField(), required=False)
+    talking_points = serializers.ListField(child=serializers.CharField(), required=False)
+    interview_questions = serializers.ListField(child=serializers.CharField(), required=False)
+    export_summary = serializers.CharField(allow_blank=True, required=False)
     last_updated = serializers.DateTimeField(read_only=True, required=False)
 
 
@@ -2024,5 +2037,3 @@ class FeedbackSummaryExportSerializer(serializers.Serializer):
         choices=['pdf', 'docx', 'json'],
         default='pdf'
     )
-
-

@@ -72,19 +72,11 @@ describe('CompanyInsights integration tests', () => {
     // Wait for company name to appear
     expect(await screen.findByText('Acme Co')).toBeInTheDocument();
 
-    // News cards should be rendered
-    const cards = await screen.findAllByRole('heading', { level: 4 });
-    expect(cards.length).toBeGreaterThanOrEqual(2);
-
-    // Follow toggle should update localStorage and show status
-    const followBtn = screen.getByRole('button', { name: /Follow Company|Following Alerts/i });
-    fireEvent.click(followBtn);
-  // The component keys companies with `company-${company.id}` or name slug; verify stored key exists
-  const stored = JSON.parse(localStorage.getItem('followedCompanies'));
-  expect(stored).toBeTruthy();
-  expect(Object.keys(stored).some((k) => k.includes('company-123'))).toBe(true);
-    // Status banner appears
-    expect(await screen.findByText(/You will receive alerts for this company./i)).toBeInTheDocument();
+    // Interview prep sections render
+    expect(await screen.findByText(/Mission & Values/i)).toBeInTheDocument();
+    expect(screen.getByText(/Company History/i)).toBeInTheDocument();
+    expect(screen.getByText(/Recent Developments/i)).toBeInTheDocument();
+    expect(screen.getByText(/Strategic Initiatives/i)).toBeInTheDocument();
 
     // Copy summary: click first copy button
     const copyButtons = screen.getAllByRole('button', { name: /Copy Summary/i });
@@ -93,9 +85,9 @@ describe('CompanyInsights integration tests', () => {
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalled());
 
     // Export summaries: ensure button enabled and clicking shows status (we don't perform download)
-    const exportBtn = screen.getByRole('button', { name: /Export Summaries/i });
+    const exportBtn = screen.getByRole('button', { name: /Export Research/i });
     fireEvent.click(exportBtn);
-    expect(await screen.findByText(/News summaries exported./i)).toBeInTheDocument();
+    expect(await screen.findByText(/Research packet exported./i)).toBeInTheDocument();
   });
 
   test('add and remove news snippets to job notes', async () => {

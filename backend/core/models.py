@@ -141,9 +141,22 @@ class Company(models.Model):
     size = models.CharField(max_length=50, blank=True)
     hq_location = models.CharField(max_length=160, blank=True)
     enrichment = models.JSONField(default=dict, blank=True)
+    # Normalized name for fuzzy matching and trigram index (populated on save)
+    normalized_name = models.CharField(max_length=200, blank=True, db_index=True)
 
     class Meta:
-        indexes = [models.Index(name="idx_company_domain_lower", fields=["domain"])]
+        indexes = [models.Index(name="idx_company_domain_lower", fields=["domain"]), models.Index(name="idx_company_normalized_name", fields=["normalized_name"])]
+
+    def save(self, *args, **kwargs):
+        # Lazy import to avoid circular imports at module load time
+        try:
+            from core.utils.company_matching import normalize_name
+            if self.name:
+                self.normalized_name = normalize_name(self.name)
+        except Exception:
+            # If normalization fails for any reason, keep existing value
+            pass
+        return super().save(*args, **kwargs)
 
 class JobOpportunity(models.Model):
     EMPLOY_TYPES = [("ft", "Full-time"), ("pt", "Part-time"), ("contract", "Contract"), ("intern", "Internship")]
@@ -493,9 +506,12 @@ class CompanyResearch(models.Model):
     """Automated company research and intelligence (UC-063)"""
     company = models.OneToOneField(Company, on_delete=models.CASCADE, related_name="research")
     description = models.TextField(blank=True)
+    profile_overview = models.TextField(blank=True)
+    company_history = models.TextField(blank=True)
     mission_statement = models.TextField(blank=True)
     culture_keywords = models.JSONField(default=list, blank=True)
     recent_news = models.JSONField(default=list, blank=True)  # List of {title, url, date, summary}
+    recent_developments = models.JSONField(default=list, blank=True)  # Interview-ready highlights
     funding_info = models.JSONField(default=dict, blank=True)  # Stage, amount, investors
     tech_stack = models.JSONField(default=list, blank=True)
     employee_count = models.IntegerField(null=True, blank=True)
@@ -504,8 +520,14 @@ class CompanyResearch(models.Model):
     
     # UC-063: Additional automated research fields
     executives = models.JSONField(default=list, blank=True)  # List of {name, title, linkedin_url}
+    potential_interviewers = models.JSONField(default=list, blank=True)  # Tailored to upcoming interviews
     products = models.JSONField(default=list, blank=True)  # List of {name, description}
     competitors = models.JSONField(default=dict, blank=True)  # {industry, companies: [...], market_position}
+    competitive_landscape = models.TextField(blank=True)
+    strategic_initiatives = models.JSONField(default=list, blank=True)
+    talking_points = models.JSONField(default=list, blank=True)
+    interview_questions = models.JSONField(default=list, blank=True)
+    export_summary = models.TextField(blank=True)  # Markdown-ready digest for offline prep
     social_media = models.JSONField(default=dict, blank=True)  # {linkedin, twitter, facebook, etc.}
     company_values = models.JSONField(default=list, blank=True)  # List of company values
     
