@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import InterviewInsights from './InterviewInsights';
 
 describe('InterviewInsights (UC-068: Interview Insights and Preparation)', () => {
@@ -166,10 +167,10 @@ describe('InterviewInsights (UC-068: Interview Insights and Preparation)', () =>
         {
           category: 'General Prep',
           items: [
-            { task: 'Review job description thoroughly', completed: false },
-            { task: 'Research company background and values', completed: false },
-            { task: 'Prepare portfolio or code samples', completed: false },
-            { task: 'Practice common interview questions', completed: false },
+            { task_id: 'task-1', task: 'Review job description thoroughly', completed: false },
+            { task_id: 'task-2', task: 'Research company background and values', completed: false },
+            { task_id: 'task-3', task: 'Prepare portfolio or code samples', completed: false },
+            { task_id: 'task-4', task: 'Practice common interview questions', completed: false },
           ],
         },
       ],
@@ -182,6 +183,33 @@ describe('InterviewInsights (UC-068: Interview Insights and Preparation)', () =>
     expect(screen.getByText(/research company background and values/i)).toBeInTheDocument();
     expect(screen.getByText(/prepare portfolio or code samples/i)).toBeInTheDocument();
     expect(screen.getByText(/practice common interview questions/i)).toBeInTheDocument();
+  });
+
+  test('calls toggle handler when checklist item changes', async () => {
+    const insights = {
+      has_data: true,
+      preparation_checklist: [
+        {
+          category: 'General Prep',
+          items: [
+            { task_id: 'task-1', task: 'Review job description thoroughly', completed: false },
+          ],
+        },
+      ],
+    };
+    const onToggle = jest.fn();
+
+    render(<InterviewInsights insights={insights} onToggleChecklistItem={onToggle} />);
+
+    const checkbox = screen.getByLabelText(/review job description thoroughly/i);
+    await userEvent.click(checkbox);
+
+    expect(onToggle).toHaveBeenCalledWith(expect.objectContaining({
+      taskId: 'task-1',
+      category: 'General Prep',
+      task: 'Review job description thoroughly',
+      completed: true,
+    }));
   });
 
   test('renders complete insights with all sections', () => {
@@ -215,7 +243,7 @@ describe('InterviewInsights (UC-068: Interview Insights and Preparation)', () =>
         {
           category: 'Checklist',
           items: [
-            { task: 'Task 1', completed: false },
+            { task_id: 'task-5', task: 'Task 1', completed: false },
           ],
         },
       ],

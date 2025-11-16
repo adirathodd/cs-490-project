@@ -141,9 +141,22 @@ class Company(models.Model):
     size = models.CharField(max_length=50, blank=True)
     hq_location = models.CharField(max_length=160, blank=True)
     enrichment = models.JSONField(default=dict, blank=True)
+    # Normalized name for fuzzy matching and trigram index (populated on save)
+    normalized_name = models.CharField(max_length=200, blank=True, db_index=True)
 
     class Meta:
-        indexes = [models.Index(name="idx_company_domain_lower", fields=["domain"])]
+        indexes = [models.Index(name="idx_company_domain_lower", fields=["domain"]), models.Index(name="idx_company_normalized_name", fields=["normalized_name"])]
+
+    def save(self, *args, **kwargs):
+        # Lazy import to avoid circular imports at module load time
+        try:
+            from core.utils.company_matching import normalize_name
+            if self.name:
+                self.normalized_name = normalize_name(self.name)
+        except Exception:
+            # If normalization fails for any reason, keep existing value
+            pass
+        return super().save(*args, **kwargs)
 
 class JobOpportunity(models.Model):
     EMPLOY_TYPES = [("ft", "Full-time"), ("pt", "Part-time"), ("contract", "Contract"), ("intern", "Internship")]
@@ -493,9 +506,12 @@ class CompanyResearch(models.Model):
     """Automated company research and intelligence (UC-063)"""
     company = models.OneToOneField(Company, on_delete=models.CASCADE, related_name="research")
     description = models.TextField(blank=True)
+    profile_overview = models.TextField(blank=True)
+    company_history = models.TextField(blank=True)
     mission_statement = models.TextField(blank=True)
     culture_keywords = models.JSONField(default=list, blank=True)
     recent_news = models.JSONField(default=list, blank=True)  # List of {title, url, date, summary}
+    recent_developments = models.JSONField(default=list, blank=True)  # Interview-ready highlights
     funding_info = models.JSONField(default=dict, blank=True)  # Stage, amount, investors
     tech_stack = models.JSONField(default=list, blank=True)
     employee_count = models.IntegerField(null=True, blank=True)
@@ -504,8 +520,14 @@ class CompanyResearch(models.Model):
     
     # UC-063: Additional automated research fields
     executives = models.JSONField(default=list, blank=True)  # List of {name, title, linkedin_url}
+    potential_interviewers = models.JSONField(default=list, blank=True)  # Tailored to upcoming interviews
     products = models.JSONField(default=list, blank=True)  # List of {name, description}
     competitors = models.JSONField(default=dict, blank=True)  # {industry, companies: [...], market_position}
+    competitive_landscape = models.TextField(blank=True)
+    strategic_initiatives = models.JSONField(default=list, blank=True)
+    talking_points = models.JSONField(default=list, blank=True)
+    interview_questions = models.JSONField(default=list, blank=True)
+    export_summary = models.TextField(blank=True)  # Markdown-ready digest for offline prep
     social_media = models.JSONField(default=dict, blank=True)  # {linkedin, twitter, facebook, etc.}
     company_values = models.JSONField(default=list, blank=True)  # List of company values
     
@@ -718,6 +740,124 @@ class MockInterview(models.Model):
     
     class Meta:
         ordering = ['-created_at']
+
+
+class JobQuestionPractice(models.Model):
+    """Track practiced interview questions for a specific job entry (UC-075)."""
+
+    DIFFICULTY_CHOICES = [
+        ('entry', 'Entry'),
+        ('mid', 'Mid-level'),
+        ('senior', 'Senior'),
+    ]
+
+    job = models.ForeignKey('JobEntry', on_delete=models.CASCADE, related_name='question_practice_logs')
+    question_id = models.CharField(max_length=64)
+    category = models.CharField(max_length=32)
+    question_text = models.TextField()
+    difficulty = models.CharField(max_length=16, choices=DIFFICULTY_CHOICES, default='mid')
+    skills = models.JSONField(default=list, blank=True)
+    written_response = models.TextField(blank=True)
+    star_response = models.JSONField(default=dict, blank=True)
+    practice_notes = models.TextField(blank=True)
+    practice_count = models.PositiveIntegerField(default=1)
+    first_practiced_at = models.DateTimeField(auto_now_add=True)
+    last_practiced_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [('job', 'question_id')]
+        indexes = [
+            models.Index(fields=['job', 'category']),
+            models.Index(fields=['job', 'question_id']),
+        ]
+        ordering = ['-last_practiced_at']
+
+    def increment_count(self):
+        self.practice_count = (self.practice_count or 0) + 1
+
+
+class QuestionBankCache(models.Model):
+    """Cache generated question bank data per job."""
+
+    job = models.ForeignKey('JobEntry', on_delete=models.CASCADE, related_name='question_bank_caches')
+    bank_data = models.JSONField(default=dict, blank=True)
+    source = models.CharField(max_length=32, default='template')
+    generated_at = models.DateTimeField(default=timezone.now)
+    is_valid = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-generated_at']
+        indexes = [
+            models.Index(fields=['job', 'is_valid']),
+        ]
+
+    def __str__(self):
+        return f"QuestionBankCache(job={self.job_id}, source={self.source}, generated_at={self.generated_at})"
+
+
+class PreparationChecklistProgress(models.Model):
+    """Track completion status for preparation checklist items per job."""
+
+    job = models.ForeignKey('JobEntry', on_delete=models.CASCADE, related_name='preparation_checklist')
+    task_id = models.CharField(max_length=64)
+    category = models.CharField(max_length=200)
+    task = models.CharField(max_length=500)
+    completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [('job', 'task_id')]
+        indexes = [
+            models.Index(fields=['job', 'completed']),
+            models.Index(fields=['job', 'task_id']),
+        ]
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"ChecklistProgress(job={self.job_id}, task={self.task[:32]})"
+
+
+class InterviewChecklistProgress(models.Model):
+    """
+    UC-081: Track completion status for interview preparation checklist items.
+    
+    Stores user progress on comprehensive preparation checklist including:
+    - Company research tasks
+    - Role-specific preparation
+    - Questions to ask
+    - Attire/presentation
+    - Logistics
+    - Confidence building
+    - Portfolio preparation
+    - Post-interview follow-up
+    """
+    interview = models.ForeignKey(
+        'InterviewSchedule',
+        on_delete=models.CASCADE,
+        related_name='checklist_progress'
+    )
+    task_id = models.CharField(max_length=64, help_text="Unique identifier for the task")
+    category = models.CharField(max_length=200, help_text="Checklist category (e.g., 'Company Research')")
+    task = models.CharField(max_length=500, help_text="Task description")
+    completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [('interview', 'task_id')]
+        indexes = [
+            models.Index(fields=['interview', 'completed']),
+            models.Index(fields=['interview', 'task_id']),
+        ]
+        ordering = ['category', 'created_at']
+
+    def __str__(self):
+        status = "✓" if self.completed else "○"
+        return f"{status} {self.task[:50]}..."
 
 
 # ======================

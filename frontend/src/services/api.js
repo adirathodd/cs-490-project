@@ -602,12 +602,58 @@ export const jobsAPI = {
     }
   },
 
+  // UC-074: Generate company profile using AI when DB fields are missing
+  generateCompanyProfile: async (id, options = {}) => {
+    try {
+      const response = await api.post(`/jobs/${id}/company/generate`, options);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to generate company profile' };
+    }
+  },
+
   getJobInterviewInsights: async (id) => {
     try {
       const response = await api.get(`/jobs/${id}/interview-insights/`);
       return response.data;
     } catch (error) {
       throw error.response?.data?.error || { message: 'Failed to fetch interview insights' };
+    }
+  },
+  
+  getJobQuestionBank: async (id) => {
+    try {
+      const response = await api.get(`/jobs/${id}/question-bank/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch question bank' };
+    }
+  },
+
+  logQuestionPractice: async (id, data) => {
+    try {
+      const response = await api.post(`/jobs/${id}/question-bank/practice/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to log practice' };
+    }
+  },
+
+  getQuestionPracticeHistory: async (jobId, questionId) => {
+    try {
+      const response = await api.get(`/jobs/${jobId}/question-bank/practice/${questionId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch practice history' };
+    }
+  },
+
+  togglePreparationChecklist: async (id, data) => {
+    try {
+      const response = await api.post(`/jobs/${id}/preparation-checklist/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to update checklist' };
     }
   },
 
@@ -755,6 +801,21 @@ export const jobsAPI = {
       return response;
     } catch (error) {
       throw error.response?.data?.error || { message: 'Failed to fetch bulk job match scores' };
+    }
+  },
+};
+
+export const companyAPI = {
+  searchCompanies: async (query = '') => {
+    try {
+      const params = new URLSearchParams();
+      if (query) params.append('q', query);
+      params.append('limit', '10');
+      const path = params.toString() ? `/companies/search?${params.toString()}` : '/companies/search';
+      const response = await api.get(path);
+      return response.data?.results || [];
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to search companies' };
     }
   },
 };
@@ -1096,6 +1157,26 @@ export const interviewsAPI = {
       return response.data;
     } catch (error) {
       throw error.response?.data?.error || { message: 'Failed to toggle task' };
+    }
+  },
+
+  // UC-081: Get comprehensive preparation checklist for an interview
+  getPreparationChecklist: async (interviewId) => {
+    try {
+      const response = await api.get(`/interviews/${interviewId}/checklist/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch preparation checklist' };
+    }
+  },
+
+  // UC-081: Toggle a checklist item completion
+  toggleChecklistItem: async (interviewId, taskData) => {
+    try {
+      const response = await api.post(`/interviews/${interviewId}/checklist/toggle/`, taskData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to toggle checklist item' };
     }
   },
 };
@@ -1981,5 +2062,3 @@ try {
 } catch (e) {
   // ignore
 }
-
-

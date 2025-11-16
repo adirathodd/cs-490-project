@@ -110,6 +110,9 @@ class CompanyResearchService:
             
             # 8. Generate research summary
             self._generate_summary()
+
+            # 9. Derive UC-074 interview prep assets
+            self._build_interview_brief()
             
             # Save research to database
             self._save_research()
@@ -911,6 +914,183 @@ class CompanyResearchService:
             logger.error(f"Error generating summary: {e}")
             self.research_data['summary'] = f"Research data available for {self.company_name}."
 
+    def _build_interview_brief(self):
+        """UC-074: Build interview-ready research assets for frontend/database storage."""
+        try:
+            basic_info = self.research_data.get('basic_info', {}) or {}
+            mission_culture = self.research_data.get('mission_culture', {}) or {}
+            news_items = self.research_data.get('recent_news', []) or []
+            executives = self.research_data.get('executives', []) or []
+            competitors = self.research_data.get('competitors', {}) or {}
+            values = mission_culture.get('values') or []
+            overview = self.research_data.get('summary') or mission_culture.get('description') or basic_info.get('description', '')
+            self.research_data['profile_overview'] = overview.strip()
+
+            history_parts = []
+            founded = basic_info.get('founded')
+            if founded:
+                history_parts.append(f"{self.company_name} was founded {founded}.")
+            description = mission_culture.get('description') or basic_info.get('description')
+            if description:
+                history_parts.append(description.strip())
+            self.research_data['company_history'] = ' '.join(history_parts).strip()
+
+            developments = []
+            for item in news_items[:5]:
+                if not item:
+                    continue
+                developments.append({
+                    'title': item.get('title', ''),
+                    'summary': item.get('summary', ''),
+                    'date': item.get('date'),
+                    'category': item.get('category'),
+                    'source': item.get('source'),
+                    'key_points': item.get('key_points', []),
+                })
+            self.research_data['recent_developments'] = developments
+
+            potential = []
+            for exec_data in executives:
+                name = exec_data.get('name') or exec_data.get('full_name')
+                if not name:
+                    continue
+                potential.append({
+                    'name': name,
+                    'title': exec_data.get('title', ''),
+                    'linkedin_url': exec_data.get('linkedin_url', ''),
+                })
+                if len(potential) >= 5:
+                    break
+            self.research_data['potential_interviewers'] = potential
+
+            competitor_companies = [c for c in competitors.get('companies', []) if c]
+            industry = competitors.get('industry')
+            market_position = competitors.get('market_position')
+            comp_summary_parts = []
+            if competitor_companies:
+                comp_summary_parts.append(
+                    f"Key competitors in {industry or 'the market'} include {', '.join(competitor_companies[:4])}."
+                )
+            if market_position and (market_position or '').lower() != 'unknown':
+                comp_summary_parts.append(f"{self.company_name} is positioned as {market_position}.")
+            self.research_data['competitive_landscape'] = ' '.join(comp_summary_parts).strip()
+
+            strategic_categories = {'market', 'partnership', 'product', 'funding'}
+            initiatives = []
+            for item in news_items:
+                if not item or item.get('category') not in strategic_categories:
+                    continue
+                initiatives.append({
+                    'title': item.get('title', ''),
+                    'category': item.get('category'),
+                    'summary': item.get('summary', ''),
+                    'date': item.get('date'),
+                    'source': item.get('source'),
+                })
+                if len(initiatives) >= 5:
+                    break
+            self.research_data['strategic_initiatives'] = initiatives
+
+            talking_points = []
+            if overview:
+                talking_points.append(overview.strip()[:280])
+            mission_statement = mission_culture.get('mission_statement')
+            if mission_statement:
+                talking_points.append(f"Mission focus: {mission_statement.strip()}")
+            if values:
+                talking_points.append(f"Values that stand out: {', '.join(values[:4])}")
+            if initiatives:
+                talking_points.append(f"Strategic initiative: {initiatives[0]['title']}")
+            if self.research_data['competitive_landscape']:
+                talking_points.append(self.research_data['competitive_landscape'])
+            if news_items:
+                talking_points.append(f"Recent headline: {news_items[0].get('title', '')}")
+            self.research_data['talking_points'] = [p for p in talking_points if p][:6]
+
+            intelligent_questions = []
+            if mission_statement:
+                intelligent_questions.append(
+                    f"How does {self.company_name} measure success on its mission to {mission_statement[:120]}?"
+                )
+            if initiatives:
+                intelligent_questions.append(
+                    f"What impact will {initiatives[0].get('title')} have on this team?"
+                )
+            if competitor_companies:
+                intelligent_questions.append(
+                    f"How does {self.company_name} differentiate itself from {competitor_companies[0]} in {industry or 'the market'}?"
+                )
+            if values:
+                intelligent_questions.append(
+                    f"Which company value is most critical for success in this role?"
+                )
+            if news_items:
+                intelligent_questions.append(
+                    f"How should I reference \"{news_items[0].get('title', '')}\" during interviews?"
+                )
+            self.research_data['interview_questions'] = [q for q in intelligent_questions if q][:6]
+
+            export_lines = [
+                f"# {self.company_name} Interview Research",
+                "",
+                "## Overview",
+                overview or "Overview unavailable.",
+                "",
+                "## Company History",
+                self.research_data['company_history'] or "History not available.",
+                "",
+                "## Mission & Values",
+                mission_statement or "Mission not available.",
+                f"Values: {', '.join(values)}" if values else "Values not available.",
+                "",
+                "## Recent Developments",
+            ]
+            if developments:
+                export_lines.extend([f"- {dev['title']} ({dev.get('category') or 'update'})" for dev in developments])
+            else:
+                export_lines.append("- None available")
+
+            export_lines.extend([
+                "",
+                "## Strategic Initiatives",
+            ])
+            if initiatives:
+                export_lines.extend([f"- {item['title']} — {item.get('summary', '')}" for item in initiatives])
+            else:
+                export_lines.append("- None available")
+
+            export_lines.extend([
+                "",
+                "## Talking Points",
+            ])
+            if self.research_data['talking_points']:
+                export_lines.extend([f"- {point}" for point in self.research_data['talking_points']])
+            else:
+                export_lines.append("- None available")
+
+            export_lines.extend([
+                "",
+                "## Intelligent Questions",
+            ])
+            if self.research_data['interview_questions']:
+                export_lines.extend([f"- {question}" for question in self.research_data['interview_questions']])
+            else:
+                export_lines.append("- None available")
+
+            self.research_data['export_summary'] = '\n'.join(export_lines).strip()
+
+        except Exception as e:
+            logger.error(f"Error building UC-074 interview brief for {self.company_name}: {e}")
+            self.research_data.setdefault('profile_overview', '')
+            self.research_data.setdefault('company_history', '')
+            self.research_data.setdefault('recent_developments', [])
+            self.research_data.setdefault('potential_interviewers', [])
+            self.research_data.setdefault('competitive_landscape', '')
+            self.research_data.setdefault('strategic_initiatives', [])
+            self.research_data.setdefault('talking_points', [])
+            self.research_data.setdefault('interview_questions', [])
+            self.research_data.setdefault('export_summary', '')
+
     def _save_research(self):
         """Save research data to CompanyResearch model and update Company model."""
         try:
@@ -953,12 +1133,15 @@ class CompanyResearchService:
             elif mission_culture.get('description'):
                 research.description = mission_culture['description']
                 
+            research.profile_overview = self.research_data.get('profile_overview', research.profile_overview or '')
+            research.company_history = self.research_data.get('company_history', research.company_history or '')
             research.mission_statement = mission_culture.get('mission_statement', '')
             research.culture_keywords = mission_culture.get('culture_keywords', [])
             research.company_values = mission_culture.get('values', [])
             
             # Recent news
             research.recent_news = self.research_data.get('recent_news', [])
+            research.recent_developments = self.research_data.get('recent_developments', [])
             
             # Employee count
             if basic_info.get('employees'):
@@ -977,8 +1160,14 @@ class CompanyResearchService:
             
             # UC-063: Save additional research fields
             research.executives = self.research_data.get('executives', [])
+            research.potential_interviewers = self.research_data.get('potential_interviewers', [])
             research.products = self.research_data.get('products', [])
             research.competitors = self.research_data.get('competitors', {})
+            research.competitive_landscape = self.research_data.get('competitive_landscape', research.competitive_landscape or '')
+            research.strategic_initiatives = self.research_data.get('strategic_initiatives', [])
+            research.talking_points = self.research_data.get('talking_points', [])
+            research.interview_questions = self.research_data.get('interview_questions', [])
+            research.export_summary = self.research_data.get('export_summary', research.export_summary or '')
             research.social_media = self.research_data.get('social_media', {})
             
             # Save timestamp
@@ -1011,14 +1200,26 @@ class CompanyResearchService:
                 },
                 'research': {
                     'description': research.description,
+                    'profile_overview': research.profile_overview,
+                    'company_history': research.company_history,
                     'mission_statement': research.mission_statement,
                     'culture_keywords': research.culture_keywords,
                     'company_values': research.company_values,
                     'recent_news': research.recent_news[:10],  # Limit to 10 most recent
+                    'recent_developments': research.recent_developments[:10] if isinstance(research.recent_developments, list) else [],
+                    'executives': research.executives,
+                    'products': research.products,
+                    'competitors': research.competitors,
+                    'social_media': research.social_media,
                     'funding_info': research.funding_info,
                     'tech_stack': research.tech_stack,
                     'employee_count': research.employee_count,
                     'glassdoor_rating': research.glassdoor_rating,
+                    'competitive_landscape': research.competitive_landscape,
+                    'strategic_initiatives': research.strategic_initiatives,
+                    'talking_points': research.talking_points,
+                    'interview_questions': research.interview_questions,
+                    'export_summary': research.export_summary,
                     'last_updated': research.last_updated.isoformat() if research.last_updated else None,
                 },
                 'executives': research.executives,

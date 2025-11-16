@@ -119,6 +119,7 @@ urlpatterns = [
     path('jobs/bulk-restore', views.jobs_bulk_restore, name='jobs-bulk-restore'),
     
     # UC-043: Company information endpoints
+    path('companies/search', views.company_search, name='company-search'),
     path('companies/<str:company_name>', views.company_info, name='company-info'),
     path('jobs/<int:job_id>/company', views.job_company_info, name='job-company-info'),
     # UC-047: AI resume generation
@@ -156,6 +157,11 @@ urlpatterns = [
     
     # UC-068: Interview Insights and Preparation endpoints
     path('jobs/<int:job_id>/interview-insights/', views.job_interview_insights, name='job-interview-insights'),
+    path('jobs/<int:job_id>/preparation-checklist/', views.job_preparation_checklist_toggle, name='job-preparation-checklist'),
+    # UC-075: Role-specific question bank endpoints
+    path('jobs/<int:job_id>/question-bank/', views.job_question_bank, name='job-question-bank'),
+    path('jobs/<int:job_id>/question-bank/practice/', views.job_question_practice, name='job-question-practice'),
+    path('jobs/<int:job_id>/question-bank/practice/<str:question_id>/', views.get_question_practice_history, name='get-question-practice-history'),
     
     # UC-066: Skills Gap Analysis endpoints
     path('jobs/<int:job_id>/skills-gap/', views.job_skills_gap, name='job-skills-gap'),
@@ -172,6 +178,10 @@ urlpatterns = [
     path('interviews/<int:pk>/dismiss-reminder/', views.dismiss_interview_reminder, name='dismiss-interview-reminder'),
     path('interviews/reminders/', views.active_interview_reminders, name='active-interview-reminders'),
     path('interviews/tasks/<int:pk>/toggle/', views.toggle_preparation_task, name='toggle-preparation-task'),
+    
+    # UC-081: Pre-Interview Preparation Checklist endpoints
+    path('interviews/<int:pk>/checklist/', views.preparation_checklist_for_interview, name='preparation-checklist'),
+    path('interviews/<int:pk>/checklist/toggle/', views.toggle_checklist_item, name='toggle-checklist-item'),
     
     # UC-052: Resume Version Management endpoints
     path('resume-versions/', views.resume_versions_list_create, name='resume-versions-list-create'),
@@ -205,4 +215,3 @@ urlpatterns = [
     path('feedback-notifications/<uuid:notification_id>/read/', views.mark_notification_read, name='mark-notification-read'),
     path('feedback/export/', views.export_feedback_summary, name='export-feedback-summary'),
 ]
-

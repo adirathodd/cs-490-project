@@ -7,6 +7,8 @@ import InterviewInsights from './InterviewInsights';
 import SkillGapAnalysis from './SkillGapAnalysis';
 import JobMatchAnalysis from './JobMatchAnalysis';
 import InterviewScheduler from './InterviewScheduler';
+import RoleQuestionBank from './RoleQuestionBank';
+import PreparationChecklist from './PreparationChecklist';
 
 const JobDetailView = () => {
   const { id } = useParams();
@@ -22,6 +24,11 @@ const JobDetailView = () => {
   const [activeTab, setActiveTab] = useState('basic');
   const [companyInfo, setCompanyInfo] = useState(null);
   const [interviewInsights, setInterviewInsights] = useState(null);
+  const [questionBank, setQuestionBank] = useState(null);
+  const [loadingQuestionBank, setLoadingQuestionBank] = useState(false);
+  const [questionBankError, setQuestionBankError] = useState('');
+  const [savingPracticeQuestion, setSavingPracticeQuestion] = useState(null);
+  const [savingChecklistId, setSavingChecklistId] = useState(null);
   const [skillsGapAnalysis, setSkillsGapAnalysis] = useState(null);
   const [skillProgress, setSkillProgress] = useState({});
   const [formData, setFormData] = useState({});
@@ -31,6 +38,8 @@ const JobDetailView = () => {
   const [loadingInterviews, setLoadingInterviews] = useState(false);
   const [editingInterviewId, setEditingInterviewId] = useState(null);
   const [interviewToDelete, setInterviewToDelete] = useState(null);
+  const [showPreparationChecklist, setShowPreparationChecklist] = useState(false);
+  const [selectedInterviewForChecklist, setSelectedInterviewForChecklist] = useState(null);
   
   const jobTypeOptions = [
     { value: 'ft', label: 'Full-time' },
@@ -278,6 +287,19 @@ const JobDetailView = () => {
     }
   }, []);
 
+  const fetchQuestionBank = useCallback(async (jobId) => {
+    setQuestionBankError('');
+    setLoadingQuestionBank(true);
+    try {
+      const bank = await jobsAPI.getJobQuestionBank(jobId);
+      setQuestionBank(bank);
+    } catch (err) {
+      setQuestionBankError(err?.message || 'Failed to load question bank');
+    } finally {
+      setLoadingQuestionBank(false);
+    }
+  }, []);
+
   const fetchSkillsGap = useCallback(async (jobId, options = {}) => {
     try {
       const analysis = await jobsAPI.getJobSkillsGap(jobId, options);
@@ -404,8 +426,70 @@ const JobDetailView = () => {
     if (job?.id) {
       fetchInterviewInsights(job.id);
       fetchSkillsGap(job.id);
+      fetchQuestionBank(job.id);
     }
-  }, [job?.id, fetchInterviewInsights, fetchSkillsGap]);
+  }, [job?.id, fetchInterviewInsights, fetchSkillsGap, fetchQuestionBank]);
+
+  const handleLogQuestionPractice = async (payload) => {
+    if (!job?.id) return;
+    setSavingPracticeQuestion(payload.question_id);
+    setError('');
+    setSuccess('');
+    try {
+      const response = await jobsAPI.logQuestionPractice(job.id, payload);
+      const practiceStatus = response?.practice_status || { practiced: true, practice_count: 1 };
+      setQuestionBank((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          categories: prev.categories.map((category) => ({
+            ...category,
+            questions: category.questions.map((question) =>
+              question.id === payload.question_id
+                ? { ...question, practice_status: practiceStatus }
+                : question
+            ),
+          })),
+        };
+      });
+      setSuccess('Practice response saved!');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err?.message || 'Failed to save practice');
+    } finally {
+      setSavingPracticeQuestion(null);
+    }
+  };
+
+  const handleToggleChecklistItem = async ({ taskId, category, task, completed }) => {
+    if (!job?.id || !taskId) return;
+    setSavingChecklistId(taskId);
+    setError('');
+    try {
+      await jobsAPI.togglePreparationChecklist(job.id, {
+        task_id: taskId,
+        category,
+        task,
+        completed,
+      });
+      setInterviewInsights((prev) => {
+        if (!prev?.preparation_checklist) return prev;
+        return {
+          ...prev,
+          preparation_checklist: prev.preparation_checklist.map((cat) => ({
+            ...cat,
+            items: cat.items?.map((item) =>
+              item.task_id === taskId ? { ...item, completed } : item
+            ) || [],
+          })),
+        };
+      });
+    } catch (err) {
+      setError(err?.message || 'Failed to update checklist item');
+    } finally {
+      setSavingChecklistId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -1214,7 +1298,11 @@ const JobDetailView = () => {
       {activeTab === 'interview' && (
         <>
           {interviewInsights ? (
-            <InterviewInsights insights={interviewInsights} />
+            <InterviewInsights
+              insights={interviewInsights}
+              onToggleChecklistItem={handleToggleChecklistItem}
+              savingChecklistId={savingChecklistId}
+            />
           ) : (
             <div className="education-form-card">
               <div className="education-form" style={{ padding: '40px', textAlign: 'center' }}>
@@ -1222,6 +1310,36 @@ const JobDetailView = () => {
                 <p style={{ color: '#9ca3af', marginTop: '16px', fontSize: '15px' }}>
                   No interview insights available for this job yet.
                 </p>
+              </div>
+            </div>
+          )}
+          {questionBankError && (
+            <div className="education-form-card">
+              <div className="education-form" style={{ padding: '24px' }}>
+                <div className="error-banner" style={{ margin: 0 }}>{questionBankError}</div>
+              </div>
+            </div>
+          )}
+          {questionBank && (
+            <RoleQuestionBank
+              bank={questionBank}
+              loading={loadingQuestionBank}
+              savingQuestionId={savingPracticeQuestion}
+              onLogPractice={handleLogQuestionPractice}
+              jobId={job?.id}
+            />
+          )}
+          {!questionBank && loadingQuestionBank && (
+            <div className="education-form-card">
+              <div className="education-form" style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>
+                Loading question bank...
+              </div>
+            </div>
+          )}
+          {!questionBank && !loadingQuestionBank && !questionBankError && (
+            <div className="education-form-card">
+              <div className="education-form" style={{ padding: '24px', color: '#6b7280' }}>
+                Question bank is not available for this job yet.
               </div>
             </div>
           )}
@@ -1368,6 +1486,21 @@ const JobDetailView = () => {
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button
                             onClick={() => {
+                              setSelectedInterviewForChecklist(interview);
+                              setShowPreparationChecklist(true);
+                            }}
+                            className="btn-secondary"
+                            style={{ 
+                              padding: '6px 12px', 
+                              fontSize: '13px',
+                              color: '#667eea',
+                              borderColor: '#667eea'
+                            }}
+                          >
+                            <Icon name="check-square" size="sm" /> Prep Checklist
+                          </button>
+                          <button
+                            onClick={() => {
                               setEditingInterviewId(interview.id);
                               setShowInterviewScheduler(true);
                             }}
@@ -1482,6 +1615,17 @@ const JobDetailView = () => {
             if (activeTab === 'scheduled-interviews') {
               loadInterviews();
             }
+          }}
+        />
+      )}
+
+      {/* UC-081: Preparation Checklist Modal */}
+      {showPreparationChecklist && selectedInterviewForChecklist && (
+        <PreparationChecklist
+          interview={selectedInterviewForChecklist}
+          onClose={() => {
+            setShowPreparationChecklist(false);
+            setSelectedInterviewForChecklist(null);
           }}
         />
       )}

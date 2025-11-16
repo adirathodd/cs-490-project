@@ -3,10 +3,12 @@ Tests for UC-068: Interview Insights and Preparation
 """
 
 import pytest
+from unittest import mock
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
 from django.urls import reverse
+from django.utils import timezone
 
 from core.models import CandidateProfile, JobEntry
 
@@ -112,10 +114,34 @@ class TestInterviewInsightsEndpoint:
             first_item = first_category['items'][0]
             assert 'task' in first_item
             assert 'completed' in first_item
-        
+            assert 'task_id' in first_item
+    
         # Verify disclaimer
         assert 'disclaimer' in data
         assert isinstance(data['disclaimer'], str)
+
+    def test_preparation_checklist_toggle_persists(self):
+        """Ensure checklist toggle saves and reflects in subsequent responses."""
+        url = reverse('core:job-interview-insights', kwargs={'job_id': self.job.id})
+        data = self.client.get(url).json()
+        checklist = data['preparation_checklist']
+        category = checklist[0]
+        item = category['items'][0]
+
+        toggle_url = reverse('core:job-preparation-checklist', kwargs={'job_id': self.job.id})
+        payload = {
+            'task_id': item['task_id'],
+            'category': category['category'],
+            'task': item['task'],
+            'completed': True,
+        }
+        toggle_response = self.client.post(toggle_url, payload, format='json')
+        assert toggle_response.status_code == status.HTTP_200_OK
+        assert toggle_response.json()['completed'] is True
+
+        refreshed = self.client.get(url).json()
+        refreshed_item = refreshed['preparation_checklist'][0]['items'][0]
+        assert refreshed_item['completed'] is True
     
     def test_interview_insights_requires_job_ownership(self):
         """Test that users can only access insights for their own jobs"""
@@ -137,6 +163,113 @@ class TestInterviewInsightsEndpoint:
         data = response.json()
         assert 'error' in data
         assert data['error']['code'] == 'job_not_found'
+
+
+@pytest.mark.django_db
+class TestInterviewQuestionBankEndpoint:
+    """Tests for UC-075 question bank and practice tracking."""
+
+    def setup_method(self):
+        self.client = APIClient()
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            username='bank-user',
+            email='bank@example.com',
+            password='bankpass123',
+        )
+        self.profile = CandidateProfile.objects.create(user=self.user)
+        self.job = JobEntry.objects.create(
+            candidate=self.profile,
+            title='Data Analyst',
+            company_name='Insight Corp',
+            industry='Finance',
+            status='applied',
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_question_bank_structure(self):
+        url = reverse('core:job-question-bank', kwargs={'job_id': self.job.id})
+        response = self.client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+
+        assert data['job_title'] == 'Data Analyst'
+        assert 'categories' in data and len(data['categories']) >= 2
+        assert 'difficulty_levels' in data
+        assert 'star_framework' in data and 'steps' in data['star_framework']
+
+        first_category = data['categories'][0]
+        assert 'questions' in first_category and len(first_category['questions']) > 0
+        first_question = first_category['questions'][0]
+        assert 'prompt' in first_question
+        assert 'difficulty' in first_question
+        assert 'practice_status' in first_question
+
+    def test_question_practice_logging(self):
+        bank_url = reverse('core:job-question-bank', kwargs={'job_id': self.job.id})
+        bank_data = self.client.get(bank_url).json()
+        question = bank_data['categories'][0]['questions'][0]
+
+        practice_url = reverse('core:job-question-practice', kwargs={'job_id': self.job.id})
+        payload = {
+            'question_id': question['id'],
+            'question_text': question['prompt'],
+            'category': question['category'],
+            'difficulty': question['difficulty'],
+            'written_response': 'Outlined challenge and measurable impact.',
+            'star_response': {
+                'situation': 'Legacy process causing delays',
+                'task': 'Lead analysis and redesign',
+                'action': 'Built dashboards and alignment meetings',
+                'result': 'Reduced SLA by 30%',
+            },
+        }
+
+        response = self.client.post(practice_url, payload, format='json')
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data['practice_status']['practiced'] is True
+        assert data['practice_status']['practice_count'] >= 1
+
+    def test_question_bank_caching_and_refresh(self):
+        url = reverse('core:job-question-bank', kwargs={'job_id': self.job.id})
+        sample_bank = {
+            'job_id': self.job.id,
+            'job_title': self.job.title,
+            'company_name': self.job.company_name,
+            'industry': 'Finance',
+            'generated_at': timezone.now().isoformat(),
+            'difficulty_levels': [],
+            'star_framework': {},
+            'categories': [
+                {
+                    'id': 'behavioral',
+                    'label': 'Behavioral',
+                    'questions': [
+                        {'id': 'q-cache', 'prompt': 'Prompt', 'category': 'behavioral', 'difficulty': 'mid', 'skills': [], 'concepts': []}
+                    ],
+                    'guidance': '',
+                }
+            ],
+            'company_focus': [],
+            'skills_referenced': [],
+            'source': 'template',
+        }
+
+        with mock.patch('core.views.build_question_bank', return_value=sample_bank) as mock_builder:
+            response1 = self.client.get(url)
+            assert response1.status_code == status.HTTP_200_OK
+            assert response1.json()['job_id'] == self.job.id
+            assert mock_builder.call_count == 1
+
+            mock_builder.reset_mock()
+            response2 = self.client.get(url)
+            assert response2.status_code == status.HTTP_200_OK
+            mock_builder.assert_not_called()
+
+            response3 = self.client.get(f'{url}?refresh=true')
+            assert response3.status_code == status.HTTP_200_OK
+            mock_builder.assert_called_once()
     
     def test_interview_insights_requires_authentication(self):
         """Test that endpoint requires authentication"""
