@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { interviewsAPI } from '../../services/api';
+import { interviewsAPI, jobsAPI } from '../../services/api';
 import Icon from '../common/Icon';
 import './InterviewScheduler.css';
 
@@ -87,6 +87,8 @@ export default function InterviewScheduler({ job, onClose, onSuccess, existingIn
         // Create new interview
         await interviewsAPI.createInterview(payload);
       }
+
+      await advanceJobStatusForInterview(formData.interview_type);
       
       if (onSuccess) onSuccess();
       if (onClose) onClose();
@@ -145,6 +147,25 @@ export default function InterviewScheduler({ job, onClose, onSuccess, existingIn
   ];
 
   const durationOptions = [30, 45, 60, 90, 120, 180];
+
+  const mapInterviewTypeToStatus = (type) => {
+    if (!type) return null;
+    if (type === 'phone' || type === 'assessment') return 'phone_screen';
+    if (['video', 'in_person', 'group'].includes(type)) return 'interview';
+    return null;
+  };
+
+  const advanceJobStatusForInterview = async (type) => {
+    const nextStatus = mapInterviewTypeToStatus(type);
+    if (!nextStatus || !job?.id) return;
+    try {
+      if (job.status !== nextStatus) {
+        await jobsAPI.updateJob(job.id, { status: nextStatus });
+      }
+    } catch (statusError) {
+      console.warn('Failed to auto-update job status after scheduling interview', statusError);
+    }
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
