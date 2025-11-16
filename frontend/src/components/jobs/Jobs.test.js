@@ -5,20 +5,38 @@ import { BrowserRouter } from 'react-router-dom';
 import Jobs from './Jobs';
 import { jobsAPI } from '../../services/api';
 
+jest.mock('../../services/api', () => {
+  const mockJobsAPI = {
+    getJobs: jest.fn().mockResolvedValue([]),
+    addJob: jest.fn().mockResolvedValue({}),
+    updateJob: jest.fn().mockResolvedValue({}),
+    deleteJob: jest.fn().mockResolvedValue({}),
+    archiveJob: jest.fn().mockResolvedValue({}),
+    unarchiveJob: jest.fn().mockResolvedValue({}),
+    restoreJob: jest.fn().mockResolvedValue({}),
+    bulkArchiveJobs: jest.fn().mockResolvedValue({}),
+    bulkRestoreJobs: jest.fn().mockResolvedValue({}),
+    bulkUpdateStatus: jest.fn().mockResolvedValue({}),
+  };
 
-jest.mock('../../services/api', () => ({
-  jobsAPI: { /* ...existing jobAPI mocks... */ },
-  materialsAPI: {
-    listDocuments: jest.fn().mockResolvedValue([]), // or your desired mock data
-    getDefaults: jest.fn().mockResolvedValue({ default_resume_doc: null, default_cover_letter_doc: null }),
-    setDefaults: jest.fn(),
-    updateJobMaterials: jest.fn(),
-    getJobMaterials: jest.fn().mockResolvedValue({ resume_doc: null, cover_letter_doc: null, history: [] }),
-    getDownloadUrl: jest.fn((id) => `https://fakeurl.com/download/${id}`)
-  },
-  interviewsAPI: { getInterviews: jest.fn().mockResolvedValue([]) },
-  companyAPI: { searchCompanies: jest.fn().mockResolvedValue([]) }
-}));
+  return {
+    jobsAPI: mockJobsAPI,
+    materialsAPI: {
+      listDocuments: jest.fn().mockResolvedValue([]),
+      getDefaults: jest
+        .fn()
+        .mockResolvedValue({ default_resume_doc: null, default_cover_letter_doc: null }),
+      setDefaults: jest.fn(),
+      updateJobMaterials: jest.fn(),
+      getJobMaterials: jest
+        .fn()
+        .mockResolvedValue({ resume_doc: null, cover_letter_doc: null, history: [] }),
+      getDownloadUrl: jest.fn((id) => `https://fakeurl.com/download/${id}`),
+    },
+    interviewsAPI: { getInterviews: jest.fn().mockResolvedValue([]) },
+    companyAPI: { searchCompanies: jest.fn().mockResolvedValue([]) },
+  };
+});
 
 
 // Mock the navigate function
