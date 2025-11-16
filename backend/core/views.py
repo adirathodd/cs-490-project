@@ -1,6 +1,12 @@
 """
 Authentication views for Firebase-based user registration and login.
 """
+from typing import Any, Dict
+
+import copy
+import hashlib
+import logging
+
 from rest_framework import status, serializers
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes, parser_classes, authentication_classes
@@ -34,8 +40,35 @@ from core.serializers import (
     ResumeVersionCompareSerializer,
     ResumeVersionMergeSerializer,
 )
-from core.models import CandidateProfile, Skill, CandidateSkill, Education, Certification, AccountDeletionRequest, Project, ProjectMedia, WorkExperience, UserAccount, JobEntry, Document, JobMaterialsHistory, CoverLetterTemplate, ResumeVersion, ResumeShare, ShareAccessLog, ResumeFeedback, FeedbackComment, FeedbackNotification, Company, CompanyResearch
+from core.models import (
+    CandidateProfile,
+    Skill,
+    CandidateSkill,
+    Education,
+    Certification,
+    AccountDeletionRequest,
+    Project,
+    ProjectMedia,
+    WorkExperience,
+    UserAccount,
+    JobEntry,
+    Document,
+    JobMaterialsHistory,
+    CoverLetterTemplate,
+    ResumeVersion,
+    ResumeShare,
+    ShareAccessLog,
+    ResumeFeedback,
+    FeedbackComment,
+    FeedbackNotification,
+    Company,
+    CompanyResearch,
+    JobQuestionPractice,
+    QuestionBankCache,
+    PreparationChecklistProgress,
+)
 from core.research.enrichment import fallback_domain
+from core.question_bank import build_question_bank
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def cover_letter_template_list_create(request):
@@ -6300,7 +6333,9 @@ def job_interview_insights(request, job_id):
             
             if cached:
                 logger.info(f"Returning cached interview insights for job {job_id}")
-                return Response(cached.insights_data, status=status.HTTP_200_OK)
+                cached_data = copy.deepcopy(cached.insights_data)
+                prepared = _prepare_insights_for_response(job, cached_data)
+                return Response(prepared, status=status.HTTP_200_OK)
         
         # Get Gemini API credentials
         api_key = getattr(settings, 'GEMINI_API_KEY', '')
@@ -6315,6 +6350,9 @@ def job_interview_insights(request, job_id):
             model=model
         )
         
+        _ensure_checklist_ids(insights.get('preparation_checklist'))
+        cache_payload = copy.deepcopy(insights)
+
         # Cache the results
         try:
             # Invalidate old cache entries for this job
@@ -6325,7 +6363,7 @@ def job_interview_insights(request, job_id):
                 job=job,
                 job_title=job.title,
                 company_name=job.company_name,
-                insights_data=insights,
+                insights_data=cache_payload,
                 generated_by=insights.get('generated_by', 'template')
             )
             logger.info(f"Cached interview insights for job {job_id}")
@@ -6333,7 +6371,8 @@ def job_interview_insights(request, job_id):
             logger.warning(f"Failed to cache insights: {cache_error}")
             # Continue anyway - caching failure shouldn't break the response
         
-        return Response(insights, status=status.HTTP_200_OK)
+        response_data = _prepare_insights_for_response(job, insights)
+        return Response(response_data, status=status.HTTP_200_OK)
         
     except CandidateProfile.DoesNotExist:
         return Response(
@@ -6350,6 +6389,269 @@ def job_interview_insights(request, job_id):
         return Response(
             {'error': {'code': 'internal_error', 'message': 'Failed to generate interview insights.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+def _serialize_practice_log(log: JobQuestionPractice) -> Dict[str, Any]:
+    return {
+        'practiced': True,
+        'practice_count': log.practice_count,
+        'last_practiced_at': log.last_practiced_at.isoformat(),
+        'written_response': log.written_response,
+        'star_response': log.star_response,
+        'practice_notes': log.practice_notes,
+        'difficulty': log.difficulty,
+    }
+
+
+def _attach_practice_status(bank_data: Dict[str, Any], practice_map: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    data_copy = copy.deepcopy(bank_data)
+    for category in data_copy.get('categories', []):
+        for question in category.get('questions', []):
+            question_id = question.get('id')
+            question['practice_status'] = practice_map.get(
+                question_id,
+                {'practiced': False, 'practice_count': 0},
+            )
+    return data_copy
+
+
+def _ensure_checklist_ids(preparation_checklist: Any) -> None:
+    if not isinstance(preparation_checklist, list):
+        return
+    for cat_index, category in enumerate(preparation_checklist):
+        items = category.get('items')
+        if not isinstance(items, list):
+            category['items'] = []
+            continue
+        label = category.get('category') or f"Category {cat_index + 1}"
+        for item_index, item in enumerate(items):
+            task_text = item.get('task') or f"Task {item_index + 1}"
+            if not task_text:
+                task_text = f"Task {item_index + 1}"
+            identifier = item.get('task_id')
+            if not identifier:
+                identifier = hashlib.sha1(f"{label}:{task_text}".encode('utf-8')).hexdigest()[:16]
+                item['task_id'] = identifier
+            if 'completed' not in item:
+                item['completed'] = False
+
+
+def _attach_checklist_progress(job, insights: Dict[str, Any]) -> None:
+    checklist = insights.get('preparation_checklist')
+    if not isinstance(checklist, list):
+        return
+    entries = PreparationChecklistProgress.objects.filter(job=job)
+    progress_map = {entry.task_id: entry for entry in entries}
+    for category in checklist:
+        for item in category.get('items', []):
+            task_id = item.get('task_id')
+            entry = progress_map.get(task_id)
+            if entry:
+                item['completed'] = entry.completed
+                item['completed_at'] = entry.completed_at.isoformat() if entry.completed_at else None
+
+
+def _prepare_insights_for_response(job, insights: Dict[str, Any]) -> Dict[str, Any]:
+    _ensure_checklist_ids(insights.get('preparation_checklist'))
+    _attach_checklist_progress(job, insights)
+    return insights
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def job_question_bank(request, job_id):
+    """
+    UC-075: Role-Specific Interview Question Bank
+
+    Returns curated technical/behavioral/situational questions plus practice status.
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+    bank_data = None
+
+    if not force_refresh:
+        cached = QuestionBankCache.objects.filter(job=job, is_valid=True).order_by('-generated_at').first()
+        if cached:
+            bank_data = copy.deepcopy(cached.bank_data)
+
+    if bank_data is None:
+        bank_data = build_question_bank(job, profile)
+        try:
+            QuestionBankCache.objects.filter(job=job).update(is_valid=False)
+            QuestionBankCache.objects.create(
+                job=job,
+                bank_data=bank_data,
+                source=bank_data.get('source', 'template'),
+                generated_at=timezone.now(),
+                is_valid=True,
+            )
+        except Exception as cache_error:
+            logger.warning("Failed to cache question bank for job %s: %s", job_id, cache_error)
+
+    practice_logs = JobQuestionPractice.objects.filter(job=job)
+    practice_map = {log.question_id: _serialize_practice_log(log) for log in practice_logs}
+
+    bank_with_practice = _attach_practice_status(bank_data, practice_map)
+
+    return Response(bank_with_practice, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def job_question_practice(request, job_id):
+    """
+    Log written practice for a specific question in the bank.
+    """
+    data = request.data or {}
+    question_id = data.get('question_id')
+    question_text = data.get('question_text')
+
+    if not question_id or not question_text:
+        return Response(
+            {'error': {'code': 'invalid_request', 'message': 'question_id and question_text are required'}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    difficulty = data.get('difficulty', 'mid')
+    if difficulty not in dict(JobQuestionPractice.DIFFICULTY_CHOICES):
+        difficulty = 'mid'
+
+    defaults = {
+        'category': data.get('category', 'behavioral'),
+        'question_text': question_text,
+        'difficulty': difficulty,
+        'skills': data.get('skills', []),
+        'written_response': data.get('written_response', ''),
+        'star_response': data.get('star_response', {}),
+        'practice_notes': data.get('practice_notes', ''),
+    }
+
+    log, created = JobQuestionPractice.objects.get_or_create(
+        job=job,
+        question_id=question_id,
+        defaults=defaults,
+    )
+
+    if not created:
+        log.category = defaults['category']
+        log.question_text = question_text
+        log.difficulty = difficulty
+        log.skills = defaults['skills']
+        log.written_response = defaults['written_response']
+        log.star_response = defaults['star_response']
+        log.practice_notes = defaults['practice_notes']
+        log.increment_count()
+        log.save(update_fields=[
+            'category',
+            'question_text',
+            'difficulty',
+            'skills',
+            'written_response',
+            'star_response',
+            'practice_notes',
+            'practice_count',
+            'last_practiced_at',
+        ])
+    else:
+        log.save()
+
+    return Response(
+        {
+            'status': 'logged',
+            'practice_status': _serialize_practice_log(log),
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def job_preparation_checklist_toggle(request, job_id):
+    """
+    Toggle completion state for a preparation checklist item.
+    """
+    data = request.data or {}
+    task_id = data.get('task_id')
+    category = data.get('category')
+    task = data.get('task')
+    completed = data.get('completed')
+
+    if not task_id or category is None or task is None or completed is None:
+        return Response(
+            {'error': {'code': 'invalid_request', 'message': 'task_id, category, task, and completed are required'}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    try:
+        progress, _ = PreparationChecklistProgress.objects.get_or_create(
+            job=job,
+            task_id=task_id,
+            defaults={
+                'category': category,
+                'task': task,
+            },
+        )
+        progress.category = category
+        progress.task = task
+        progress.completed = bool(completed)
+        progress.completed_at = timezone.now() if progress.completed else None
+        progress.save(update_fields=['category', 'task', 'completed', 'completed_at', 'updated_at'])
+
+        return Response(
+            {
+                'task_id': progress.task_id,
+                'completed': progress.completed,
+                'completed_at': progress.completed_at.isoformat() if progress.completed_at else None,
+            },
+            status=status.HTTP_200_OK,
+        )
+    except Exception as exc:
+        logger.error("Checklist toggle failed for job %s: %s", job_id, exc)
+        return Response(
+            {'error': {'code': 'toggle_failed', 'message': 'Failed to update checklist item.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
 

@@ -620,6 +620,33 @@ export const jobsAPI = {
       throw error.response?.data?.error || { message: 'Failed to fetch interview insights' };
     }
   },
+  
+  getJobQuestionBank: async (id) => {
+    try {
+      const response = await api.get(`/jobs/${id}/question-bank/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch question bank' };
+    }
+  },
+
+  logQuestionPractice: async (id, data) => {
+    try {
+      const response = await api.post(`/jobs/${id}/question-bank/practice/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to log practice' };
+    }
+  },
+
+  togglePreparationChecklist: async (id, data) => {
+    try {
+      const response = await api.post(`/jobs/${id}/preparation-checklist/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to update checklist' };
+    }
+  },
 
   // UC-066: Skills Gap Analysis
   getJobSkillsGap: async (id, options = {}) => {
@@ -1997,4 +2024,3 @@ try {
 } catch (e) {
   // ignore
 }
-
