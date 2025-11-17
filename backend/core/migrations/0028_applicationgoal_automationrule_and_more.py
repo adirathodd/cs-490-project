@@ -256,17 +256,17 @@ class Migration(migrations.Migration):
             new_name='core_sharea_reviewe_08506b_idx',
             old_name='core_share_reviewe_idx',
         ),
-        migrations.RemoveField(
-            model_name='applicationautomationrule',
-            name='execution_count',
+        migrations.RunSQL(
+            "ALTER TABLE core_applicationautomationrule DROP COLUMN IF EXISTS execution_count;",
+            reverse_sql="",
         ),
-        migrations.RemoveField(
-            model_name='applicationautomationrule',
-            name='last_executed',
+        migrations.RunSQL(
+            "ALTER TABLE core_applicationautomationrule DROP COLUMN IF EXISTS last_executed;",
+            reverse_sql="",
         ),
-        migrations.RemoveField(
-            model_name='applicationautomationrule',
-            name='priority',
+        migrations.RunSQL(
+            "ALTER TABLE core_applicationautomationrule DROP COLUMN IF EXISTS priority;",
+            reverse_sql="",
         ),
         migrations.AlterUniqueTogether(
             name='applicationpackage',
