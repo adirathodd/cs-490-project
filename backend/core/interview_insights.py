@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional
 import logging
 import json
 import requests
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -494,8 +495,9 @@ CRITICAL: Return ONLY valid JSON. No markdown code blocks, no explanatory text b
         Returns:
             Dictionary containing structured interview insights
         """
-        # Try AI generation if API key is available
-        if api_key:
+        # Try AI generation if API key is available and we're not running tests
+        # (pytest may run on developer machines with API keys set; skip AI there to keep tests deterministic)
+        if api_key and not os.getenv('PYTEST_CURRENT_TEST'):
             try:
                 logger.info(f"Generating AI-powered interview insights for {job_title} at {company_name}")
                 return cls.generate_with_ai(job_title, company_name, api_key, model)

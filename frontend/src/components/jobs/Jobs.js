@@ -27,7 +27,7 @@ const jobTypeOptions = [
   { value: 'temp', label: 'Temporary' },
 ];
 
-const industryOptions = [
+export const industryOptions = [
   'Software', 'Finance', 'Healthcare', 'Education', 'Retail', 'Manufacturing', 'Government', 'Other'
 ];
 

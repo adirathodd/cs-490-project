@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS public.core_coverlettertemplate (
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     customization_options jsonb NOT NULL DEFAULT '{}'::jsonb,
-    owner_id uuid NULL
+    owner_id integer NULL
 );
 
 -- add FK only if not present; note owner_id is UUID to match core_useraccount(id)
@@ -30,7 +30,7 @@ BEGIN
         ALTER TABLE public.core_coverlettertemplate
         ADD CONSTRAINT core_coverlettertemplate_owner_id_fk
         FOREIGN KEY (owner_id)
-        REFERENCES public.core_useraccount(id)
+        REFERENCES public.auth_user(id)
         ON DELETE SET NULL;
     END IF;
 END$$;

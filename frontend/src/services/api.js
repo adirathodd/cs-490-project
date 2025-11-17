@@ -1820,6 +1820,11 @@ try {
 }
 
 
+
+// Default export: axios instance used across services
+// Also export the raw axios instance for callers that need it (named export)
+export { api };
+
 // UC-052: Resume Sharing and Feedback API calls
 export const resumeSharingAPI = {
   // List all shares for user's resumes

@@ -1,0 +1,200 @@
+
+.contacts-overlay {
+  position: fixed;
+  inset: 0; /* top:0; right:0; bottom:0; left:0 */
+  background: rgba(0,0,0,0.15);
+  z-index: 1190;
+}
+
+.contacts-panel {
+  position: fixed;
+  right: 0;
+  top: 0;
+  height: 100vh;
+  width: min(420px, 92vw);
+  background: var(--white);
+  color: #111827;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--gray-200);
+  box-shadow: -8px 0 24px rgba(2,6,23,0.08);
+}
+
+/* Full-page contacts view (inline on dashboard route) */
+.contacts-page {
+  position: relative;
+  width: 100%;
+  max-width: 980px;
+  margin: 12px auto;
+  background: var(--white);
+  color: #111827;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  box-shadow: 0 12px 36px rgba(2,6,23,0.06);
+}
+
+/* Inline (page) mode: neutral container that blends with Employment page */
+.contacts-inline {
+  position: relative;
+  width: 100%;
+  background: transparent;
+  color: #111827;
+  display: block;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  margin: 0 0 48px 0;
+}
+
+.contacts-inline .contacts-panel-search { padding: 0; }
+.contacts-inline .contacts-create-form { margin-bottom: 24px; }
+.contacts-inline .contacts-panel-body { padding: 0; }
+
+.contacts-panel-search {
+  padding: 12px 16px;
+  /* Visible outlined container so it reads against white surface */
+  border-radius: 12px;
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  box-shadow: 0 12px 36px rgba(2,6,23,0.12);
+}
+.contacts-panel-search input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: none; /* input sits inside outlined container */
+  background: transparent;
+  color: #111827;
+  transition: box-shadow 0.12s ease, transform 0.08s ease;
+}
+.contacts-panel-search input::placeholder { color: #9ca3af; }
+.contacts-panel-search input:focus,
+.contacts-panel-search input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 8px rgba(99,102,241,0.12);
+}
+
+.contacts-panel-body { padding: 12px 16px; overflow-y: auto; flex: 1 1 auto; background: transparent; }
+.contacts-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.contacts-item { padding: 12px; border-radius: 12px; border: 1px solid var(--gray-100); background: linear-gradient(180deg, var(--white) 0%, #f8fafc 100%); }
+.contacts-item-name { font-weight: 600; color: #0f172a; }
+.contacts-item-meta { font-size: 0.85rem; color: #6b7280; }
+.contacts-empty, .contacts-loading { color: #6b7280; padding: 1rem; }
+
+.contacts-card { box-shadow: 0 14px 40px rgba(2,6,23,0.10); }
+
+/* Detail drawer overlay inside the app (over the contacts panel) */
+.contacts-detail-drawer {
+  position: fixed;
+  right: 0;
+  top: 12vh;
+  height: 76vh;
+  width: min(420px, 88vw);
+  background: var(--white);
+  border-left: 1px solid var(--gray-200);
+  box-shadow: -12px 24px 64px rgba(2,6,23,0.12);
+  z-index: 1300;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px 0 0 10px;
+  overflow: hidden;
+}
+
+.contacts-detail-drawer > div:last-child {
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Create form styles */
+.contacts-create-form {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--gray-100);
+  background: linear-gradient(180deg, var(--white) 0%, #f8fafc 100%);
+  box-shadow: 0 12px 36px rgba(2,6,23,0.06);
+  margin-bottom: 12px;
+}
+.contacts-create-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  color: #111827;
+}
+.contacts-create-input::placeholder { color: #9ca3af; }
+
+.contacts-error {
+  background: #fee2e2; /* red-100 */
+  color: #991b1b; /* red-700 */
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+  font-weight: 600;
+}
+
+/* compact primary/secondary buttons used in contacts panel */
+.contacts-btn-primary {
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  color: var(--on-primary);
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.contacts-btn-primary:disabled { opacity: 0.6; cursor: default; }
+.contacts-btn-secondary {
+  background: transparent;
+  border: 1px solid var(--gray-200);
+  color: #374151;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.contacts-tab { background: transparent; border: 1px solid transparent; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+.contacts-tab.active { background: var(--gray-50); border-color: var(--gray-200); font-weight: 600; }
+
+.contacts-notes-list, .contacts-interactions-list, .contacts-reminders-list, .contacts-mutuals-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.contacts-note-item, .contacts-interaction-item, .contacts-reminder-item, .contacts-mutual-item { padding: 8px; border-radius: 8px; border: 1px solid var(--gray-100); background: #ffffff; }
+.contacts-note-meta, .contacts-note-content { font-size: 0.85rem; color: #374151; }
+.contacts-note-meta { font-weight: 600; color: #6b7280; margin-bottom: 6px; }
+
+/* Range slider styling for better visibility */
+.contacts-detail-drawer input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: #d1d5db;
+  outline: none;
+}
+
+.contacts-detail-drawer input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.contacts-detail-drawer input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+

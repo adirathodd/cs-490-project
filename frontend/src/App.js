@@ -25,6 +25,7 @@ import JobDetailView from './components/jobs/JobDetailView';
 import JobTimelineView from './components/jobs/JobTimelineView';
 import JobsCalendar from './components/jobs/JobsCalendar';
 import SalaryResearch from './components/jobs/SalaryResearch';
+import ContactsPage from './components/contacts/ContactsPage';
 import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
 import { AiCoverLetterGenerator } from './features/cover-letter';
@@ -312,6 +313,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <AiCoverLetterGenerator />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/contacts"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ContactsPage />
               </PrivateRoute>
             }
           />

@@ -178,9 +178,10 @@ class MockInterviewAdmin(admin.ModelAdmin):
 # Network models
 @admin.register(Contact)
 class ContactAdmin(admin.ModelAdmin):
-    list_display = ['candidate', 'name', 'relationship_type', 'company', 'job_title', 'last_contacted']
-    list_filter = ['relationship_type', 'last_contacted']
-    search_fields = ['candidate__user__username', 'name', 'email', 'company__name']
+    # Adapted for new Contact model (owner-based)
+    list_display = ['owner', 'display_name', 'relationship_type', 'company', 'title', 'last_interaction']
+    list_filter = ['relationship_type', 'last_interaction']
+    search_fields = ['owner__username', 'display_name', 'email', 'company__name']
 
 
 @admin.register(Referral)
@@ -252,9 +253,10 @@ class ApplicationAutomationRuleAdmin(admin.ModelAdmin):
 # Notifications
 @admin.register(Reminder)
 class ReminderAdmin(admin.ModelAdmin):
-    list_display = ['candidate', 'reminder_type', 'title', 'due_date', 'is_completed', 'priority']
-    list_filter = ['reminder_type', 'is_completed', 'priority', 'due_date']
-    search_fields = ['candidate__user__username', 'title']
+    # Adapt to Reminder model fields
+    list_display = ['owner', 'contact', 'message', 'due_date', 'completed']
+    list_filter = ['completed', 'due_date']
+    search_fields = ['owner__username', 'contact__display_name', 'message']
 
 
 @admin.register(Notification)

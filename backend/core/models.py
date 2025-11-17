@@ -180,6 +180,125 @@ class JobOpportunity(models.Model):
             models.Index(fields=["active"]),
         ]
 
+
+# ======================
+# Contacts / Network Models (UC-086)
+# ======================
+
+
+class Tag(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='tags')
+    name = models.CharField(max_length=120)
+    type = models.CharField(max_length=60, blank=True)
+
+    class Meta:
+        unique_together = [('owner', 'name')]
+
+
+class Contact(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='contacts')
+    first_name = models.CharField(max_length=120, blank=True)
+    last_name = models.CharField(max_length=120, blank=True)
+    display_name = models.CharField(max_length=255, blank=True)
+    title = models.CharField(max_length=220, blank=True)
+    email = models.EmailField(blank=True)
+    # Allow NULL at DB level for imported contacts that may omit phone
+    phone = models.CharField(max_length=40, blank=True, null=True)
+    location = models.CharField(max_length=160, blank=True)
+    company_name = models.CharField(max_length=180, blank=True)
+    company = models.ForeignKey(Company, on_delete=models.SET_NULL, null=True, blank=True, related_name='contacts')
+    linkedin_url = models.URLField(blank=True)
+    profile_url = models.URLField(blank=True)
+    photo_url = models.URLField(blank=True)
+    industry = models.CharField(max_length=120, blank=True)
+    role = models.CharField(max_length=120, blank=True)
+    relationship_type = models.CharField(max_length=80, blank=True)
+    relationship_strength = models.IntegerField(default=0)
+    last_interaction = models.DateTimeField(null=True, blank=True)
+    tags = models.ManyToManyField(Tag, blank=True, related_name='contacts')
+    external_id = models.CharField(max_length=255, blank=True, db_index=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    is_private = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['owner', 'external_id']), models.Index(fields=['owner', 'updated_at'])]
+
+
+class ContactNote(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='notes')
+    author = models.ForeignKey(get_user_model(), on_delete=models.SET_NULL, null=True, blank=True)
+    content = models.TextField(blank=True)
+    interests = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class Interaction(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='interactions')
+    owner = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='interactions')
+    type = models.CharField(max_length=60, blank=True)
+    date = models.DateTimeField(default=timezone.now)
+    duration_minutes = models.IntegerField(null=True, blank=True)
+    summary = models.TextField(blank=True)
+    follow_up_needed = models.BooleanField(default=False)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class Reminder(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='reminders')
+    owner = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='reminders')
+    message = models.TextField()
+    due_date = models.DateTimeField()
+    recurrence = models.CharField(max_length=60, blank=True)
+    completed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ImportJob(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='import_jobs')
+    provider = models.CharField(max_length=60, default='google')
+    status = models.CharField(max_length=30, default='pending')
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    errors = models.JSONField(default=list, blank=True)
+    result_summary = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class MutualConnection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='mutuals')
+    related_contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='related_to')
+    context = models.CharField(max_length=255, blank=True)
+    source = models.CharField(max_length=80, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ContactCompanyLink(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='company_links')
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='contact_links')
+    role_title = models.CharField(max_length=200, blank=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+
+
+class ContactJobLink(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='job_links')
+    job = models.ForeignKey(JobOpportunity, on_delete=models.CASCADE, related_name='contact_links')
+    relationship_to_job = models.CharField(max_length=120, blank=True)
+
+
 class Document(models.Model):
     DOC_TYPES = [("resume","Resume"), ("cover_letter","Cover Letter"), ("portfolio","Portfolio"), ("cert","Certification")]
     candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="documents")
@@ -537,44 +656,6 @@ class CompanyResearch(models.Model):
     
     class Meta:
         indexes = [models.Index(fields=["company"])]
-
-
-# ======================
-# NETWORK & COLLABORATION MODELS
-# ======================
-
-class Contact(models.Model):
-    """Professional contacts and connections"""
-    RELATIONSHIP_TYPES = [
-        ('colleague', 'Colleague'),
-        ('manager', 'Manager'),
-        ('mentor', 'Mentor'),
-        ('recruiter', 'Recruiter'),
-        ('employee', 'Employee at Target Company'),
-        ('other', 'Other'),
-    ]
-    
-    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="contacts")
-    name = models.CharField(max_length=200)
-    email = models.EmailField(blank=True)
-    phone = models.CharField(max_length=30, blank=True)
-    linkedin_url = models.URLField(blank=True)
-    company = models.ForeignKey(Company, on_delete=models.SET_NULL, null=True, blank=True, related_name="contacts")
-    job_title = models.CharField(max_length=200, blank=True)
-    relationship_type = models.CharField(max_length=20, choices=RELATIONSHIP_TYPES)
-    notes = models.TextField(blank=True)
-    last_contacted = models.DateField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        ordering = ['-last_contacted', '-created_at']
-        indexes = [
-            models.Index(fields=["candidate", "-last_contacted"]),
-            models.Index(fields=["company"]),
-        ]
-
-    def __str__(self):
-        return f"{self.name} - {self.get_relationship_type_display()}"
 
 
 class CoverLetterTemplate(models.Model):
@@ -1008,37 +1089,8 @@ class AutomationRule(models.Model):
 
 # ======================
 # REMINDERS & NOTIFICATIONS
+# (existing reminder model replaced by UC-086 Reminder model defined earlier)
 # ======================
-
-class Reminder(models.Model):
-    """Reminders and follow-up tasks"""
-    REMINDER_TYPES = [
-        ('follow_up', 'Follow Up'),
-        ('interview_prep', 'Interview Preparation'),
-        ('deadline', 'Application Deadline'),
-        ('networking', 'Network Contact'),
-        ('document_update', 'Update Document'),
-    ]
-    
-    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="reminders")
-    application = models.ForeignKey(Application, on_delete=models.CASCADE, null=True, blank=True, related_name="reminders")
-    reminder_type = models.CharField(max_length=30, choices=REMINDER_TYPES)
-    title = models.CharField(max_length=200)
-    description = models.TextField(blank=True)
-    due_date = models.DateTimeField()
-    is_completed = models.BooleanField(default=False)
-    completed_at = models.DateTimeField(null=True, blank=True)
-    priority = models.IntegerField(default=2)  # 1=high, 2=medium, 3=low
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        ordering = ['is_completed', 'due_date']
-        indexes = [
-            models.Index(fields=["candidate", "is_completed", "due_date"]),
-            models.Index(fields=["application"]),
-        ]
-
-
 class Notification(models.Model):
     """System notifications for users"""
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
