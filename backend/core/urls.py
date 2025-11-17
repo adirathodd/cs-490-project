@@ -1,7 +1,7 @@
 """
 URL configuration for core app authentication endpoints.
 """
-from django.urls import path
+from django.urls import path, re_path
 from core import views
 from core import analytics_views
 
@@ -40,6 +40,25 @@ urlpatterns = [
     # Projects endpoints
     path('profile/projects', views.projects_list_create, name='projects-list-create'),
     path('profile/projects/<int:pk>', views.projects_detail, name='projects-detail'),
+
+    # UC-086: Contacts / Professional Network
+    path('contacts', views.contacts_list_create, name='contacts-list-create'),
+    path('contacts/<uuid:contact_id>', views.contact_detail, name='contact-detail'),
+    path('contacts/<uuid:contact_id>/interactions', views.contact_interactions_list_create, name='contact-interactions'),
+    path('contacts/<uuid:contact_id>/notes', views.contact_notes_list_create, name='contact-notes'),
+    path('contacts/<uuid:contact_id>/reminders', views.contact_reminders_list_create, name='contact-reminders'),
+    path('contacts/reminders/all', views.all_contact_reminders, name='all-contact-reminders'),
+    path('contacts/reminders/<uuid:reminder_id>/dismiss', views.dismiss_contact_reminder, name='dismiss-contact-reminder'),
+    path('contacts/import/start', views.contacts_import_start, name='contacts-import-start'),
+    path('contacts/import/callback', views.contacts_import_callback, name='contacts-import-callback'),
+    path('contacts/imports', views.import_jobs_list, name='contacts-imports-list'),
+    path('contacts/import/<uuid:job_id>', views.import_job_detail, name='contacts-import-detail'),
+    path('contacts/<uuid:contact_id>/mutuals', views.contact_mutuals, name='contact-mutuals'),
+    path('contacts/<uuid:contact_id>/mutuals/<uuid:mutual_id>', views.delete_mutual_connection, name='delete-mutual-connection'),
+    path('contacts/<uuid:contact_id>/company-links', views.contact_company_links, name='contact-company-links'),
+    path('contacts/<uuid:contact_id>/company-links/<uuid:link_id>', views.delete_company_link, name='delete-company-link'),
+    path('contacts/<uuid:contact_id>/job-links', views.contact_job_links, name='contact-job-links'),
+    path('contacts/<uuid:contact_id>/job-links/<uuid:link_id>', views.delete_job_link, name='delete-job-link'),
 
     # Profile Picture endpoints (UC-022)
     path('profile/picture', views.get_profile_picture, name='get-profile-picture'),
@@ -139,6 +158,8 @@ urlpatterns = [
     # UC-051: Resume export endpoints
     path('resume/export/themes', views.resume_export_themes, name='resume-export-themes'),
     path('resume/export', views.resume_export, name='resume-export'),
+    # Ensure exact-match export route is available for tests and clients
+    re_path(r'^resume/export$', views.resume_export, name='resume-export-exact'),
     path('resume/export/ai', views.export_ai_resume, name='export-ai-resume'),
     
     # UC-063: Automated Company Research endpoints

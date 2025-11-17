@@ -14,7 +14,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         days = options.get('days') or 3
-        now = timezone.now().date()
+        # Use localdate to match test expectations and local timezone-aware dates
+        now = timezone.localdate()
         # Jobs not applied yet
         base_qs = JobEntry.objects.filter(status__in=['interested', 'phone_screen', 'interview', 'offer'])
         sent_three_day = 0

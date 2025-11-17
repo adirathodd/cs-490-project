@@ -51,6 +51,19 @@ def custom_exception_handler(exc, context):
             }
         }
     """
+    # Log exception type and context for easier debugging of converted 404/403 errors
+    try:
+        logger.debug(f"custom_exception_handler invoked: exc={exc!r}, context_keys={list(context.keys()) if isinstance(context, dict) else context}")
+    except Exception:
+        pass
+    try:
+        import traceback as _tb
+        tb = ''.join(_tb.format_tb(exc.__traceback__)) if getattr(exc, '__traceback__', None) else ''
+        if tb:
+            logger.debug(f"Exception traceback:\n{tb}")
+    except Exception:
+        pass
+
     # Call REST framework's default exception handler first
     response = exception_handler(exc, context)
     

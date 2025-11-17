@@ -39,6 +39,18 @@ from core.serializers import (
     ResumeVersionListSerializer,
     ResumeVersionCompareSerializer,
     ResumeVersionMergeSerializer,
+    ResumeShareListSerializer,
+)
+from core.serializers import (
+    ContactSerializer,
+    InteractionSerializer,
+    ContactNoteSerializer,
+    ReminderSerializer,
+    ImportJobSerializer,
+    TagSerializer,
+    MutualConnectionSerializer,
+    ContactCompanyLinkSerializer,
+    ContactJobLinkSerializer,
 )
 from core.models import (
     CandidateProfile,
@@ -52,6 +64,7 @@ from core.models import (
     WorkExperience,
     UserAccount,
     JobEntry,
+    JobOpportunity,
     Document,
     JobMaterialsHistory,
     CoverLetterTemplate,
@@ -66,9 +79,20 @@ from core.models import (
     JobQuestionPractice,
     QuestionBankCache,
     PreparationChecklistProgress,
+    Contact,
+    Interaction,
+    ContactNote,
+    Reminder,
+    ImportJob,
+    Tag,
+    MutualConnection,
+    ContactCompanyLink,
+    ContactJobLink,
 )
+from core import google_import, tasks
 from core.research.enrichment import fallback_domain
 from core.question_bank import build_question_bank
+from django.shortcuts import redirect
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def cover_letter_template_list_create(request):
@@ -363,6 +387,9 @@ def cover_letter_template_download(request, pk, format_type):
         response = HttpResponse(content, content_type='text/plain')
         response['Content-Disposition'] = f'attachment; filename="{template.name}.txt"'
         return response
+
+
+    # end of txt branch
     
     elif format_type == 'docx':
         # Word document download - use original file if available, otherwise generate new one
@@ -770,6 +797,601 @@ def _delete_user_and_data(user):
             msg.send(fail_silently=True)
     except Exception as e:
         logger.warning(f"Failed to send account deletion email to {email}: {e}")
+
+
+# ======================
+# Contacts / Network API (UC-086)
+# Module-level API views for contact management
+# ======================
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def contacts_list_create(request):
+    """List user's contacts or create a new one."""
+    if request.method == "GET":
+        qs = Contact.objects.filter(owner=request.user).order_by('-updated_at')
+        # basic search
+        q = request.query_params.get('q')
+        if q:
+            qs = qs.filter(models.Q(first_name__icontains=q) | models.Q(last_name__icontains=q) | models.Q(display_name__icontains=q) | models.Q(email__icontains=q) | models.Q(company_name__icontains=q))
+        serializer = ContactSerializer(qs, many=True, context={'request': request})
+        return Response(serializer.data)
+    else:
+        data = request.data.copy()
+        serializer = ContactSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            contact = serializer.save(owner=request.user)
+            return Response(ContactSerializer(contact, context={'request': request}).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+@api_view(["GET", "PUT", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def contact_detail(request, contact_id):
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(ContactSerializer(contact, context={'request': request}).data)
+    elif request.method in ('PUT', 'PATCH'):
+        serializer = ContactSerializer(contact, data=request.data, partial=(request.method == 'PATCH'), context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        # Attempt to delete the contact. In some dev databases there can be a
+        # schema mismatch (e.g., legacy tables still using integer FKs while
+        # `Contact.id` is UUID) which raises ProgrammingError during cascade
+        # deletes. Catch that and return a clearer error so the frontend can
+        # surface an actionable message instead of a generic 500.
+        try:
+            contact.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            # Import here to avoid top-level DB dependency for modules that
+            # don't need it when running certain management commands.
+            from django.db import utils as db_utils
+            if isinstance(e, db_utils.ProgrammingError):
+                # Log full exception for debugging
+                logger.error('ProgrammingError deleting contact %s: %s', contact_id, str(e), exc_info=True)
+                return Response({
+                    'error': {
+                        'code': 'db_schema_mismatch',
+                        'message': 'Failed to delete contact due to database schema mismatch. Please run the latest migrations or inspect related foreign key columns (e.g. core_referral.contact_id) and ensure they use UUIDs that match contacts.',
+                    }
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # Re-raise other exceptions to let the global handler process them
+            raise
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def contact_interactions_list_create(request, contact_id):
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        qs = contact.interactions.all().order_by('-date')
+        serializer = InteractionSerializer(qs, many=True)
+        return Response(serializer.data)
+    else:
+        data = request.data.copy()
+        data['contact'] = str(contact.id)
+        serializer = InteractionSerializer(data=data)
+        if serializer.is_valid():
+            interaction = serializer.save(owner=request.user)
+            # update contact last_interaction and possibly strength heuristics
+            contact.last_interaction = interaction.date
+            contact.save(update_fields=['last_interaction'])
+            return Response(InteractionSerializer(interaction).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def contact_notes_list_create(request, contact_id):
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        qs = contact.notes.all().order_by('-created_at')
+        serializer = ContactNoteSerializer(qs, many=True)
+        return Response(serializer.data)
+    else:
+        data = request.data.copy()
+        data['contact'] = str(contact.id)
+        serializer = ContactNoteSerializer(data=data)
+        if serializer.is_valid():
+            note = serializer.save(author=request.user)
+            return Response(ContactNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def contact_reminders_list_create(request, contact_id):
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        qs = contact.reminders.all().order_by('due_date')
+        serializer = ReminderSerializer(qs, many=True)
+        return Response(serializer.data)
+    else:
+        data = request.data.copy()
+        data['contact'] = str(contact.id)
+        serializer = ReminderSerializer(data=data)
+        if serializer.is_valid():
+            reminder = serializer.save(owner=request.user)
+            return Response(ReminderSerializer(reminder).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def contacts_import_start(request):
+    """Start an import job. For Google we return an auth_url to redirect user to.
+    This is a lightweight starter implementation; full OAuth flow will be added separately.
+    """
+    provider = request.data.get('provider') or request.query_params.get('provider') or 'google'
+    job = ImportJob.objects.create(owner=request.user, provider=provider, status='pending')
+    auth_url = None
+    if provider == 'google':
+        # Use a stable redirect URI (no dynamic query params) so it can be
+        # registered exactly in Google Cloud Console. Pass the job id via
+        # the OAuth `state` parameter instead.
+        # Note: the core app is mounted at `/api/`, but the core/ prefix
+        # is not part of the public route — use `/api/contacts/...` here.
+        redirect_uri = request.build_absolute_uri('/api/contacts/import/callback')
+        auth_url = google_import.build_google_auth_url(redirect_uri, state=str(job.id))
+        # Log the exact auth_url so developers can copy it and verify the
+        # redirect_uri portion against the Google Cloud Console settings.
+        import logging
+        logging.getLogger(__name__).info('Google auth_url: %s', auth_url)
+    return Response({'job_id': str(job.id), 'auth_url': auth_url, 'status': job.status})
+
+
+@api_view(["GET", "POST"])
+@permission_classes([AllowAny])
+def contacts_import_callback(request):
+    code = request.data.get('code') or request.query_params.get('code')
+    job_id = request.data.get('job_id') or request.query_params.get('job_id') or request.data.get('state') or request.query_params.get('state')
+    if not job_id:
+        return Response({'error': 'Missing job_id/state'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        # If the user is authenticated, ensure the job belongs to them.
+        if request.user and request.user.is_authenticated:
+            job = ImportJob.objects.get(id=job_id, owner=request.user)
+        else:
+            # This callback is invoked by Google's redirect (no user session),
+            # so resolve the job by id only. The `state` parameter provides
+            # enough linkage to the original import request.
+            job = ImportJob.objects.get(id=job_id)
+    except ImportJob.DoesNotExist:
+        return Response({'error': 'Import job not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not code:
+        # If no code present, return job info so frontend can surface an error
+        return Response({'job_id': str(job.id), 'status': job.status})
+
+    # Use the stable redirect URI (no job_id query param). The original
+    # job id will be available in `state` (or as a query param if an
+    # older client included it), so the callback resolves the job from
+    # either source.
+    redirect_uri = request.build_absolute_uri('/api/contacts/import/callback')
+    def _summarize_exception(err: Exception) -> str:
+        s = str(err)
+        if not s:
+            return 'Unknown error during import.'
+        # Map common DB integrity messages to friendlier text
+        lower = s.lower()
+        if 'null value' in lower and 'violates not-null constraint' in lower:
+            return 'Imported contact missing a required field (e.g. phone).'
+        if 'permission denied' in lower:
+            return 'Permission error during import.'
+        # Truncate long messages to avoid exposing stack traces
+        return s if len(s) < 500 else s[:500] + '...'
+
+    try:
+        tokens = google_import.exchange_code_for_tokens(code, redirect_uri)
+        access_token = tokens.get('access_token')
+        refresh_token = tokens.get('refresh_token')
+        # Save some metadata for auditing (do NOT log tokens in production)
+        job.metadata = {'tokens_obtained_at': timezone.now().isoformat(), 'has_refresh_token': bool(refresh_token)}
+        job.save(update_fields=['metadata'])
+
+        # Enqueue background processing via Celery if available, otherwise run synchronously
+        try:
+            tasks.process_import_job.delay(str(job.id), access_token)  # type: ignore[attr-defined]
+            started = True
+        except Exception:
+            # Fallback: call synchronously
+            tasks.process_import_job(str(job.id), access_token)
+            started = False
+
+        # Redirect the user's browser back to the frontend app so the UI
+        # can show import progress/results. Frontend URL is configured
+        # via settings.FRONTEND_URL or defaults to http://localhost:3000
+        frontend_base = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        frontend_url = f"{frontend_base.rstrip('/')}/contacts?import_job={job.id}"
+        # Prefer redirect for browser-based OAuth flows so the user returns
+        # to the frontend app automatically. Return JSON only when the
+        # client explicitly requested JSON (API clients/tests).
+        # If this request contains OAuth `code` and `state` it's coming from the
+        # browser OAuth redirect — prefer redirecting the user's browser back
+        # to the frontend app so they land on the contacts UI automatically.
+        if request.GET.get('code') and request.GET.get('state'):
+            return redirect(frontend_url)
+
+        accept = request.META.get('HTTP_ACCEPT', '') or getattr(request, 'accepted_media_type', None) or ''
+        user_agent = request.META.get('HTTP_USER_AGENT', '') or ''
+        explicitly_wants_json = isinstance(accept, str) and 'application/json' in accept
+        # Treat common browsers (Mozilla/Chrome/Safari) as interactive agents
+        is_browser = any(marker in user_agent for marker in ('Mozilla', 'Chrome', 'Safari', 'Firefox', 'Edge'))
+
+        if explicitly_wants_json and not is_browser:
+            return Response({'job_id': str(job.id), 'status': job.status, 'frontend_url': frontend_url, 'enqueued': bool(started)})
+        return redirect(frontend_url)
+    except Exception as exc:
+        job.status = 'failed'
+        job.errors = [_summarize_exception(exc)]
+        job.save(update_fields=['status', 'errors'])
+        frontend_base = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        frontend_url = f"{frontend_base.rstrip('/')}/contacts?import_job={job.id}&status=failed"
+        if request.GET.get('code') and request.GET.get('state'):
+            return redirect(frontend_url)
+
+        accept = request.META.get('HTTP_ACCEPT', '') or getattr(request, 'accepted_media_type', None) or ''
+        user_agent = request.META.get('HTTP_USER_AGENT', '') or ''
+        explicitly_wants_json = isinstance(accept, str) and 'application/json' in accept
+        is_browser = any(marker in user_agent for marker in ('Mozilla', 'Chrome', 'Safari', 'Firefox', 'Edge'))
+
+        if explicitly_wants_json and not is_browser:
+            return Response({'job_id': str(job.id), 'status': job.status, 'frontend_url': frontend_url, 'enqueued': False}, status=status.HTTP_200_OK)
+        return redirect(frontend_url)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def import_jobs_list(request):
+    """Return recent import jobs for the current user."""
+    jobs = ImportJob.objects.filter(owner=request.user).order_by('-created_at')[:20]
+    serializer = ImportJobSerializer(jobs, many=True)
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def import_job_detail(request, job_id):
+    """Return a single import job detail for the current user."""
+    try:
+        job = ImportJob.objects.get(id=job_id, owner=request.user)
+    except ImportJob.DoesNotExist:
+        return Response({'error': 'Import job not found.'}, status=status.HTTP_404_NOT_FOUND)
+    serializer = ImportJobSerializer(job)
+    return Response(serializer.data)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def contact_mutuals(request, contact_id):
+    """Get or create mutual connections for a contact."""
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        # Get all mutual connections for this contact
+        mutuals = MutualConnection.objects.filter(contact=contact).select_related('related_contact')
+        
+        # Build response with related contact details
+        data = []
+        for m in mutuals:
+            related = m.related_contact
+            data.append({
+                'mutual_id': str(m.id),
+                'id': str(related.id),
+                'display_name': related.display_name,
+                'first_name': related.first_name,
+                'last_name': related.last_name,
+                'email': related.email,
+                'phone': related.phone,
+                'company_name': related.company_name,
+                'title': related.title,
+                'context': m.context,
+                'source': m.source,
+                'created_at': m.created_at.isoformat() if m.created_at else None,
+            })
+        # Also include inferred mutuals based on shared company name (lightweight UX enhancement)
+        seen_ids = {d['id'] for d in data}
+        company_name = (contact.company_name or '').strip()
+        if company_name:
+            inferred_qs = Contact.objects.filter(owner=request.user, company_name__iexact=company_name).exclude(id=contact.id)
+            for other in inferred_qs:
+                if str(other.id) in seen_ids:
+                    continue
+                data.append({
+                    'mutual_id': None,
+                    'id': str(other.id),
+                    'display_name': other.display_name,
+                    'first_name': other.first_name,
+                    'last_name': other.last_name,
+                    'email': other.email,
+                    'phone': other.phone,
+                    'company_name': other.company_name,
+                    'title': other.title,
+                    'context': 'shared company',
+                    'source': 'inferred',
+                    'created_at': None,
+                })
+        return Response(data)
+    
+    elif request.method == "POST":
+        # Create a new mutual connection
+        related_contact_id = request.data.get('related_contact_id')
+        if not related_contact_id:
+            return Response({"error": "related_contact_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            related_contact = Contact.objects.get(id=related_contact_id, owner=request.user)
+        except Contact.DoesNotExist:
+            return Response({"error": "Related contact not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if mutual connection already exists
+        existing = MutualConnection.objects.filter(contact=contact, related_contact=related_contact).first()
+        if existing:
+            return Response({"error": "Mutual connection already exists."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        context = request.data.get('context', '')
+        source = request.data.get('source', 'manual')
+        
+        # Create bidirectional mutual connections
+        # Connection from contact A to contact B
+        mutual = MutualConnection.objects.create(
+            contact=contact,
+            related_contact=related_contact,
+            context=context,
+            source=source
+        )
+        
+        # Connection from contact B to contact A (reverse direction)
+        # Check if reverse connection already exists to avoid duplicates
+        reverse_existing = MutualConnection.objects.filter(contact=related_contact, related_contact=contact).first()
+        if not reverse_existing:
+            MutualConnection.objects.create(
+                contact=related_contact,
+                related_contact=contact,
+                context=context,
+                source=source
+            )
+        
+        return Response({
+            'mutual_id': str(mutual.id),
+            'id': str(related_contact.id),
+            'display_name': related_contact.display_name,
+            'first_name': related_contact.first_name,
+            'last_name': related_contact.last_name,
+            'email': related_contact.email,
+            'context': mutual.context,
+            'source': mutual.source,
+        }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def all_contact_reminders(request):
+    """Get all reminders for the user's contacts."""
+    reminders = Reminder.objects.filter(owner=request.user).select_related('contact').order_by('due_date')
+    
+    # Build response with contact name for frontend display
+    data = []
+    for r in reminders:
+        contact_name = r.contact.display_name or f"{r.contact.first_name} {r.contact.last_name}".strip() or r.contact.email or 'Contact'
+        data.append({
+            'id': str(r.id),
+            'contact_id': str(r.contact.id),
+            'contact_name': contact_name,
+            'message': r.message,
+            'due_date': r.due_date.isoformat() if r.due_date else None,
+            'recurrence': r.recurrence,
+            'completed': r.completed,
+            'created_at': r.created_at.isoformat() if r.created_at else None,
+        })
+    return Response(data)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def dismiss_contact_reminder(request, reminder_id):
+    """Mark a reminder as completed (dismissed)."""
+    try:
+        reminder = Reminder.objects.get(id=reminder_id, owner=request.user)
+        reminder.completed = True
+        reminder.save(update_fields=['completed'])
+        return Response({'success': True, 'message': 'Reminder dismissed.'})
+    except Reminder.DoesNotExist:
+        return Response({"error": "Reminder not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_mutual_connection(request, contact_id, mutual_id):
+    """Delete a mutual connection (bidirectional)."""
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        mutual = MutualConnection.objects.get(id=mutual_id, contact=contact)
+        related_contact = mutual.related_contact
+        
+        # Delete the main connection
+        mutual.delete()
+        
+        # Also delete the reverse connection if it exists
+        reverse_mutual = MutualConnection.objects.filter(
+            contact=related_contact, 
+            related_contact=contact
+        ).first()
+        if reverse_mutual:
+            reverse_mutual.delete()
+        
+        return Response({"message": "Mutual connection deleted."}, status=status.HTTP_204_NO_CONTENT)
+    except MutualConnection.DoesNotExist:
+        return Response({"error": "Mutual connection not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def contact_company_links(request, contact_id):
+    """Get or create company links for a contact."""
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        links = ContactCompanyLink.objects.filter(contact=contact).select_related('company')
+        data = []
+        for link in links:
+            data.append({
+                'id': str(link.id),
+                'company_id': str(link.company.id),
+                'company_name': link.company.name,
+                'role_title': link.role_title,
+                'start_date': link.start_date.isoformat() if link.start_date else None,
+                'end_date': link.end_date.isoformat() if link.end_date else None,
+            })
+        return Response(data)
+    
+    elif request.method == "POST":
+        company_id = request.data.get('company_id')
+        if not company_id:
+            return Response({"error": "company_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            company = Company.objects.get(id=company_id)
+        except Company.DoesNotExist:
+            return Response({"error": "Company not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if link already exists
+        existing = ContactCompanyLink.objects.filter(contact=contact, company=company).first()
+        if existing:
+            return Response({"error": "Link already exists."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        link = ContactCompanyLink.objects.create(
+            contact=contact,
+            company=company,
+            role_title=request.data.get('role_title', ''),
+            start_date=request.data.get('start_date'),
+            end_date=request.data.get('end_date')
+        )
+        
+        return Response({
+            'id': str(link.id),
+            'company_id': str(company.id),
+            'company_name': company.name,
+            'role_title': link.role_title,
+        }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_company_link(request, contact_id, link_id):
+    """Delete a company link."""
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        link = ContactCompanyLink.objects.get(id=link_id, contact=contact)
+        link.delete()
+        return Response({"message": "Company link deleted."}, status=status.HTTP_204_NO_CONTENT)
+    except ContactCompanyLink.DoesNotExist:
+        return Response({"error": "Company link not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def contact_job_links(request, contact_id):
+    """Get or create job links for a contact."""
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        links = ContactJobLink.objects.filter(contact=contact).select_related('job')
+        data = []
+        for link in links:
+            data.append({
+                'id': str(link.id),
+                'job_id': str(link.job.id),
+                'job_title': link.job.title,
+                'company_name': link.job.company_name,
+                'relationship_to_job': link.relationship_to_job,
+            })
+        return Response(data)
+    
+    elif request.method == "POST":
+        job_id = request.data.get('job_id')
+        if not job_id:
+            return Response({"error": "job_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            job = JobOpportunity.objects.get(id=job_id, owner=request.user)
+        except JobOpportunity.DoesNotExist:
+            return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if link already exists
+        existing = ContactJobLink.objects.filter(contact=contact, job=job).first()
+        if existing:
+            return Response({"error": "Link already exists."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        link = ContactJobLink.objects.create(
+            contact=contact,
+            job=job,
+            relationship_to_job=request.data.get('relationship_to_job', '')
+        )
+        
+        return Response({
+            'id': str(link.id),
+            'job_id': str(job.id),
+            'job_title': job.title,
+            'company_name': job.company_name,
+            'relationship_to_job': link.relationship_to_job,
+        }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_job_link(request, contact_id, link_id):
+    """Delete a job link."""
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        link = ContactJobLink.objects.get(id=link_id, contact=contact)
+        link.delete()
+        return Response({"message": "Job link deleted."}, status=status.HTTP_204_NO_CONTENT)
+    except ContactJobLink.DoesNotExist:
+        return Response({"error": "Job link not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['POST'])
@@ -7393,6 +8015,8 @@ def bulk_job_match_scores(request):
             {'error': {'code': 'internal_error', 'message': 'Failed to generate bulk match analysis.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+@api_view(['GET'])
+@authentication_classes([SessionAuthentication, FirebaseAuthentication])
 @permission_classes([IsAuthenticated])
 def resume_export(request):
     """
@@ -7417,11 +8041,28 @@ def resume_export(request):
         from core import resume_export
         from django.http import HttpResponse
         
-        # Get or create authenticated user's profile
-        profile, created = CandidateProfile.objects.get_or_create(
-            user=request.user,
-            defaults={'email': request.user.email}
-        )
+        # Debug: log incoming request for diagnostics
+        logger.debug(f"resume_export called: GET={request.GET} user={request.user}")
+        # Print to stdout during tests to make debugging obvious
+        print('DEBUG resume_export called:', request.method, request.get_full_path(), 'user=', getattr(request, 'user', None))
+
+        # Lookup authenticated user's profile. Do NOT attempt to create a
+        # CandidateProfile here because the model does not include an
+        # 'email' field and creating with invalid defaults raises FieldError.
+        print('DEBUG before profile lookup: user=', getattr(request, 'user', None))
+        profile = CandidateProfile.objects.filter(user=request.user).first()
+        if not profile:
+            # Match test expectations: when the profile is missing, return 404
+            return Response(
+                {
+                    'error': {
+                        'code': 'profile_not_found',
+                        'message': 'User profile not found.'
+                    }
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        print('DEBUG after profile lookup: profile=', getattr(profile, 'id', None))
         
         # Get query parameters
         format_type = request.GET.get('format', '').lower()
@@ -7512,6 +8153,43 @@ def resume_export(request):
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# Wrapper to ensure DRF function-based view handling and avoid routing edge-cases
+@api_view(['GET'])
+@authentication_classes([SessionAuthentication, FirebaseAuthentication])
+@permission_classes([IsAuthenticated])
+def resume_export_wrapper(request):
+    """Thin wrapper that forwards to the main resume_export logic."""
+    # Quick-validate 'format' parameter here to avoid routing/auth edge-cases
+    format_type = request.GET.get('format', '').lower()
+    if not format_type:
+        return Response(
+            {
+                'error': {
+                    'code': 'missing_parameter',
+                    'message': 'format parameter is required. Valid options: docx, html, txt'
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    valid_formats = ['docx', 'html', 'txt']
+    if format_type not in valid_formats:
+        return Response(
+            {
+                'error': {
+                    'code': 'invalid_format',
+                    'message': f'Invalid format: {format_type}. Valid options: {", ".join(valid_formats)}'
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Call the underlying function while ensuring we pass a Django HttpRequest
+    target = getattr(resume_export, '__wrapped__', resume_export)
+    django_req = getattr(request, '_request', request)
+    return target(django_req)
 
 
 @api_view(['POST'])

@@ -248,6 +248,13 @@ const Dashboard = () => {
             <p>Manage resumes, cover letters, and application materials</p>
             <button className="card-button" onClick={() => navigate('/documents')}>Manage Documents</button>
           </div>
+
+          <div className="dashboard-card">
+            <div className="card-icon"><Icon name="users" size="lg" ariaLabel="Contacts" /></div>
+            <h3>Contacts</h3>
+            <p>Manage your professional contacts, notes and reminders</p>
+            <button className="card-button" onClick={() => navigate('/contacts')}>Manage Contacts</button>
+          </div>
         </div>
       </div>
     </div>
