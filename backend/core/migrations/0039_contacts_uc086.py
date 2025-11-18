@@ -5,6 +5,72 @@ import uuid
 from django.conf import settings
 
 
+def ensure_contact_pk_is_uuid(apps, schema_editor):
+    """
+    In older dev databases, core_contact was created with a bigint PK and a different
+    column layout. That breaks the UUID foreign keys introduced in this migration.
+    When the legacy table is empty, drop and recreate it (and the referral table that
+    depends on it) with the current schema. If data exists, fail fast and ask for a
+    manual reset so we don't silently destroy records.
+    """
+    connection = schema_editor.connection
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_name = 'core_contact' AND column_name = 'id'
+            """
+        )
+        row = cursor.fetchone()
+
+    if not row:
+        # Table does not exist; create it with the current model definition.
+        Contact = apps.get_model('core', 'Contact')
+        Referral = apps.get_model('core', 'Referral')
+        schema_editor.create_model(Contact)
+        schema_editor.create_model(Referral)
+        return
+
+    column_type = row[0]
+    if column_type == 'uuid':
+        return
+
+    def table_exists(table_name):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT to_regclass(%s)",
+                [f'public.{table_name}'],
+            )
+            result = cursor.fetchone()
+            return result and result[0] is not None
+
+    contact_count = 0
+    referral_count = 0
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM core_contact")
+        contact_count = cursor.fetchone()[0]
+        if table_exists("core_referral"):
+            cursor.execute("SELECT COUNT(*) FROM core_referral")
+            referral_count = cursor.fetchone()[0]
+
+    if contact_count or referral_count:
+        raise RuntimeError(
+            "core_contact uses a bigint primary key and contains data. "
+            "Reset the database (or migrate the data manually) before applying the contacts migration."
+        )
+
+    # Safe to rebuild since there is no data.
+    with connection.cursor() as cursor:
+        cursor.execute("DROP TABLE IF EXISTS core_referral CASCADE")
+        cursor.execute("DROP TABLE IF EXISTS core_contact CASCADE")
+
+    Contact = apps.get_model('core', 'Contact')
+    Referral = apps.get_model('core', 'Referral')
+    schema_editor.create_model(Contact)
+    schema_editor.create_model(Referral)
+
+
 class Migration(migrations.Migration):
 
     initial = False
@@ -15,6 +81,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(ensure_contact_pk_is_uuid, migrations.RunPython.noop),
         migrations.CreateModel(
             name='Tag',
             fields=[
