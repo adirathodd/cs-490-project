@@ -2047,6 +2047,184 @@ export const notificationAPI = {
   },
 };
 
+// =====================
+// UC-088: Networking Event Management API
+// =====================
+
+export const networkingAPI = {
+  // Events
+  getEvents: async (filters = {}) => {
+    try {
+      const response = await api.get('/networking-events', { params: filters });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch networking events' };
+    }
+  },
+
+  getEvent: async (eventId) => {
+    try {
+      const response = await api.get(`/networking-events/${eventId}`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch event details' };
+    }
+  },
+
+  createEvent: async (eventData) => {
+    try {
+      const response = await api.post('/networking-events', eventData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to create networking event' };
+    }
+  },
+
+  updateEvent: async (eventId, eventData) => {
+    try {
+      const response = await api.patch(`/networking-events/${eventId}`, eventData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update event' };
+    }
+  },
+
+  deleteEvent: async (eventId) => {
+    try {
+      await api.delete(`/networking-events/${eventId}`);
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete event' };
+    }
+  },
+
+  // Goals
+  getGoals: async (eventId) => {
+    try {
+      const response = await api.get(`/networking-events/${eventId}/goals`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch goals' };
+    }
+  },
+
+  createGoal: async (eventId, goalData) => {
+    try {
+      const response = await api.post(`/networking-events/${eventId}/goals`, goalData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to create goal' };
+    }
+  },
+
+  updateGoal: async (eventId, goalId, goalData) => {
+    try {
+      const response = await api.patch(`/networking-events/${eventId}/goals/${goalId}`, goalData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update goal' };
+    }
+  },
+
+  deleteGoal: async (eventId, goalId) => {
+    try {
+      await api.delete(`/networking-events/${eventId}/goals/${goalId}`);
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete goal' };
+    }
+  },
+
+  // Connections
+  getConnections: async (eventId) => {
+    try {
+      const response = await api.get(`/networking-events/${eventId}/connections`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch connections' };
+    }
+  },
+
+  createConnection: async (eventId, connectionData) => {
+    try {
+      const response = await api.post(`/networking-events/${eventId}/connections`, connectionData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to add connection' };
+    }
+  },
+
+  updateConnection: async (eventId, connectionId, connectionData) => {
+    try {
+      const response = await api.patch(`/networking-events/${eventId}/connections/${connectionId}`, connectionData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update connection' };
+    }
+  },
+
+  deleteConnection: async (eventId, connectionId) => {
+    try {
+      await api.delete(`/networking-events/${eventId}/connections/${connectionId}`);
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete connection' };
+    }
+  },
+
+  // Follow-ups
+  getFollowUps: async (eventId) => {
+    try {
+      const response = await api.get(`/networking-events/${eventId}/follow-ups`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch follow-ups' };
+    }
+  },
+
+  createFollowUp: async (eventId, followUpData) => {
+    try {
+      const response = await api.post(`/networking-events/${eventId}/follow-ups`, followUpData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to create follow-up' };
+    }
+  },
+
+  updateFollowUp: async (eventId, followUpId, followUpData) => {
+    try {
+      const response = await api.patch(`/networking-events/${eventId}/follow-ups/${followUpId}`, followUpData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update follow-up' };
+    }
+  },
+
+  deleteFollowUp: async (eventId, followUpId) => {
+    try {
+      await api.delete(`/networking-events/${eventId}/follow-ups/${followUpId}`);
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete follow-up' };
+    }
+  },
+
+  completeFollowUp: async (eventId, followUpId) => {
+    try {
+      const response = await api.post(`/networking-events/${eventId}/follow-ups/${followUpId}/complete`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to complete follow-up' };
+    }
+  },
+
+  // Analytics
+  getAnalytics: async () => {
+    try {
+      const response = await api.get('/networking-events/analytics');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch analytics' };
+    }
+  },
+};
+
 // Export for module compatibility
 try {
   if (typeof module !== 'undefined' && module.exports) {
@@ -2054,6 +2232,7 @@ try {
     module.exports.feedbackAPI = feedbackAPI;
     module.exports.commentAPI = commentAPI;
     module.exports.notificationAPI = notificationAPI;
+    module.exports.networkingAPI = networkingAPI;
   }
 } catch (e) {
   // ignore

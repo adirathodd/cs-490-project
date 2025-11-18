@@ -51,6 +51,11 @@ from core.serializers import (
     MutualConnectionSerializer,
     ContactCompanyLinkSerializer,
     ContactJobLinkSerializer,
+    NetworkingEventSerializer,
+    NetworkingEventListSerializer,
+    EventGoalSerializer,
+    EventConnectionSerializer,
+    EventFollowUpSerializer,
 )
 from core.models import (
     CandidateProfile,
@@ -88,6 +93,10 @@ from core.models import (
     MutualConnection,
     ContactCompanyLink,
     ContactJobLink,
+    NetworkingEvent,
+    EventGoal,
+    EventConnection,
+    EventFollowUp,
 )
 from core import google_import, tasks
 from core.research.enrichment import fallback_domain
@@ -10861,3 +10870,320 @@ def generate_application_package(request, job_id):
         
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ======================
+# Networking Event Management API (UC-088)
+# ======================
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def networking_events_list_create(request):
+    """List user's networking events or create a new one."""
+    if request.method == 'GET':
+        qs = NetworkingEvent.objects.filter(owner=request.user).order_by('-event_date')
+        
+        # Filters
+        event_type = request.query_params.get('event_type')
+        if event_type:
+            qs = qs.filter(event_type=event_type)
+        
+        attendance_status = request.query_params.get('attendance_status')
+        if attendance_status:
+            qs = qs.filter(attendance_status=attendance_status)
+        
+        is_virtual = request.query_params.get('is_virtual')
+        if is_virtual is not None and is_virtual.strip() != '':
+            qs = qs.filter(is_virtual=(is_virtual.lower() == 'true'))
+        
+        industry = request.query_params.get('industry')
+        if industry:
+            qs = qs.filter(industry__icontains=industry)
+        
+        # Search
+        q = request.query_params.get('q')
+        if q:
+            qs = qs.filter(
+                models.Q(name__icontains=q) |
+                models.Q(description__icontains=q) |
+                models.Q(organizer__icontains=q)
+            )
+        
+        # Use list serializer for performance
+        serializer = NetworkingEventListSerializer(qs, many=True, context={'request': request})
+        return Response(serializer.data)
+    
+    else:  # POST
+        serializer = NetworkingEventSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            event = serializer.save(owner=request.user)
+            return Response(
+                NetworkingEventSerializer(event, context={'request': request}).data,
+                status=status.HTTP_201_CREATED
+            )
+        # Log validation errors for debugging
+        logger.error(f"Networking event validation failed: {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def networking_event_detail(request, event_id):
+    """Get, update, or delete a specific networking event."""
+    try:
+        event = NetworkingEvent.objects.get(id=event_id, owner=request.user)
+    except NetworkingEvent.DoesNotExist:
+        return Response({'error': 'Networking event not found.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        serializer = NetworkingEventSerializer(event, context={'request': request})
+        return Response(serializer.data)
+    
+    elif request.method in ('PUT', 'PATCH'):
+        serializer = NetworkingEventSerializer(
+            event,
+            data=request.data,
+            partial=(request.method == 'PATCH'),
+            context={'request': request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    else:  # DELETE
+        event.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def event_goals_list_create(request, event_id):
+    """List or create goals for a networking event."""
+    try:
+        event = NetworkingEvent.objects.get(id=event_id, owner=request.user)
+    except NetworkingEvent.DoesNotExist:
+        return Response({'error': 'Networking event not found.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        goals = event.goals.all()
+        serializer = EventGoalSerializer(goals, many=True, context={'request': request})
+        return Response(serializer.data)
+    
+    else:  # POST
+        data = request.data.copy()
+        data['event'] = event.id
+        serializer = EventGoalSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            goal = serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def event_goal_detail(request, event_id, goal_id):
+    """Update or delete a specific goal."""
+    try:
+        event = NetworkingEvent.objects.get(id=event_id, owner=request.user)
+        goal = event.goals.get(id=goal_id)
+    except (NetworkingEvent.DoesNotExist, EventGoal.DoesNotExist):
+        return Response({'error': 'Goal not found.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method in ('PUT', 'PATCH'):
+        serializer = EventGoalSerializer(
+            goal,
+            data=request.data,
+            partial=(request.method == 'PATCH'),
+            context={'request': request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    else:  # DELETE
+        goal.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def event_connections_list_create(request, event_id):
+    """List or create connections for a networking event."""
+    try:
+        event = NetworkingEvent.objects.get(id=event_id, owner=request.user)
+    except NetworkingEvent.DoesNotExist:
+        return Response({'error': 'Networking event not found.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        connections = event.connections.all()
+        serializer = EventConnectionSerializer(connections, many=True, context={'request': request})
+        return Response(serializer.data)
+    
+    else:  # POST
+        data = request.data.copy()
+        data['event'] = event.id
+        serializer = EventConnectionSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            connection = serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def event_connection_detail(request, event_id, connection_id):
+    """Update or delete a specific connection."""
+    try:
+        event = NetworkingEvent.objects.get(id=event_id, owner=request.user)
+        connection = event.connections.get(id=connection_id)
+    except (NetworkingEvent.DoesNotExist, EventConnection.DoesNotExist):
+        return Response({'error': 'Connection not found.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method in ('PUT', 'PATCH'):
+        serializer = EventConnectionSerializer(
+            connection,
+            data=request.data,
+            partial=(request.method == 'PATCH'),
+            context={'request': request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    else:  # DELETE
+        connection.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def event_follow_ups_list_create(request, event_id):
+    """List or create follow-up actions for a networking event."""
+    try:
+        event = NetworkingEvent.objects.get(id=event_id, owner=request.user)
+    except NetworkingEvent.DoesNotExist:
+        return Response({'error': 'Networking event not found.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        follow_ups = event.follow_ups.all()
+        serializer = EventFollowUpSerializer(follow_ups, many=True, context={'request': request})
+        return Response(serializer.data)
+    
+    else:  # POST
+        data = request.data.copy()
+        data['event'] = event.id
+        serializer = EventFollowUpSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            follow_up = serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def event_follow_up_detail(request, event_id, follow_up_id):
+    """Update or delete a specific follow-up action."""
+    try:
+        event = NetworkingEvent.objects.get(id=event_id, owner=request.user)
+        follow_up = event.follow_ups.get(id=follow_up_id)
+    except (NetworkingEvent.DoesNotExist, EventFollowUp.DoesNotExist):
+        return Response({'error': 'Follow-up not found.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method in ('PUT', 'PATCH'):
+        serializer = EventFollowUpSerializer(
+            follow_up,
+            data=request.data,
+            partial=(request.method == 'PATCH'),
+            context={'request': request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    else:  # DELETE
+        follow_up.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def event_follow_up_complete(request, event_id, follow_up_id):
+    """Mark a follow-up action as completed."""
+    try:
+        event = NetworkingEvent.objects.get(id=event_id, owner=request.user)
+        follow_up = event.follow_ups.get(id=follow_up_id)
+    except (NetworkingEvent.DoesNotExist, EventFollowUp.DoesNotExist):
+        return Response({'error': 'Follow-up not found.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    follow_up.mark_completed()
+    serializer = EventFollowUpSerializer(follow_up, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def networking_analytics(request):
+    """Get networking ROI and analytics."""
+    user = request.user
+    events = NetworkingEvent.objects.filter(owner=user)
+    
+    # Overall stats
+    total_events = events.count()
+    attended_events = events.filter(attendance_status='attended').count()
+    total_connections = EventConnection.objects.filter(event__owner=user).count()
+    high_value_connections = EventConnection.objects.filter(
+        event__owner=user,
+        potential_value='high'
+    ).count()
+    
+    # Goals tracking
+    total_goals = EventGoal.objects.filter(event__owner=user).count()
+    achieved_goals = EventGoal.objects.filter(event__owner=user, achieved=True).count()
+    goals_achievement_rate = (achieved_goals / total_goals * 100) if total_goals > 0 else 0
+    
+    # Follow-ups
+    total_follow_ups = EventFollowUp.objects.filter(event__owner=user).count()
+    completed_follow_ups = EventFollowUp.objects.filter(event__owner=user, completed=True).count()
+    follow_up_completion_rate = (completed_follow_ups / total_follow_ups * 100) if total_follow_ups > 0 else 0
+    
+    # Event types breakdown
+    event_types = events.values('event_type').annotate(count=models.Count('id')).order_by('-count')
+    
+    # Recent high-value connections
+    recent_connections = EventConnection.objects.filter(
+        event__owner=user,
+        potential_value='high'
+    ).order_by('-created_at')[:5]
+    
+    # Upcoming events with pending follow-ups
+    upcoming_events = events.filter(
+        event_date__gte=timezone.now(),
+        attendance_status__in=['planned', 'registered']
+    ).order_by('event_date')[:5]
+    
+    return Response({
+        'overview': {
+            'total_events': total_events,
+            'attended_events': attended_events,
+            'total_connections': total_connections,
+            'high_value_connections': high_value_connections,
+            'goals_achievement_rate': round(goals_achievement_rate, 1),
+            'follow_up_completion_rate': round(follow_up_completion_rate, 1),
+        },
+        'event_types': list(event_types),
+        'recent_high_value_connections': EventConnectionSerializer(
+            recent_connections,
+            many=True,
+            context={'request': request}
+        ).data,
+        'upcoming_events': NetworkingEventListSerializer(
+            upcoming_events,
+            many=True,
+            context={'request': request}
+        ).data,
+    })
