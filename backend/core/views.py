@@ -18,6 +18,7 @@ from django.utils import timezone
 from django.core.management import call_command
 from django.utils.text import slugify
 from django.conf import settings
+from django.utils.text import slugify
 from core.authentication import FirebaseAuthentication
 from core.serializers import (
     UserRegistrationSerializer,

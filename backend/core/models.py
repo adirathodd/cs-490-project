@@ -89,8 +89,6 @@ class CandidateProfile(models.Model):
         """Return candidate's full name from linked User"""
         return f"{self.user.first_name} {self.user.last_name}".strip()
 
-
-
 class Skill(models.Model):
     name = models.CharField(max_length=120, unique=True)
     category = models.CharField(max_length=120, blank=True)

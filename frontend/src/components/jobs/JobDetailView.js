@@ -551,7 +551,7 @@ const JobDetailView = () => {
                 className="add-education-button"
                 onClick={() => navigate(`/jobs/${id}/timeline`)}
                 style={{
-                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                  background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
                   color: 'white',
                   border: 'none'
                 }}

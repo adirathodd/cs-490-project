@@ -3,20 +3,11 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ProfileForm from './ProfileForm';
 import { AuthProvider } from '../../context/AuthContext';
 
-// Mock auth API helpers used by ProfileForm
+// Mock authAPI.requestAccountDeletion and signOut
 jest.mock('../../services/api', () => ({
   authAPI: {
-    requestAccountDeletion: jest
-      .fn()
-      .mockResolvedValue({ message: "We've emailed you a confirmation link." }),
-    getBasicProfile: jest.fn().mockResolvedValue({
-      name: 'Test User',
-      email: 'testuser@example.com',
-    }),
-    getProfilePicture: jest.fn().mockResolvedValue({
-      photo_url: 'https://example.com/photo.jpg',
-    }),
-  },
+    requestAccountDeletion: jest.fn().mockResolvedValue({ message: "We've emailed you a confirmation link." })
+  }
 }));
 jest.mock('../../services/firebase', () => ({
   reauthenticateWithCredential: jest.fn().mockResolvedValue(true),
