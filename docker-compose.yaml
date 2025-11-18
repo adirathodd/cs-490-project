@@ -4,7 +4,9 @@ services:
       context: ./backend          # Points to your Django project folder
       dockerfile: Dockerfile      # Uses backend/Dockerfile
     container_name: ats_backend
-    command: python manage.py runserver 0.0.0.0:8000
+    # Run Gunicorn (production-like WSGI server) to avoid Django dev-server startup banners
+    # This keeps logs concise; for dev you can still exec into container and run manage.py if needed.
+    command: "gunicorn backend.wsgi:application --bind 0.0.0.0:8000 --workers 3 --log-level warning --access-logfile - --error-logfile -"
     volumes:
       - ./backend/:/app/
       - media_files:/app/media    # Persistent storage for uploaded files

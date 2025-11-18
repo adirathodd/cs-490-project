@@ -14,7 +14,8 @@ from core.models import (
     ResumeFeedback, FeedbackComment, FeedbackNotification
 )
 from core.models import (
-    Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink
+    Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink,
+    NetworkingEvent, EventGoal, EventConnection, EventFollowUp
 )
 
 class CoverLetterTemplateSerializer(serializers.ModelSerializer):
@@ -2144,3 +2145,117 @@ class FeedbackSummaryExportSerializer(serializers.Serializer):
         choices=['pdf', 'docx', 'json'],
         default='pdf'
     )
+
+
+# ======================
+# Networking Event Serializers (UC-088)
+# ======================
+
+
+class EventGoalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventGoal
+        fields = ['id', 'event', 'goal_type', 'description', 'target_value', 'achieved', 'notes', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class EventConnectionSerializer(serializers.ModelSerializer):
+    contact_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = EventConnection
+        fields = [
+            'id', 'event', 'contact', 'contact_name', 'name', 'title', 'company', 
+            'email', 'phone', 'linkedin_url', 'conversation_notes', 'potential_value',
+            'follow_up_completed', 'follow_up_date', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+    
+    def get_contact_name(self, obj):
+        if obj.contact:
+            return f"{obj.contact.first_name} {obj.contact.last_name}".strip()
+        return obj.name
+
+
+class EventFollowUpSerializer(serializers.ModelSerializer):
+    connection_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = EventFollowUp
+        fields = [
+            'id', 'event', 'connection', 'connection_name', 'action_type', 'description',
+            'due_date', 'completed', 'completed_at', 'notes', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'completed_at']
+    
+    def get_connection_name(self, obj):
+        if obj.connection:
+            return obj.connection.name
+        return None
+
+
+class NetworkingEventSerializer(serializers.ModelSerializer):
+    goals = EventGoalSerializer(many=True, read_only=True)
+    connections = EventConnectionSerializer(many=True, read_only=True)
+    follow_ups = EventFollowUpSerializer(many=True, read_only=True)
+    
+    # Analytics fields
+    goals_achieved_count = serializers.SerializerMethodField()
+    connections_count = serializers.SerializerMethodField()
+    high_value_connections_count = serializers.SerializerMethodField()
+    pending_follow_ups_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = NetworkingEvent
+        fields = [
+            'id', 'owner', 'name', 'event_type', 'description', 'location', 'is_virtual', 'virtual_link',
+            'event_date', 'end_date', 'registration_deadline', 'organizer', 'industry', 'event_url',
+            'attendance_status', 'registration_fee', 'pre_event_notes', 'post_event_notes',
+            'created_at', 'updated_at', 'goals', 'connections', 'follow_ups',
+            'goals_achieved_count', 'connections_count', 'high_value_connections_count', 'pending_follow_ups_count'
+        ]
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+    
+    def get_goals_achieved_count(self, obj):
+        if obj.pk:
+            return obj.goals.filter(achieved=True).count()
+        return 0
+    
+    def get_connections_count(self, obj):
+        if obj.pk:
+            return obj.connections.count()
+        return 0
+    
+    def get_high_value_connections_count(self, obj):
+        if obj.pk:
+            return obj.connections.filter(potential_value='high').count()
+        return 0
+    
+    def get_pending_follow_ups_count(self, obj):
+        if obj.pk:
+            return obj.follow_ups.filter(completed=False).count()
+        return 0
+
+
+class NetworkingEventListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for list views"""
+    connections_count = serializers.SerializerMethodField()
+    pending_follow_ups_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = NetworkingEvent
+        fields = [
+            'id', 'name', 'event_type', 'location', 'is_virtual', 'event_date', 'end_date',
+            'attendance_status', 'industry', 'connections_count', 'pending_follow_ups_count', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+    
+    def get_connections_count(self, obj):
+        if obj.pk:
+            return obj.connections.count()
+        return 0
+    
+    def get_pending_follow_ups_count(self, obj):
+        if obj.pk:
+            return obj.follow_ups.filter(completed=False).count()
+        return 0
