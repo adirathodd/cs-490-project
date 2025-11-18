@@ -46,5 +46,6 @@ RUN python manage.py collectstatic --noinput || true
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Run the application via Gunicorn (production-like server) to avoid Django dev-server banners
+# and autoreload logs in container logs. Gunicorn will still produce concise access/error logs.
+CMD ["gunicorn", "backend.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--log-level", "warning", "--access-logfile", "-", "--error-logfile", "-"]

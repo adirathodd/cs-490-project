@@ -3020,3 +3020,189 @@ class FeedbackNotification(models.Model):
     
     def __str__(self):
         return f"{self.notification_type} for {self.user.username} - {'Read' if self.is_read else 'Unread'}"
+
+
+# ======================
+# Networking Event Management Models (UC-088)
+# ======================
+
+
+class NetworkingEvent(models.Model):
+    """UC-088: Networking events and opportunities tracking"""
+    EVENT_TYPES = [
+        ('conference', 'Conference'),
+        ('meetup', 'Meetup'),
+        ('workshop', 'Workshop'),
+        ('webinar', 'Webinar'),
+        ('career_fair', 'Career Fair'),
+        ('networking_mixer', 'Networking Mixer'),
+        ('panel', 'Panel Discussion'),
+        ('virtual', 'Virtual Event'),
+        ('other', 'Other'),
+    ]
+    
+    ATTENDANCE_STATUS = [
+        ('planned', 'Planning to Attend'),
+        ('registered', 'Registered'),
+        ('attended', 'Attended'),
+        ('missed', 'Missed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='networking_events')
+    
+    # Event Details
+    name = models.CharField(max_length=250)
+    event_type = models.CharField(max_length=60, choices=EVENT_TYPES, default='other')
+    description = models.TextField(blank=True)
+    location = models.CharField(max_length=250, blank=True, help_text="Physical location or 'Virtual'")
+    is_virtual = models.BooleanField(default=False)
+    virtual_link = models.URLField(blank=True, help_text="Zoom, Teams, or other virtual event link")
+    
+    # Dates and Time
+    event_date = models.DateTimeField()
+    end_date = models.DateTimeField(null=True, blank=True)
+    registration_deadline = models.DateTimeField(null=True, blank=True)
+    
+    # Organization
+    organizer = models.CharField(max_length=200, blank=True)
+    industry = models.CharField(max_length=120, blank=True)
+    event_url = models.URLField(blank=True, help_text="Event page or registration link")
+    
+    # Attendance Tracking
+    attendance_status = models.CharField(max_length=30, choices=ATTENDANCE_STATUS, default='planned')
+    registration_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+    # Preparation and Notes
+    pre_event_notes = models.TextField(blank=True, help_text="Research, people to meet, companies attending")
+    post_event_notes = models.TextField(blank=True, help_text="Key takeaways, impressions")
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['owner', '-event_date']),
+            models.Index(fields=['owner', 'attendance_status']),
+            models.Index(fields=['industry']),
+            models.Index(fields=['is_virtual']),
+        ]
+        ordering = ['-event_date']
+    
+    def __str__(self):
+        return f"{self.name} ({self.event_date.date()})"
+
+
+class EventGoal(models.Model):
+    """Networking goals for each event (UC-088)"""
+    GOAL_TYPES = [
+        ('connections', 'Make New Connections'),
+        ('leads', 'Generate Job Leads'),
+        ('learning', 'Learn About Industry/Company'),
+        ('visibility', 'Increase Professional Visibility'),
+        ('skills', 'Develop Skills'),
+        ('other', 'Other'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event = models.ForeignKey(NetworkingEvent, on_delete=models.CASCADE, related_name='goals')
+    goal_type = models.CharField(max_length=60, choices=GOAL_TYPES)
+    description = models.CharField(max_length=300)
+    target_value = models.IntegerField(null=True, blank=True, help_text="e.g., number of connections to make")
+    achieved = models.BooleanField(default=False)
+    notes = models.TextField(blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['event', 'achieved']),
+        ]
+    
+    def __str__(self):
+        return f"{self.get_goal_type_display()} - {self.event.name}"
+
+
+class EventConnection(models.Model):
+    """People met at networking events (UC-088)"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event = models.ForeignKey(NetworkingEvent, on_delete=models.CASCADE, related_name='connections')
+    contact = models.ForeignKey('Contact', on_delete=models.SET_NULL, null=True, blank=True, 
+                                related_name='event_connections',
+                                help_text="Link to existing contact if available")
+    
+    # Connection details (if not linked to Contact)
+    name = models.CharField(max_length=200)
+    title = models.CharField(max_length=200, blank=True)
+    company = models.CharField(max_length=200, blank=True)
+    email = models.EmailField(blank=True)
+    phone = models.CharField(max_length=50, blank=True)
+    linkedin_url = models.URLField(blank=True)
+    
+    # Context
+    conversation_notes = models.TextField(blank=True, help_text="What you discussed")
+    potential_value = models.CharField(max_length=30, choices=[
+        ('high', 'High - Strong Lead/Connection'),
+        ('medium', 'Medium - Worth Following Up'),
+        ('low', 'Low - Casual Connection'),
+    ], default='medium')
+    
+    # Follow-up
+    follow_up_completed = models.BooleanField(default=False)
+    follow_up_date = models.DateField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['event', 'potential_value']),
+            models.Index(fields=['event', 'follow_up_completed']),
+        ]
+        ordering = ['-potential_value', '-created_at']
+    
+    def __str__(self):
+        return f"{self.name} at {self.event.name}"
+
+
+class EventFollowUp(models.Model):
+    """Post-event follow-up actions (UC-088)"""
+    ACTION_TYPES = [
+        ('email', 'Send Email'),
+        ('linkedin', 'LinkedIn Connection Request'),
+        ('phone', 'Phone Call'),
+        ('meeting', 'Schedule Meeting'),
+        ('application', 'Submit Job Application'),
+        ('thank_you', 'Send Thank You Note'),
+        ('other', 'Other'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event = models.ForeignKey(NetworkingEvent, on_delete=models.CASCADE, related_name='follow_ups')
+    connection = models.ForeignKey(EventConnection, on_delete=models.CASCADE, null=True, blank=True,
+                                   related_name='follow_ups')
+    
+    action_type = models.CharField(max_length=60, choices=ACTION_TYPES)
+    description = models.TextField()
+    due_date = models.DateField()
+    completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['event', 'completed', 'due_date']),
+            models.Index(fields=['connection', 'completed']),
+        ]
+        ordering = ['due_date', '-created_at']
+    
+    def mark_completed(self):
+        self.completed = True
+        self.completed_at = timezone.now()
+        self.save()
+    
+    def __str__(self):
+        return f"{self.get_action_type_display()} - {self.event.name}"

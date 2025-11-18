@@ -60,6 +60,18 @@ urlpatterns = [
     path('contacts/<uuid:contact_id>/job-links', views.contact_job_links, name='contact-job-links'),
     path('contacts/<uuid:contact_id>/job-links/<uuid:link_id>', views.delete_job_link, name='delete-job-link'),
 
+    # UC-088: Networking Event Management
+    path('networking-events', views.networking_events_list_create, name='networking-events-list-create'),
+    path('networking-events/<uuid:event_id>', views.networking_event_detail, name='networking-event-detail'),
+    path('networking-events/<uuid:event_id>/goals', views.event_goals_list_create, name='event-goals-list-create'),
+    path('networking-events/<uuid:event_id>/goals/<uuid:goal_id>', views.event_goal_detail, name='event-goal-detail'),
+    path('networking-events/<uuid:event_id>/connections', views.event_connections_list_create, name='event-connections-list-create'),
+    path('networking-events/<uuid:event_id>/connections/<uuid:connection_id>', views.event_connection_detail, name='event-connection-detail'),
+    path('networking-events/<uuid:event_id>/follow-ups', views.event_follow_ups_list_create, name='event-follow-ups-list-create'),
+    path('networking-events/<uuid:event_id>/follow-ups/<uuid:follow_up_id>', views.event_follow_up_detail, name='event-follow-up-detail'),
+    path('networking-events/<uuid:event_id>/follow-ups/<uuid:follow_up_id>/complete', views.event_follow_up_complete, name='event-follow-up-complete'),
+    path('networking-events/analytics', views.networking_analytics, name='networking-analytics'),
+
     # Profile Picture endpoints (UC-022)
     path('profile/picture', views.get_profile_picture, name='get-profile-picture'),
     path('profile/picture/upload', views.upload_profile_picture, name='upload-profile-picture'),

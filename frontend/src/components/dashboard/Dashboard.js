@@ -255,6 +255,13 @@ const Dashboard = () => {
             <p>Manage your professional contacts, notes and reminders</p>
             <button className="card-button" onClick={() => navigate('/contacts')}>Manage Contacts</button>
           </div>
+
+          <div className="dashboard-card">
+            <div className="card-icon"><Icon name="calendar" size="lg" ariaLabel="Networking Events" /></div>
+            <h3>Networking Events</h3>
+            <p>Track events, set goals, and manage professional connections</p>
+            <button className="card-button" onClick={() => navigate('/networking')}>Manage Events</button>
+          </div>
         </div>
       </div>
     </div>
