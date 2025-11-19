@@ -59,11 +59,16 @@ describe('ContactsCalendar', () => {
     render(<ContactsCalendar />);
 
     await waitFor(() => {
-      expect(screen.getByText('John Doe')).toBeInTheDocument();
-      expect(screen.getByText('Jane Smith')).toBeInTheDocument();
-      // message text may be concatenated or split across nodes; match partially
-      expect(screen.getByText((content) => content.includes('Follow up'))).toBeInTheDocument();
-      expect(screen.getByText((content) => content.includes('Check in'))).toBeInTheDocument();
+      // multiple nodes may contain the contact name (title and list item), so assert at least one match
+      const johnMatches = screen.getAllByText((content) => content.includes('John Doe'));
+      expect(johnMatches.length).toBeGreaterThan(0);
+      const janeMatches = screen.getAllByText((content) => content.includes('Jane Smith'));
+      expect(janeMatches.length).toBeGreaterThan(0);
+      // message text may be concatenated or split across nodes; ensure at least one match exists
+      const followUpMatches = screen.getAllByText((content) => content.includes('Follow up'));
+      expect(followUpMatches.length).toBeGreaterThan(0);
+      const checkInMatches = screen.getAllByText((content) => content.includes('Check in'));
+      expect(checkInMatches.length).toBeGreaterThan(0);
     });
   });
 

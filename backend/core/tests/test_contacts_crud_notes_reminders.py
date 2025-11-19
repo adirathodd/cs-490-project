@@ -55,7 +55,8 @@ def test_contacts_crud_and_related_endpoints(django_user_model):
 
     # Create a reminder
     reminders_url = reverse("core:contact-reminders", args=[contact_id])
-    due = (datetime.datetime.utcnow() + datetime.timedelta(days=7)).isoformat() + "Z"
+    # Use UTC timestamp in Zulu format (no offset) to match API expectations
+    due = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%SZ')
     reminder_payload = {"message": "Follow up on opportunity", "due_date": due}
     resp = client.post(reminders_url, data=reminder_payload, format="json")
     assert resp.status_code == 201
