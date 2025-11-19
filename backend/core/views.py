@@ -977,13 +977,20 @@ def contacts_import_callback(request):
     if not job_id:
         return Response({'error': 'Missing job_id/state'}, status=status.HTTP_400_BAD_REQUEST)
     try:
-        # If the user is authenticated, ensure the job belongs to them.
+        # Prefer resolving the job scoped to the authenticated user when
+        # possible, but fall back to resolving by id alone. This allows the
+        # browser OAuth redirect to complete even if the session user does
+        # not exactly match the original job owner (for example during
+        # developer testing or if the browser session changed).
         if request.user and request.user.is_authenticated:
-            job = ImportJob.objects.get(id=job_id, owner=request.user)
+            try:
+                job = ImportJob.objects.get(id=job_id, owner=request.user)
+            except ImportJob.DoesNotExist:
+                # Fallback: try resolving by id only (token `state` ties it
+                # back to the original import request made earlier).
+                job = ImportJob.objects.get(id=job_id)
         else:
-            # This callback is invoked by Google's redirect (no user session),
-            # so resolve the job by id only. The `state` parameter provides
-            # enough linkage to the original import request.
+            # Unauthenticated callback from Google - resolve by id.
             job = ImportJob.objects.get(id=job_id)
     except ImportJob.DoesNotExist:
         return Response({'error': 'Import job not found.'}, status=status.HTTP_404_NOT_FOUND)
