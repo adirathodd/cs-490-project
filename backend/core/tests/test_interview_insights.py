@@ -10,7 +10,7 @@ from rest_framework import status
 from django.urls import reverse
 from django.utils import timezone
 
-from core.models import CandidateProfile, JobEntry
+from core.models import CandidateProfile, JobEntry, JobQuestionPractice, QuestionResponseCoaching
 
 User = get_user_model()
 
@@ -230,6 +230,73 @@ class TestInterviewQuestionBankEndpoint:
         data = response.json()
         assert data['practice_status']['practiced'] is True
         assert data['practice_status']['practice_count'] >= 1
+
+    @mock.patch('core.views.response_coach.generate_coaching_feedback')
+    def test_question_response_coach_endpoint(self, mock_generate):
+        mock_generate.return_value = {
+            'summary': 'Great framing with clear outcomes.',
+            'scores': {'relevance': 90, 'specificity': 85, 'impact': 88, 'clarity': 84, 'overall': 87},
+            'length_analysis': {'word_count': 180, 'spoken_time_seconds': 95, 'recommended_window': '90-120 seconds', 'recommendation': 'Keep result punchy.'},
+            'feedback': {'content': ['Solid context'], 'structure': ['Lead with stakes'], 'clarity': ['Tight verbs']},
+            'weak_language': {'patterns': [], 'summary': 'Confident tone'},
+            'star_adherence': {'situation': {'status': 'covered', 'feedback': ''}, 'task': {'status': 'covered', 'feedback': ''}, 'action': {'status': 'covered', 'feedback': ''}, 'result': {'status': 'light', 'feedback': 'Add metric'}, 'overall_feedback': 'Add numbers'},
+            'alternative_approaches': [],
+            'improvement_focus': ['Add metric'],
+            'history_callout': '',
+        }
+
+        url = reverse('core:job-question-response-coach', kwargs={'job_id': self.job.id})
+        payload = {
+            'question_id': 'coach-1',
+            'question_text': 'Tell me about a time you influenced stakeholders.',
+            'category': 'behavioral',
+            'difficulty': 'mid',
+            'written_response': 'I led a cross-team launch and improved adoption.',
+            'star_response': {
+                'situation': 'Launch lagging alignment.',
+                'task': 'Unblock decision making.',
+                'action': 'Created working group and weekly readouts.',
+                'result': 'Adoption up 30%.',
+            },
+        }
+
+        response = self.client.post(url, payload, format='json')
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data['coaching']['scores']['overall'] == 87
+        assert data['practice_status']['latest_coaching']['scores']['overall'] == 87
+        assert data['improvement']['session_count'] == 1
+        assert mock_generate.called
+
+    def test_practice_history_includes_coaching(self):
+        log = JobQuestionPractice.objects.create(
+            job=self.job,
+            question_id='history-1',
+            category='behavioral',
+            question_text='Describe a leadership win.',
+            difficulty='mid',
+            skills=[],
+            written_response='I led a migration.',
+            star_response={'situation': 'Legacy system', 'task': 'Migrate', 'action': 'Led plan', 'result': 'Cut outages'},
+        )
+        QuestionResponseCoaching.objects.create(
+            job=self.job,
+            practice_log=log,
+            question_id='history-1',
+            question_text='Describe a leadership win.',
+            response_text='I led a migration.',
+            star_response=log.star_response,
+            coaching_payload={'summary': 'Nice job', 'length_analysis': {'word_count': 120}, 'scores': {'overall': 80}},
+            scores={'overall': 80},
+            word_count=120,
+        )
+
+        url = reverse('core:get-question-practice-history', kwargs={'job_id': self.job.id, 'question_id': 'history-1'})
+        response = self.client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert 'coaching_history' in data
+        assert len(data['coaching_history']) == 1
 
     def test_question_bank_caching_and_refresh(self):
         url = reverse('core:job-question-bank', kwargs={'job_id': self.job.id})

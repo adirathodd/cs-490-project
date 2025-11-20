@@ -1,7 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../common/Icon';
 import { jobsAPI } from '../../services/api';
 import './RoleQuestionBank.css';
+
+const SCORE_KEYS = ['overall', 'relevance', 'specificity', 'impact', 'clarity'];
+const MIN_TEXTAREA_HEIGHT = 120;
 
 const createStarState = () => ({
   situation: '',
@@ -22,6 +25,7 @@ const RoleQuestionBank = ({
   savingQuestionId = null,
   onLogPractice,
   jobId,
+  onPracticeStatusUpdate = () => {},
 }) => {
   const [selectedCategoryId, setSelectedCategoryId] = useState(null);
   const [difficultyFilter, setDifficultyFilter] = useState('all');
@@ -31,6 +35,10 @@ const RoleQuestionBank = ({
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [practiceHistory, setPracticeHistory] = useState(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [coachingResult, setCoachingResult] = useState(null);
+  const [coachingLoading, setCoachingLoading] = useState(false);
+  const [coachingError, setCoachingError] = useState('');
+  const textareaRefs = useRef({});
 
   useEffect(() => {
     if (bank?.categories?.length) {
@@ -57,6 +65,15 @@ const RoleQuestionBank = ({
   const activeQuestion = filteredQuestions.find((q) => q.id === activeQuestionId)
     || selectedCategory?.questions?.find((q) => q.id === activeQuestionId);
 
+  const hasStarContent = useMemo(
+    () => Object.values(responseForm.star_response || {}).some((value) => (value || '').trim()),
+    [responseForm.star_response],
+  );
+  const canRequestCoaching = ((responseForm.written_response || '').trim().length > 0) || hasStarContent;
+  const coachingData = coachingResult?.coaching;
+  const coachingHistory = coachingResult?.history || [];
+  const improvementSummary = coachingResult?.improvement;
+
   const openPracticeForm = (question) => {
     setActiveQuestionId(question.id);
     setResponseForm({
@@ -69,6 +86,9 @@ const RoleQuestionBank = ({
         result: question.practice_status?.star_response?.result || '',
       },
     });
+    setCoachingResult(null);
+    setCoachingError('');
+    setCoachingLoading(false);
     setShowPracticeModal(true);
   };
 
@@ -76,6 +96,10 @@ const RoleQuestionBank = ({
     setShowPracticeModal(false);
     setActiveQuestionId(null);
     setResponseForm(createResponseState());
+    setCoachingResult(null);
+    setCoachingError('');
+    setCoachingLoading(false);
+    textareaRefs.current = {};
   };
 
   const handleResponseChange = (field, value) => {
@@ -83,6 +107,13 @@ const RoleQuestionBank = ({
       ...prev,
       [field]: value,
     }));
+    requestAnimationFrame(() => {
+      const el = textareaRefs.current[field];
+      if (el) {
+        el.style.height = 'auto';
+        el.style.height = `${Math.max(el.scrollHeight, MIN_TEXTAREA_HEIGHT)}px`;
+      }
+    });
   };
 
   const handleStarFieldChange = (field, value) => {
@@ -93,6 +124,13 @@ const RoleQuestionBank = ({
         [field]: value,
       },
     }));
+    requestAnimationFrame(() => {
+      const el = textareaRefs.current[`star_${field}`];
+      if (el) {
+        el.style.height = 'auto';
+        el.style.height = `${Math.max(el.scrollHeight, MIN_TEXTAREA_HEIGHT)}px`;
+      }
+    });
   };
 
   const handleViewHistory = async (question) => {
@@ -117,9 +155,9 @@ const RoleQuestionBank = ({
     setPracticeHistory(null);
   };
 
-  const handleSubmitPractice = async () => {
-    if (!activeQuestion || !onLogPractice) return;
-    const payload = {
+  const buildPracticePayload = () => {
+    if (!activeQuestion) return null;
+    return {
       question_id: activeQuestion.id,
       question_text: activeQuestion.prompt,
       category: activeQuestion.category,
@@ -129,6 +167,20 @@ const RoleQuestionBank = ({
       star_response: responseForm.star_response,
       practice_notes: responseForm.practice_notes,
     };
+  };
+
+  const registerTextarea = (field) => (el) => {
+    if (el) {
+      textareaRefs.current[field] = el;
+      el.style.height = 'auto';
+      el.style.height = `${Math.max(el.scrollHeight, MIN_TEXTAREA_HEIGHT)}px`;
+    }
+  };
+
+  const handleSubmitPractice = async () => {
+    if (!activeQuestion || !onLogPractice) return;
+    const payload = buildPracticePayload();
+    if (!payload) return;
 
     try {
       const maybePromise = onLogPractice(payload);
@@ -138,6 +190,25 @@ const RoleQuestionBank = ({
       closePracticeModal();
     } catch {
       // keep modal open if logging fails
+    }
+  };
+
+  const handleGetCoaching = async () => {
+    if (!jobId || !activeQuestion) return;
+    const payload = buildPracticePayload();
+    if (!payload) return;
+    setCoachingLoading(true);
+    setCoachingError('');
+    try {
+      const response = await jobsAPI.coachQuestionResponse(jobId, payload);
+      setCoachingResult(response);
+      if (response?.practice_status) {
+        onPracticeStatusUpdate(activeQuestion.id, response.practice_status);
+      }
+    } catch (error) {
+      setCoachingError(error?.message || 'Failed to generate coaching feedback.');
+    } finally {
+      setCoachingLoading(false);
     }
   };
 
@@ -336,6 +407,7 @@ const RoleQuestionBank = ({
                   placeholder="Overall summary or intro..."
                   value={responseForm.written_response}
                   onChange={(e) => handleResponseChange('written_response', e.target.value)}
+                  ref={registerTextarea('written_response')}
                 />
 
                 <div className="star-grid">
@@ -347,6 +419,7 @@ const RoleQuestionBank = ({
                         rows={2}
                         value={responseForm.star_response[field]}
                         onChange={(e) => handleStarFieldChange(field, e.target.value)}
+                        ref={registerTextarea(`star_${field}`)}
                       />
                     </div>
                   ))}
@@ -357,7 +430,148 @@ const RoleQuestionBank = ({
                   placeholder="Reflection or follow-up notes..."
                   value={responseForm.practice_notes}
                   onChange={(e) => handleResponseChange('practice_notes', e.target.value)}
+                  ref={registerTextarea('practice_notes')}
                 />
+              </div>
+
+              <div className="coaching-panel">
+                <div className="coaching-panel-header">
+                  <div>
+                    <h5>AI Response Coaching</h5>
+                    <p>Get instant feedback on content, structure, clarity, and STAR balance.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="generate-coaching-button"
+                    onClick={handleGetCoaching}
+                    disabled={!canRequestCoaching || coachingLoading}
+                  >
+                    {coachingLoading ? 'Analyzing…' : 'Get AI Coaching'}
+                  </button>
+                </div>
+                {!canRequestCoaching && (
+                  <div className="coaching-hint">Add a summary or STAR breakdown to enable AI feedback.</div>
+                )}
+                {coachingError && <div className="coaching-error-banner">{coachingError}</div>}
+                {coachingData && (
+                  <div className="coaching-results">
+                    <p className="coaching-summary-text">{coachingData.summary}</p>
+                    <div className="coaching-scores">
+                      {SCORE_KEYS.filter((key) => coachingData.scores?.[key] !== undefined).map((key) => (
+                        <div key={key} className={`coaching-score-pill ${key === 'overall' ? 'overall' : ''}`}>
+                          <span>{key}</span>
+                          <strong>{coachingData.scores[key]}</strong>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="coaching-length-grid">
+                      <div className="coaching-length-card">
+                        <span>Word count</span>
+                        <strong>{coachingData.length_analysis?.word_count ?? '—'}</strong>
+                        <small>
+                          ~{coachingData.length_analysis?.spoken_time_seconds ?? '—'}s spoken
+                        </small>
+                      </div>
+                      <div className="coaching-length-card">
+                        <span>Target window</span>
+                        <strong>{coachingData.length_analysis?.recommended_window || '90-120s'}</strong>
+                        <small>{coachingData.length_analysis?.recommendation || 'Keep pacing balanced.'}</small>
+                      </div>
+                    </div>
+                    <div className="coaching-feedback-grid">
+                      <div className="coaching-feedback-block">
+                        <h6>Content</h6>
+                        <ul>
+                          {(coachingData.feedback?.content || []).map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="coaching-feedback-block">
+                        <h6>Structure</h6>
+                        <ul>
+                          {(coachingData.feedback?.structure || []).map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="coaching-feedback-block">
+                        <h6>Clarity</h6>
+                        <ul>
+                          {(coachingData.feedback?.clarity || []).map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                    {coachingData.star_adherence && (
+                      <div className="coaching-star-grid">
+                        {['situation', 'task', 'action', 'result'].map((key) => (
+                          <div key={key} className={`coaching-star-card status-${coachingData.star_adherence[key]?.status || 'missing'}`}>
+                            <span>{key.toUpperCase()}</span>
+                            <p>{coachingData.star_adherence[key]?.feedback}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {coachingData.weak_language?.patterns?.length > 0 && (
+                      <div className="coaching-weak-language">
+                        <h6>Weak Language</h6>
+                        <div className="weak-language-list">
+                          {coachingData.weak_language.patterns.map((pattern) => (
+                            <div key={`${pattern.phrase}-${pattern.issue}`} className="weak-language-chip">
+                              <strong>{pattern.phrase}</strong>
+                              <span>{pattern.issue}</span>
+                              <em>{pattern.replacement}</em>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {coachingData.alternative_approaches?.length > 0 && (
+                      <div className="coaching-alt-list">
+                        <h6>Alternative Approaches</h6>
+                        {coachingData.alternative_approaches.map((approach) => (
+                          <div key={approach.label} className="alt-approach-card">
+                            <strong>{approach.label}</strong>
+                            <p>{approach.description}</p>
+                            {approach.sample_opening && <em>{approach.sample_opening}</em>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {improvementSummary && (
+                      <div className="coaching-trend">
+                        <div className="trend-metrics">
+                          <div>
+                            <span>Sessions coached</span>
+                            <strong>{improvementSummary.session_count}</strong>
+                          </div>
+                          <div>
+                            <span>Overall delta</span>
+                            <strong>{improvementSummary.delta?.overall ? `${improvementSummary.delta.overall > 0 ? '+' : ''}${improvementSummary.delta.overall}` : '—'}</strong>
+                          </div>
+                        </div>
+                        {coachingHistory.length > 0 && (
+                          <div className="coaching-history-list">
+                            {coachingHistory.map((entry) => {
+                              const stamp = entry.created_at ? new Date(entry.created_at) : null;
+                              return (
+                                <div key={entry.id || entry.created_at} className="coaching-history-item">
+                                  <div>
+                                    <span>{stamp ? stamp.toLocaleDateString() : '—'}</span>
+                                    <small>{stamp ? stamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</small>
+                                  </div>
+                                  <strong>{entry.scores?.overall ?? '—'}</strong>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="practice-modal-actions">
@@ -429,6 +643,29 @@ const RoleQuestionBank = ({
                     <div className="history-section">
                       <h5>Practice Notes</h5>
                       <p className="notes-text">{practiceHistory.practice_notes}</p>
+                    </div>
+                  )}
+
+                  {practiceHistory.coaching_history?.length > 0 && (
+                    <div className="history-section">
+                      <h5>AI Coaching Timeline</h5>
+                      <div className="history-coaching-list">
+                        {practiceHistory.coaching_history.map((entry) => {
+                          const stamp = entry.created_at ? new Date(entry.created_at) : null;
+                          return (
+                            <div key={entry.id || entry.created_at} className="history-coaching-item">
+                              <div>
+                                <span>{stamp ? stamp.toLocaleDateString() : '—'}</span>
+                                <small>{stamp ? stamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</small>
+                              </div>
+                              <div className="history-coaching-score">
+                                <strong>{entry.scores?.overall ?? '—'}</strong>
+                                <span>overall</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
 

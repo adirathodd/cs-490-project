@@ -1,12 +1,13 @@
 """
 Authentication views for Firebase-based user registration and login.
 """
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import base64
 import copy
 import hashlib
 import logging
+import math
 
 from rest_framework import status, serializers
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -86,6 +87,7 @@ from core.models import (
     Company,
     CompanyResearch,
     JobQuestionPractice,
+    QuestionResponseCoaching,
     QuestionBankCache,
     PreparationChecklistProgress,
     Contact,
@@ -97,6 +99,7 @@ from core.models import (
     EventConnection,
     EventFollowUp,
 )
+from core import google_import, tasks, response_coach
 from core.research.enrichment import fallback_domain
 from core.question_bank import build_question_bank
 from core import google_import
@@ -7164,8 +7167,29 @@ def job_interview_insights(request, job_id):
         )
 
 
-def _serialize_practice_log(log: JobQuestionPractice) -> Dict[str, Any]:
+def _serialize_coaching_entry(entry: QuestionResponseCoaching | None) -> Dict[str, Any] | None:
+    if not entry:
+        return None
+    payload = entry.coaching_payload or {}
     return {
+        'id': entry.id,
+        'created_at': entry.created_at.isoformat(),
+        'scores': entry.scores,
+        'word_count': entry.word_count,
+        'summary': payload.get('summary'),
+        'length_analysis': payload.get('length_analysis'),
+    }
+
+
+def _serialize_practice_log(log: JobQuestionPractice) -> Dict[str, Any]:
+    latest_coaching = None
+    prefetched = getattr(log, '_prefetched_objects_cache', {}).get('coaching_sessions')
+    if prefetched is not None:
+        latest_coaching = max(prefetched, key=lambda entry: entry.created_at) if prefetched else None
+    else:
+        latest_coaching = log.coaching_sessions.order_by('-created_at').first()
+
+    data = {
         'practiced': True,
         'practice_count': log.practice_count,
         'last_practiced_at': log.last_practiced_at.isoformat(),
@@ -7174,6 +7198,10 @@ def _serialize_practice_log(log: JobQuestionPractice) -> Dict[str, Any]:
         'practice_notes': log.practice_notes,
         'difficulty': log.difficulty,
     }
+    serialized = _serialize_coaching_entry(latest_coaching)
+    if serialized:
+        data['latest_coaching'] = serialized
+    return data
 
 
 def _attach_practice_status(bank_data: Dict[str, Any], practice_map: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
@@ -7274,12 +7302,58 @@ def job_question_bank(request, job_id):
         except Exception as cache_error:
             logger.warning("Failed to cache question bank for job %s: %s", job_id, cache_error)
 
-    practice_logs = JobQuestionPractice.objects.filter(job=job)
+    practice_logs = JobQuestionPractice.objects.filter(job=job).prefetch_related('coaching_sessions')
     practice_map = {log.question_id: _serialize_practice_log(log) for log in practice_logs}
 
     bank_with_practice = _attach_practice_status(bank_data, practice_map)
 
     return Response(bank_with_practice, status=status.HTTP_200_OK)
+
+
+def _log_practice_entry(job: JobEntry, payload: Dict[str, Any]) -> JobQuestionPractice:
+    difficulty = payload.get('difficulty') or 'mid'
+    if difficulty not in dict(JobQuestionPractice.DIFFICULTY_CHOICES):
+        difficulty = 'mid'
+
+    defaults = {
+        'category': payload.get('category') or 'behavioral',
+        'question_text': payload.get('question_text') or '',
+        'difficulty': difficulty,
+        'skills': payload.get('skills') or [],
+        'written_response': payload.get('written_response') or '',
+        'star_response': payload.get('star_response') or {},
+        'practice_notes': payload.get('practice_notes') or '',
+    }
+
+    log, created = JobQuestionPractice.objects.get_or_create(
+        job=job,
+        question_id=payload['question_id'],
+        defaults=defaults,
+    )
+
+    if not created:
+        log.category = defaults['category']
+        log.question_text = defaults['question_text']
+        log.difficulty = defaults['difficulty']
+        log.skills = defaults['skills']
+        log.written_response = defaults['written_response']
+        log.star_response = defaults['star_response']
+        log.practice_notes = defaults['practice_notes']
+        log.increment_count()
+        log.save(update_fields=[
+            'category',
+            'question_text',
+            'difficulty',
+            'skills',
+            'written_response',
+            'star_response',
+            'practice_notes',
+            'practice_count',
+            'last_practiced_at',
+        ])
+    else:
+        log.save()
+    return log
 
 
 @api_view(['POST'])
@@ -7312,48 +7386,19 @@ def job_question_practice(request, job_id):
             status=status.HTTP_404_NOT_FOUND,
         )
 
-    difficulty = data.get('difficulty', 'mid')
-    if difficulty not in dict(JobQuestionPractice.DIFFICULTY_CHOICES):
-        difficulty = 'mid'
-
-    defaults = {
-        'category': data.get('category', 'behavioral'),
-        'question_text': question_text,
-        'difficulty': difficulty,
-        'skills': data.get('skills', []),
-        'written_response': data.get('written_response', ''),
-        'star_response': data.get('star_response', {}),
-        'practice_notes': data.get('practice_notes', ''),
-    }
-
-    log, created = JobQuestionPractice.objects.get_or_create(
-        job=job,
-        question_id=question_id,
-        defaults=defaults,
+    log = _log_practice_entry(
+        job,
+        {
+            'question_id': question_id,
+            'question_text': question_text,
+            'category': data.get('category'),
+            'difficulty': data.get('difficulty'),
+            'skills': data.get('skills'),
+            'written_response': data.get('written_response'),
+            'star_response': data.get('star_response'),
+            'practice_notes': data.get('practice_notes'),
+        },
     )
-
-    if not created:
-        log.category = defaults['category']
-        log.question_text = question_text
-        log.difficulty = difficulty
-        log.skills = defaults['skills']
-        log.written_response = defaults['written_response']
-        log.star_response = defaults['star_response']
-        log.practice_notes = defaults['practice_notes']
-        log.increment_count()
-        log.save(update_fields=[
-            'category',
-            'question_text',
-            'difficulty',
-            'skills',
-            'written_response',
-            'star_response',
-            'practice_notes',
-            'practice_count',
-            'last_practiced_at',
-        ])
-    else:
-        log.save()
 
     return Response(
         {
@@ -7362,6 +7407,148 @@ def job_question_practice(request, job_id):
         },
         status=status.HTTP_200_OK,
     )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def job_question_response_coach(request, job_id):
+    """
+    UC-076: Generate AI-powered coaching for a written interview response.
+    """
+    data = request.data or {}
+    question_id = data.get('question_id')
+    question_text = data.get('question_text')
+    written_response = (data.get('written_response') or '').strip()
+    star_response = data.get('star_response') or {}
+
+    star_has_content = any((star_response.get(part) or '').strip() for part in ['situation', 'task', 'action', 'result'])
+
+    if not question_id or not question_text:
+        return Response(
+            {'error': {'code': 'invalid_request', 'message': 'question_id and question_text are required'}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not written_response and not star_has_content:
+        return Response(
+            {'error': {'code': 'invalid_request', 'message': 'Provide a written response or STAR breakdown for coaching.'}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    log = _log_practice_entry(
+        job,
+        {
+            'question_id': question_id,
+            'question_text': question_text,
+            'category': data.get('category'),
+            'difficulty': data.get('difficulty'),
+            'skills': data.get('skills'),
+            'written_response': written_response,
+            'star_response': star_response,
+            'practice_notes': data.get('practice_notes'),
+        },
+    )
+
+    recent_entries = list(log.coaching_sessions.order_by('-created_at')[:3])
+    history_context = [
+        {
+            'created_at': entry.created_at.isoformat(),
+            'scores': entry.scores,
+            'feedback_summary': (entry.coaching_payload or {}).get('summary'),
+            'word_count': entry.word_count,
+        }
+        for entry in recent_entries
+    ]
+
+    combined_response = written_response or " ".join(
+        [
+            star_response.get('situation', ''),
+            star_response.get('task', ''),
+            star_response.get('action', ''),
+            star_response.get('result', ''),
+        ]
+    ).strip()
+
+    try:
+        coaching_payload = response_coach.generate_coaching_feedback(
+            profile=profile,
+            job=job,
+            question_text=question_text,
+            response_text=combined_response,
+            star_response=star_response,
+            previous_sessions=history_context,
+        )
+    except Exception as exc:
+        logger.error("Failed to generate response coaching for job %s question %s: %s", job_id, question_id, exc)
+        return Response(
+            {'error': {'code': 'coaching_failed', 'message': 'Unable to generate coaching feedback.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    length_info = coaching_payload.get('length_analysis') or {}
+    word_count = length_info.get('word_count') or response_coach.count_words(combined_response)
+    if not length_info.get('word_count'):
+        coaching_payload.setdefault('length_analysis', {})['word_count'] = word_count
+    if not length_info.get('spoken_time_seconds'):
+        coaching_payload['length_analysis']['spoken_time_seconds'] = max(30, int(math.ceil(word_count / 2.5))) if word_count else 90
+
+    session = QuestionResponseCoaching.objects.create(
+        job=job,
+        practice_log=log,
+        question_id=question_id,
+        question_text=question_text,
+        response_text=written_response,
+        star_response=star_response,
+        coaching_payload=coaching_payload,
+        scores=coaching_payload.get('scores') or {},
+        word_count=word_count,
+    )
+
+    recent_history = [
+        entry for entry in (
+            _serialize_coaching_entry(obj)
+            for obj in QuestionResponseCoaching.objects.filter(practice_log=log).order_by('-created_at')[:5]
+        ) if entry
+    ]
+
+    previous_scores = recent_entries[0].scores if recent_entries else {}
+    new_scores = coaching_payload.get('scores') or {}
+    delta_scores = {}
+    for metric, value in new_scores.items():
+        try:
+            new_val = float(value)
+            prev_val = float(previous_scores.get(metric))
+        except (TypeError, ValueError):
+            continue
+        delta_scores[metric] = round(new_val - prev_val, 1)
+
+    response_payload = {
+        'question_id': question_id,
+        'practice_status': _serialize_practice_log(log),
+        'coaching': coaching_payload,
+        'history': recent_history,
+        'improvement': {
+            'delta': delta_scores,
+            'previous_scores': previous_scores,
+            'session_count': log.coaching_sessions.count(),
+            'last_session_id': session.id,
+        },
+    }
+
+    return Response(response_payload, status=status.HTTP_200_OK)
 
 
 @api_view(['GET'])
@@ -7382,7 +7569,13 @@ def get_question_practice_history(request, job_id, question_id):
     
     try:
         practice_log = JobQuestionPractice.objects.get(job=job, question_id=question_id)
-        return Response({
+        history_entries = [
+            entry for entry in (
+                _serialize_coaching_entry(obj)
+                for obj in practice_log.coaching_sessions.order_by('-created_at')[:5]
+            ) if entry
+        ]
+        response_payload = {
             'question_id': practice_log.question_id,
             'question_text': practice_log.question_text,
             'category': practice_log.category,
@@ -7393,7 +7586,10 @@ def get_question_practice_history(request, job_id, question_id):
             'practice_count': practice_log.practice_count,
             'first_practiced_at': practice_log.first_practiced_at.isoformat(),
             'last_practiced_at': practice_log.last_practiced_at.isoformat(),
-        })
+        }
+        if history_entries:
+            response_payload['coaching_history'] = history_entries
+        return Response(response_payload)
     except JobQuestionPractice.DoesNotExist:
         return Response(
             {'error': 'No practice history found for this question'},

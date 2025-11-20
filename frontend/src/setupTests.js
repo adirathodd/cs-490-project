@@ -121,6 +121,8 @@ jest.mock('./services/firebase', () => ({
 		getJobInterviewInsights: jest.fn().mockResolvedValue(null),
 		getJobQuestionBank: jest.fn().mockResolvedValue(null),
 		logQuestionPractice: jest.fn(),
+		getQuestionPracticeHistory: jest.fn(),
+		coachQuestionResponse: jest.fn(),
 		togglePreparationChecklist: jest.fn(),
 		triggerJobInterviewInsights: jest.fn(),
 		getJobSkillsGap: jest.fn().mockResolvedValue(null),

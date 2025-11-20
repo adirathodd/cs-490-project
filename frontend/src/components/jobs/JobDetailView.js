@@ -430,7 +430,25 @@ const JobDetailView = () => {
     }
   }, [job?.id, fetchInterviewInsights, fetchSkillsGap, fetchQuestionBank]);
 
-  const handleLogQuestionPractice = async (payload) => {
+  const handlePracticeStatusUpdate = useCallback((questionId, practiceStatus) => {
+    if (!questionId || !practiceStatus) return;
+    setQuestionBank((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        categories: prev.categories.map((category) => ({
+          ...category,
+          questions: category.questions.map((question) =>
+            question.id === questionId
+              ? { ...question, practice_status: practiceStatus }
+              : question
+          ),
+        })),
+      };
+    });
+  }, []);
+
+  const handleLogQuestionPractice = useCallback(async (payload) => {
     if (!job?.id) return;
     setSavingPracticeQuestion(payload.question_id);
     setError('');
@@ -438,28 +456,16 @@ const JobDetailView = () => {
     try {
       const response = await jobsAPI.logQuestionPractice(job.id, payload);
       const practiceStatus = response?.practice_status || { practiced: true, practice_count: 1 };
-      setQuestionBank((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          categories: prev.categories.map((category) => ({
-            ...category,
-            questions: category.questions.map((question) =>
-              question.id === payload.question_id
-                ? { ...question, practice_status: practiceStatus }
-                : question
-            ),
-          })),
-        };
-      });
+      handlePracticeStatusUpdate(payload.question_id, practiceStatus);
       setSuccess('Practice response saved!');
       setTimeout(() => setSuccess(''), 3000);
+      return practiceStatus;
     } catch (err) {
       setError(err?.message || 'Failed to save practice');
     } finally {
       setSavingPracticeQuestion(null);
     }
-  };
+  }, [job?.id, handlePracticeStatusUpdate]);
 
   const handleToggleChecklistItem = async ({ taskId, category, task, completed }) => {
     if (!job?.id || !taskId) return;
@@ -1298,6 +1304,7 @@ const JobDetailView = () => {
               savingQuestionId={savingPracticeQuestion}
               onLogPractice={handleLogQuestionPractice}
               jobId={job?.id}
+              onPracticeStatusUpdate={handlePracticeStatusUpdate}
             />
           )}
           {!questionBank && loadingQuestionBank && (

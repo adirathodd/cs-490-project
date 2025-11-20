@@ -648,6 +648,15 @@ export const jobsAPI = {
     }
   },
 
+  coachQuestionResponse: async (jobId, data) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/question-bank/coach/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to generate coaching feedback' };
+    }
+  },
+
   togglePreparationChecklist: async (id, data) => {
     try {
       const response = await api.post(`/jobs/${id}/preparation-checklist/`, data);
