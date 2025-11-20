@@ -1,7 +1,7 @@
 import pytest
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
-from django.urls import reverse
 from core.models import Contact, ImportJob
 
 
@@ -46,6 +46,22 @@ def test_contacts_import_start_and_callback_and_mutuals(monkeypatch):
     assert r3.status_code == 200
     assert r3.data.get('job_id') == job_id
     assert 'status' in r3.data
+
+
+@pytest.mark.django_db
+def test_contacts_import_start_missing_google_credentials(monkeypatch):
+    User = get_user_model()
+    user = User.objects.create_user(username='u_missing_google', email='missing@example.com', password='p')
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    monkeypatch.setattr(settings, 'GOOGLE_CLIENT_ID', '')
+    monkeypatch.setattr(settings, 'GOOGLE_CLIENT_SECRET', '')
+
+    resp = client.post('/api/contacts/import/start', {'provider': 'google'}, format='json')
+    assert resp.status_code == 500
+    assert 'error' in resp.data
+    assert 'job_id' in resp.data
 
 
 @pytest.mark.django_db

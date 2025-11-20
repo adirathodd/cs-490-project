@@ -6,6 +6,27 @@ import logging
 import requests
 from django.conf import settings
 
+
+class GoogleOAuthConfigError(RuntimeError):
+    """Raised when required Google OAuth credentials are missing."""
+
+    def __init__(self, missing_vars):
+        if isinstance(missing_vars, str):
+            message = missing_vars
+        else:
+            joined = ', '.join(missing_vars)
+            message = f"Google import is not configured. Set {joined} in backend/.env (or the container environment)."
+        super().__init__(message)
+        self.missing_vars = missing_vars
+
+
+class GooglePeopleAPIError(RuntimeError):
+    """Raised when Google People API rejects a request with actionable info."""
+
+    def __init__(self, message, status_code=None):
+        super().__init__(message)
+        self.status_code = status_code
+
 logger = logging.getLogger(__name__)
 
 GOOGLE_OAUTH_AUTHORIZE = 'https://accounts.google.com/o/oauth2/v2/auth'
@@ -20,9 +41,24 @@ SCOPES = [
 ]
 
 
+def _require_client_id():
+    client_id = (settings.GOOGLE_CLIENT_ID or '').strip()
+    if not client_id:
+        raise GoogleOAuthConfigError(['GOOGLE_CLIENT_ID'])
+    return client_id
+
+
+def _require_client_secret():
+    secret = (settings.GOOGLE_CLIENT_SECRET or '').strip()
+    if not secret:
+        raise GoogleOAuthConfigError(['GOOGLE_CLIENT_SECRET'])
+    return secret
+
+
 def build_google_auth_url(redirect_uri, state=None):
+    client_id = _require_client_id()
     params = {
-        'client_id': settings.GOOGLE_CLIENT_ID,
+        'client_id': client_id,
         'redirect_uri': redirect_uri,
         'response_type': 'code',
         'scope': ' '.join(SCOPES),
@@ -36,10 +72,12 @@ def build_google_auth_url(redirect_uri, state=None):
 
 
 def exchange_code_for_tokens(code, redirect_uri):
+    client_id = _require_client_id()
+    client_secret = _require_client_secret()
     payload = {
         'code': code,
-        'client_id': settings.GOOGLE_CLIENT_ID,
-        'client_secret': settings.GOOGLE_CLIENT_SECRET,
+        'client_id': client_id,
+        'client_secret': client_secret,
         'redirect_uri': redirect_uri,
         'grant_type': 'authorization_code',
     }
@@ -60,7 +98,7 @@ def fetch_connections(access_token, page_size=200):
         resp = requests.get(url, headers=headers, params=params, timeout=15)
         if resp.status_code >= 400:
             logger.error('People API returned %s: %s', resp.status_code, resp.text)
-            resp.raise_for_status()
+            raise GooglePeopleAPIError(_format_people_api_error(resp), status_code=resp.status_code)
         data = resp.json()
         connections = data.get('connections', [])
         results.extend(connections)
@@ -70,6 +108,38 @@ def fetch_connections(access_token, page_size=200):
         params['pageToken'] = next_token
         url = GOOGLE_PEOPLE_CONNECTIONS
     return results
+
+
+def _format_people_api_error(resp):
+    """Return a human friendly error the frontend can show directly."""
+    detail = ''
+    try:
+        payload = resp.json()
+    except ValueError:
+        payload = None
+
+    if isinstance(payload, dict):
+        error_obj = payload.get('error') if isinstance(payload.get('error'), dict) else None
+        detail = (error_obj or {}).get('message') or payload.get('error_description') or payload.get('message', '')
+    if not detail:
+        detail = (resp.text or '').strip()
+
+    detail = detail.strip()
+
+    if resp.status_code == 403:
+        base = (
+            'Google People API returned 403 (Forbidden). Enable the Google People API for your Cloud project and '
+            'make sure the Google account authorizing the import has been added as a test user on the OAuth consent '
+            'screen (unverified apps only work for test users) and granted access to contacts.'
+        )
+    elif resp.status_code == 401:
+        base = 'Google People API rejected the request (401 Unauthorized). Try reconnecting your Google account.'
+    else:
+        base = f'Google People API request failed with status {resp.status_code}.'
+
+    if detail:
+        return f"{base} Details: {detail}"
+    return base
 
 
 def normalize_person(person):

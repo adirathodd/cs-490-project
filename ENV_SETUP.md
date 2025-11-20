@@ -93,7 +93,15 @@ FIREBASE_CREDENTIALS=ats-candidate-system-firebase-adminsdk-fbsvc-64985faa4c.jso
 FIREBASE_PROJECT_ID=ats-candidate-system
 FIREBASE_API_KEY=your-actual-api-key
 SECRET_KEY=your-django-secret-key
+
+# Google OAuth used by /api/contacts/import
+GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
 ```
+
+> 💡 Create a Google Cloud OAuth 2.0 **Web application** client for development, then add
+> `http://localhost:8000/api/contacts/import/callback` to the list of authorized redirect URIs.
+> Copy the generated Client ID and Client secret into the variables above and restart the backend container.
 
 **frontend/.env:**
 ```env

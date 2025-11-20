@@ -5,7 +5,7 @@ is not installed, functions can be called synchronously.
 import logging
 from django.utils import timezone
 from core.models import ImportJob, Contact
-from core.google_import import fetch_and_normalize
+from core.google_import import fetch_and_normalize, GooglePeopleAPIError
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ def _process_import_job_sync(job_id, access_token):
         for e in entries:
             emails = [em.get('value') for em in e.get('emails', []) if em.get('value')]
             primary_email = emails[0] if emails else None
+            normalized_email = primary_email or ''
             # Normalize phone value to avoid inserting NULL into non-nullable DB fields
             phone_value = ''
             phones = e.get('phones') or []
@@ -56,7 +57,7 @@ def _process_import_job_sync(job_id, access_token):
                     existing.first_name = first or existing.first_name
                     existing.last_name = last or existing.last_name
                     existing.display_name = existing.display_name or display
-                    existing.email = existing.email or primary_email
+                    existing.email = existing.email or normalized_email
                     existing.phone = existing.phone or phone_value
                     existing.photo_url = existing.photo_url or e.get('photo')
                     existing.external_id = existing.external_id or e.get('resourceName')
@@ -68,7 +69,7 @@ def _process_import_job_sync(job_id, access_token):
                         first_name=first,
                         last_name=last,
                         display_name=display,
-                        email=primary_email,
+                        email=normalized_email,
                         phone=phone_value,
                         company_name=(e.get('organizations') or [{}])[0].get('name') if e.get('organizations') else '',
                         photo_url=e.get('photo') or '',
@@ -94,6 +95,12 @@ def _process_import_job_sync(job_id, access_token):
         else:
             job.save(update_fields=['status', 'completed_at', 'result_summary'])
         logger.info('Import job %s completed: %s', job_id, job.result_summary)
+    except GooglePeopleAPIError as exc:
+        logger.warning('Import job failed due to Google People API error: %s', exc)
+        job.status = 'failed'
+        msg = str(exc) or 'Google People API rejected the request.'
+        job.errors = [{'id': 'google_people_api', 'message': msg}]
+        job.save(update_fields=['status', 'errors'])
     except Exception as exc:
         logger.exception('Import job failed: %s', exc)
         job.status = 'failed'
