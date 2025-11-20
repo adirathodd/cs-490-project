@@ -27,7 +27,7 @@ const jobTypeOptions = [
   { value: 'temp', label: 'Temporary' },
 ];
 
-const industryOptions = [
+export const industryOptions = [
   'Software',
   'Finance',
   'Healthcare',
@@ -1998,23 +1998,6 @@ const companyDropdownRef = useRef(null);
               </div>
               {selectedJobs.length > 0 && (
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <button
-                    className="btn-secondary"
-                    onClick={onBulkSetStatus}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                      color: 'white',
-                      border: 'none',
-                      padding: '8px 16px',
-                      fontSize: '14px',
-                    }}
-                  >
-                    <Icon name="check-circle" size="sm" />
-                    Set Status ({selectedJobs.length})
-                  </button>
                   <button
                     className="btn-secondary"
                     onClick={onBulkSetStatus}

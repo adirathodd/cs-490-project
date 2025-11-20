@@ -3,6 +3,7 @@ Authentication views for Firebase-based user registration and login.
 """
 from typing import Any, Dict
 
+import base64
 import copy
 import hashlib
 import logging
@@ -19,6 +20,7 @@ from django.core.management import call_command
 from django.utils.text import slugify
 from django.conf import settings
 from django.utils.text import slugify
+from django.conf import settings
 from core.authentication import FirebaseAuthentication
 from core.serializers import (
     UserRegistrationSerializer,
@@ -81,9 +83,14 @@ from core.models import (
     JobQuestionPractice,
     QuestionBankCache,
     PreparationChecklistProgress,
+    Contact,
+    ContactNote,
+    Reminder,
+    ImportJob,
 )
 from core.research.enrichment import fallback_domain
 from core.question_bank import build_question_bank
+from core import google_import
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def cover_letter_template_list_create(request):
@@ -6289,6 +6296,136 @@ def export_ai_cover_letter(request):
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# ======================
+# Cover Letter Document Saving
+# ======================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def save_ai_cover_letter_document(request):
+    """Save an AI-generated cover letter to the Documents library."""
+    latex_content = (request.data.get('latex_content') or '').strip()
+    document_name = (request.data.get('document_name') or '').strip()
+    tone = (request.data.get('tone') or '').strip()
+    generation_params = request.data.get('generation_params') or {}
+    job_id = request.data.get('job_id')
+
+    if not latex_content:
+        return Response(
+            {'error': {'code': 'missing_latex', 'message': 'latex_content is required.'}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not job_id:
+        return Response(
+            {'error': {'code': 'missing_job', 'message': 'job_id is required.'}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        job_id = int(job_id)
+    except (TypeError, ValueError):
+        return Response(
+            {'error': {'code': 'invalid_job', 'message': 'job_id must be an integer.'}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Candidate profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    try:
+        job_entry = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job not found for this user.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if not isinstance(generation_params, dict):
+        generation_params = {'metadata': generation_params}
+
+    if not document_name:
+        document_name = f"{job_entry.title or 'AI'} Cover Letter"
+    elif 'cover letter' not in document_name.lower():
+        document_name = f"{document_name} Cover Letter"
+
+    try:
+        pdf_base64 = resume_ai.compile_latex_pdf(latex_content)
+    except resume_ai.ResumeAIError as exc:
+        return Response(
+            {'error': {'code': 'compilation_failed', 'message': str(exc)}},
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+    except Exception as exc:
+        logger.exception('Unexpected error compiling cover letter PDF: %s', exc)
+        return Response(
+            {'error': {'code': 'compilation_failed', 'message': 'Unable to compile cover letter PDF.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    pdf_bytes = base64.b64decode(pdf_base64)
+    filename_slug = slugify(document_name) or 'cover-letter'
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M')
+    filename = f'{filename_slug}_{timestamp}.pdf'
+
+    ai_params = generation_params.copy()
+    ai_params.update(
+        {
+            'job_entry_id': job_entry.id,
+            'job_snapshot': {
+                'title': job_entry.title,
+                'company_name': job_entry.company_name,
+                'industry': job_entry.industry,
+                'job_type': job_entry.job_type,
+            },
+        }
+    )
+
+    try:
+        next_version = (
+            Document.objects.filter(candidate=profile, doc_type='cover_letter').aggregate(models.Max('version'))[
+                'version__max'
+            ]
+            or 0
+        ) + 1
+
+        doc = Document.objects.create(
+            candidate=profile,
+            doc_type='cover_letter',
+            document_name=document_name[:255],
+            version=next_version,
+            file_upload=ContentFile(pdf_bytes, name=filename),
+            content_type='application/pdf',
+            file_size=len(pdf_bytes),
+            generated_by_ai=True,
+            ai_generation_tone=tone[:50],
+            ai_generation_params=ai_params,
+            notes=(request.data.get('notes') or '')[:500],
+        )
+    except Exception as exc:
+        logger.exception('Failed to save AI cover letter document: %s', exc)
+        return Response(
+            {'error': {'code': 'save_failed', 'message': 'Unable to store cover letter document.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    payload = {
+        'id': doc.id,
+        'document_type': doc.doc_type,
+        'document_name': doc.document_name,
+        'version_number': str(doc.version),
+        'document_url': doc.document_url,
+        'download_url': f'/api/documents/{doc.id}/download/',
+        'uploaded_at': doc.created_at,
+    }
+    return Response({'message': 'Cover letter saved to Documents.', 'document': payload}, status=status.HTTP_201_CREATED)
 
 
 # ======================
