@@ -857,6 +857,32 @@ class JobQuestionPractice(models.Model):
         self.practice_count = (self.practice_count or 0) + 1
 
 
+class QuestionResponseCoaching(models.Model):
+    """Store AI coaching sessions for interview practice answers (UC-076)."""
+
+    job = models.ForeignKey('JobEntry', on_delete=models.CASCADE, related_name='response_coaching_sessions')
+    practice_log = models.ForeignKey(JobQuestionPractice, on_delete=models.CASCADE, related_name='coaching_sessions')
+    question_id = models.CharField(max_length=64)
+    question_text = models.TextField()
+    response_text = models.TextField(blank=True)
+    star_response = models.JSONField(default=dict, blank=True)
+    coaching_payload = models.JSONField(default=dict, blank=True)
+    scores = models.JSONField(default=dict, blank=True)
+    word_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['job', 'question_id']),
+            models.Index(fields=['practice_log', '-created_at']),
+        ]
+
+    def __str__(self):
+        timestamp = self.created_at.isoformat() if self.created_at else ''
+        return f"CoachingSession(job={self.job_id}, question={self.question_id}, created={timestamp})"
+
+
 class QuestionBankCache(models.Model):
     """Cache generated question bank data per job."""
 
