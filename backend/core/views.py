@@ -963,11 +963,17 @@ def contacts_import_start(request):
         # Note: the core app is mounted at `/api/`, but the core/ prefix
         # is not part of the public route — use `/api/contacts/...` here.
         redirect_uri = request.build_absolute_uri('/api/contacts/import/callback')
-        auth_url = google_import.build_google_auth_url(redirect_uri, state=str(job.id))
-        # Log the exact auth_url so developers can copy it and verify the
-        # redirect_uri portion against the Google Cloud Console settings.
-        import logging
-        logging.getLogger(__name__).info('Google auth_url: %s', auth_url)
+        try:
+            auth_url = google_import.build_google_auth_url(redirect_uri, state=str(job.id))
+            # Log the exact auth_url so developers can copy it and verify the
+            # redirect_uri portion against the Google Cloud Console settings.
+            import logging
+            logging.getLogger(__name__).info('Google auth_url: %s', auth_url)
+        except google_import.GoogleOAuthConfigError as exc:
+            job.status = 'failed'
+            job.errors = [{'id': 'google_oauth_config', 'message': str(exc)}]
+            job.save(update_fields=['status', 'errors'])
+            return Response({'job_id': str(job.id), 'error': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     return Response({'job_id': str(job.id), 'auth_url': auth_url, 'status': job.status})
 
 

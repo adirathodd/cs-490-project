@@ -201,7 +201,7 @@ class Contact(models.Model):
     last_name = models.CharField(max_length=120, blank=True)
     display_name = models.CharField(max_length=255, blank=True)
     title = models.CharField(max_length=220, blank=True)
-    email = models.EmailField(blank=True)
+    email = models.EmailField(blank=True, null=True)
     # Allow NULL at DB level for imported contacts that may omit phone
     phone = models.CharField(max_length=40, blank=True, null=True)
     location = models.CharField(max_length=160, blank=True)
