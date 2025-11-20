@@ -2,6 +2,46 @@
 
 from django.db import migrations
 
+TABLE_NAME = 'core_applicationautomationrule'
+
+
+def _column_exists(schema_editor, column_name):
+    connection = schema_editor.connection
+    vendor = connection.vendor
+    with connection.cursor() as cursor:
+        if vendor == 'sqlite':
+            cursor.execute(f'PRAGMA table_info("{TABLE_NAME}")')
+            return any(row[1] == column_name for row in cursor.fetchall())
+        description = connection.introspection.get_table_description(cursor, TABLE_NAME)
+    return any(col.name == column_name for col in description)
+
+
+def _rename_column(schema_editor, old_name, new_name):
+    if not _column_exists(schema_editor, old_name):
+        return
+    schema_editor.execute(
+        f'ALTER TABLE "{TABLE_NAME}" RENAME COLUMN "{old_name}" TO "{new_name}";'
+    )
+
+
+def _drop_column(schema_editor, column_name):
+    if not _column_exists(schema_editor, column_name):
+        return
+    schema_editor.execute(
+        f'ALTER TABLE "{TABLE_NAME}" DROP COLUMN "{column_name}";'
+    )
+
+
+def forwards(apps, schema_editor):
+    _rename_column(schema_editor, 'execution_count', 'trigger_count')
+    _rename_column(schema_editor, 'last_executed', 'last_triggered_at')
+    _drop_column(schema_editor, 'priority')
+
+
+def backwards(apps, schema_editor):
+    _rename_column(schema_editor, 'trigger_count', 'execution_count')
+    _rename_column(schema_editor, 'last_triggered_at', 'last_executed')
+
 
 class Migration(migrations.Migration):
 
@@ -10,16 +50,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
-            "ALTER TABLE core_applicationautomationrule RENAME COLUMN execution_count TO trigger_count;",
-            reverse_sql="ALTER TABLE core_applicationautomationrule RENAME COLUMN trigger_count TO execution_count;"
-        ),
-        migrations.RunSQL(
-            "ALTER TABLE core_applicationautomationrule RENAME COLUMN last_executed TO last_triggered_at;",
-            reverse_sql="ALTER TABLE core_applicationautomationrule RENAME COLUMN last_triggered_at TO last_executed;"
-        ),
-        migrations.RunSQL(
-            "ALTER TABLE core_applicationautomationrule DROP COLUMN IF EXISTS priority;",
-            reverse_sql=""
-        ),
+        migrations.RunPython(forwards, backwards),
     ]
