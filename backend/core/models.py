@@ -874,8 +874,8 @@ class QuestionResponseCoaching(models.Model):
     class Meta:
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['job', 'question_id']),
-            models.Index(fields=['practice_log', '-created_at']),
+            models.Index(fields=['job', 'question_id'], name='core_qrc_job_question_idx'),
+            models.Index(fields=['practice_log', '-created_at'], name='core_qrc_practice_idx'),
         ]
 
     def __str__(self):
