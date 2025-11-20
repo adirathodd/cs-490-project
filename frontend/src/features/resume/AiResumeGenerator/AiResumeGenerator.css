@@ -134,6 +134,15 @@
   font-size: var(--font-size-sm);
 }
 
+.inline-success {
+  color: var(--success-text);
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
 .tone-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -618,6 +627,10 @@
 }
 
 .inline-error.compact {
+  margin: 0;
+}
+
+.inline-success.compact {
   margin: 0;
 }
 

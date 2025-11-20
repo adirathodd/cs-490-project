@@ -553,45 +553,16 @@ const JobDetailView = () => {
               <button className="add-education-button" onClick={() => setEditMode(true)}>
                 <Icon name="edit" size="sm" /> Edit
               </button>
-              <button 
+              <button
                 className="add-education-button"
-                onClick={async () => {
-                  try {
-                    if (!window.confirm('Generate AI resume and cover letter for this job?')) return;
-                    
-                    setLoading(true);
-                    const response = await fetch(`http://localhost:8000/api/jobs/${id}/generate-package/`, {
-                      method: 'POST',
-                      headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('firebaseToken')}`,
-                        'Content-Type': 'application/json',
-                      },
-                      body: JSON.stringify({})
-                    });
-                    
-                    if (!response.ok) {
-                      const errorData = await response.json().catch(() => ({}));
-                      throw new Error(errorData.error?.message || 'Generation failed');
-                    }
-                    
-                    const result = await response.json();
-                    setSuccess('✅ AI documents generated successfully! Check your Documents page.');
-                    setTimeout(() => setSuccess(''), 5000);
-                    
-                  } catch (error) {
-                    console.error('Generate documents error:', error);
-                    setTimeout(() => setError(''), 5000);
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
+                onClick={() => navigate(`/jobs/${id}/timeline`)}
                 style={{
-                  background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                  background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
                   color: 'white',
                   border: 'none'
                 }}
               >
-                <Icon name="file-plus" size="sm" /> Generate AI Documents
+                <Icon name="clock" size="sm" /> View Timeline
               </button>
             </>
           ) : (

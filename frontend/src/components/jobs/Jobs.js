@@ -31,6 +31,15 @@ export const industryOptions = [
   'Software', 'Finance', 'Healthcare', 'Education', 'Retail', 'Manufacturing', 'Government', 'Other'
 ];
 
+const jobStatusOptions = [
+  { value: 'interested', label: 'Interested' },
+  { value: 'applied', label: 'Applied' },
+  { value: 'phone_screen', label: 'Phone Screen' },
+  { value: 'interview', label: 'Interview' },
+  { value: 'offer', label: 'Offer' },
+  { value: 'rejected', label: 'Rejected' },
+];
+
 const MAX_DESC = 2000;
 
 const headerActionsWrapperStyle = {
@@ -92,6 +101,8 @@ const [companySearchStatus, setCompanySearchStatus] = useState('');
   const [archiveReason, setArchiveReason] = useState('other');
   const [itemToDelete, setItemToDelete] = useState(null);
   const [undoNotification, setUndoNotification] = useState(null);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [bulkStatusValue, setBulkStatusValue] = useState(jobStatusOptions[0].value);
 
   // UC-041: Import from URL State
   const [importUrl, setImportUrl] = useState('');
@@ -587,6 +598,11 @@ const companyDropdownRef = useRef(null);
     setShowArchiveModal(true);
   };
 
+  const onBulkSetStatus = () => {
+    if (selectedJobs.length === 0) return;
+    setShowStatusModal(true);
+  };
+
   const onBulkRestore = async () => {
     if (selectedJobs.length === 0) return;
     try {
@@ -657,6 +673,25 @@ const companyDropdownRef = useRef(null);
       setError(msg);
     } finally {
       setUndoNotification(null);
+    }
+  };
+
+  const confirmBulkStatusUpdate = async () => {
+    try {
+      await jobsAPI.bulkUpdateStatus(selectedJobs, bulkStatusValue);
+      setItems((prev) =>
+        prev.map((item) =>
+          selectedJobs.includes(item.id) ? { ...item, status: bulkStatusValue } : item
+        )
+      );
+      setSelectedJobs([]);
+      setSuccess(`Updated ${selectedJobs.length} job(s) to ${bulkStatusValue}.`);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (e) {
+      const msg = e?.message || e?.error?.message || 'Failed to update job statuses.';
+      setError(msg);
+    } finally {
+      setShowStatusModal(false);
     }
   };
 
@@ -1146,6 +1181,40 @@ const companyDropdownRef = useRef(null);
           >
             Undo
           </button>
+        </div>
+      )}
+
+      {showStatusModal && (
+        <div className="modal-overlay" onClick={() => setShowStatusModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <h3 style={{ marginBottom: '16px' }}>Update Job Status</h3>
+            <p style={{ marginBottom: '16px', color: '#666' }}>
+              Apply a status to {selectedJobs.length} selected job(s).
+            </p>
+            <div className="form-group">
+              <label htmlFor="bulk-status-select">Status</label>
+              <select
+                id="bulk-status-select"
+                value={bulkStatusValue}
+                onChange={(e) => setBulkStatusValue(e.target.value)}
+                style={{ width: '100%' }}
+              >
+                {jobStatusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button className="cancel-button" onClick={() => setShowStatusModal(false)}>
+                Cancel
+              </button>
+              <button className="save-button" onClick={confirmBulkStatusUpdate} style={{ background: '#1d4ed8' }}>
+                Update
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1921,6 +1990,23 @@ const companyDropdownRef = useRef(null);
               </div>
               {selectedJobs.length > 0 && (
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    className="btn-secondary"
+                    onClick={onBulkSetStatus}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                      color: 'white',
+                      border: 'none',
+                      padding: '8px 16px',
+                      fontSize: '14px',
+                    }}
+                  >
+                    <Icon name="check-circle" size="sm" />
+                    Set Status ({selectedJobs.length})
+                  </button>
                   <button
                     className="btn-secondary"
                     onClick={onBulkArchive}
