@@ -31,6 +31,15 @@ export const industryOptions = [
   'Software', 'Finance', 'Healthcare', 'Education', 'Retail', 'Manufacturing', 'Government', 'Other'
 ];
 
+const jobStatusOptions = [
+  { value: 'interested', label: 'Interested' },
+  { value: 'applied', label: 'Applied' },
+  { value: 'phone_screen', label: 'Phone Screen' },
+  { value: 'interview', label: 'Interview' },
+  { value: 'offer', label: 'Offer' },
+  { value: 'rejected', label: 'Rejected' },
+];
+
 const MAX_DESC = 2000;
 
 const headerActionsWrapperStyle = {
