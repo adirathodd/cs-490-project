@@ -194,6 +194,7 @@ urlpatterns = [
     path('jobs/<int:job_id>/question-bank/', views.job_question_bank, name='job-question-bank'),
     path('jobs/<int:job_id>/question-bank/practice/', views.job_question_practice, name='job-question-practice'),
     path('jobs/<int:job_id>/question-bank/practice/<str:question_id>/', views.get_question_practice_history, name='get-question-practice-history'),
+    path('jobs/<int:job_id>/question-bank/coach/', views.job_question_response_coach, name='job-question-response-coach'),
     
     # UC-066: Skills Gap Analysis endpoints
     path('jobs/<int:job_id>/skills-gap/', views.job_skills_gap, name='job-skills-gap'),

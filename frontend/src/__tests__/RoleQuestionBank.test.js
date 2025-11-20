@@ -12,9 +12,11 @@ jest.mock('../components/common/Icon', () => (props) => {
 
 // Mock the API module used by the component
 const mockGetHistory = jest.fn();
+const mockCoachResponse = jest.fn();
 jest.mock('../services/api', () => ({
   jobsAPI: {
     getQuestionPracticeHistory: (...args) => mockGetHistory(...args),
+    coachQuestionResponse: (...args) => mockCoachResponse(...args),
   },
 }));
 
@@ -50,6 +52,7 @@ describe('RoleQuestionBank', () => {
 
   beforeEach(() => {
     mockGetHistory.mockReset();
+    mockCoachResponse.mockReset();
   });
 
   test('renders question card and shows view history modal when history exists', async () => {
