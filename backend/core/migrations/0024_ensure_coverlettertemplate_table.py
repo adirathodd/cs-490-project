@@ -50,11 +50,25 @@ BEGIN
 END$$;
 """
 
+
+def create_cover_letter_table(apps, schema_editor):
+    if schema_editor.connection.vendor != 'postgresql':
+        # SQLite (used in tests) already has the model from earlier migrations.
+        return
+    schema_editor.execute(CREATE_TABLE_SQL)
+
+
+def drop_cover_letter_constraint(apps, schema_editor):
+    if schema_editor.connection.vendor != 'postgresql':
+        return
+    schema_editor.execute(REVERSE_SQL)
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ('core', '0019_add_automation_models'),
     ]
 
     operations = [
-        migrations.RunSQL(sql=CREATE_TABLE_SQL, reverse_sql=REVERSE_SQL),
+        migrations.RunPython(create_cover_letter_table, drop_cover_letter_constraint),
     ]
