@@ -1,7 +1,7 @@
 """
 Authentication views for Firebase-based user registration and login.
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, List
 
 import base64
 import copy
@@ -75,6 +75,7 @@ from core.models import (
     WorkExperience,
     UserAccount,
     JobEntry,
+    JobOpportunity,
     Document,
     JobMaterialsHistory,
     CoverLetterTemplate,
@@ -91,9 +92,14 @@ from core.models import (
     QuestionBankCache,
     PreparationChecklistProgress,
     Contact,
+    Interaction,
     ContactNote,
     Reminder,
     ImportJob,
+    Tag,
+    MutualConnection,
+    ContactCompanyLink,
+    ContactJobLink,
     NetworkingEvent,
     EventGoal,
     EventConnection,
@@ -102,6 +108,7 @@ from core.models import (
 from core import google_import, tasks, response_coach
 from core.research.enrichment import fallback_domain
 from core.question_bank import build_question_bank
+from django.shortcuts import redirect
 from core import google_import
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])

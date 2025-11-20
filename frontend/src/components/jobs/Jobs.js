@@ -28,24 +28,7 @@ const jobTypeOptions = [
 ];
 
 export const industryOptions = [
-  'Software',
-  'Finance',
-  'Healthcare',
-  'Education',
-  'Retail',
-  'Manufacturing',
-  'Government',
-  'Other',
-];
-
-// Statuses for bulk updates
-const jobStatusOptions = [
-  { value: 'interested', label: 'Interested' },
-  { value: 'applied', label: 'Applied' },
-  { value: 'phone_screen', label: 'Phone Screen' },
-  { value: 'interview', label: 'Interview' },
-  { value: 'offer', label: 'Offer' },
-  { value: 'rejected', label: 'Rejected' },
+  'Software', 'Finance', 'Healthcare', 'Education', 'Retail', 'Manufacturing', 'Government', 'Other'
 ];
 
 const MAX_DESC = 2000;
