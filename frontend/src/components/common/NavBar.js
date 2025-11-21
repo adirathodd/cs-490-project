@@ -11,10 +11,12 @@ const NavBar = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [resumeDropdownOpen, setResumeDropdownOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [toolsDropdownOpen, setToolsDropdownOpen] = useState(false);
   
   const menuRef = useRef(null);
   const resumeDropdownRef = useRef(null);
   const profileDropdownRef = useRef(null);
+  const toolsDropdownRef = useRef(null);
 
   // Prefer backend candidate profile/user name to ensure consistency across providers
   const backendFullName = (userProfile?.full_name || '').trim();
@@ -36,11 +38,14 @@ const NavBar = () => {
         setMenuOpen(false);
       }
       if (resumeDropdownRef.current && !resumeDropdownRef.current.contains(e.target)) {
-        setResumeDropdownOpen(false);
-      }
+          setResumeDropdownOpen(false);
+        }
       if (profileDropdownRef.current && !profileDropdownRef.current.contains(e.target)) {
         setProfileDropdownOpen(false);
       }
+        if (toolsDropdownRef.current && !toolsDropdownRef.current.contains(e.target)) {
+          setToolsDropdownOpen(false);
+        }
     };
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
@@ -76,55 +81,72 @@ const NavBar = () => {
 
   return (
     <nav className="nav">
-      <div className="nav-brand" aria-label="ResumeRocket home">
+      <NavLink to="/dashboard" className="nav-brand" aria-label="ResumeRocket home" onClick={() => setOpen(false)}>
         <img src={logoUrl} alt="ResumeRocket" className="nav-brand-logo" />
-      </div>
+      </NavLink>
       <button className="nav-toggle" onClick={() => setOpen(v => !v)} aria-label="Toggle navigation">☰</button>
       <div className={`nav-links ${open ? 'open' : ''}`} onClick={() => setOpen(false)}>
         <NavLink to="/dashboard" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Dashboard</NavLink>
         <NavLink to="/jobs" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Jobs</NavLink>
-  
-  {/* Resume dropdown */}
-  <div className="nav-dropdown" ref={resumeDropdownRef}>
-    <button 
-      className={`nav-link nav-dropdown-toggle ${(window.location.pathname.startsWith('/resume') ? 'active' : '')}`}
+
+  {/* Tools dropdown - groups resume, cover letters, documents, contacts */}
+  <div className="nav-dropdown" ref={toolsDropdownRef}>
+    <button
+      className={`nav-link nav-dropdown-toggle ${(window.location.pathname.startsWith('/resume') || window.location.pathname.startsWith('/documents') || window.location.pathname.startsWith('/cover-letter') || window.location.pathname.startsWith('/contacts')) ? 'active' : ''}`}
       type="button"
       aria-haspopup="menu"
-      aria-expanded={resumeDropdownOpen}
-      onClick={(e) => { e.stopPropagation(); setResumeDropdownOpen(v => !v); }}
+      aria-expanded={toolsDropdownOpen}
+      onClick={(e) => { e.stopPropagation(); setToolsDropdownOpen(v => !v); }}
     >
-      Resume ▾
+      Tools ▾
     </button>
-    {resumeDropdownOpen && (
+    {toolsDropdownOpen && (
       <div className="nav-dropdown-menu">
-        <NavLink 
-          to="/resume/ai" 
+        <NavLink
+          to="/resume/ai"
           className="nav-dropdown-item"
-          onClick={() => { setResumeDropdownOpen(false); setOpen(false); }}
+          onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
         >
           AI Resume Generator
         </NavLink>
-        <NavLink 
-          to="/resume/versions" 
+        <NavLink
+          to="/resume/versions"
           className="nav-dropdown-item"
-          onClick={() => { setResumeDropdownOpen(false); setOpen(false); }}
+          onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
         >
           Resume Version Control
+        </NavLink>
+        <NavLink
+          to="/cover-letter/ai"
+          className="nav-dropdown-item"
+          onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
+        >
+          AI Cover Letters
+        </NavLink>
+        <NavLink
+          to="/documents"
+          className="nav-dropdown-item"
+          onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
+        >
+          Documents
+        </NavLink>
+        <NavLink
+          to="/contacts"
+          className="nav-dropdown-item"
+          onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
+        >
+          Contacts
         </NavLink>
       </div>
     )}
   </div>
-  
-  <NavLink to="/cover-letter/ai" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>AI Cover Letters</NavLink>
-  <NavLink to="/documents" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Documents</NavLink>
+
+  <NavLink to="/analytics" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Analytics</NavLink>
         
   {/* Profile dropdown */}
   <div className="nav-dropdown" ref={profileDropdownRef}>
     <button 
-      className={`nav-link nav-dropdown-toggle ${(
-        window.location.pathname.startsWith('/profile') ||
-        window.location.pathname.startsWith('/analytics')
-      ) ? 'active' : ''}`}
+      className={`nav-link nav-dropdown-toggle ${(window.location.pathname.startsWith('/profile')) ? 'active' : ''}`}
       type="button"
       aria-haspopup="menu"
       aria-expanded={profileDropdownOpen}
@@ -176,13 +198,7 @@ const NavBar = () => {
         >
           Certifications
         </NavLink>
-        <NavLink 
-          to="/analytics" 
-          className="nav-dropdown-item"
-          onClick={() => { setProfileDropdownOpen(false); setOpen(false); }}
-        >
-          Analytics
-        </NavLink>
+        
       </div>
     )}
   </div>
@@ -203,13 +219,19 @@ const NavBar = () => {
         </button>
       </div>
       <div className="nav-user" ref={menuRef}>
-        <button className="nav-btn" onClick={() => setMenuOpen(v => !v)} aria-haspopup="menu" aria-expanded={menuOpen}>
+        <button
+          className="nav-btn"
+          onMouseDown={(e) => { e.stopPropagation(); setMenuOpen(v => !v); }}
+          onClick={(e) => { e.stopPropagation(); setMenuOpen(true); }}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-controls="user-menu"
+          type="button"
+        >
           {displayName} ▾
         </button>
         {menuOpen && (
-          <div style={menuStyles.container} role="menu">
-            <button style={menuStyles.item} onClick={() => { setMenuOpen(false); navigate('/profile'); }}>View Profile</button>
-            <div style={menuStyles.divider} />
+          <div id="user-menu" style={menuStyles.container} role="menu">
             <button style={menuStyles.item} onClick={handleLogout}>Sign Out</button>
           </div>
         )}

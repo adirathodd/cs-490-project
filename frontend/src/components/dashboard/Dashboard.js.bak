@@ -10,6 +10,7 @@ import DeadlinesWidget from '../common/DeadlinesWidget';
 const Dashboard = () => {
   const navigate = useNavigate();
   const { currentUser, userProfile, signOut, loading: authLoading } = useAuth();
+  const [activeSection, setActiveSection] = useState('Profile');
   const [showConfirm, setShowConfirm] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [profilePictureUrl, setProfilePictureUrl] = useState(null);
@@ -130,11 +131,6 @@ const Dashboard = () => {
     setShowUserMenu(!showUserMenu);
   };
 
-  // Dashboard section control — default to 'Profile'
-  const [activeSection, setActiveSection] = useState('Profile');
-
-  const showCard = (section) => activeSection === section;
-
   if (authLoading) {
     return (
       <div className="dashboard-container">
@@ -196,91 +192,139 @@ const Dashboard = () => {
 
         {/* Profile Overview (UC-033) */}
 
-        {/* Section toggles moved under the deadlines calendar for visual grouping */}
         {/* Sidebar widget (left) — absolutely positioned so it doesn't shift the card grid */}
-        <div className="deadlines-sidebar">
-          <DeadlinesWidget />
+        <div className="deadlines-sidebar"><DeadlinesWidget /></div>
 
-            {/* Section toggles: accordion list under the calendar/Deadlines widget */}
-            <div className="section-toggles" style={{ marginTop: 12 }}>
-              {(() => {
-                const sections = [
-                  { id: 'Profile', label: 'Profile' },
-                  { id: 'Applications', label: 'Applications' },
-                  { id: 'Tools', label: 'Tools' },
-                  { id: 'Networking', label: 'Networking' },
-                ];
-
-                // Card sets for each section (same as rendered previously)
-                const profileCards = [
-                  { key: 'skills', icon: <Icon name="idea" size="lg" color="#000000" ariaLabel="Skills" />, title: 'Skills', desc: 'Add and manage your skills', action: () => navigate('/skills'), actionText: 'Manage Skills' },
-                  { key: 'employment', icon: <Icon name="briefcase" size="lg" ariaLabel="Employment" />, title: 'Employment History', desc: 'Add and manage your work experience', action: () => navigate('/employment'), actionText: 'View/Edit Employment' },
-                  { key: 'education', icon: <Icon name="education" size="lg" ariaLabel="Education" />, title: 'Education', desc: 'Add and manage your educational background', action: () => navigate('/education'), actionText: 'Manage Education' },
-                  { key: 'certs', icon: <Icon name="cert" size="lg" ariaLabel="Certifications" />, title: 'Certifications', desc: 'Add and manage your professional certifications', action: () => navigate('/certifications'), actionText: 'Manage Certifications' },
-                  { key: 'projects', icon: <Icon name="project" size="lg" ariaLabel="Projects" />, title: 'Projects', desc: 'Showcase significant work beyond employment', action: () => navigate('/projects'), actionText: 'Manage Projects' },
-                ];
-
-                const applicationCards = [
-                  { key: 'jobs', icon: <Icon name="briefcase" size="lg" ariaLabel="Jobs" />, title: 'Jobs', desc: 'Track opportunities you want to apply for', action: () => navigate('/jobs'), actionText: 'Add Job Entry' },
-                  { key: 'documents', icon: <Icon name="file-text" size="lg" ariaLabel="Documents" />, title: 'Documents', desc: 'Manage resumes, cover letters, and application materials', action: () => navigate('/documents'), actionText: 'Manage Documents' },
-                ];
-
-                const toolsCards = [
-                  { key: 'ai_resume', icon: <Icon name="sparkles" size="lg" ariaLabel="AI Resume" />, title: 'AI Resume', desc: 'Generate an AI-optimized resume', action: () => navigate('/resume/ai'), actionText: 'Open AI Resume' },
-                  { key: 'ai_cover_letter', icon: <Icon name="sparkles" size="lg" ariaLabel="AI Cover Letter" />, title: 'AI Cover Letter', desc: 'Generate tailored cover letters using AI', action: () => navigate('/cover-letter/ai'), actionText: 'Open AI Cover Letter' },
-                ];
-
-                const networkingCards = [
-                  { key: 'contacts', icon: <Icon name="users" size="lg" ariaLabel="Contacts" />, title: 'Contacts', desc: 'Manage your professional contacts, notes and reminders', action: () => navigate('/contacts'), actionText: 'Manage Contacts' },
-                  { key: 'events', icon: <Icon name="calendar" size="lg" ariaLabel="Networking Events" />, title: 'Networking Events', desc: 'Track events, set goals, and manage professional connections', action: () => navigate('/networking'), actionText: 'Manage Events' },
-                ];
-
-                const cardsFor = (id) => {
-                  switch (id) {
-                    case 'Profile': return profileCards;
-                    case 'Applications': return applicationCards;
-                    case 'Tools': return toolsCards;
-                    case 'Networking': return networkingCards;
-                    default: return profileCards;
-                  }
-                };
-
-                return sections.map((s) => {
-                  const expanded = activeSection === s.id;
-                  return (
-                    <div key={s.id} className="section-item">
-                      <button
-                        className={`section-toggle ${expanded ? 'active' : ''}`}
-                        onClick={() => setActiveSection(expanded ? '' : s.id)}
-                        aria-expanded={expanded}
-                        aria-controls={`section-body-${s.id}`}
-                      >
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          {s.label}
-                          <Icon name={expanded ? 'chevronUp' : 'chevronDown'} size="sm" ariaLabel={expanded ? 'Collapse' : 'Expand'} />
-                        </span>
-                      </button>
-
-                      <div id={`section-body-${s.id}`} className={`section-body ${expanded ? 'expanded' : 'collapsed'}`}>
-                        <div className="accordion-cards">
-                          {cardsFor(s.id).map((c) => (
-                            <div key={c.key} className="dashboard-card" style={{ marginBottom: 12 }}>
-                              <div className="card-icon">{c.icon}</div>
-                              <h3>{c.title}</h3>
-                              <p>{c.desc}</p>
-                              <button className="card-button" onClick={c.action}>{c.actionText}</button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                });
-              })()}
+        <div className="dashboard-section">
+          <button
+            className="section-title section-toggle"
+            onClick={() => setActiveSection('Profile')}
+            aria-expanded={activeSection === 'Profile'}
+          >
+            Profile
+          </button>
+          <div className={`dashboard-grid section-body ${activeSection === 'Profile' ? 'expanded' : 'collapsed'}`} aria-hidden={activeSection !== 'Profile'}>
+            <div className="dashboard-card">
+                <div className="card-icon" aria-label="Skills">
+                  <Icon name="idea" size="lg" color="#000000" ariaLabel="Skills" />
+                </div>
+              <h3>Skills</h3>
+              <p>Add and manage your skills</p>
+              <button className="card-button" onClick={() => navigate('/skills')}>Manage Skills</button>
             </div>
+
+            <div className="dashboard-card">
+                <div className="card-icon"><Icon name="briefcase" size="lg" ariaLabel="Employment" /></div>
+              <h3>Employment</h3>
+              <p>Add and manage your work experience</p>
+              <button className="card-button" onClick={() => navigate('/employment')}>View/Edit Employment</button>
+            </div>
+
+            <div className="dashboard-card">
+              <div className="card-icon"><Icon name="education" size="lg" ariaLabel="Education" /></div>
+              <h3>Education</h3>
+              <p>Add and manage your educational background</p>
+              <button className="card-button" onClick={() => navigate('/education')}>Manage Education</button>
+            </div>
+
+            <div className="dashboard-card">
+              <div className="card-icon" aria-label="Certifications"><Icon name="cert" size="lg" ariaLabel="Certifications" /></div>
+              <h3>Certifications</h3>
+              <p>Add and manage your professional certifications</p>
+              <button className="card-button" onClick={() => navigate('/certifications')}>Manage Certifications</button>
+            </div>
+
+            <div className="dashboard-card">
+              <div className="card-icon" aria-label="Projects"><Icon name="project" size="lg" ariaLabel="Projects" /></div>
+              <h3>Projects</h3>
+              <p>Showcase significant work beyond employment</p>
+              <button className="card-button" onClick={() => navigate('/projects')}>Manage Projects</button>
+            </div>
+          </div>
         </div>
 
-        {/* The section cards are rendered inline underneath each toggle in the deadlines-sidebar */}
+        <div className="dashboard-section">
+          <button
+            className="section-title section-toggle"
+            onClick={() => setActiveSection('Applications')}
+            aria-expanded={activeSection === 'Applications'}
+          >
+            Applications & Documents
+          </button>
+          <div className={`dashboard-grid section-body ${activeSection === 'Applications' ? 'expanded' : 'collapsed'}`} aria-hidden={activeSection !== 'Applications'}>
+            <div className="dashboard-card">
+              <div className="card-icon" aria-label="Jobs"><Icon name="briefcase" size="lg" ariaLabel="Jobs" /></div>
+              <h3>Jobs</h3>
+              <p>Track opportunities you want to apply for</p>
+              <button className="card-button" onClick={() => navigate('/jobs')}>Add Job Entry</button>
+            </div>
+
+            <div className="dashboard-card">
+              <div className="card-icon" aria-label="Documents"><Icon name="file-text" size="lg" ariaLabel="Documents" /></div>
+              <h3>Documents</h3>
+              <p>Manage resumes, cover letters, and application materials</p>
+              <button className="card-button" onClick={() => navigate('/documents')}>Manage Documents</button>
+            </div>
+
+            <div className="dashboard-card">
+              <div className="card-icon"><Icon name="users" size="lg" ariaLabel="Contacts" /></div>
+              <h3>Contacts</h3>
+              <p>Manage your professional contacts, notes and reminders</p>
+              <button className="card-button" onClick={() => navigate('/contacts')}>Manage Contacts</button>
+            </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="dashboard-section">
+          <button
+            className="section-title section-toggle"
+            onClick={() => setActiveSection('Tools')}
+            aria-expanded={activeSection === 'Tools'}
+          >
+            Tools
+          </button>
+          <div className={`dashboard-grid section-body ${activeSection === 'Tools' ? 'expanded' : 'collapsed'}`} aria-hidden={activeSection !== 'Tools'}>
+            <div className="dashboard-card">
+              <div className="card-icon"><Icon name="file-text" size="lg" ariaLabel="Resume AI" /></div>
+              <h3>AI Resume Generator</h3>
+              <p>Create or refine resumes with AI assistance</p>
+              <button className="card-button" onClick={() => navigate('/resume/ai')}>Open Resume AI</button>
+            </div>
+
+            <div className="dashboard-card">
+              <div className="card-icon"><Icon name="mail" size="lg" ariaLabel="Cover Letter AI" /></div>
+              <h3>AI Cover Letters</h3>
+              <p>Generate targeted cover letters quickly</p>
+              <button className="card-button" onClick={() => navigate('/cover-letter/ai')}>Open Cover Letter AI</button>
+            </div>
+
+            <div className="dashboard-card">
+              <div className="card-icon"><Icon name="bar-chart" size="lg" ariaLabel="Analytics" /></div>
+              <h3>Analytics</h3>
+              <p>View insights about your resumes and applications</p>
+              <button className="card-button" onClick={() => navigate('/analytics')}>View Analytics</button>
+            </div>
+          </div>
+        </div>
+
+        <div className="dashboard-section">
+          <button
+            className="section-title section-toggle"
+            onClick={() => setActiveSection('Networking')}
+            aria-expanded={activeSection === 'Networking'}
+          >
+            Networking & Events
+          </button>
+          <div className={`dashboard-grid section-body ${activeSection === 'Networking' ? 'expanded' : 'collapsed'}`} aria-hidden={activeSection !== 'Networking'}>
+            <div className="dashboard-card">
+              <div className="card-icon"><Icon name="calendar" size="lg" ariaLabel="Networking Events" /></div>
+              <h3>Networking Events</h3>
+              <p>Track events, set goals, and manage professional connections</p>
+              <button className="card-button" onClick={() => navigate('/networking')}>Manage Events</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
