@@ -48,9 +48,9 @@ export default function DeadlinesWidget() {
   }, [items]);
 
   return (
-    <div className="dashboard-card deadlines-widget" role="region" aria-label="Upcoming deadlines">
+    <div className="dashboard-card deadlines-widget" role="region" aria-label="Upcoming application deadlines">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, width: '100%' }}>
-        <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}><Icon name="calendar" size="sm" /> Upcoming deadlines</h4>
+        <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}><Icon name="calendar" size="sm" /> Upcoming application deadlines</h4>
         <div className="widget-badge" aria-hidden style={{ background: '#6366f1', color: '#fff', padding: '4px 8px', borderRadius: 20, fontSize: 12 }}>{upcomingItems.length}</div>
       </div>
 

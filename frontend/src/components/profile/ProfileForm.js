@@ -292,7 +292,8 @@ const ProfileForm = () => {
     }
   };
 
-  const handleBackClick = () => {
+  const handleBackClick = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
     // Check if there are unsaved changes
     if (hasUnsavedChanges) {
       setShowDiscardDialog(true);
@@ -474,14 +475,16 @@ const ProfileForm = () => {
     <div className="profile-form-container">
       <div className="profile-form-card">
         <div className="page-backbar">
-          <button
+          <a
             className="btn-back"
+            href="/dashboard"
             onClick={handleBackClick}
             aria-label="Back to dashboard"
             title="Back to dashboard"
+            role="button"
           >
             ← Back to Dashboard
-          </button>
+          </a>
         </div>
 
         <div className="profile-header">
