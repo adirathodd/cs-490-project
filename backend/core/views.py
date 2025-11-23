@@ -105,7 +105,7 @@ from core.models import (
     EventConnection,
     EventFollowUp,
 )
-from core import google_import, tasks, response_coach
+from core import google_import, tasks, response_coach, interview_followup
 from core.research.enrichment import fallback_domain
 from core.question_bank import build_question_bank
 from django.shortcuts import redirect
@@ -9554,7 +9554,7 @@ def preparation_checklist_for_interview(request, pk):
         {
             'task_id': 'time_confirm',
             'category': 'Logistics',
-            'task': f"Confirm interview time: {interview.scheduled_date.strftime('%B %d at %I:%M %p')}"
+            'task': f"Confirm interview time: {interview.scheduled_at.strftime('%B %d at %I:%M %p')}"
         },
     ])
     checklist_tasks.extend(logistics)
@@ -11531,3 +11531,55 @@ def networking_analytics(request):
             context={'request': request}
         ).data,
     })
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def generate_interview_followup(request):
+    """
+    Generate personalized interview follow-up email templates.
+    
+    Payload:
+    {
+        "interview_details": {
+            "role": "Software Engineer",
+            "company": "Acme Corp",
+            "interviewer_name": "Jane Doe",
+            "interview_date": "2023-10-27",
+            "conversation_points": ["Discussed scalability", "Mentioned hiking"],
+            "candidate_name": "John Smith"
+        },
+        "followup_type": "thank_you",  # thank_you, status_inquiry, feedback_request, networking
+        "tone": "professional",        # professional, enthusiastic, appreciative, concise
+        "custom_instructions": "Optional extra instructions"
+    }
+    """
+    try:
+        data = request.data
+        interview_details = data.get('interview_details', {})
+        followup_type = data.get('followup_type', 'thank_you')
+        tone = data.get('tone', 'professional')
+        custom_instructions = data.get('custom_instructions')
+        
+        # Validate required fields
+        if not interview_details:
+            return Response(
+                {"error": "interview_details is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Generate templates
+        result = interview_followup.run_followup_generation(
+            interview_details=interview_details,
+            followup_type=followup_type,
+            tone=tone,
+            custom_instructions=custom_instructions
+        )
+        
+        return Response(result)
+        
+    except Exception as e:
+        logging.error(f"Error generating follow-up: {str(e)}")
+        return Response(
+            {"error": str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
