@@ -232,6 +232,13 @@ const NavBar = () => {
         </button>
         {menuOpen && (
           <div id="user-menu" style={menuStyles.container} role="menu">
+            <button
+              style={menuStyles.item}
+              onClick={(e) => { e.stopPropagation(); setMenuOpen(false); navigate('/profile'); }}
+            >
+              View Profile
+            </button>
+            <div style={menuStyles.divider} />
             <button style={menuStyles.item} onClick={handleLogout}>Sign Out</button>
           </div>
         )}

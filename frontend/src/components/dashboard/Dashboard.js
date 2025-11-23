@@ -213,7 +213,7 @@ const Dashboard = () => {
 
                 // Card sets for each section (same as rendered previously)
                 const profileCards = [
-                  { key: 'skills', icon: <Icon name="idea" size="lg" color="#000000" ariaLabel="Skills" />, title: 'Skills', desc: 'Add and manage your skills', action: () => navigate('/skills'), actionText: 'Manage Skills' },
+                  { key: 'skills', icon: <Icon name="idea" size="lg" color="#000000" ariaLabel="Skills" />, title: 'Skills', desc: 'Add and manage your skills', action: () => navigate('/skills'), actionText: 'Manage Skills', secondaryAction: () => navigate('/skills/organized'), secondaryActionText: 'Organize by Category' },
                   { key: 'employment', icon: <Icon name="briefcase" size="lg" ariaLabel="Employment" />, title: 'Employment History', desc: 'Add and manage your work experience', action: () => navigate('/employment'), actionText: 'View/Edit Employment' },
                   { key: 'education', icon: <Icon name="education" size="lg" ariaLabel="Education" />, title: 'Education', desc: 'Add and manage your educational background', action: () => navigate('/education'), actionText: 'Manage Education' },
                   { key: 'certs', icon: <Icon name="cert" size="lg" ariaLabel="Certifications" />, title: 'Certifications', desc: 'Add and manage your professional certifications', action: () => navigate('/certifications'), actionText: 'Manage Certifications' },
@@ -269,6 +269,9 @@ const Dashboard = () => {
                               <h3>{c.title}</h3>
                               <p>{c.desc}</p>
                               <button className="card-button" onClick={c.action}>{c.actionText}</button>
+                              {c.secondaryActionText && (
+                                <button className="card-button" onClick={c.secondaryAction}>{c.secondaryActionText}</button>
+                              )}
                             </div>
                           ))}
                         </div>
