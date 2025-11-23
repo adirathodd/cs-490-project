@@ -217,6 +217,9 @@ urlpatterns = [
     path('interviews/<int:pk>/checklist/', views.preparation_checklist_for_interview, name='preparation-checklist'),
     path('interviews/<int:pk>/checklist/toggle/', views.toggle_checklist_item, name='toggle-checklist-item'),
     
+    # UC-082: Interview Follow-Up Templates
+    path('interviews/follow-up/generate/', views.generate_interview_followup, name='generate-interview-followup'),
+
     # UC-052: Resume Version Management endpoints
     path('resume-versions/', views.resume_versions_list_create, name='resume-versions-list-create'),
     path('resume-versions/<uuid:version_id>/', views.resume_version_detail, name='resume-version-detail'),

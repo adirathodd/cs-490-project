@@ -1188,6 +1188,16 @@ export const interviewsAPI = {
       throw error.response?.data?.error || { message: 'Failed to toggle checklist item' };
     }
   },
+
+  // UC-082: Generate interview follow-up templates
+  generateFollowUp: async (data) => {
+    try {
+      const response = await api.post('/interviews/follow-up/generate/', data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to generate follow-up' };
+    }
+  },
 };
 
 // UC-056: AI Cover Letter Generation API calls
