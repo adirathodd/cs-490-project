@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import socket
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -71,10 +72,27 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 
 # Database configuration: use PostgreSQL with values from env vars
+def _should_use_sqlite() -> bool:
+    if os.environ.get('USE_SQLITE_FOR_TESTS') in {'1', 'true', 'True'}:
+        return True
+    if os.environ.get('PYTEST_CURRENT_TEST') or os.environ.get('DJANGO_TEST') == '1':
+        return True
+
+    host = os.environ.get('POSTGRES_HOST', 'db')
+    port = int(os.environ.get('POSTGRES_PORT', '5432') or 5432)
+    try:
+        socket.getaddrinfo(host, port)
+    except OSError:
+        return True
+    return False
+
+
+_USE_SQLITE = _should_use_sqlite()
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('POSTGRES_DB', 'yourdb'),
+        'ENGINE': 'django.db.backends.sqlite3' if _USE_SQLITE else 'django.db.backends.postgresql',
+        'NAME': BASE_DIR / 'db.sqlite3' if _USE_SQLITE else os.environ.get('POSTGRES_DB', 'yourdb'),
         'USER': os.environ.get('POSTGRES_USER', 'postgres'),
         'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'postgres'),
         'HOST': os.environ.get('POSTGRES_HOST', 'db'),
@@ -82,12 +100,11 @@ DATABASES = {
     }
 }
 
-# Use SQLite for tests/local runs when requested to avoid requiring a running Postgres service
-if os.environ.get('PYTEST_CURRENT_TEST') or os.environ.get('DJANGO_TEST') == '1':
-    DATABASES['default'] = {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+if _USE_SQLITE:
+    DATABASES['default'].pop('USER')
+    DATABASES['default'].pop('PASSWORD')
+    DATABASES['default'].pop('HOST')
+    DATABASES['default'].pop('PORT')
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

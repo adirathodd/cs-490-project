@@ -10,6 +10,7 @@ import InterviewScheduler from './InterviewScheduler';
 import InterviewFollowUp from './InterviewFollowUp';
 import RoleQuestionBank from './RoleQuestionBank';
 import PreparationChecklist from './PreparationChecklist';
+import TechnicalPrepSuite from './TechnicalPrepSuite';
 
 const JobDetailView = () => {
   const { id } = useParams();
@@ -41,6 +42,10 @@ const JobDetailView = () => {
   const [interviewToDelete, setInterviewToDelete] = useState(null);
   const [showPreparationChecklist, setShowPreparationChecklist] = useState(false);
   const [selectedInterviewForChecklist, setSelectedInterviewForChecklist] = useState(null);
+  const [technicalPrep, setTechnicalPrep] = useState(null);
+  const [loadingTechnicalPrep, setLoadingTechnicalPrep] = useState(false);
+  const [technicalPrepError, setTechnicalPrepError] = useState('');
+  const [loggingTechnicalAttemptId, setLoggingTechnicalAttemptId] = useState(null);
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [selectedInterviewForFollowUp, setSelectedInterviewForFollowUp] = useState(null);
   
@@ -303,6 +308,31 @@ const JobDetailView = () => {
     }
   }, []);
 
+  const fetchTechnicalPrep = useCallback(async (jobId, options = {}) => {
+    setTechnicalPrepError('');
+    setLoadingTechnicalPrep(true);
+    try {
+      const data = await jobsAPI.getJobTechnicalPrep(jobId, options);
+      setTechnicalPrep(data);
+    } catch (err) {
+      setTechnicalPrepError(err?.message || 'Failed to load technical prep');
+    } finally {
+      setLoadingTechnicalPrep(false);
+    }
+  }, []);
+
+  const handleRefreshTechnicalPrep = useCallback(() => {
+    if (job?.id) {
+      fetchTechnicalPrep(job.id, { refresh: true });
+    }
+  }, [job?.id, fetchTechnicalPrep]);
+
+  const handlePollTechnicalPrep = useCallback(() => {
+    if (job?.id) {
+      fetchTechnicalPrep(job.id);
+    }
+  }, [job?.id, fetchTechnicalPrep]);
+
   const fetchSkillsGap = useCallback(async (jobId, options = {}) => {
     try {
       const analysis = await jobsAPI.getJobSkillsGap(jobId, options);
@@ -430,8 +460,9 @@ const JobDetailView = () => {
       fetchInterviewInsights(job.id);
       fetchSkillsGap(job.id);
       fetchQuestionBank(job.id);
+      fetchTechnicalPrep(job.id);
     }
-  }, [job?.id, fetchInterviewInsights, fetchSkillsGap, fetchQuestionBank]);
+  }, [job?.id, fetchInterviewInsights, fetchSkillsGap, fetchQuestionBank, fetchTechnicalPrep]);
 
   const handlePracticeStatusUpdate = useCallback((questionId, practiceStatus) => {
     if (!questionId || !practiceStatus) return;
@@ -469,6 +500,46 @@ const JobDetailView = () => {
       setSavingPracticeQuestion(null);
     }
   }, [job?.id, handlePracticeStatusUpdate]);
+
+  const handleLogTechnicalAttempt = useCallback(async (payload) => {
+    if (!job?.id || !payload?.challenge_id) return;
+    setLoggingTechnicalAttemptId(payload.challenge_id);
+    setError('');
+    try {
+      const response = await jobsAPI.logTechnicalPrepAttempt(job.id, payload);
+      setTechnicalPrep((prev) => {
+        if (!prev) return prev;
+        const stats = response?.challenge_stats || {};
+        const updatedChallenges = (prev.coding_challenges || []).map((challenge) => {
+          if (challenge.id !== payload.challenge_id) return challenge;
+          return {
+            ...challenge,
+            practice_stats: {
+              attempts: stats.attempts || 0,
+              best_time_seconds: stats.best_time_seconds,
+              best_accuracy: stats.best_accuracy,
+              average_accuracy: stats.average_accuracy,
+              last_attempt_at: stats.last_attempt_at,
+            },
+            recent_attempts: stats.history || challenge.recent_attempts || [],
+          };
+        });
+        return {
+          ...prev,
+          coding_challenges: updatedChallenges,
+          performance_tracking: response?.performance_tracking || prev.performance_tracking,
+        };
+      });
+      setSuccess('Technical practice logged!');
+      setTimeout(() => setSuccess(''), 3000);
+      return response;
+    } catch (err) {
+      setError(err?.message || 'Failed to log technical practice');
+      throw err;
+    } finally {
+      setLoggingTechnicalAttemptId(null);
+    }
+  }, [job?.id]);
 
   const handleToggleChecklistItem = async ({ taskId, category, task, completed }) => {
     if (!job?.id || !taskId) return;
@@ -696,6 +767,24 @@ const JobDetailView = () => {
           }}
         >
           <Icon name="target" size="sm" /> Skills Gap Analysis
+        </button>
+        <button
+          onClick={() => setActiveTab('technical-prep')}
+          style={{
+            padding: '12px 24px',
+            fontSize: '15px',
+            fontWeight: '600',
+            border: 'none',
+            background: 'none',
+            color: activeTab === 'technical-prep' ? '#667eea' : '#6b7280',
+            borderBottom: activeTab === 'technical-prep' ? '3px solid #667eea' : '3px solid transparent',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            whiteSpace: 'nowrap',
+            marginBottom: '-2px',
+          }}
+        >
+          <Icon name="code" size="sm" /> Technical Prep
         </button>
         <button
           onClick={() => setActiveTab('scheduled-interviews')}
@@ -1359,6 +1448,18 @@ const JobDetailView = () => {
             </div>
           )}
         </>
+      )}
+
+      {activeTab === 'technical-prep' && (
+        <TechnicalPrepSuite
+          data={technicalPrep}
+          loading={loadingTechnicalPrep}
+          error={technicalPrepError}
+          onRefresh={handleRefreshTechnicalPrep}
+          onPoll={handlePollTechnicalPrep}
+          onLogAttempt={handleLogTechnicalAttempt}
+          loggingAttemptId={loggingTechnicalAttemptId}
+        />
       )}
 
       {/* Tab Content - Scheduled Interviews */}

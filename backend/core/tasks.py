@@ -3,9 +3,17 @@ This file provides a Celery task wrapper if Celery is configured. If Celery
 is not installed, functions can be called synchronously.
 """
 import logging
+from django.db import models
+from django.db.models import F
 from django.utils import timezone
-from core.models import ImportJob, Contact
+from core.models import (
+    ImportJob,
+    Contact,
+    TechnicalPrepCache,
+    TechnicalPrepGeneration,
+)
 from core.google_import import fetch_and_normalize, GooglePeopleAPIError
+from core.technical_prep import build_technical_prep
 
 logger = logging.getLogger(__name__)
 
@@ -117,3 +125,84 @@ if CELERY_AVAILABLE:
 else:
     def process_import_job(job_id, access_token):
         return _process_import_job_sync(job_id, access_token)
+
+
+def _process_technical_prep_generation_sync(generation_id):
+    generation = TechnicalPrepGeneration.objects.select_related('job', 'profile').get(id=generation_id)
+    if generation.status in (TechnicalPrepGeneration.STATUS_RUNNING, TechnicalPrepGeneration.STATUS_SUCCEEDED):
+        logger.info('Technical prep generation %s already %s', generation_id, generation.status)
+        return generation.status
+
+    now = timezone.now()
+    TechnicalPrepGeneration.objects.filter(id=generation_id).update(
+        status=TechnicalPrepGeneration.STATUS_RUNNING,
+        started_at=now,
+        last_progress_at=now,
+        attempt_count=F('attempt_count') + 1,
+    )
+    generation.refresh_from_db()
+    logger.info(
+        'Technical prep generation %s started (job_id=%s, profile_id=%s, attempt=%s)',
+        generation_id,
+        generation.job_id,
+        generation.profile_id,
+        generation.attempt_count,
+    )
+
+    try:
+        payload = build_technical_prep(generation.job, generation.profile)
+        logger.info(
+            'Technical prep generation %s built payload via %s source with %d keys',
+            generation_id,
+            payload.get('source', 'ai'),
+            len(payload or {}),
+        )
+        TechnicalPrepCache.objects.filter(job=generation.job).update(is_valid=False)
+        cache = TechnicalPrepCache.objects.create(
+            job=generation.job,
+            prep_data=payload,
+            source=payload.get('source', 'ai'),
+            generated_at=timezone.now(),
+            is_valid=True,
+        )
+        logger.info(
+            'Technical prep generation %s cached result (cache_id=%s)',
+            generation_id,
+            cache.id,
+        )
+        TechnicalPrepGeneration.objects.filter(id=generation_id).update(
+            status=TechnicalPrepGeneration.STATUS_SUCCEEDED,
+            cache_id=cache.id,
+            finished_at=timezone.now(),
+            last_progress_at=timezone.now(),
+            error_code='',
+            error_message='',
+        )
+        logger.info('Technical prep generation %s succeeded', generation_id)
+        return TechnicalPrepGeneration.STATUS_SUCCEEDED
+    except Exception as exc:  # pragma: no cover - surfaces in task logs
+        logger.exception('Technical prep generation %s failed: %s', generation_id, exc)
+        TechnicalPrepGeneration.objects.filter(id=generation_id).update(
+            status=TechnicalPrepGeneration.STATUS_FAILED,
+            finished_at=timezone.now(),
+            last_progress_at=timezone.now(),
+            error_code=getattr(exc, 'code', 'generation_failed'),
+            error_message=str(exc)[:2000],
+        )
+        raise
+
+
+if CELERY_AVAILABLE:
+    @shared_task(bind=True)
+    def process_technical_prep_generation(self, generation_id):
+        return _process_technical_prep_generation_sync(generation_id)
+else:
+    def process_technical_prep_generation(generation_id):
+        return _process_technical_prep_generation_sync(generation_id)
+
+
+def enqueue_technical_prep_generation(generation_id):
+    if CELERY_AVAILABLE:
+        process_technical_prep_generation.delay(generation_id)
+    else:
+        process_technical_prep_generation(generation_id)
