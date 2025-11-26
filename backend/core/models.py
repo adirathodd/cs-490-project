@@ -924,6 +924,57 @@ class TechnicalPrepCache(models.Model):
         return f"TechnicalPrepCache(job={self.job_id}, generated_at={self.generated_at})"
 
 
+class TechnicalPrepGeneration(models.Model):
+    """Track async technical prep build jobs so we can queue/poll status."""
+
+    STATUS_PENDING = 'pending'
+    STATUS_RUNNING = 'running'
+    STATUS_SUCCEEDED = 'succeeded'
+    STATUS_FAILED = 'failed'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_RUNNING, 'Running'),
+        (STATUS_SUCCEEDED, 'Succeeded'),
+        (STATUS_FAILED, 'Failed'),
+    ]
+
+    job = models.ForeignKey('JobEntry', on_delete=models.CASCADE, related_name='technical_prep_generations')
+    profile = models.ForeignKey('CandidateProfile', on_delete=models.CASCADE, related_name='technical_prep_generations')
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='technical_prep_generations',
+    )
+    cache = models.ForeignKey(
+        'TechnicalPrepCache',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='generation_jobs',
+    )
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    reason = models.CharField(max_length=32, blank=True)
+    error_code = models.CharField(max_length=64, blank=True)
+    error_message = models.TextField(blank=True)
+    attempt_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    last_progress_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['job', 'status'], name='techprep_job_status_idx'),
+            models.Index(fields=['job', '-created_at'], name='techprep_job_created_idx'),
+        ]
+
+    def __str__(self):
+        return f"TechnicalPrepGeneration(job={self.job_id}, status={self.status})"
+
+
 class PreparationChecklistProgress(models.Model):
     """Track completion status for preparation checklist items per job."""
 

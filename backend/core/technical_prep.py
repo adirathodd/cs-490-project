@@ -665,6 +665,7 @@ class TechnicalPrepGenerator:
         *,
         api_key: Optional[str] = None,
         model: Optional[str] = None,
+        allow_missing_api_key: bool = False,
     ):
         self.job = job
         self.profile = profile
@@ -675,6 +676,7 @@ class TechnicalPrepGenerator:
             or os.getenv("GEMINI_API_KEY")
             or getattr(settings, "GEMINI_API_KEY", "")
         )
+        self.allow_missing_api_key = allow_missing_api_key
         self.model = (
             model
             or os.getenv("GEMINI_MODEL")
@@ -685,7 +687,7 @@ class TechnicalPrepGenerator:
         self.build_timeout = float(os.getenv("TECHNICAL_PREP_BUILD_TIMEOUT", "28"))
         self.deadline = time.monotonic() + self.build_timeout
 
-        if not self.api_key:
+        if not self.api_key and not self.allow_missing_api_key:
             raise ValueError("Gemini API key is required for technical prep generation.")
 
     def generate(self) -> Dict[str, Any]:
@@ -716,6 +718,33 @@ class TechnicalPrepGenerator:
             payload["suggested_challenges"] = []
         payload["role_profile"] = "technical" if self.is_technical else "business"
         payload["source"] = "gemini"
+        return self._post_process(payload)
+
+    def generate_fallback_only(self) -> Dict[str, Any]:
+        """Build a deterministic fallback plan without contacting Gemini."""
+        summary = self._fallback_summary()
+        primary, suggested = _select_leetcode_problems(self.job, self.context, primary_count=5, suggested_count=6)
+        coding_sections = self._fallback_coding_sections(primary, suggested)
+        advanced = self._fallback_advanced()
+        payload = {
+            "tech_stack": summary.get("tech_stack") or {},
+            "focus_areas": summary.get("focus_areas") or [],
+            "coding_challenges": coding_sections.get("coding_challenges") or [],
+            "suggested_challenges": coding_sections.get("suggested_challenges") or [],
+            "system_design_scenarios": advanced.get("system_design_scenarios") or [],
+            "case_studies": advanced.get("case_studies") or [],
+            "technical_questions": advanced.get("technical_questions") or [],
+            "solution_frameworks": advanced.get("solution_frameworks") or [],
+            "whiteboarding_practice": advanced.get("whiteboarding_practice") or {},
+            "real_world_alignment": advanced.get("real_world_alignment") or [],
+        }
+        if not self.is_technical:
+            payload["coding_challenges"] = []
+            payload["system_design_scenarios"] = []
+            payload["whiteboarding_practice"] = {}
+            payload["suggested_challenges"] = []
+        payload["role_profile"] = "technical" if self.is_technical else "business"
+        payload["source"] = "fallback"
         return self._post_process(payload)
 
     def _context_block(self) -> str:
@@ -901,7 +930,7 @@ class TechnicalPrepGenerator:
             temperature=0.25,
             top_p=0.9,
             top_k=40,
-            max_output_tokens=2048,
+            max_output_tokens=4096,
         )
 
         timeout_seconds = float(os.getenv("GEMINI_REQUEST_TIMEOUT", "15"))
@@ -1265,6 +1294,18 @@ def build_technical_prep(job, profile, *, api_key: Optional[str] = None, model: 
     """Convenience wrapper used by the view layer."""
     generator = TechnicalPrepGenerator(job, profile, api_key=api_key, model=model)
     return generator.generate()
+
+
+def build_technical_prep_fallback(job, profile) -> Dict[str, Any]:
+    """Deterministic fallback builder for when Gemini output is pending."""
+    generator = TechnicalPrepGenerator(
+        job,
+        profile,
+        api_key=os.getenv("GEMINI_API_KEY") or getattr(settings, "GEMINI_API_KEY", ""),
+        model=os.getenv("GEMINI_MODEL") or getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash"),
+        allow_missing_api_key=True,
+    )
+    return generator.generate_fallback_only()
 
 
 def _derive_role_context(job) -> Dict[str, bool]:

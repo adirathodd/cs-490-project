@@ -93,6 +93,7 @@ from core.models import (
     QuestionResponseCoaching,
     QuestionBankCache,
     TechnicalPrepCache,
+    TechnicalPrepGeneration,
     TechnicalPrepPractice,
     PreparationChecklistProgress,
     Contact,
@@ -112,9 +113,16 @@ from core.models import (
 from core import google_import, tasks, response_coach, interview_followup
 from core.research.enrichment import fallback_domain
 from core.question_bank import build_question_bank
-from core.technical_prep import build_technical_prep, apply_leetcode_links, _derive_role_context
+from core.technical_prep import (
+    build_technical_prep,
+    build_technical_prep_fallback,
+    apply_leetcode_links,
+    _derive_role_context,
+)
 from django.shortcuts import redirect
 from core import google_import
+
+logger = logging.getLogger(__name__)
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def cover_letter_template_list_create(request):
@@ -7619,6 +7627,55 @@ def _attach_technical_prep_progress(job: JobEntry, prep_payload: Dict[str, Any])
     return payload
 
 
+_ACTIVE_TECH_PREP_STATUSES = {
+    TechnicalPrepGeneration.STATUS_PENDING,
+    TechnicalPrepGeneration.STATUS_RUNNING,
+}
+
+
+def _ensure_technical_prep_generation(job, profile, user, reason: str) -> TechnicalPrepGeneration:
+    existing = (
+        TechnicalPrepGeneration.objects
+        .filter(job=job, status__in=_ACTIVE_TECH_PREP_STATUSES)
+        .order_by('-created_at')
+        .first()
+    )
+    if existing:
+        return existing
+    requested_by = user if getattr(user, 'is_authenticated', False) else None
+    generation = TechnicalPrepGeneration.objects.create(
+        job=job,
+        profile=profile,
+        requested_by=requested_by,
+        reason=reason,
+        status=TechnicalPrepGeneration.STATUS_PENDING,
+    )
+    try:
+        tasks.enqueue_technical_prep_generation(generation.id)
+    except Exception as exc:  # pragma: no cover - best effort logging
+        logger.error('Failed to enqueue technical prep generation %s: %s', generation.id, exc, exc_info=True)
+    return generation
+
+
+def _serialize_generation_status(generation: Optional[TechnicalPrepGeneration]) -> Dict[str, Any]:
+    def _iso(value):
+        if not value:
+            return None
+        return value.astimezone(datetime_timezone.utc).isoformat()
+
+    if not generation:
+        return {'state': 'idle'}
+    return {
+        'state': generation.status,
+        'generation_id': generation.id,
+        'reason': generation.reason or 'auto',
+        'requested_at': _iso(generation.created_at),
+        'started_at': _iso(generation.started_at),
+        'finished_at': _iso(generation.finished_at),
+        'error_code': generation.error_code,
+    }
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def job_technical_prep(request, job_id):
@@ -7645,64 +7702,44 @@ def job_technical_prep(request, job_id):
     force_refresh = request.query_params.get('refresh', '').lower() == 'true'
     cached = TechnicalPrepCache.objects.filter(job=job, is_valid=True).order_by('-generated_at').first()
     cache_generated_at = cached.generated_at if cached else None
-    generated_new_payload = False
-    prep_payload = None if (force_refresh or not cached) else copy.deepcopy(cached.prep_data)
+    prep_payload = copy.deepcopy(cached.prep_data) if cached else None
+
+    generation = TechnicalPrepGeneration.objects.filter(job=job).order_by('-created_at').first()
+    refresh_requested_at = None
+
+    if force_refresh:
+        generation = _ensure_technical_prep_generation(job, profile, request.user, 'refresh')
+        refresh_requested_at = generation.created_at
+    elif cached is None:
+        generation = _ensure_technical_prep_generation(job, profile, request.user, 'auto')
 
     if prep_payload is None:
         try:
-            new_payload = build_technical_prep(job, profile)
-            prep_payload = new_payload
-            generated_new_payload = True
-            cache_generated_at = timezone.now()
-        except TimeoutError as exc:
-            logger.warning("Gemini timeout for job %s: %s", job_id, exc)
-            if cached:
-                prep_payload = copy.deepcopy(cached.prep_data)
-                cache_generated_at = cached.generated_at
-            else:
-                return Response(
-                    {'error': {'code': 'technical_prep_timeout', 'message': 'Gemini request timed out. Please try Refresh Plan.'}},
-                    status=status.HTTP_504_GATEWAY_TIMEOUT,
-                )
-        except ValueError as exc:
-            if cached:
-                prep_payload = copy.deepcopy(cached.prep_data)
-                cache_generated_at = cached.generated_at
-            else:
-                return Response(
-                    {'error': {'code': 'gemini_configuration', 'message': str(exc)}},
-                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
-                )
+            prep_payload = build_technical_prep_fallback(job, profile)
+            cache_generated_at = cache_generated_at or timezone.now()
         except Exception as exc:
-            logger.error("Failed to generate technical prep for job %s: %s", job_id, exc, exc_info=True)
-            if cached:
-                prep_payload = copy.deepcopy(cached.prep_data)
-                cache_generated_at = cached.generated_at
-            else:
-                return Response(
-                    {'error': {'code': 'technical_prep_failed', 'message': 'Failed to generate technical prep. Please try again.'}},
-                    status=status.HTTP_502_BAD_GATEWAY,
-                )
-        else:
-            try:
-                TechnicalPrepCache.objects.filter(job=job).update(is_valid=False)
-                TechnicalPrepCache.objects.create(
-                    job=job,
-                    prep_data=new_payload,
-                    source=new_payload.get('source', 'ai'),
-                    generated_at=cache_generated_at or timezone.now(),
-                    is_valid=True,
-                )
-            except Exception as cache_error:
-                logger.warning("Failed to cache technical prep for job %s: %s", job_id, cache_error)
+            logger.error("Failed to build fallback technical prep for job %s: %s", job_id, exc, exc_info=True)
+            build_status = _serialize_generation_status(generation)
+            return Response(
+                {
+                    'status': 'building',
+                    'message': 'Technical prep plan is being generated. Please try again shortly.',
+                    'build_status': build_status,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
 
     enriched = _attach_technical_prep_progress(job, prep_payload)
+    build_status = _serialize_generation_status(generation)
+    build_status['payload_source'] = prep_payload.get('source', 'unknown') if isinstance(prep_payload, dict) else 'unknown'
+    build_status['has_ready_cache'] = bool(cached)
     if cache_generated_at:
         iso_timestamp = cache_generated_at.astimezone(datetime_timezone.utc).isoformat()
         for field in ('generated_at', 'cache_generated_at', 'cached_at'):
             enriched.setdefault(field, iso_timestamp)
-        if generated_new_payload and force_refresh:
-            enriched['refreshed_at'] = iso_timestamp
+    if refresh_requested_at:
+        enriched['refreshed_at'] = refresh_requested_at.astimezone(datetime_timezone.utc).isoformat()
+    enriched['build_status'] = build_status
     return Response(enriched, status=status.HTTP_200_OK)
 
 

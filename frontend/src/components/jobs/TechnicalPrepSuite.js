@@ -54,6 +54,7 @@ const TechnicalPrepSuite = ({
   loading = false,
   error = '',
   onRefresh = () => {},
+  onPoll = null,
   onLogAttempt = () => {},
   loggingAttemptId = null,
 }) => {
@@ -89,19 +90,49 @@ const TechnicalPrepSuite = ({
     return null;
   }, [data]);
 
+  const buildStatus = data?.build_status || {};
+  const buildState = buildStatus.state || 'idle';
+  const buildReason = buildStatus.reason || null;
+  const buildMessage = buildStatus.message || null;
+  const buildSource = buildStatus.payload_source || 'ai';
+  const hasReadyCache = buildStatus.has_ready_cache !== false;
+  const isGenerationPending = buildState === 'pending';
+  const isGenerationRunning = buildState === 'running';
+  const isGenerationActive = isGenerationPending || isGenerationRunning;
+  const isGenerationFailed = buildState === 'failed';
+  const isFallbackPlan = buildSource === 'fallback';
   const isRefreshingPlan = Boolean(loading && hasPlan);
-  const refreshMetaText = isRefreshingPlan
-    ? 'Fetching updated drills…'
-    : (lastGeneratedAt ? `Updated ${formatRelativeTime(lastGeneratedAt)}` : 'Runs a fresh Gemini update');
+  const showRefreshButton = !isGenerationActive;
+  const refreshMetaText = (() => {
+    if (isRefreshingPlan) return 'Fetching updated drills…';
+    if (isGenerationActive) {
+      if (buildReason === 'refresh') {
+        return 'Gemini is generating fresh drills…';
+      }
+      return isGenerationPending ? 'Queued to build your prep plan…' : 'Building your prep plan…';
+    }
+    if (lastGeneratedAt) {
+      return `Updated ${formatRelativeTime(lastGeneratedAt)}`;
+    }
+    return 'Runs a fresh Gemini update';
+  })();
   const refreshTitle = lastGeneratedAt
     ? `Last generated ${lastGeneratedAt.toLocaleString()}`
     : 'Generate a new plan from Gemini';
   const refreshButtonClass = `refresh-plan-button${isRefreshingPlan ? ' refresh-plan-button--loading' : ''}`;
   const handleRefreshClick = () => {
-    if (isRefreshingPlan) return;
+    if (isRefreshingPlan || isGenerationActive) return;
     onRefresh();
   };
   const planSignatureRef = useRef(null);
+
+  useEffect(() => {
+    if (!isGenerationActive || !onPoll) return undefined;
+    const interval = setInterval(() => {
+      onPoll();
+    }, 12000);
+    return () => clearInterval(interval);
+  }, [isGenerationActive, onPoll, buildReason]);
 
   useEffect(() => {
     if (!hasPlan || !data) {
@@ -529,7 +560,41 @@ const TechnicalPrepSuite = ({
     });
   })();
 
-  const showRefreshBanner = Boolean(planRefreshedAt || (inlineError && !planRefreshedAt));
+  const showRefreshBanner = Boolean(planRefreshedAt || (inlineError && !planRefreshedAt) || isGenerationFailed || isFallbackPlan);
+  const buildStatusChip = (() => {
+    if (isGenerationActive) {
+      return {
+        icon: 'clock',
+        className: 'status-chip status-chip--pending',
+        label: buildMessage
+          || (isGenerationPending
+            ? 'Gemini is queuing your plan'
+            : 'Gemini is building your plan'),
+      };
+    }
+    if (isGenerationFailed) {
+      return {
+        icon: 'alert-triangle',
+        className: 'status-chip status-chip--error',
+        label: buildMessage || 'Generation failed — showing cached plan',
+      };
+    }
+    if (isFallbackPlan) {
+      return {
+        icon: 'sparkles',
+        className: 'status-chip status-chip--fallback',
+        label: 'Using backup drills while Gemini catches up',
+      };
+    }
+    if (!hasReadyCache) {
+      return {
+        icon: 'refresh',
+        className: 'status-chip status-chip--inactive',
+        label: 'No cache yet — refresh to build plan',
+      };
+    }
+    return null;
+  })();
 
   return (
     <div className={`technical-prep-suite ${isTechnical ? 'technical-prep-suite--technical' : 'technical-prep-suite--business'}`}>
@@ -554,29 +619,49 @@ const TechnicalPrepSuite = ({
               <span>Last refresh attempt failed. Showing cached plan until you try again.</span>
             </div>
           )}
+          {!planRefreshedAt && !inlineError && isGenerationFailed && (
+            <div className="refresh-plan-banner refresh-plan-banner--error" style={{ width: '100%', justifyContent: 'center' }}>
+              <Icon name="alert-octagon" size="sm" />
+              <span>{buildMessage || 'Gemini could not refresh this plan. Using previous drills.'}</span>
+            </div>
+          )}
+          {!planRefreshedAt && !inlineError && !isGenerationFailed && isFallbackPlan && (
+            <div className="refresh-plan-banner refresh-plan-banner--fallback" style={{ width: '100%', justifyContent: 'center' }}>
+              <Icon name="sparkles" size="sm" />
+              <span>Backup drills are active while we wait for Gemini.</span>
+            </div>
+          )}
         </div>
         <div className="form-header">
           <h3>
             <Icon name={isTechnical ? 'code' : 'briefcase'} size="md" /> {isTechnical ? 'Technical Interview Prep' : 'Interview Prep Overview'}
           </h3>
           <div className="refresh-plan-controls">
-            <button
-              type="button"
-              className={refreshButtonClass}
-              onClick={handleRefreshClick}
-              disabled={isRefreshingPlan}
-              aria-label="Refresh Plan"
-              aria-busy={isRefreshingPlan}
-              title={refreshTitle}
-            >
-              <span className="refresh-plan-button__icon" aria-hidden="true">
-                <Icon name="refresh" size="sm" />
+            {buildStatusChip && (
+              <span className={buildStatusChip.className}>
+                <Icon name={buildStatusChip.icon} size="sm" />
+                {buildStatusChip.label}
               </span>
-              <span className="refresh-plan-button__copy">
-                <span className="refresh-plan-button__primary">{isRefreshingPlan ? 'Refreshing…' : 'Refresh Plan'}</span>
-                <span className="refresh-plan-button__meta" aria-live="polite">{refreshMetaText}</span>
-              </span>
-            </button>
+            )}
+            {showRefreshButton && (
+              <button
+                type="button"
+                className={refreshButtonClass}
+                onClick={handleRefreshClick}
+                disabled={isRefreshingPlan}
+                aria-label="Refresh Plan"
+                aria-busy={isRefreshingPlan}
+                title={refreshTitle}
+              >
+                <span className="refresh-plan-button__icon" aria-hidden="true">
+                  <Icon name="refresh" size="sm" />
+                </span>
+                <span className="refresh-plan-button__copy">
+                  <span className="refresh-plan-button__primary">{isRefreshingPlan ? 'Refreshing…' : 'Refresh Plan'}</span>
+                  <span className="refresh-plan-button__meta" aria-live="polite">{refreshMetaText}</span>
+                </span>
+              </button>
+            )}
           </div>
         </div>
         <div className="education-form">

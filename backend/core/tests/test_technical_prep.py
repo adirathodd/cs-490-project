@@ -12,9 +12,8 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-import requests
-from core.models import CandidateProfile, JobEntry, TechnicalPrepCache
-from core.technical_prep import TechnicalPrepGenerator
+from core.models import CandidateProfile, JobEntry, TechnicalPrepCache, TechnicalPrepGeneration
+from core.technical_prep import TechnicalPrepGenerator, build_technical_prep_fallback
 from django.utils import timezone
 
 User = get_user_model()
@@ -39,6 +38,13 @@ class TestTechnicalPrepEndpoint:
             status='applied',
         )
         self.client.force_authenticate(user=self.user)
+        self._enqueue_patcher = mock.patch('core.tasks.enqueue_technical_prep_generation')
+        self.mock_enqueue = self._enqueue_patcher.start()
+        self.mock_enqueue.side_effect = lambda generation_id: None
+
+    def teardown_method(self):
+        if hasattr(self, '_enqueue_patcher'):
+            self._enqueue_patcher.stop()
 
     def _mock_problem_sets(self):
         primary = [
@@ -266,30 +272,38 @@ class TestTechnicalPrepEndpoint:
         }
         return [summary, coding, advanced]
 
-    @mock.patch('core.technical_prep._select_leetcode_problems')
-    @mock.patch('core.technical_prep.TechnicalPrepGenerator._request_gemini')
-    def test_response_includes_generation_metadata(self, mock_request, mock_problem_selector, settings):
-        mock_problem_selector.return_value = self._mock_problem_sets()
-        mock_request.side_effect = self._sample_ai_responses()
+    def _seed_ready_cache(self, job=None, generated_at=None):
+        job = job or self.job
+        payload = build_technical_prep_fallback(job, self.profile)
+        generated_at = generated_at or timezone.now()
+        return TechnicalPrepCache.objects.create(
+            job=job,
+            prep_data=payload,
+            source=payload.get('source', 'fallback'),
+            generated_at=generated_at,
+            is_valid=True,
+        )
+
+    def test_response_includes_generation_metadata(self, settings):
         settings.GEMINI_API_KEY = 'fake-key'
 
         url = reverse('core:job-technical-prep', kwargs={'job_id': self.job.id})
         first_ts = timezone.make_aware(datetime(2024, 1, 1, 12, 0, 0))
         refresh_ts = timezone.make_aware(datetime(2024, 1, 1, 12, 30, 0))
         cached_read_ts = timezone.make_aware(datetime(2024, 1, 1, 13, 0, 0))
+        cache = self._seed_ready_cache(generated_at=first_ts)
 
         def iso_utc(dt):
             return dt.astimezone(datetime_timezone.utc).isoformat()
 
-        with mock.patch('django.utils.timezone.now', return_value=first_ts):
-            first_response = self.client.get(url)
+        first_response = self.client.get(url)
         assert first_response.status_code == status.HTTP_200_OK
         first_data = first_response.json()
         first_iso = iso_utc(first_ts)
         assert first_data['generated_at'] == first_iso
         assert first_data['cache_generated_at'] == first_iso
         assert first_data['cached_at'] == first_iso
-        assert 'refreshed_at' not in first_data
+        assert first_data['build_status']['state'] == 'idle'
 
         with mock.patch('django.utils.timezone.now', return_value=cached_read_ts):
             cached_response = self.client.get(url)
@@ -298,23 +312,19 @@ class TestTechnicalPrepEndpoint:
         assert cached_data['generated_at'] == first_iso
         assert 'refreshed_at' not in cached_data
 
-        mock_request.side_effect = self._sample_ai_responses()
         with mock.patch('django.utils.timezone.now', return_value=refresh_ts):
             refreshed_response = self.client.get(f"{url}?refresh=true")
         assert refreshed_response.status_code == status.HTTP_200_OK
         refreshed_data = refreshed_response.json()
         refresh_iso = iso_utc(refresh_ts)
-        assert refreshed_data['generated_at'] == refresh_iso
-        assert refreshed_data['cache_generated_at'] == refresh_iso
-        assert refreshed_data['cached_at'] == refresh_iso
+        assert refreshed_data['generated_at'] == first_iso  # cached payload returned
         assert refreshed_data['refreshed_at'] == refresh_iso
+        assert refreshed_data['build_status']['state'] == TechnicalPrepGeneration.STATUS_PENDING
+        assert TechnicalPrepGeneration.objects.filter(job=self.job).count() == 1
 
-    @mock.patch('core.technical_prep._select_leetcode_problems')
-    @mock.patch('core.technical_prep.TechnicalPrepGenerator._request_gemini')
-    def test_returns_structured_prep_sections(self, mock_request, mock_problem_selector, settings):
-        mock_problem_selector.return_value = self._mock_problem_sets()
-        mock_request.side_effect = self._sample_ai_responses()
+    def test_returns_structured_prep_sections(self, settings):
         settings.GEMINI_API_KEY = 'fake-key'
+        self._seed_ready_cache()
 
         url = reverse('core:job-technical-prep', kwargs={'job_id': self.job.id})
         response = self.client.get(url)
@@ -326,7 +336,7 @@ class TestTechnicalPrepEndpoint:
         assert 'coding_challenges' in data and len(data['coding_challenges']) > 0
         assert data['focus_areas'][0]['id']
         challenge = data['coding_challenges'][0]
-        assert challenge['title'] == 'Scale API throughput'
+        assert 'title' in challenge and challenge['title']
         assert 'timer' in challenge and 'recommended_minutes' in challenge['timer']
         assert 'practice_stats' in challenge
 
@@ -335,12 +345,9 @@ class TestTechnicalPrepEndpoint:
         assert 'whiteboarding_practice' in data
         assert 'real_world_alignment' in data and len(data['real_world_alignment']) > 0
 
-    @mock.patch('core.technical_prep._select_leetcode_problems')
-    @mock.patch('core.technical_prep.TechnicalPrepGenerator._request_gemini')
-    def test_logging_practice_updates_stats(self, mock_request, mock_problem_selector, settings):
-        mock_problem_selector.return_value = self._mock_problem_sets()
-        mock_request.side_effect = self._sample_ai_responses()
+    def test_logging_practice_updates_stats(self, settings):
         settings.GEMINI_API_KEY = 'fake-key'
+        self._seed_ready_cache()
 
         prep_url = reverse('core:job-technical-prep', kwargs={'job_id': self.job.id})
         prep_data = self.client.get(prep_url).json()
@@ -369,10 +376,7 @@ class TestTechnicalPrepEndpoint:
         assert refreshed_challenge['practice_stats']['attempts'] == 1
         assert len(refreshed_challenge['recent_attempts']) == 1
 
-    @mock.patch('core.technical_prep.TechnicalPrepGenerator._request_gemini')
-    def test_non_technical_jobs_hide_coding_sections(self, mock_request, settings):
-        responses = self._sample_ai_responses()
-        mock_request.side_effect = [responses[0], responses[2]]
+    def test_non_technical_jobs_hide_coding_sections(self, settings):
         settings.GEMINI_API_KEY = 'fake-key'
 
         consulting_job = JobEntry.objects.create(
@@ -392,11 +396,7 @@ class TestTechnicalPrepEndpoint:
         assert data['coding_challenges'] == []
         assert data['suggested_challenges'] == []
 
-    @mock.patch('core.technical_prep._select_leetcode_problems')
-    @mock.patch('core.technical_prep.TechnicalPrepGenerator._request_gemini')
-    def test_software_engineer_roles_remain_technical(self, mock_request, mock_problem_selector, settings):
-        mock_problem_selector.return_value = self._mock_problem_sets()
-        mock_request.side_effect = self._sample_ai_responses()
+    def test_software_engineer_roles_remain_technical(self, settings):
         settings.GEMINI_API_KEY = 'fake-key'
 
         engineer_job = JobEntry.objects.create(
@@ -417,11 +417,7 @@ class TestTechnicalPrepEndpoint:
         assert len(data['coding_challenges']) > 0
         assert len(data['suggested_challenges']) > 0
 
-    @mock.patch('core.technical_prep._select_leetcode_problems')
-    @mock.patch('core.technical_prep.TechnicalPrepGenerator._request_gemini')
-    def test_description_with_engineering_signals_marks_role_technical(self, mock_request, mock_problem_selector, settings):
-        mock_problem_selector.return_value = self._mock_problem_sets()
-        mock_request.side_effect = self._sample_ai_responses()
+    def test_description_with_engineering_signals_marks_role_technical(self, settings):
         settings.GEMINI_API_KEY = 'fake-key'
 
         api_pm_job = JobEntry.objects.create(
@@ -441,36 +437,6 @@ class TestTechnicalPrepEndpoint:
         assert data['role_profile'] == 'technical'
         assert data['coding_challenges']
         assert data['suggested_challenges']
-
-    @mock.patch('core.technical_prep._select_leetcode_problems')
-    @mock.patch('core.technical_prep.TechnicalPrepGenerator._request_gemini')
-    def test_empty_coding_payload_falls_back_to_curated_set(self, mock_request, mock_problem_selector, settings):
-        mock_problem_selector.return_value = self._mock_problem_sets()
-
-        responses = iter([
-            self._sample_ai_responses()[0],  # summary block
-            {"coding_challenges": [], "suggested_challenges": []},  # coding block (empty)
-            {},  # advanced block
-            {}, {}, {}, {}, {},  # fallback single-problem prompts for primaries
-            {}, {}, {}, {}, {},  # fallback single-problem prompts for suggestions
-        ])
-
-        def next_response(*args, **kwargs):
-            try:
-                return next(responses)
-            except StopIteration:
-                return {}
-
-        mock_request.side_effect = next_response
-        settings.GEMINI_API_KEY = 'fake-key'
-
-        url = reverse('core:job-technical-prep', kwargs={'job_id': self.job.id})
-        response = self.client.get(url)
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-
-        assert data['coding_challenges'], 'Fallback curated problems should populate when Gemini returns empty lists'
-        assert data['suggested_challenges'], 'Fallback curated suggestions should populate when Gemini returns empty lists'
 
     @mock.patch('core.technical_prep.TechnicalPrepGenerator._request_gemini', side_effect=AssertionError("Should not call Gemini when cache is present"))
     def test_cached_plan_reclassified_to_business(self, mock_request, settings):
@@ -507,34 +473,33 @@ class TestTechnicalPrepEndpoint:
         assert data['coding_challenges'] == []
         assert data['suggested_challenges'] == []
 
-    @mock.patch('core.technical_prep.TechnicalPrepGenerator._request_gemini')
-    def test_fallback_plan_used_when_gemini_returns_invalid_json(self, mock_request, settings):
-        mock_request.side_effect = ValueError("invalid json")
+    def test_endpoint_returns_fallback_when_cache_missing(self, settings):
         settings.GEMINI_API_KEY = 'fake-key'
-
         url = reverse('core:job-technical-prep', kwargs={'job_id': self.job.id})
         response = self.client.get(url)
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert data['coding_challenges'], "Fallback coding drills should populate"
-        assert data['system_design_scenarios'], "Fallback system design scenarios should populate"
-        assert data['real_world_alignment'], "Fallback alignment guidance should populate"
+        assert data['coding_challenges'], 'Fallback drills should populate when cache is empty'
+        assert data['build_status']['state'] == TechnicalPrepGeneration.STATUS_PENDING
+        assert TechnicalPrepGeneration.objects.filter(job=self.job).count() == 1
 
-    @mock.patch('core.technical_prep._select_leetcode_problems')
-    @mock.patch('core.technical_prep.TechnicalPrepGenerator._request_gemini')
-    def test_network_errors_trigger_fallback_plan(self, mock_request, mock_problem_selector, settings):
-        mock_problem_selector.return_value = self._mock_problem_sets()
-        mock_request.side_effect = requests.exceptions.RequestException("network down")
+    def test_refresh_request_queues_generation_without_invalidating_cache(self, settings):
         settings.GEMINI_API_KEY = 'fake-key'
-
+        self._seed_ready_cache()
         url = reverse('core:job-technical-prep', kwargs={'job_id': self.job.id})
-        response = self.client.get(url)
+        response = self.client.get(f"{url}?refresh=true")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert len(data['coding_challenges']) == 5
-        assert len(data['suggested_challenges']) == 5
-        assert data['case_studies']
-        assert data['real_world_alignment']
+        assert data['coding_challenges']
+        assert data['build_status']['state'] == TechnicalPrepGeneration.STATUS_PENDING
+        assert TechnicalPrepCache.objects.filter(job=self.job, is_valid=True).count() == 1
+
+    def test_build_technical_prep_fallback_returns_structured_payload(self, settings):
+        settings.GEMINI_API_KEY = ''
+        payload = build_technical_prep_fallback(self.job, self.profile)
+        assert payload['coding_challenges']
+        assert payload['system_design_scenarios']
+        assert payload['focus_areas']
 
     def test_request_gemini_respects_build_budget(self, settings):
         settings.GEMINI_API_KEY = 'fake-key'

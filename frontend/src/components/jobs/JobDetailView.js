@@ -321,6 +321,18 @@ const JobDetailView = () => {
     }
   }, []);
 
+  const handleRefreshTechnicalPrep = useCallback(() => {
+    if (job?.id) {
+      fetchTechnicalPrep(job.id, { refresh: true });
+    }
+  }, [job?.id, fetchTechnicalPrep]);
+
+  const handlePollTechnicalPrep = useCallback(() => {
+    if (job?.id) {
+      fetchTechnicalPrep(job.id);
+    }
+  }, [job?.id, fetchTechnicalPrep]);
+
   const fetchSkillsGap = useCallback(async (jobId, options = {}) => {
     try {
       const analysis = await jobsAPI.getJobSkillsGap(jobId, options);
@@ -1443,7 +1455,8 @@ const JobDetailView = () => {
           data={technicalPrep}
           loading={loadingTechnicalPrep}
           error={technicalPrepError}
-          onRefresh={() => (job?.id ? fetchTechnicalPrep(job.id, { refresh: true }) : null)}
+          onRefresh={handleRefreshTechnicalPrep}
+          onPoll={handlePollTechnicalPrep}
           onLogAttempt={handleLogTechnicalAttempt}
           loggingAttemptId={loggingTechnicalAttemptId}
         />

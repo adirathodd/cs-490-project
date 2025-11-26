@@ -7,6 +7,11 @@ const mockData = {
   has_data: true,
   job_title: 'Software Engineer',
   role_profile: 'technical',
+  build_status: {
+    state: 'idle',
+    payload_source: 'ai',
+    has_ready_cache: true,
+  },
   tech_stack: {
     languages: ['Python'],
     frameworks: ['React'],
@@ -177,5 +182,72 @@ describe('TechnicalPrepSuite', () => {
 
     expect(screen.getByText(/cached plan/i)).toBeInTheDocument();
     expect(screen.getByText(/coding challenges/i)).toBeInTheDocument();
+  });
+
+  test('surfaces pending build status and polls for updates', async () => {
+    jest.useFakeTimers();
+    const onPoll = jest.fn();
+    const pendingData = {
+      ...mockData,
+      build_status: {
+        state: 'pending',
+        reason: 'refresh',
+        message: 'Refreshing drills',
+        payload_source: 'fallback',
+      },
+    };
+
+    render(<TechnicalPrepSuite data={pendingData} onPoll={onPoll} />);
+
+    expect(screen.getByText(/Refreshing drills/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /refresh plan/i })).not.toBeInTheDocument();
+
+    jest.advanceTimersByTime(12000);
+    await waitFor(() => {
+      expect(onPoll).toHaveBeenCalled();
+    });
+    jest.useRealTimers();
+  });
+
+  test('continues polling while generation is running', async () => {
+    jest.useFakeTimers();
+    const onPoll = jest.fn();
+    const runningData = {
+      ...mockData,
+      build_status: {
+        state: 'running',
+        reason: 'refresh',
+        payload_source: 'ai',
+      },
+    };
+
+    render(<TechnicalPrepSuite data={runningData} onPoll={onPoll} />);
+
+    expect(screen.getByText(/gemini is building your plan/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /refresh plan/i })).not.toBeInTheDocument();
+
+    jest.advanceTimersByTime(12000);
+    await waitFor(() => {
+      expect(onPoll).toHaveBeenCalled();
+    });
+    jest.useRealTimers();
+  });
+
+  test('shows refresh button when generation is idle', () => {
+    render(<TechnicalPrepSuite data={mockData} />);
+    expect(screen.getByRole('button', { name: /refresh plan/i })).toBeInTheDocument();
+  });
+
+  test('shows fallback banner when using backup drills', () => {
+    const fallbackData = {
+      ...mockData,
+      build_status: {
+        state: 'idle',
+        payload_source: 'fallback',
+      },
+    };
+
+    render(<TechnicalPrepSuite data={fallbackData} />);
+    expect(screen.getByText(/backup drills are active/i)).toBeInTheDocument();
   });
 });
