@@ -972,6 +972,45 @@ export const salaryAPI = {
   },
 };
 
+// UC-083: Salary Negotiation planning + outcome tracking
+export const salaryNegotiationAPI = {
+  getPlan: async (jobId) => {
+    try {
+      const response = await api.get(`/jobs/${jobId}/salary-negotiation/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to load negotiation plan' };
+    }
+  },
+
+  refreshPlan: async (jobId, payload = {}) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/salary-negotiation/`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to refresh negotiation plan' };
+    }
+  },
+
+  getOutcomes: async (jobId) => {
+    try {
+      const response = await api.get(`/jobs/${jobId}/salary-negotiation/outcomes/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to load negotiation outcomes' };
+    }
+  },
+
+  createOutcome: async (jobId, payload) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/salary-negotiation/outcomes/`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to log negotiation outcome' };
+    }
+  },
+};
+
 // UC-047: AI Resume Generation API calls
 export const resumeAIAPI = {
   generateForJob: async (jobId, options = {}) => {
@@ -2256,6 +2295,7 @@ export const networkingAPI = {
 // Export for module compatibility
 try {
   if (typeof module !== 'undefined' && module.exports) {
+    module.exports.salaryNegotiationAPI = salaryNegotiationAPI;
     module.exports.resumeSharingAPI = resumeSharingAPI;
     module.exports.feedbackAPI = feedbackAPI;
     module.exports.commentAPI = commentAPI;
