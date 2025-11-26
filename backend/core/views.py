@@ -7111,7 +7111,8 @@ def salary_negotiation_prep(request, job_id):
         'progression': progression,
     }
 
-    return Response(response_payload, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+    status_code = status.HTTP_201_CREATED if request.method == 'POST' and created else status.HTTP_200_OK
+    return Response(response_payload, status=status_code)
 
 
 @api_view(['GET', 'POST'])
@@ -7119,7 +7120,7 @@ def salary_negotiation_prep(request, job_id):
 def salary_negotiation_outcomes(request, job_id):
     """UC-083: CRUD surface for negotiation attempts and results."""
     from decimal import Decimal, InvalidOperation
-    from core.models import SalaryNegotiationOutcome
+    from core.models import SalaryNegotiationOutcome, SalaryNegotiationPlan
     from core.negotiation import build_progression_snapshot
 
     try:
