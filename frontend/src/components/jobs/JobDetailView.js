@@ -7,6 +7,7 @@ import InterviewInsights from './InterviewInsights';
 import SkillGapAnalysis from './SkillGapAnalysis';
 import JobMatchAnalysis from './JobMatchAnalysis';
 import InterviewScheduler from './InterviewScheduler';
+import InterviewFollowUp from './InterviewFollowUp';
 import RoleQuestionBank from './RoleQuestionBank';
 import PreparationChecklist from './PreparationChecklist';
 import TechnicalPrepSuite from './TechnicalPrepSuite';
@@ -45,6 +46,8 @@ const JobDetailView = () => {
   const [loadingTechnicalPrep, setLoadingTechnicalPrep] = useState(false);
   const [technicalPrepError, setTechnicalPrepError] = useState('');
   const [loggingTechnicalAttemptId, setLoggingTechnicalAttemptId] = useState(null);
+  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const [selectedInterviewForFollowUp, setSelectedInterviewForFollowUp] = useState(null);
   
   const jobTypeOptions = [
     { value: 'ft', label: 'Full-time' },
@@ -1567,6 +1570,21 @@ const JobDetailView = () => {
                           </button>
                           <button
                             onClick={() => {
+                              setSelectedInterviewForFollowUp(interview);
+                              setShowFollowUpModal(true);
+                            }}
+                            className="btn-secondary"
+                            style={{ 
+                              padding: '6px 12px', 
+                              fontSize: '13px',
+                              color: '#2563eb',
+                              borderColor: '#2563eb'
+                            }}
+                          >
+                            <Icon name="mail" size="sm" /> Follow-up
+                          </button>
+                          <button
+                            onClick={() => {
                               setEditingInterviewId(interview.id);
                               setShowInterviewScheduler(true);
                             }}
@@ -1692,6 +1710,18 @@ const JobDetailView = () => {
           onClose={() => {
             setShowPreparationChecklist(false);
             setSelectedInterviewForChecklist(null);
+          }}
+        />
+      )}
+
+      {/* UC-082: Interview Follow-up Modal */}
+      {showFollowUpModal && selectedInterviewForFollowUp && (
+        <InterviewFollowUp
+          job={job}
+          interview={selectedInterviewForFollowUp}
+          onClose={() => {
+            setShowFollowUpModal(false);
+            setSelectedInterviewForFollowUp(null);
           }}
         />
       )}

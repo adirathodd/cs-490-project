@@ -1452,6 +1452,79 @@ class SalaryResearch(models.Model):
             return f"${self.salary_median:,.0f} (median)"
         return "N/A"
     
+
+class SalaryNegotiationPlan(models.Model):
+    """Structured negotiation preparation plan for a specific job offer (UC-083)."""
+
+    job = models.OneToOneField(JobEntry, on_delete=models.CASCADE, related_name='negotiation_plan')
+    salary_research = models.ForeignKey(SalaryResearch, on_delete=models.SET_NULL, null=True, blank=True, related_name='negotiation_plans')
+    offer_details = models.JSONField(default=dict, blank=True)
+    market_context = models.JSONField(default=dict, blank=True)
+    talking_points = models.JSONField(default=list, blank=True)
+    total_comp_framework = models.JSONField(default=dict, blank=True)
+    scenario_scripts = models.JSONField(default=list, blank=True)
+    timing_strategy = models.JSONField(default=dict, blank=True)
+    counter_offer_templates = models.JSONField(default=list, blank=True)
+    confidence_exercises = models.JSONField(default=list, blank=True)
+    offer_guidance = models.JSONField(default=dict, blank=True)
+    readiness_checklist = models.JSONField(default=list, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    version = models.CharField(max_length=20, default='1.0')
+    generated_by = models.CharField(max_length=60, default='planner')
+    generated_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['job']),
+            models.Index(fields=['updated_at']),
+        ]
+
+    def __str__(self):
+        return f"Negotiation Plan for {self.job.title} @ {self.job.company_name}"
+
+
+class SalaryNegotiationOutcome(models.Model):
+    """Track actual negotiation attempts and results for analytics."""
+
+    STAGE_CHOICES = [
+        ('pre-offer', 'Pre-Offer Research'),
+        ('offer', 'Offer Review'),
+        ('counter', 'Counter Submitted'),
+        ('final', 'Final Decision'),
+    ]
+
+    RESULT_STATUS = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('declined', 'Declined'),
+        ('withdrawn', 'Withdrawn'),
+    ]
+
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='negotiation_outcomes')
+    plan = models.ForeignKey(SalaryNegotiationPlan, on_delete=models.SET_NULL, null=True, blank=True, related_name='outcomes')
+    stage = models.CharField(max_length=20, choices=STAGE_CHOICES, default='offer')
+    company_offer = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    counter_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    final_result = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    total_comp_value = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    leverage_used = models.CharField(max_length=80, blank=True)
+    confidence_score = models.PositiveSmallIntegerField(null=True, blank=True, help_text='1-5 self-assessed confidence')
+    status = models.CharField(max_length=20, choices=RESULT_STATUS, default='pending')
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['job', '-created_at']),
+            models.Index(fields=['stage']),
+        ]
+
+    def __str__(self):
+        return f"Negotiation outcome ({self.stage}) for job {self.job_id}"
+
     def get_total_comp_range_display(self):
         """Return formatted total compensation range string"""
         if self.total_comp_min and self.total_comp_max:

@@ -2227,6 +2227,19 @@ const companyDropdownRef = useRef(null);
                       <Icon name="dollar" size="sm" ariaLabel="Salary Research" />
                     </button>
                   )}
+                  {/* UC-083: Salary Negotiation button */}
+                  {!showArchived && (
+                    <button 
+                      className="salary-negotiation-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/jobs/${item.id}/salary-negotiation`);
+                      }}
+                      title="Negotiation Prep"
+                    >
+                      <Icon name="layers" size="sm" ariaLabel="Salary Negotiation" />
+                    </button>
+                  )}
                   {!showArchived && (
                     <>
                       <button 

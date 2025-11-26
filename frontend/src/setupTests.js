@@ -147,6 +147,12 @@ jest.mock('./services/firebase', () => ({
 			triggerResearch: jest.fn(),
 			exportResearch: jest.fn(),
 		},
+		salaryNegotiationAPI: {
+			getPlan: jest.fn(),
+			refreshPlan: jest.fn(),
+			getOutcomes: jest.fn(),
+			createOutcome: jest.fn(),
+		},
 		documentsAPI: {
 			getDocuments: jest.fn().mockResolvedValue([]),
 			getDocument: jest.fn(),

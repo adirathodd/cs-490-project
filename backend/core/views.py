@@ -109,7 +109,7 @@ from core.models import (
     EventConnection,
     EventFollowUp,
 )
-from core import google_import, tasks, response_coach
+from core import google_import, tasks, response_coach, interview_followup
 from core.research.enrichment import fallback_domain
 from core.question_bank import build_question_bank
 from core.technical_prep import build_technical_prep, apply_leetcode_links, _derive_role_context
@@ -6833,19 +6833,25 @@ def salary_research(request, job_id):
             job_title=job.title,
             location=job.location or 'Remote',
             experience_level=experience_level,
-            company_size=company_size
+            company_size=company_size,
+            job_type=job.job_type,
+            company_name=job.company_name,
         )
         
         # Generate company comparisons
         company_comparisons = salary_aggregator.generate_company_comparisons(
             job_title=job.title,
-            location=job.location or 'Remote'
+            location=job.location or 'Remote',
+            job_type=job.job_type,
+            company_name=job.company_name,
         )
         
         # Generate historical trends
         historical_trends = salary_aggregator.generate_historical_trends(
             job_title=job.title,
-            location=job.location or 'Remote'
+            location=job.location or 'Remote',
+            job_type=job.job_type,
+            company_name=job.company_name,
         )
         
         stats = salary_data.get('aggregated_stats', {})
@@ -7011,6 +7017,200 @@ def salary_research_export(request, job_id):
             {'error': {'code': 'export_failed', 'message': f'Failed to export research: {str(e)}'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def salary_negotiation_prep(request, job_id):
+    """UC-083: Serve and refresh negotiation preparation workspace."""
+    from core.models import SalaryNegotiationPlan, SalaryNegotiationOutcome, SalaryResearch
+    from core.negotiation import SalaryNegotiationPlanner, build_progression_snapshot
+
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_required', 'message': 'Candidate profile required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    force_refresh = bool(request.data.get('force_refresh')) if request.method == 'POST' else False
+    incoming_offer = request.data.get('offer_details') if request.method == 'POST' else None
+
+    try:
+        plan = job.negotiation_plan
+    except SalaryNegotiationPlan.DoesNotExist:
+        plan = None
+    latest_research = SalaryResearch.objects.filter(job=job).order_by('-created_at').first()
+    recency_cutoff = timezone.now() - timezone.timedelta(days=3)
+    offer_changed = bool(incoming_offer) and (plan.offer_details if plan else {}) != incoming_offer
+    needs_refresh = force_refresh or plan is None or offer_changed or (plan and plan.updated_at < recency_cutoff)
+
+    if needs_refresh:
+        planner = SalaryNegotiationPlanner(
+            profile=profile,
+            job=job,
+            salary_research=latest_research,
+            offer_details=incoming_offer or (plan.offer_details if plan else {}),
+            outcomes=list(job.negotiation_outcomes.all()),
+        )
+        payload = planner.build_plan()
+        defaults = {
+            'salary_research': latest_research,
+            'offer_details': incoming_offer or (plan.offer_details if plan else {}),
+            'market_context': payload['market_context'],
+            'talking_points': payload['talking_points'],
+            'total_comp_framework': payload['total_comp_framework'],
+            'scenario_scripts': payload['scenario_scripts'],
+            'timing_strategy': payload['timing_strategy'],
+            'counter_offer_templates': payload['counter_offer_templates'],
+            'confidence_exercises': payload['confidence_exercises'],
+            'offer_guidance': payload['offer_guidance'],
+            'readiness_checklist': payload['readiness_checklist'],
+            'metadata': {'generated_from': 'planner', 'generated_at': timezone.now().isoformat()},
+        }
+        plan, created = SalaryNegotiationPlan.objects.update_or_create(job=job, defaults=defaults)
+    else:
+        created = False
+
+    outcomes = list(job.negotiation_outcomes.order_by('-created_at'))
+    progression = build_progression_snapshot(outcomes)
+
+    response_payload = {
+        'job_id': job.id,
+        'plan_id': plan.id,
+        'created': created,
+        'updated_at': plan.updated_at.isoformat(),
+        'plan': {
+            'market_context': plan.market_context,
+            'talking_points': plan.talking_points,
+            'total_comp_framework': plan.total_comp_framework,
+            'scenario_scripts': plan.scenario_scripts,
+            'timing_strategy': plan.timing_strategy,
+            'counter_offer_templates': plan.counter_offer_templates,
+            'confidence_exercises': plan.confidence_exercises,
+            'offer_guidance': plan.offer_guidance,
+            'readiness_checklist': plan.readiness_checklist,
+        },
+        'offer_details': plan.offer_details,
+        'outcomes': [_serialize_outcome(outcome) for outcome in outcomes],
+        'progression': progression,
+    }
+
+    return Response(response_payload, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def salary_negotiation_outcomes(request, job_id):
+    """UC-083: CRUD surface for negotiation attempts and results."""
+    from decimal import Decimal, InvalidOperation
+    from core.models import SalaryNegotiationOutcome
+    from core.negotiation import build_progression_snapshot
+
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_required', 'message': 'Candidate profile required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    if request.method == 'GET':
+        outcomes = list(job.negotiation_outcomes.order_by('-created_at'))
+        return Response(
+            {
+                'results': [_serialize_outcome(outcome) for outcome in outcomes],
+                'stats': build_progression_snapshot(outcomes),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    payload = request.data or {}
+    stage = payload.get('stage', 'offer')
+    status_value = payload.get('status', 'pending')
+    try:
+        plan = job.negotiation_plan
+    except SalaryNegotiationPlan.DoesNotExist:
+        plan = None
+
+    def to_decimal(value):
+        if value in (None, '', 'null'):
+            return None
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, ValueError, TypeError):
+            raise ValueError('Invalid numeric payload')
+
+    try:
+        company_offer = to_decimal(payload.get('company_offer'))
+        counter_amount = to_decimal(payload.get('counter_amount'))
+        final_result = to_decimal(payload.get('final_result'))
+        total_comp = to_decimal(payload.get('total_comp_value'))
+    except ValueError:
+        return Response(
+            {'error': {'code': 'invalid_payload', 'message': 'Numeric fields must be valid numbers.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not any([company_offer, counter_amount, final_result]):
+        return Response(
+            {'error': {'code': 'missing_amount', 'message': 'Provide at least one compensation amount.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    raw_confidence = payload.get('confidence_score')
+    try:
+        confidence_score = int(raw_confidence) if raw_confidence not in (None, '', 'null') else None
+    except (ValueError, TypeError):
+        return Response(
+            {'error': {'code': 'invalid_confidence', 'message': 'confidence_score must be an integer between 1-5.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    outcome = SalaryNegotiationOutcome.objects.create(
+        job=job,
+        plan=plan,
+        stage=stage,
+        status=status_value,
+        company_offer=company_offer,
+        counter_amount=counter_amount,
+        final_result=final_result,
+        total_comp_value=total_comp,
+        leverage_used=payload.get('leverage_used', ''),
+        confidence_score=confidence_score,
+        notes=payload.get('notes', ''),
+    )
+
+    return Response({'result': _serialize_outcome(outcome)}, status=status.HTTP_201_CREATED)
+
+
+def _serialize_outcome(outcome):
+    return {
+        'id': outcome.id,
+        'stage': outcome.stage,
+        'status': outcome.status,
+        'company_offer': float(outcome.company_offer) if outcome.company_offer is not None else None,
+        'counter_amount': float(outcome.counter_amount) if outcome.counter_amount is not None else None,
+        'final_result': float(outcome.final_result) if outcome.final_result is not None else None,
+        'total_comp_value': float(outcome.total_comp_value) if outcome.total_comp_value is not None else None,
+        'leverage_used': outcome.leverage_used,
+        'confidence_score': outcome.confidence_score,
+        'notes': outcome.notes,
+        'created_at': outcome.created_at.isoformat(),
+    }
 
 
 # ============================================================================
@@ -9878,7 +10078,7 @@ def preparation_checklist_for_interview(request, pk):
         {
             'task_id': 'time_confirm',
             'category': 'Logistics',
-            'task': f"Confirm interview time: {interview.scheduled_date.strftime('%B %d at %I:%M %p')}"
+            'task': f"Confirm interview time: {interview.scheduled_at.strftime('%B %d at %I:%M %p')}"
         },
     ])
     checklist_tasks.extend(logistics)
@@ -11855,3 +12055,55 @@ def networking_analytics(request):
             context={'request': request}
         ).data,
     })
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def generate_interview_followup(request):
+    """
+    Generate personalized interview follow-up email templates.
+    
+    Payload:
+    {
+        "interview_details": {
+            "role": "Software Engineer",
+            "company": "Acme Corp",
+            "interviewer_name": "Jane Doe",
+            "interview_date": "2023-10-27",
+            "conversation_points": ["Discussed scalability", "Mentioned hiking"],
+            "candidate_name": "John Smith"
+        },
+        "followup_type": "thank_you",  # thank_you, status_inquiry, feedback_request, networking
+        "tone": "professional",        # professional, enthusiastic, appreciative, concise
+        "custom_instructions": "Optional extra instructions"
+    }
+    """
+    try:
+        data = request.data
+        interview_details = data.get('interview_details', {})
+        followup_type = data.get('followup_type', 'thank_you')
+        tone = data.get('tone', 'professional')
+        custom_instructions = data.get('custom_instructions')
+        
+        # Validate required fields
+        if not interview_details:
+            return Response(
+                {"error": "interview_details is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Generate templates
+        result = interview_followup.run_followup_generation(
+            interview_details=interview_details,
+            followup_type=followup_type,
+            tone=tone,
+            custom_instructions=custom_instructions
+        )
+        
+        return Response(result)
+        
+    except Exception as e:
+        logging.error(f"Error generating follow-up: {str(e)}")
+        return Response(
+            {"error": str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

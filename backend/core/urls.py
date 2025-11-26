@@ -183,6 +183,8 @@ urlpatterns = [
     # UC-067: Salary Research and Benchmarking endpoints
     path('jobs/<int:job_id>/salary-research/', views.salary_research, name='salary-research'),
     path('jobs/<int:job_id>/salary-research/export/', views.salary_research_export, name='salary-research-export'),
+    path('jobs/<int:job_id>/salary-negotiation/', views.salary_negotiation_prep, name='salary-negotiation-prep'),
+    path('jobs/<int:job_id>/salary-negotiation/outcomes/', views.salary_negotiation_outcomes, name='salary-negotiation-outcomes'),
     
     # UC-060: Grammar and Spell Checking endpoints
     path('cover-letter/check-grammar/', views.check_grammar, name='check-grammar'),
@@ -220,6 +222,9 @@ urlpatterns = [
     path('interviews/<int:pk>/checklist/', views.preparation_checklist_for_interview, name='preparation-checklist'),
     path('interviews/<int:pk>/checklist/toggle/', views.toggle_checklist_item, name='toggle-checklist-item'),
     
+    # UC-082: Interview Follow-Up Templates
+    path('interviews/follow-up/generate/', views.generate_interview_followup, name='generate-interview-followup'),
+
     # UC-052: Resume Version Management endpoints
     path('resume-versions/', views.resume_versions_list_create, name='resume-versions-list-create'),
     path('resume-versions/<uuid:version_id>/', views.resume_version_detail, name='resume-version-detail'),
