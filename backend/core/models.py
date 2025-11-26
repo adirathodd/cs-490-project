@@ -903,6 +903,27 @@ class QuestionBankCache(models.Model):
         return f"QuestionBankCache(job={self.job_id}, source={self.source}, generated_at={self.generated_at})"
 
 
+class TechnicalPrepCache(models.Model):
+    """Cache structured technical prep data per job (UC-078)."""
+
+    job = models.ForeignKey('JobEntry', on_delete=models.CASCADE, related_name='technical_prep_caches')
+    prep_data = models.JSONField(default=dict, blank=True)
+    source = models.CharField(max_length=32, default='template')
+    generated_at = models.DateTimeField(default=timezone.now)
+    is_valid = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-generated_at']
+        indexes = [
+            models.Index(fields=['job', 'is_valid'], name='techprep_job_valid_idx'),
+            models.Index(fields=['job', '-generated_at'], name='techprep_job_gen_idx'),
+        ]
+
+    def __str__(self):
+        return f"TechnicalPrepCache(job={self.job_id}, generated_at={self.generated_at})"
+
+
 class PreparationChecklistProgress(models.Model):
     """Track completion status for preparation checklist items per job."""
 
@@ -965,6 +986,39 @@ class InterviewChecklistProgress(models.Model):
     def __str__(self):
         status = "✓" if self.completed else "○"
         return f"{status} {self.task[:50]}..."
+
+
+class TechnicalPrepPractice(models.Model):
+    """Track timed coding challenge attempts for UC-078."""
+
+    CHALLENGE_TYPES = [
+        ('coding', 'Coding'),
+        ('system_design', 'System Design'),
+        ('case_study', 'Case Study'),
+    ]
+
+    job = models.ForeignKey('JobEntry', on_delete=models.CASCADE, related_name='technical_prep_practice')
+    challenge_id = models.CharField(max_length=64)
+    challenge_title = models.CharField(max_length=255)
+    challenge_type = models.CharField(max_length=32, choices=CHALLENGE_TYPES, default='coding')
+    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    tests_passed = models.PositiveIntegerField(null=True, blank=True)
+    tests_total = models.PositiveIntegerField(null=True, blank=True)
+    score = models.PositiveIntegerField(null=True, blank=True, help_text="Percent accuracy (0-100)")
+    confidence = models.CharField(max_length=20, blank=True)
+    notes = models.TextField(blank=True)
+    attempted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-attempted_at']
+        indexes = [
+            models.Index(fields=['job', 'challenge_id'], name='techprep_job_ch_idx'),
+            models.Index(fields=['job', '-attempted_at'], name='techprep_job_att_idx'),
+        ]
+
+    def __str__(self):
+        ts = self.attempted_at.isoformat() if self.attempted_at else ''
+        return f"TechnicalPrepPractice(job={self.job_id}, challenge={self.challenge_id}, attempted_at={ts})"
 
 
 # ======================

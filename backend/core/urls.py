@@ -196,6 +196,9 @@ urlpatterns = [
     path('jobs/<int:job_id>/question-bank/practice/', views.job_question_practice, name='job-question-practice'),
     path('jobs/<int:job_id>/question-bank/practice/<str:question_id>/', views.get_question_practice_history, name='get-question-practice-history'),
     path('jobs/<int:job_id>/question-bank/coach/', views.job_question_response_coach, name='job-question-response-coach'),
+    # UC-078: Technical interview preparation endpoints
+    path('jobs/<int:job_id>/technical-prep/', views.job_technical_prep, name='job-technical-prep'),
+    path('jobs/<int:job_id>/technical-prep/practice/', views.job_technical_prep_practice, name='job-technical-prep-practice'),
     
     # UC-066: Skills Gap Analysis endpoints
     path('jobs/<int:job_id>/skills-gap/', views.job_skills_gap, name='job-skills-gap'),

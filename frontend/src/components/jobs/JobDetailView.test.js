@@ -20,6 +20,8 @@ beforeEach(() => {
   mockNavigate.mockClear();
   // Mock scrollIntoView which is not implemented in jsdom
   Element.prototype.scrollIntoView = jest.fn();
+  jobsAPI.getJobTechnicalPrep.mockResolvedValue(null);
+  jobsAPI.logTechnicalPrepAttempt.mockResolvedValue({});
 });
 
 const mockJob = {
@@ -86,6 +88,77 @@ const mockQuestionBank = {
           practice_status: { practiced: false, practice_count: 0 },
         },
       ],
+    },
+  ],
+};
+
+const mockTechnicalPrep = {
+  has_data: true,
+  job_title: 'Software Engineer',
+  tech_stack: {
+    languages: ['Python'],
+    frameworks: ['React'],
+    tooling: ['PostgreSQL'],
+  },
+  performance_tracking: {
+    total_practice_minutes: 0,
+    last_session_at: null,
+  },
+  coding_challenges: [
+    {
+      id: 'prep-1',
+      title: 'Python services challenge',
+      description: 'Implement a resilient API.',
+      difficulty: 'mid',
+      timer: { recommended_minutes: 40 },
+      objectives: ['Translate requirements'],
+      best_practices: ['Narrate tradeoffs'],
+      practice_stats: { attempts: 0 },
+      recent_attempts: [],
+    },
+  ],
+  system_design_scenarios: [
+    {
+      id: 'sd-1',
+      title: 'Realtime analytics',
+      scenario: 'Design analytics platform',
+      requirements: ['Low latency'],
+      constraints: ['Multi region'],
+      evaluation: ['Scalability'],
+    },
+  ],
+  case_studies: [
+    {
+      id: 'case-1',
+      title: 'Go-to-market case',
+      role_focus: 'Consulting',
+      scenario: 'Launch new product',
+      tasks: ['Quantify impact'],
+    },
+  ],
+  technical_questions: [
+    {
+      id: 'tq-1',
+      prompt: 'Explain service scaling',
+      linked_skill: 'Scalability',
+      answer_framework: ['Set context', 'Explain tradeoffs'],
+    },
+  ],
+  whiteboarding_practice: {
+    techniques: ['State assumptions'],
+  },
+  solution_frameworks: [
+    {
+      name: 'ACE',
+      steps: ['Assess', 'Construct', 'Explain'],
+    },
+  ],
+  real_world_alignment: [
+    {
+      id: 'rw-1',
+      skill: 'Systems Thinking',
+      scenario: 'Support scaling features',
+      business_link: 'Improves retention',
     },
   ],
 };
@@ -168,6 +241,20 @@ describe('JobDetailView (UC-042: Job Application Materials)', () => {
         question_id: 'q1',
       }));
     });
+  });
+
+  test('renders technical prep tab', async () => {
+    jobsAPI.getJob.mockResolvedValueOnce(mockJob);
+    jobsAPI.getJobTechnicalPrep.mockResolvedValueOnce(mockTechnicalPrep);
+
+    render(<JobDetailView />, { wrapper: RouterWrapper });
+
+    await screen.findByText('Software Engineer');
+    const prepTab = screen.getByRole('button', { name: /technical prep/i });
+    await userEvent.click(prepTab);
+
+    expect(await screen.findByText(/coding challenges/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/python services challenge/i)[0]).toBeInTheDocument();
   });
 
   test('saves preparation checklist toggle', async () => {

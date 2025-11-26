@@ -657,6 +657,27 @@ export const jobsAPI = {
     }
   },
 
+  getJobTechnicalPrep: async (id, options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.refresh) params.append('refresh', 'true');
+      const path = params.toString() ? `/jobs/${id}/technical-prep/?${params.toString()}` : `/jobs/${id}/technical-prep/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch technical prep' };
+    }
+  },
+
+  logTechnicalPrepAttempt: async (id, data) => {
+    try {
+      const response = await api.post(`/jobs/${id}/technical-prep/practice/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to log technical prep attempt' };
+    }
+  },
+
   togglePreparationChecklist: async (id, data) => {
     try {
       const response = await api.post(`/jobs/${id}/preparation-checklist/`, data);

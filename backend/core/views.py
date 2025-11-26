@@ -1,7 +1,9 @@
 """
 Authentication views for Firebase-based user registration and login.
 """
-from typing import Any, Dict, List, List
+from typing import Any, Dict, List, Optional
+
+from datetime import timezone as datetime_timezone
 
 import base64
 import copy
@@ -90,6 +92,8 @@ from core.models import (
     JobQuestionPractice,
     QuestionResponseCoaching,
     QuestionBankCache,
+    TechnicalPrepCache,
+    TechnicalPrepPractice,
     PreparationChecklistProgress,
     Contact,
     Interaction,
@@ -108,6 +112,7 @@ from core.models import (
 from core import google_import, tasks, response_coach
 from core.research.enrichment import fallback_domain
 from core.question_bank import build_question_bank
+from core.technical_prep import build_technical_prep, apply_leetcode_links, _derive_role_context
 from django.shortcuts import redirect
 from core import google_import
 @api_view(["GET", "POST"])
@@ -7263,6 +7268,325 @@ def _prepare_insights_for_response(job, insights: Dict[str, Any]) -> Dict[str, A
     _ensure_checklist_ids(insights.get('preparation_checklist'))
     _attach_checklist_progress(job, insights)
     return insights
+
+
+def _serialize_technical_attempt(entry: TechnicalPrepPractice) -> Dict[str, Any]:
+    accuracy = None
+    if entry.score is not None:
+        accuracy = entry.score
+    elif entry.tests_total:
+        denom = entry.tests_total or 1
+        accuracy = round(((entry.tests_passed or 0) / denom) * 100)
+    return {
+        'id': entry.id,
+        'challenge_id': entry.challenge_id,
+        'challenge_title': entry.challenge_title,
+        'challenge_type': entry.challenge_type,
+        'attempted_at': entry.attempted_at.isoformat(),
+        'duration_seconds': entry.duration_seconds,
+        'tests_passed': entry.tests_passed,
+        'tests_total': entry.tests_total,
+        'accuracy': accuracy,
+        'confidence': entry.confidence,
+        'notes': entry.notes,
+    }
+
+
+def _empty_practice_stats(challenge_id: str, title: str, challenge_type: str = 'coding') -> Dict[str, Any]:
+    return {
+        'challenge_id': challenge_id,
+        'challenge_title': title,
+        'challenge_type': challenge_type,
+        'attempts': 0,
+        'best_time_seconds': None,
+        'best_accuracy': None,
+        'average_accuracy': None,
+        'last_attempt_at': None,
+        'total_duration_seconds': 0,
+        'history': [],
+    }
+
+
+def _build_technical_practice_summary(job: JobEntry) -> Dict[str, Dict[str, Any]]:
+    entries = TechnicalPrepPractice.objects.filter(job=job).order_by('-attempted_at')
+    summary: Dict[str, Dict[str, Any]] = {}
+    for entry in entries:
+        bucket = summary.setdefault(
+            entry.challenge_id,
+            _empty_practice_stats(entry.challenge_id, entry.challenge_title, entry.challenge_type),
+        )
+        serialized = _serialize_technical_attempt(entry)
+        bucket['attempts'] += 1
+        bucket['total_duration_seconds'] += entry.duration_seconds or 0
+        bucket['history'].append(serialized)
+        bucket['last_attempt_at'] = bucket['last_attempt_at'] or serialized['attempted_at']
+
+        accuracy = serialized['accuracy']
+        if accuracy is not None:
+            bucket.setdefault('_accuracy_values', []).append(accuracy)
+            bucket['best_accuracy'] = accuracy if bucket['best_accuracy'] is None else max(bucket['best_accuracy'], accuracy)
+
+        if entry.duration_seconds is not None:
+            best_time = bucket['best_time_seconds']
+            bucket['best_time_seconds'] = (
+                entry.duration_seconds if best_time is None else min(best_time, entry.duration_seconds)
+            )
+
+    for bucket in summary.values():
+        values = bucket.pop('_accuracy_values', [])
+        if values:
+            bucket['average_accuracy'] = round(sum(values) / len(values), 1)
+
+    return summary
+
+
+def _build_overall_technical_performance(stats_map: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    if not stats_map:
+        return {
+            'coding_challenges': [],
+            'total_practice_minutes': 0,
+            'last_session_at': None,
+        }
+    total_seconds = sum(bucket.get('total_duration_seconds', 0) for bucket in stats_map.values())
+    last_attempts = [
+        bucket.get('last_attempt_at')
+        for bucket in stats_map.values()
+        if bucket.get('last_attempt_at')
+    ]
+    leaderboard = [
+        {
+            'challenge_id': bucket['challenge_id'],
+            'challenge_title': bucket['challenge_title'],
+            'attempts': bucket['attempts'],
+            'best_time_seconds': bucket['best_time_seconds'],
+            'best_accuracy': bucket['best_accuracy'],
+            'average_accuracy': bucket.get('average_accuracy'),
+            'last_attempt_at': bucket.get('last_attempt_at'),
+        }
+        for bucket in stats_map.values()
+    ]
+    return {
+        'coding_challenges': leaderboard,
+        'total_practice_minutes': round(total_seconds / 60, 1) if total_seconds else 0,
+        'last_session_at': max(last_attempts) if last_attempts else None,
+    }
+
+
+def _attach_technical_prep_progress(job: JobEntry, prep_payload: Dict[str, Any]) -> Dict[str, Any]:
+    payload = copy.deepcopy(prep_payload)
+    context = _derive_role_context(job)
+    is_technical = context.get('is_technical', False)
+    if not is_technical:
+        payload['role_profile'] = 'business'
+        payload['coding_challenges'] = []
+        payload['suggested_challenges'] = []
+        payload['system_design_scenarios'] = []
+        payload['whiteboarding_practice'] = {}
+    stats_map = _build_technical_practice_summary(job)
+
+    def _enrich_challenges(challenges: Optional[List[Dict[str, Any]]]) -> None:
+        if not challenges:
+            return
+        for challenge in challenges:
+            challenge_id = challenge.get('id')
+            stats = stats_map.get(challenge_id)
+            if stats:
+                challenge['practice_stats'] = {
+                    key: stats.get(key)
+                    for key in [
+                        'attempts',
+                        'best_time_seconds',
+                        'best_accuracy',
+                        'average_accuracy',
+                        'last_attempt_at',
+                    ]
+                }
+                challenge['recent_attempts'] = stats.get('history', [])
+            else:
+                challenge['practice_stats'] = _empty_practice_stats(
+                    challenge_id,
+                    challenge.get('title', ''),
+                    challenge.get('challenge_type', 'coding'),
+                )
+                challenge['recent_attempts'] = []
+
+    _enrich_challenges(payload.get('coding_challenges'))
+    _enrich_challenges(payload.get('suggested_challenges'))
+
+    apply_leetcode_links(payload.get('coding_challenges', []))
+    apply_leetcode_links(payload.get('suggested_challenges', []))
+    payload['performance_tracking'] = _build_overall_technical_performance(stats_map)
+    return payload
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def job_technical_prep(request, job_id):
+    """
+    UC-078: Technical Interview Preparation suite.
+
+    Returns coding challenges, system design prompts, case studies, and
+    whiteboarding drills tailored to the job plus practice progress.
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+    cached = TechnicalPrepCache.objects.filter(job=job, is_valid=True).order_by('-generated_at').first()
+    cache_generated_at = cached.generated_at if cached else None
+    generated_new_payload = False
+    prep_payload = None if (force_refresh or not cached) else copy.deepcopy(cached.prep_data)
+
+    if prep_payload is None:
+        try:
+            new_payload = build_technical_prep(job, profile)
+            prep_payload = new_payload
+            generated_new_payload = True
+            cache_generated_at = timezone.now()
+        except TimeoutError as exc:
+            logger.warning("Gemini timeout for job %s: %s", job_id, exc)
+            if cached:
+                prep_payload = copy.deepcopy(cached.prep_data)
+                cache_generated_at = cached.generated_at
+            else:
+                return Response(
+                    {'error': {'code': 'technical_prep_timeout', 'message': 'Gemini request timed out. Please try Refresh Plan.'}},
+                    status=status.HTTP_504_GATEWAY_TIMEOUT,
+                )
+        except ValueError as exc:
+            if cached:
+                prep_payload = copy.deepcopy(cached.prep_data)
+                cache_generated_at = cached.generated_at
+            else:
+                return Response(
+                    {'error': {'code': 'gemini_configuration', 'message': str(exc)}},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+        except Exception as exc:
+            logger.error("Failed to generate technical prep for job %s: %s", job_id, exc, exc_info=True)
+            if cached:
+                prep_payload = copy.deepcopy(cached.prep_data)
+                cache_generated_at = cached.generated_at
+            else:
+                return Response(
+                    {'error': {'code': 'technical_prep_failed', 'message': 'Failed to generate technical prep. Please try again.'}},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+        else:
+            try:
+                TechnicalPrepCache.objects.filter(job=job).update(is_valid=False)
+                TechnicalPrepCache.objects.create(
+                    job=job,
+                    prep_data=new_payload,
+                    source=new_payload.get('source', 'ai'),
+                    generated_at=cache_generated_at or timezone.now(),
+                    is_valid=True,
+                )
+            except Exception as cache_error:
+                logger.warning("Failed to cache technical prep for job %s: %s", job_id, cache_error)
+
+    enriched = _attach_technical_prep_progress(job, prep_payload)
+    if cache_generated_at:
+        iso_timestamp = cache_generated_at.astimezone(datetime_timezone.utc).isoformat()
+        for field in ('generated_at', 'cache_generated_at', 'cached_at'):
+            enriched.setdefault(field, iso_timestamp)
+        if generated_new_payload and force_refresh:
+            enriched['refreshed_at'] = iso_timestamp
+    return Response(enriched, status=status.HTTP_200_OK)
+
+
+def _coerce_positive_int(value):
+    if value in (None, ''):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(parsed, 0)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def job_technical_prep_practice(request, job_id):
+    """
+    Log a technical prep practice attempt (timed coding challenge, etc.).
+    """
+    data = request.data or {}
+    challenge_id = (data.get('challenge_id') or '').strip()
+    challenge_title = (data.get('challenge_title') or '').strip()
+    if not challenge_id or not challenge_title:
+        return Response(
+            {'error': {'code': 'invalid_request', 'message': 'challenge_id and challenge_title are required'}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found or access denied.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    duration_seconds = _coerce_positive_int(data.get('duration_seconds'))
+    tests_passed = _coerce_positive_int(data.get('tests_passed'))
+    tests_total = _coerce_positive_int(data.get('tests_total'))
+    score_percent = _coerce_positive_int(data.get('score_percent'))
+    if tests_total and tests_passed and tests_passed > tests_total:
+        tests_passed = tests_total
+    if score_percent is None and tests_total:
+        denom = tests_total or 1
+        score_percent = round(((tests_passed or 0) / denom) * 100)
+    if score_percent is not None:
+        score_percent = max(0, min(100, score_percent))
+
+    challenge_type = data.get('challenge_type') or 'coding'
+    if challenge_type not in dict(TechnicalPrepPractice.CHALLENGE_TYPES):
+        challenge_type = 'coding'
+
+    attempt = TechnicalPrepPractice.objects.create(
+        job=job,
+        challenge_id=challenge_id,
+        challenge_title=challenge_title[:255],
+        challenge_type=challenge_type,
+        duration_seconds=duration_seconds,
+        tests_passed=tests_passed,
+        tests_total=tests_total,
+        score=score_percent,
+        confidence=(data.get('confidence') or '').strip(),
+        notes=(data.get('notes') or '').strip(),
+    )
+
+    stats_map = _build_technical_practice_summary(job)
+    challenge_stats = stats_map.get(challenge_id) or _empty_practice_stats(challenge_id, challenge_title, challenge_type)
+    performance_tracking = _build_overall_technical_performance(stats_map)
+
+    return Response(
+        {
+            'status': 'logged',
+            'attempt': _serialize_technical_attempt(attempt),
+            'challenge_stats': challenge_stats,
+            'performance_tracking': performance_tracking,
+        },
+        status=status.HTTP_200_OK,
+    )
+
 
 
 @api_view(['GET'])
