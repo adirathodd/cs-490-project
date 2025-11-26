@@ -27,11 +27,13 @@ class SalaryDataAggregator:
         }
     
     def aggregate_salary_data(
-        self, 
-        job_title: str, 
+        self,
+        job_title: str,
         location: str,
         experience_level: str = None,
-        company_size: str = None
+        company_size: str = None,
+        job_type: str = None,
+        company_name: str = None,
     ) -> Dict:
         """
         Aggregate salary data from multiple sources.
@@ -58,21 +60,23 @@ class SalaryDataAggregator:
         
         try:
             # Try multiple data sources
-            glassdoor_data = self._fetch_glassdoor_estimate(job_title, location)
+            glassdoor_data = self._fetch_glassdoor_estimate(job_title, location, job_type, company_name)
             if glassdoor_data:
                 results['salary_data'].append(glassdoor_data)
             
-            payscale_data = self._fetch_payscale_estimate(job_title, location)
+            payscale_data = self._fetch_payscale_estimate(job_title, location, job_type, company_name)
             if payscale_data:
                 results['salary_data'].append(payscale_data)
             
-            indeed_data = self._fetch_indeed_estimate(job_title, location)
+            indeed_data = self._fetch_indeed_estimate(job_title, location, job_type, company_name)
             if indeed_data:
                 results['salary_data'].append(indeed_data)
             
             # Generate fallback data based on industry standards if no data found
             if not results['salary_data']:
-                results['salary_data'].append(self._generate_fallback_data(job_title, location, experience_level))
+                results['salary_data'].append(
+                    self._generate_fallback_data(job_title, location, experience_level, job_type, company_name)
+                )
             
             # Aggregate statistics
             results['aggregated_stats'] = self._calculate_aggregated_stats(results['salary_data'])
@@ -90,12 +94,16 @@ class SalaryDataAggregator:
         except Exception as e:
             logger.error(f"Error aggregating salary data: {str(e)}")
             # Return fallback data on error
-            results['salary_data'].append(self._generate_fallback_data(job_title, location, experience_level))
+            results['salary_data'].append(
+                self._generate_fallback_data(job_title, location, experience_level, job_type, company_name)
+            )
             results['aggregated_stats'] = self._calculate_aggregated_stats(results['salary_data'])
         
         return results
     
-    def _fetch_glassdoor_estimate(self, job_title: str, location: str) -> Optional[Dict]:
+    def _fetch_glassdoor_estimate(
+        self, job_title: str, location: str, job_type: Optional[str], company_name: Optional[str]
+    ) -> Optional[Dict]:
         """
         Fetch salary estimates from Glassdoor.
         Note: Glassdoor requires authentication for full access.
@@ -104,36 +112,47 @@ class SalaryDataAggregator:
         try:
             # In production, this would make actual API calls to Glassdoor
             # For now, we'll generate realistic estimates based on job title patterns
-            return self._generate_source_estimate('glassdoor', job_title, location)
+            return self._generate_source_estimate('glassdoor', job_title, location, job_type, company_name)
         except Exception as e:
             logger.warning(f"Glassdoor fetch failed: {str(e)}")
             return None
     
-    def _fetch_payscale_estimate(self, job_title: str, location: str) -> Optional[Dict]:
+    def _fetch_payscale_estimate(
+        self, job_title: str, location: str, job_type: Optional[str], company_name: Optional[str]
+    ) -> Optional[Dict]:
         """
         Fetch salary estimates from PayScale.
         Note: PayScale API requires authentication.
         This provides simulated data based on industry standards.
         """
         try:
-            return self._generate_source_estimate('payscale', job_title, location)
+            return self._generate_source_estimate('payscale', job_title, location, job_type, company_name)
         except Exception as e:
             logger.warning(f"PayScale fetch failed: {str(e)}")
             return None
     
-    def _fetch_indeed_estimate(self, job_title: str, location: str) -> Optional[Dict]:
+    def _fetch_indeed_estimate(
+        self, job_title: str, location: str, job_type: Optional[str], company_name: Optional[str]
+    ) -> Optional[Dict]:
         """
         Fetch salary estimates from Indeed.
         Note: Indeed requires special API access.
         This provides simulated data based on industry standards.
         """
         try:
-            return self._generate_source_estimate('indeed', job_title, location)
+            return self._generate_source_estimate('indeed', job_title, location, job_type, company_name)
         except Exception as e:
             logger.warning(f"Indeed fetch failed: {str(e)}")
             return None
     
-    def _generate_source_estimate(self, source: str, job_title: str, location: str) -> Dict:
+    def _generate_source_estimate(
+        self,
+        source: str,
+        job_title: str,
+        location: str,
+        job_type: Optional[str] = None,
+        company_name: Optional[str] = None,
+    ) -> Dict:
         """
         Generate realistic salary estimates based on job title patterns and location.
         This simulates data from various sources while we don't have API access.
@@ -172,6 +191,9 @@ class SalaryDataAggregator:
         else:
             multiplier = 0.95
         
+        multiplier *= self._job_type_multiplier(job_type)
+        multiplier *= self._company_multiplier(company_name)
+
         adjusted_min = int(base_min * multiplier)
         adjusted_max = int(base_max * multiplier)
         median = int((adjusted_min + adjusted_max) / 2)
@@ -193,9 +215,16 @@ class SalaryDataAggregator:
             'currency': 'USD'
         }
     
-    def _generate_fallback_data(self, job_title: str, location: str, experience_level: str = None) -> Dict:
+    def _generate_fallback_data(
+        self,
+        job_title: str,
+        location: str,
+        experience_level: str = None,
+        job_type: Optional[str] = None,
+        company_name: Optional[str] = None,
+    ) -> Dict:
         """Generate fallback salary data when scraping fails."""
-        return self._generate_source_estimate('aggregated', job_title, location)
+        return self._generate_source_estimate('aggregated', job_title, location, job_type, company_name)
     
     def _calculate_aggregated_stats(self, salary_data: List[Dict]) -> Dict:
         """Calculate aggregated statistics from multiple data sources."""
@@ -297,14 +326,21 @@ class SalaryDataAggregator:
         
         return recommendations
     
-    def generate_company_comparisons(self, job_title: str, location: str, companies: List[str] = None) -> List[Dict]:
+    def generate_company_comparisons(
+        self,
+        job_title: str,
+        location: str,
+        companies: List[str] = None,
+        job_type: Optional[str] = None,
+        company_name: Optional[str] = None,
+    ) -> List[Dict]:
         """Generate salary comparisons across different companies."""
         if not companies:
             # Default tech companies for comparison
             companies = ['Google', 'Amazon', 'Microsoft', 'Meta', 'Apple', 'Startup (Series A)', 'Mid-size Company']
         
         comparisons = []
-        base_data = self._generate_source_estimate('aggregated', job_title, location)
+        base_data = self._generate_source_estimate('aggregated', job_title, location, job_type, company_name)
         
         for company in companies:
             # Apply company multipliers
@@ -328,10 +364,17 @@ class SalaryDataAggregator:
         
         return comparisons
     
-    def generate_historical_trends(self, job_title: str, location: str, years: int = 5) -> List[Dict]:
+    def generate_historical_trends(
+        self,
+        job_title: str,
+        location: str,
+        years: int = 5,
+        job_type: Optional[str] = None,
+        company_name: Optional[str] = None,
+    ) -> List[Dict]:
         """Generate historical salary trend data."""
         current_year = 2025
-        base_data = self._generate_source_estimate('aggregated', job_title, location)
+        base_data = self._generate_source_estimate('aggregated', job_title, location, job_type, company_name)
         trends = []
         
         # Simulate historical growth (avg 3-5% per year in tech)
@@ -358,6 +401,34 @@ class SalaryDataAggregator:
         })
         
         return trends
+
+    def _job_type_multiplier(self, job_type: Optional[str]) -> float:
+        if not job_type:
+            return 1.0
+        mapping = {
+            'contract': 1.1,
+            'pt': 0.8,
+            'intern': 0.6,
+            'temp': 0.85,
+            'ft': 1.0,
+        }
+        return mapping.get(job_type, 1.0)
+
+    def _company_multiplier(self, company_name: Optional[str]) -> float:
+        if not company_name:
+            return 1.0
+        normalized = company_name.lower()
+        top_tier = ['google', 'meta', 'apple', 'amazon', 'microsoft', 'netflix']
+        high_growth = ['stripe', 'airbnb', 'openai', 'databricks']
+        startup_keywords = ['labs', 'ventures', 'capital', 'startup']
+
+        if any(name in normalized for name in top_tier):
+            return 1.25
+        if any(name in normalized for name in high_growth):
+            return 1.18
+        if any(keyword in normalized for keyword in startup_keywords):
+            return 0.92
+        return 1.0
 
 
 # Singleton instance

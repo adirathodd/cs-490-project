@@ -183,6 +183,8 @@ urlpatterns = [
     # UC-067: Salary Research and Benchmarking endpoints
     path('jobs/<int:job_id>/salary-research/', views.salary_research, name='salary-research'),
     path('jobs/<int:job_id>/salary-research/export/', views.salary_research_export, name='salary-research-export'),
+    path('jobs/<int:job_id>/salary-negotiation/', views.salary_negotiation_prep, name='salary-negotiation-prep'),
+    path('jobs/<int:job_id>/salary-negotiation/outcomes/', views.salary_negotiation_outcomes, name='salary-negotiation-outcomes'),
     
     # UC-060: Grammar and Spell Checking endpoints
     path('cover-letter/check-grammar/', views.check_grammar, name='check-grammar'),
