@@ -33,8 +33,16 @@ GOOGLE_OAUTH_AUTHORIZE = 'https://accounts.google.com/o/oauth2/v2/auth'
 GOOGLE_OAUTH_TOKEN = 'https://oauth2.googleapis.com/token'
 GOOGLE_PEOPLE_CONNECTIONS = 'https://people.googleapis.com/v1/people/me/connections'
 
-SCOPES = [
+PEOPLE_SCOPES = [
     'https://www.googleapis.com/auth/contacts.readonly',
+    'openid',
+    'email',
+    'profile',
+]
+
+CALENDAR_SCOPES = [
+    'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/calendar',
     'openid',
     'email',
     'profile',
@@ -55,15 +63,16 @@ def _require_client_secret():
     return secret
 
 
-def build_google_auth_url(redirect_uri, state=None):
+def build_google_auth_url(redirect_uri, state=None, scopes=None, prompt='consent'):
     client_id = _require_client_id()
+    scope_list = scopes or PEOPLE_SCOPES
     params = {
         'client_id': client_id,
         'redirect_uri': redirect_uri,
         'response_type': 'code',
-        'scope': ' '.join(SCOPES),
+        'scope': ' '.join(scope_list),
         'access_type': 'offline',
-        'prompt': 'consent',
+        'prompt': prompt,
     }
     if state:
         params['state'] = state
@@ -82,6 +91,27 @@ def exchange_code_for_tokens(code, redirect_uri):
         'grant_type': 'authorization_code',
     }
     resp = requests.post(GOOGLE_OAUTH_TOKEN, data=payload, timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def refresh_access_token(refresh_token):
+    client_id = _require_client_id()
+    client_secret = _require_client_secret()
+    payload = {
+        'refresh_token': refresh_token,
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'grant_type': 'refresh_token',
+    }
+    resp = requests.post(GOOGLE_OAUTH_TOKEN, data=payload, timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def fetch_user_profile(access_token):
+    headers = {'Authorization': f'Bearer {access_token}'}
+    resp = requests.get('https://www.googleapis.com/oauth2/v2/userinfo', headers=headers, timeout=10)
     resp.raise_for_status()
     return resp.json()
 

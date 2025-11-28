@@ -23,7 +23,6 @@ import JobStats from './components/jobs/JobStats';
 import Analytics from './components/analytics/Analytics';
 import JobDetailView from './components/jobs/JobDetailView';
 import JobTimelineView from './components/jobs/JobTimelineView';
-import JobsCalendar from './components/jobs/JobsCalendar';
 import SalaryResearch from './components/jobs/SalaryResearch';
 import SalaryNegotiation from './components/jobs/SalaryNegotiation';
 import ContactsPage from './components/contacts/ContactsPage';
@@ -294,16 +293,6 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <SalaryNegotiation />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/jobs/deadlines"
-            element={
-              <PrivateRoute>
-                <NavBar />
-                <Breadcrumbs />
-                <JobsCalendar />
               </PrivateRoute>
             }
           />

@@ -3,7 +3,7 @@ Authentication views for Firebase-based user registration and login.
 """
 from typing import Any, Dict, List, Optional
 
-from datetime import timezone as datetime_timezone
+from datetime import timezone as datetime_timezone, timedelta
 
 import base64
 import copy
@@ -48,6 +48,7 @@ from core.serializers import (
     ResumeVersionCompareSerializer,
     ResumeVersionMergeSerializer,
     ResumeShareListSerializer,
+    CalendarIntegrationSerializer,
 )
 from core.serializers import (
     ContactSerializer,
@@ -109,8 +110,10 @@ from core.models import (
     EventGoal,
     EventConnection,
     EventFollowUp,
+    CalendarIntegration,
+    InterviewEvent,
 )
-from core import google_import, tasks, response_coach, interview_followup
+from core import google_import, tasks, response_coach, interview_followup, calendar_sync
 from core.research.enrichment import fallback_domain
 from core.question_bank import build_question_bank
 from core.technical_prep import (
@@ -120,6 +123,7 @@ from core.technical_prep import (
     _derive_role_context,
 )
 from django.shortcuts import redirect
+from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 from core import google_import
 
 logger = logging.getLogger(__name__)
@@ -1124,6 +1128,348 @@ def import_job_detail(request, job_id):
         return Response({'error': 'Import job not found.'}, status=status.HTTP_404_NOT_FOUND)
     serializer = ImportJobSerializer(job)
     return Response(serializer.data)
+
+
+def _wants_json_response(request) -> bool:
+    fmt = None
+    try:
+        fmt = request.query_params.get('format')
+    except AttributeError:
+        fmt = None
+    if (fmt or '').lower() == 'json':
+        return True
+    accept = (request.META.get('HTTP_ACCEPT') or '').lower()
+    return 'application/json' in accept
+
+
+def _sanitize_frontend_redirect(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+    if parsed.scheme not in {'http', 'https'}:
+        return None
+    if not parsed.netloc:
+        return None
+    return urlunparse(parsed._replace(fragment=''))
+
+
+def _merge_query_params(base_url: str, params: Dict[str, str]) -> str:
+    if not params:
+        return base_url
+    parsed = urlparse(base_url)
+    existing = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    existing.update(params)
+    new_query = urlencode(existing)
+    return urlunparse(parsed._replace(query=new_query))
+
+
+def _calendar_oauth_response(
+    request,
+    success: bool,
+    message: Optional[str] = None,
+    *,
+    status_code=None,
+    payload: Optional[Dict[str, Any]] = None,
+    redirect_override: Optional[str] = None,
+    calendar_state: Optional[str] = None,
+):
+    frontend_base = redirect_override or f"{getattr(settings, 'FRONTEND_URL', 'http://localhost:3000').rstrip('/')}/settings/integrations"
+    params = {'calendar': calendar_state or ('connected' if success else 'error')}
+    if message and not success:
+        params['error'] = message[:120]
+    redirect_url = _merge_query_params(frontend_base, params)
+
+    if _wants_json_response(request):
+        body = {'success': success, 'message': message, 'redirect_url': redirect_url}
+        if payload:
+            body.update(payload)
+        final_status = status_code or (status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST)
+        return Response(body, status=final_status)
+
+    # Default to redirect flow for browser-based OAuth callbacks
+    return redirect(redirect_url)
+
+
+def _finalize_calendar_redirect(integration: CalendarIntegration, response):
+    if integration and integration.frontend_redirect_url:
+        integration.frontend_redirect_url = ''
+        integration.save(update_fields=['frontend_redirect_url', 'updated_at'])
+    return response
+
+
+def _to_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+    return bool(value)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def calendar_integrations(request):
+    """Return calendar integration records for the authenticated candidate."""
+    candidate = getattr(request.user, 'profile', None)
+    if candidate is None:
+        return Response({'error': 'Candidate profile not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    provider = (request.query_params.get('provider') or '').strip().lower()
+    valid_providers = {choice for choice, _ in InterviewEvent.PROVIDER_CHOICES}
+    if provider and provider not in valid_providers:
+        return Response({'error': 'Unsupported provider.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    qs = CalendarIntegration.objects.filter(candidate=candidate)
+    if provider:
+        qs = qs.filter(provider=provider)
+
+    integrations = qs.order_by('provider', '-created_at')
+    serializer = CalendarIntegrationSerializer(integrations, many=True, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def calendar_integration_update(request, provider):
+    """Update limited settings (like sync_enabled) for a provider."""
+    candidate = getattr(request.user, 'profile', None)
+    if candidate is None:
+        return Response({'error': 'Candidate profile not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    provider = (provider or '').lower()
+    valid_providers = {choice for choice, _ in InterviewEvent.PROVIDER_CHOICES}
+    if provider not in valid_providers:
+        return Response({'error': 'Unsupported provider.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    integration_id = request.data.get('integration_id') or request.query_params.get('integration_id')
+    if integration_id:
+        try:
+            integration = CalendarIntegration.objects.get(candidate=candidate, pk=integration_id)
+        except CalendarIntegration.DoesNotExist:
+            return Response({'error': 'Calendar integration not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if integration.provider != provider:
+            return Response({'error': 'Integration provider mismatch.'}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        integration = CalendarIntegration.objects.filter(candidate=candidate, provider=provider).order_by('-created_at').first()
+        if integration is None:
+            return Response({'error': 'Calendar integration not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    data = request.data or {}
+    updated_fields: List[str] = []
+    if 'sync_enabled' in data:
+        integration.sync_enabled = _to_bool(data.get('sync_enabled'))
+        updated_fields.append('sync_enabled')
+
+    if not updated_fields:
+        return Response({'error': 'No updatable fields supplied.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    integration.save(update_fields=updated_fields + ['updated_at'])
+    serializer = CalendarIntegrationSerializer(integration, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def calendar_google_connect_start(request):
+    """Return Google OAuth URL for starting calendar sync."""
+    candidate = getattr(request.user, 'profile', None)
+    if candidate is None:
+        return Response({'error': 'Candidate profile not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    integration = CalendarIntegration.objects.create(candidate=candidate, provider='google')
+
+    requested_redirect = request.data.get('return_url') or request.query_params.get('return_url') or request.META.get('HTTP_REFERER')
+    sanitized_redirect = _sanitize_frontend_redirect(requested_redirect)
+    if sanitized_redirect:
+        integration.frontend_redirect_url = sanitized_redirect
+        integration.save(update_fields=['frontend_redirect_url', 'updated_at'])
+
+    state = integration.generate_state_token()
+    redirect_uri = request.build_absolute_uri('/api/calendar/google/callback')
+    try:
+        auth_url = google_import.build_google_auth_url(
+            redirect_uri,
+            state=state,
+            scopes=google_import.CALENDAR_SCOPES,
+            prompt='consent'
+        )
+    except google_import.GoogleOAuthConfigError as exc:
+        integration.mark_error(str(exc))
+        return Response({'error': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    serializer = CalendarIntegrationSerializer(integration, context={'request': request})
+    return Response({'auth_url': auth_url, 'state': state, 'integration': serializer.data})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def calendar_google_disconnect(request):
+    """Disconnect Google Calendar and clear stored tokens."""
+    candidate = getattr(request.user, 'profile', None)
+    if candidate is None:
+        return Response({'error': 'Candidate profile not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    integration_id = request.data.get('integration_id')
+    qs = CalendarIntegration.objects.filter(candidate=candidate, provider='google')
+    if integration_id:
+        integration = qs.filter(pk=integration_id).first()
+    else:
+        integration = qs.exclude(status='disconnected').order_by('-updated_at').first()
+    if integration is None:
+        return Response({'error': 'Google calendar account not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    integration.disconnect(reason=request.data.get('reason'))
+    serializer = CalendarIntegrationSerializer(integration, context={'request': request})
+    return Response(serializer.data)
+
+
+def _sanitize_range_param(value, default, *, minimum, maximum):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(parsed, maximum))
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def calendar_google_events(request):
+    """Return recent events from the user's connected Google calendars."""
+
+    candidate = getattr(request.user, 'profile', None)
+    if candidate is None:
+        return Response({'error': 'Candidate profile not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    integration_id = request.query_params.get('integration_id')
+    days_past = _sanitize_range_param(request.query_params.get('days_past'), 14, minimum=0, maximum=180)
+    days_future = _sanitize_range_param(request.query_params.get('days_future'), 60, minimum=0, maximum=365)
+    max_events = _sanitize_range_param(request.query_params.get('limit'), 200, minimum=1, maximum=500)
+
+    integrations = CalendarIntegration.objects.filter(candidate=candidate, provider='google', status='connected')
+    if integration_id:
+        integrations = integrations.filter(pk=integration_id)
+
+    integrations = list(integrations)
+    if not integrations:
+        return Response({'events': [], 'errors': []})
+
+    time_min = timezone.now() - timedelta(days=days_past)
+    time_max = timezone.now() + timedelta(days=days_future)
+
+    events = []
+    errors = []
+    for integration in integrations:
+        try:
+            events.extend(
+                calendar_sync.list_google_events(
+                    integration,
+                    time_min=time_min,
+                    time_max=time_max,
+                    max_results=max_events,
+                )
+            )
+        except calendar_sync.CalendarSyncError as exc:
+            errors.append({'integration_id': integration.id, 'message': str(exc)})
+
+    return Response({'events': events, 'errors': errors})
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def calendar_google_callback(request):
+    """Handle OAuth callback from Google Calendar."""
+    code = request.data.get('code') or request.query_params.get('code')
+    state = request.data.get('state') or request.query_params.get('state')
+    if not state:
+        return Response({'error': 'Missing state parameter.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        integration = CalendarIntegration.objects.select_related('candidate__user').get(state_token=state, provider='google')
+    except CalendarIntegration.DoesNotExist:
+        return Response({'error': 'Invalid or expired state token.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not code:
+        return _calendar_oauth_response(request, False, 'Missing authorization code.', status_code=status.HTTP_400_BAD_REQUEST)
+
+    redirect_uri = request.build_absolute_uri('/api/calendar/google/callback')
+    try:
+        tokens = google_import.exchange_code_for_tokens(code, redirect_uri)
+        access_token = tokens.get('access_token')
+        refresh_token = tokens.get('refresh_token') or integration.refresh_token
+        if not access_token:
+            raise RuntimeError('Google did not return an access token.')
+        if not refresh_token:
+            raise RuntimeError('Google did not return a refresh token. Remove app access and try again.')
+
+        expires_in = int(tokens.get('expires_in') or 3600)
+        expires_at = timezone.now() + timedelta(seconds=expires_in)
+        scope_str = tokens.get('scope') or ' '.join(google_import.CALENDAR_SCOPES)
+        scopes = [scope for scope in scope_str.split(' ') if scope]
+
+        profile = {}
+        try:
+            profile = google_import.fetch_user_profile(access_token)
+        except Exception as exc:
+            logger.warning('Unable to fetch Google profile during calendar connect: %s', exc)
+
+        redirect_override = integration.frontend_redirect_url or None
+        account_id = str(profile.get('id') or profile.get('sub') or profile.get('email') or '')
+        duplicate = None
+        if account_id:
+            duplicate = CalendarIntegration.objects.filter(
+                candidate=integration.candidate,
+                provider='google',
+                external_account_id=account_id,
+            ).exclude(pk=integration.pk).order_by('-updated_at').first()
+
+        target_integration = duplicate or integration
+        calendar_state = 'duplicate' if duplicate else 'connected'
+
+        target_integration.mark_connected(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_at=expires_at,
+            scopes=scopes,
+            external_email=profile.get('email'),
+            external_account_id=account_id,
+        )
+        if redirect_override:
+            target_integration.frontend_redirect_url = redirect_override
+        if redirect_override:
+            target_integration.frontend_redirect_url = redirect_override
+        if duplicate:
+            integration.delete()
+
+        serializer = CalendarIntegrationSerializer(target_integration, context={'request': request})
+        payload = {'integration': serializer.data}
+        response = _calendar_oauth_response(
+            request,
+            True,
+            payload=payload,
+            redirect_override=redirect_override,
+            calendar_state=calendar_state,
+        )
+        return _finalize_calendar_redirect(target_integration, response)
+    except Exception as exc:
+        message = str(exc) or 'Failed to connect Google Calendar.'
+        integration.mark_error(message[:500])
+        payload = {'integration_id': integration.id}
+        redirect_override = integration.frontend_redirect_url or None
+        response = _calendar_oauth_response(
+            request,
+            False,
+            message,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            payload=payload,
+            redirect_override=redirect_override,
+        )
+        return _finalize_calendar_redirect(integration, response)
 
 
 @api_view(["GET", "POST"])
@@ -9477,6 +9823,9 @@ def interview_list_create(request):
             
             # Update reminder flags
             interview.update_reminder_flags()
+
+            # Ensure calendar event metadata exists
+            interview.ensure_event_metadata()
             
             # Return with tasks
             response_serializer = InterviewScheduleSerializer(interview)
@@ -9540,6 +9889,9 @@ def interview_detail(request, pk):
             
             # Update reminder flags
             interview.update_reminder_flags()
+
+            # Keep calendar event metadata synced with latest logistics
+            interview.ensure_event_metadata()
             
             response_serializer = InterviewScheduleSerializer(interview)
             return Response(response_serializer.data)
@@ -9579,6 +9931,25 @@ def interview_complete(request, pk):
         )
     
     interview.mark_completed(outcome=outcome, feedback_notes=feedback_notes)
+
+    event = interview.ensure_event_metadata()
+    if event:
+        from django.utils import timezone
+        event.outcome_recorded_at = timezone.now()
+        thank_you_flag = request.data.get('thank_you_note_sent')
+        if thank_you_flag is not None:
+            should_mark = str(thank_you_flag).lower() in ['true', '1', 'yes']
+            event.thank_you_note_sent = should_mark
+            event.thank_you_note_sent_at = timezone.now() if should_mark else None
+            if should_mark:
+                event.follow_up_status = 'sent'
+        event.save(update_fields=[
+            'outcome_recorded_at',
+            'thank_you_note_sent',
+            'thank_you_note_sent_at',
+            'follow_up_status',
+            'updated_at'
+        ])
     
     from core.serializers import InterviewScheduleSerializer
     serializer = InterviewScheduleSerializer(interview)
@@ -9676,6 +10047,65 @@ def toggle_preparation_task(request, pk):
     from core.serializers import InterviewPreparationTaskSerializer
     serializer = InterviewPreparationTaskSerializer(task)
     return Response(serializer.data)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def interview_events_list_create(request):
+    """List or create calendar-aware interview events for dashboard calendar."""
+    from core.models import InterviewEvent, InterviewSchedule
+    from core.serializers import InterviewEventSerializer
+
+    candidate = request.user.profile
+
+    # Ensure every interview has baseline metadata for consistency
+    unsynced_interviews = InterviewSchedule.objects.filter(candidate=candidate, event_metadata__isnull=True)
+    for interview in unsynced_interviews:
+        interview.ensure_event_metadata()
+
+    if request.method == 'GET':
+        events = InterviewEvent.objects.filter(
+            interview__candidate=candidate
+        ).select_related('interview', 'interview__job')
+        serializer = InterviewEventSerializer(events, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    serializer = InterviewEventSerializer(data=request.data, context={'request': request})
+    if serializer.is_valid():
+        event = serializer.save()
+        response_serializer = InterviewEventSerializer(event, context={'request': request})
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def interview_event_detail(request, pk):
+    """Retrieve or update a single interview event record."""
+    from core.models import InterviewEvent
+    from core.serializers import InterviewEventSerializer
+
+    try:
+        event = InterviewEvent.objects.select_related('interview', 'interview__candidate').get(
+            pk=pk,
+            interview__candidate=request.user.profile
+        )
+    except InterviewEvent.DoesNotExist:
+        return Response({'error': 'Interview event not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        serializer = InterviewEventSerializer(event, context={'request': request})
+        return Response(serializer.data)
+
+    if request.method == 'PATCH':
+        serializer = InterviewEventSerializer(event, data=request.data, partial=True, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    event.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 def generate_ai_role_tasks(job_title, company_name):

@@ -156,6 +156,12 @@ docker compose exec backend python manage.py collectstatic
 
 # Run tests
 docker compose exec backend python manage.py test
+
+# Remove duplicate calendar integrations (dry run)
+docker compose exec backend python manage.py remove_duplicate_calendar_integrations --dry-run
+
+# Remove duplicate calendar integrations for real
+docker compose exec backend python manage.py remove_duplicate_calendar_integrations
 ```
 
 ### Scheduled Deadline Reminder Emails

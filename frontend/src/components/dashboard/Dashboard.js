@@ -6,6 +6,7 @@ import './Dashboard.css';
 import LoadingSpinner from '../common/LoadingSpinner';
 import Icon from '../common/Icon';
 import DeadlinesWidget from '../common/DeadlinesWidget';
+import DashboardCalendar from './DashboardCalendar';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -132,6 +133,7 @@ const Dashboard = () => {
 
   // Dashboard section control — default to 'Profile'
   const [activeSection, setActiveSection] = useState('Profile');
+  const [calendarSummary, setCalendarSummary] = useState(null);
 
   const showCard = (section) => activeSection === section;
 
@@ -194,14 +196,12 @@ const Dashboard = () => {
           <p>Manage your professional profile and showcase your experience.</p>
         </div>
 
-        {/* Profile Overview (UC-033) */}
+        <div className="dashboard-layout">
+          <div className="dashboard-layout__main">
+            {/* Profile Overview (UC-033) */}
+            <DashboardCalendar onSummaryChange={setCalendarSummary} />
 
-        {/* Section toggles moved under the deadlines calendar for visual grouping */}
-        {/* Sidebar widget (left) — absolutely positioned so it doesn't shift the card grid */}
-        <div className="deadlines-sidebar">
-          <DeadlinesWidget />
-
-            {/* Section toggles: accordion list under the calendar/Deadlines widget */}
+            {/* Section toggles: accordion list under the calendar */}
             <div className="section-toggles" style={{ marginTop: 12 }}>
               {(() => {
                 const sections = [
@@ -281,9 +281,40 @@ const Dashboard = () => {
                 });
               })()}
             </div>
+          </div>
+
+          <aside className="dashboard-layout__sidebar">
+            <div className="dashboard-card dashboard-card--sidebar">
+              <DeadlinesWidget />
+            </div>
+            {calendarSummary && (
+              <div className="dashboard-card dashboard-card--sidebar calendar-summary-card" role="region" aria-label="Calendar snapshot">
+                <h4 style={{ margin: '0 0 8px 0' }}><Icon name="dashboard" size="sm" /> Pipeline snapshot</h4>
+                <div className="calendar-summary-chips">
+                  <div className="calendar-meta-chip" aria-label={`${calendarSummary.deadlinesCount} deadlines tracked`}>
+                    <span className="label">Deadlines</span>
+                    <span className="value">{calendarSummary.deadlinesCount}</span>
+                  </div>
+                  <div className="calendar-meta-chip" aria-label={`${calendarSummary.interviewsCount} interviews scheduled`}>
+                    <span className="label">Interviews</span>
+                    <span className="value">{calendarSummary.interviewsCount}</span>
+                  </div>
+                  <div className="calendar-meta-chip" aria-label={`${calendarSummary.remindersCount} active reminders`}>
+                    <span className="label">Reminders</span>
+                    <span className="value">{calendarSummary.remindersCount}</span>
+                  </div>
+                </div>
+                <div className="calendar-meta-next" aria-label="Next upcoming event">
+                  <span className="label">Next</span>
+                  <div className="value">{calendarSummary.nextLabel}</div>
+                  {calendarSummary.nextTime && <span className="time">{calendarSummary.nextTime}</span>}
+                </div>
+              </div>
+            )}
+          </aside>
         </div>
 
-        {/* The section cards are rendered inline underneath each toggle in the deadlines-sidebar */}
+
       </div>
     </div>
   );
