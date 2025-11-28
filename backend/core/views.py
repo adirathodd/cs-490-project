@@ -974,6 +974,8 @@ def contact_reminders_list_create(request, contact_id):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def contacts_import_start(request):
     """Start an import job. For Google we return an auth_url to redirect user to.
     This is a lightweight starter implementation; full OAuth flow will be added separately.
