@@ -17,6 +17,30 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+def _load_local_env_file():
+    """Populate os.environ with values from BASE_DIR/.env if present."""
+    env_path = BASE_DIR / '.env'
+    if not env_path.exists():
+        return
+    try:
+        with env_path.open() as handle:
+            for raw_line in handle:
+                line = raw_line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, value = line.split('=', 1)
+                key = key.strip()
+                if not key or key in os.environ:
+                    continue
+                value = value.strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"', '’', '‘', '“', '”'}:
+                    value = value[1:-1]
+                os.environ[key] = value
+    except OSError:
+        pass
+
+_load_local_env_file()
+
 # Read secret key and debug flag from environment with sensible defaults
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'replace-me-in-production')
 
