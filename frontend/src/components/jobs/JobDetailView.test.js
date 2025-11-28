@@ -201,7 +201,7 @@ describe('JobDetailView (UC-042: Job Application Materials)', () => {
 
     // Tab should be active (has active styling)
     await waitFor(() => {
-      expect(insightsTab).toHaveStyle('border-bottom: 3px solid #667eea');
+      expect(insightsTab).toHaveClass('active');
     });
   });
 
@@ -223,7 +223,7 @@ describe('JobDetailView (UC-042: Job Application Materials)', () => {
 
     await screen.findByText('Software Engineer');
 
-    const interviewTab = screen.getByRole('button', { name: /interview insights/i });
+    const interviewTab = screen.getByRole('button', { name: /interview prep/i });
     await userEvent.click(interviewTab);
 
     const practiceBtn = await screen.findByRole('button', { name: /log practice/i });
@@ -276,10 +276,10 @@ describe('JobDetailView (UC-042: Job Application Materials)', () => {
     render(<JobDetailView />, { wrapper: RouterWrapper });
 
     await screen.findByText('Software Engineer');
-    const interviewTab = screen.getByRole('button', { name: /interview insights/i });
+    const interviewTab = screen.getByRole('button', { name: /interview prep/i });
     await userEvent.click(interviewTab);
 
-    const checklistItem = await screen.findByLabelText(/review job description thoroughly/i);
+    const checklistItem = await screen.findByText(/review job description thoroughly/i);
     await userEvent.click(checklistItem);
 
     await waitFor(() => {
@@ -447,7 +447,7 @@ describe('JobDetailView (UC-071: Interview Scheduling)', () => {
     
     // Should automatically switch to scheduled interviews tab (check tab is active)
     await waitFor(() => {
-      expect(scheduledInterviewsTab).toHaveStyle('border-bottom: 3px solid #667eea');
+      expect(scheduledInterviewsTab).toHaveClass('active');
     });
   });
 

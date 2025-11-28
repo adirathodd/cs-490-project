@@ -159,59 +159,6 @@ describe('InterviewInsights (UC-068: Interview Insights and Preparation)', () =>
     expect(screen.getByText(/follow up with a thank-you email within 24 hours/i)).toBeInTheDocument();
   });
 
-  test('renders preparation checklist', () => {
-    const insights = {
-      has_data: true,
-      // Component expects categories each with items
-      preparation_checklist: [
-        {
-          category: 'General Prep',
-          items: [
-            { task_id: 'task-1', task: 'Review job description thoroughly', completed: false },
-            { task_id: 'task-2', task: 'Research company background and values', completed: false },
-            { task_id: 'task-3', task: 'Prepare portfolio or code samples', completed: false },
-            { task_id: 'task-4', task: 'Practice common interview questions', completed: false },
-          ],
-        },
-      ],
-    };
-
-    render(<InterviewInsights insights={insights} />);
-
-    expect(screen.getByText(/preparation checklist/i)).toBeInTheDocument();
-    expect(screen.getByText(/review job description thoroughly/i)).toBeInTheDocument();
-    expect(screen.getByText(/research company background and values/i)).toBeInTheDocument();
-    expect(screen.getByText(/prepare portfolio or code samples/i)).toBeInTheDocument();
-    expect(screen.getByText(/practice common interview questions/i)).toBeInTheDocument();
-  });
-
-  test('calls toggle handler when checklist item changes', async () => {
-    const insights = {
-      has_data: true,
-      preparation_checklist: [
-        {
-          category: 'General Prep',
-          items: [
-            { task_id: 'task-1', task: 'Review job description thoroughly', completed: false },
-          ],
-        },
-      ],
-    };
-    const onToggle = jest.fn();
-
-    render(<InterviewInsights insights={insights} onToggleChecklistItem={onToggle} />);
-
-    const checkbox = screen.getByLabelText(/review job description thoroughly/i);
-    await userEvent.click(checkbox);
-
-    expect(onToggle).toHaveBeenCalledWith(expect.objectContaining({
-      taskId: 'task-1',
-      category: 'General Prep',
-      task: 'Review job description thoroughly',
-      completed: true,
-    }));
-  });
-
   test('renders complete insights with all sections', () => {
     const insights = {
       has_data: true,
@@ -239,27 +186,18 @@ describe('InterviewInsights (UC-068: Interview Insights and Preparation)', () =>
         total_duration: '2-4 weeks',
       },
       success_tips: ['Tip 1', 'Tip 2'],
-      preparation_checklist: [
-        {
-          category: 'Checklist',
-          items: [
-            { task_id: 'task-5', task: 'Task 1', completed: false },
-          ],
-        },
-      ],
     };
 
     render(<InterviewInsights insights={insights} />);
 
     // Verify all major sections are present
-    expect(screen.getByText(/interview insights & preparation/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /interview insights/i })).toBeInTheDocument();
     expect(screen.getByText(/general industry data/i)).toBeInTheDocument();
     expect(screen.getByText(/interview process overview/i)).toBeInTheDocument();
     expect(screen.getByText(/common interview questions/i)).toBeInTheDocument();
     expect(screen.getByText(/preparation recommendations/i)).toBeInTheDocument();
     expect(screen.getByText(/timeline expectations/i)).toBeInTheDocument();
     expect(screen.getByText(/success tips/i)).toBeInTheDocument();
-    expect(screen.getByText(/preparation checklist/i)).toBeInTheDocument();
   });
 
   test('handles missing optional sections gracefully', () => {
@@ -284,7 +222,7 @@ describe('InterviewInsights (UC-068: Interview Insights and Preparation)', () =>
     render(<InterviewInsights insights={insights} />);
 
     // Should still render without errors
-    expect(screen.getByText(/interview insights & preparation/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /interview insights/i })).toBeInTheDocument();
     expect(screen.getByText(/interview process overview/i)).toBeInTheDocument();
     
     // Should not crash when other sections are missing
