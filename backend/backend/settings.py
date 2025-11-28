@@ -17,6 +17,30 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+def _load_local_env_file():
+    """Populate os.environ with values from BASE_DIR/.env if present."""
+    env_path = BASE_DIR / '.env'
+    if not env_path.exists():
+        return
+    try:
+        with env_path.open() as handle:
+            for raw_line in handle:
+                line = raw_line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, value = line.split('=', 1)
+                key = key.strip()
+                if not key or key in os.environ:
+                    continue
+                value = value.strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"', '’', '‘', '“', '”'}:
+                    value = value[1:-1]
+                os.environ[key] = value
+    except OSError:
+        pass
+
+_load_local_env_file()
+
 # Read secret key and debug flag from environment with sensible defaults
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'replace-me-in-production')
 
@@ -274,8 +298,8 @@ DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'resumerocket123@gmail
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 
 # Google OAuth for Contacts import (UC-086)
-GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
-GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', 'dummy-google-client-id')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', 'dummy-google-client-secret')
 
 # Celery (background tasks) broker URL; default to Redis in docker-compose if present
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', os.environ.get('REDIS_URL', 'redis://redis:6379/0'))

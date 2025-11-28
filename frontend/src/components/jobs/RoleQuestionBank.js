@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../common/Icon';
 import { jobsAPI } from '../../services/api';
 import './RoleQuestionBank.css';
 
 const SCORE_KEYS = ['overall', 'relevance', 'specificity', 'impact', 'clarity'];
 const MIN_TEXTAREA_HEIGHT = 120;
+const TIMED_TARGET_SECONDS = 120;
 
 const createStarState = () => ({
   situation: '',
@@ -38,7 +39,15 @@ const RoleQuestionBank = ({
   const [coachingResult, setCoachingResult] = useState(null);
   const [coachingLoading, setCoachingLoading] = useState(false);
   const [coachingError, setCoachingError] = useState('');
+  const [timer, setTimer] = useState({ running: false, elapsed: 0 });
+  const timerIntervalRef = useRef(null);
+  const [practiceMeta, setPracticeMeta] = useState({
+    checklistSuggestions: [],
+    calmExercises: [],
+    timedDurationSeconds: null,
+  });
   const textareaRefs = useRef({});
+  const textareaRefHandlers = useRef({});
 
   useEffect(() => {
     if (bank?.categories?.length) {
@@ -48,6 +57,41 @@ const RoleQuestionBank = ({
       }
     }
   }, [bank, selectedCategoryId]);
+
+  useEffect(() => {
+    setPracticeMeta({
+      checklistSuggestions: [],
+      calmExercises: [],
+      timedDurationSeconds: null,
+    });
+  }, [jobId]);
+
+  useEffect(() => {
+    if (!timer.running) {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+      return undefined;
+    }
+
+    timerIntervalRef.current = setInterval(() => {
+      setTimer((prev) => ({ ...prev, elapsed: prev.elapsed + 1 }));
+    }, 1000);
+
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    };
+  }, [timer.running]);
+
+  useEffect(() => () => {
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+    }
+  }, []);
 
   const selectedCategory = useMemo(() => {
     if (!bank?.categories) return null;
@@ -73,6 +117,47 @@ const RoleQuestionBank = ({
   const coachingData = coachingResult?.coaching;
   const coachingHistory = coachingResult?.history || [];
   const improvementSummary = coachingResult?.improvement;
+  const timerProgress = Math.min((timer.elapsed / TIMED_TARGET_SECONDS) * 100, 100);
+  const hasChecklistSuggestions = (practiceMeta.checklistSuggestions || []).length > 0;
+  const hasCalmExercises = (practiceMeta.calmExercises || []).length > 0;
+
+  const formatDurationLabel = (seconds) => {
+    if (seconds === null || seconds === undefined) return null;
+    const safeSeconds = Math.max(seconds, 0);
+    const minutes = Math.floor(safeSeconds / 60);
+    const secs = safeSeconds % 60;
+    const minutePart = minutes > 0 ? `${minutes}m` : '';
+    const secondPart = `${secs}s`;
+    return `${minutePart}${minutePart ? ' ' : ''}${secondPart}`;
+  };
+
+  const formatTimerDisplay = (seconds) => {
+    const safeSeconds = Math.max(seconds || 0, 0);
+    const minutes = Math.floor(safeSeconds / 60).toString().padStart(2, '0');
+    const secs = (safeSeconds % 60).toString().padStart(2, '0');
+    return `${minutes}:${secs}`;
+  };
+
+  const handleTimerControl = (action) => {
+    if (action === 'start') {
+      setTimer((prev) => ({ ...prev, running: true }));
+    } else if (action === 'pause') {
+      setTimer((prev) => ({ ...prev, running: false }));
+    } else if (action === 'reset') {
+      setTimer({ running: false, elapsed: 0 });
+    }
+  };
+
+  const applyPracticeMetaFromResponse = (response, fallbackDuration = null) => {
+    if (!response) return;
+    setPracticeMeta({
+      checklistSuggestions: response.virtual_checklist_suggestions || [],
+      calmExercises: response.calm_exercises || [],
+      timedDurationSeconds: response.practice_status?.last_duration_seconds
+        ?? fallbackDuration
+        ?? null,
+    });
+  };
 
   const openPracticeForm = (question) => {
     setActiveQuestionId(question.id);
@@ -89,6 +174,10 @@ const RoleQuestionBank = ({
     setCoachingResult(null);
     setCoachingError('');
     setCoachingLoading(false);
+    setTimer({
+      running: false,
+      elapsed: question.practice_status?.last_duration_seconds || 0,
+    });
     setShowPracticeModal(true);
   };
 
@@ -99,6 +188,7 @@ const RoleQuestionBank = ({
     setCoachingResult(null);
     setCoachingError('');
     setCoachingLoading(false);
+    setTimer({ running: false, elapsed: 0 });
     textareaRefs.current = {};
   };
 
@@ -166,16 +256,24 @@ const RoleQuestionBank = ({
       written_response: responseForm.written_response,
       star_response: responseForm.star_response,
       practice_notes: responseForm.practice_notes,
+      timed_duration_seconds: timer.elapsed || null,
     };
   };
 
-  const registerTextarea = (field) => (el) => {
-    if (el) {
-      textareaRefs.current[field] = el;
-      el.style.height = 'auto';
-      el.style.height = `${Math.max(el.scrollHeight, MIN_TEXTAREA_HEIGHT)}px`;
+  const getTextareaRef = useCallback((field) => {
+    if (!textareaRefHandlers.current[field]) {
+      textareaRefHandlers.current[field] = (el) => {
+        if (!el) {
+          delete textareaRefs.current[field];
+          return;
+        }
+        textareaRefs.current[field] = el;
+        el.style.height = 'auto';
+        el.style.height = `${Math.max(el.scrollHeight, MIN_TEXTAREA_HEIGHT)}px`;
+      };
     }
-  };
+    return textareaRefHandlers.current[field];
+  }, []);
 
   const handleSubmitPractice = async () => {
     if (!activeQuestion || !onLogPractice) return;
@@ -184,8 +282,12 @@ const RoleQuestionBank = ({
 
     try {
       const maybePromise = onLogPractice(payload);
+      let result = maybePromise;
       if (maybePromise && typeof maybePromise.then === 'function') {
-        await maybePromise;
+        result = await maybePromise;
+      }
+      if (result) {
+        applyPracticeMetaFromResponse(result, payload.timed_duration_seconds);
       }
       closePracticeModal();
     } catch {
@@ -205,6 +307,7 @@ const RoleQuestionBank = ({
       if (response?.practice_status) {
         onPracticeStatusUpdate(activeQuestion.id, response.practice_status);
       }
+      applyPracticeMetaFromResponse(response, payload.timed_duration_seconds);
     } catch (error) {
       setCoachingError(error?.message || 'Failed to generate coaching feedback.');
     } finally {
@@ -356,11 +459,81 @@ const RoleQuestionBank = ({
                       )}
                     </div>
                   )}
+                  {question.practice_status?.last_duration_seconds && (
+                    <div className="timed-summary">
+                      Timed response: {formatDurationLabel(question.practice_status.last_duration_seconds)}
+                      {question.practice_status.total_duration_seconds > question.practice_status.last_duration_seconds && (
+                        <span className="timed-total">
+                          {' '}• Total {formatDurationLabel(question.practice_status.total_duration_seconds)}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
+
+        {(hasChecklistSuggestions || hasCalmExercises) && (
+          <div className="practice-support-panels">
+            {hasChecklistSuggestions && (
+              <div className="practice-support-card">
+                <div className="card-header">
+                  <h4>
+                    <Icon name="monitor" size="sm" /> Virtual Interview Checklist Boosters
+                  </h4>
+                  <p>Strengthen video-interview prep tasks surfaced from your latest practice.</p>
+                </div>
+                <div className="suggestion-list">
+                  {practiceMeta.checklistSuggestions.map((suggestion) => (
+                    <div key={suggestion.task_id} className="suggestion-item">
+                      <div>
+                        <span className="suggestion-category">{suggestion.category}</span>
+                        <p className="suggestion-task">{suggestion.task}</p>
+                        <p className="suggestion-tip">{suggestion.tip}</p>
+                      </div>
+                      <span
+                        className={`suggestion-status ${suggestion.completed ? 'completed' : 'pending'}`}
+                      >
+                        {suggestion.completed ? 'Complete' : 'To-do'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="suggestion-footer">
+                  Review these items in the Interview Insights → Preparation Checklist to mark progress.
+                </p>
+              </div>
+            )}
+            {hasCalmExercises && (
+              <div className="practice-support-card calm-card">
+                <div className="card-header">
+                  <h4>
+                    <Icon name="activity" size="sm" /> Calm Confidence Exercises
+                  </h4>
+                  <p>Use these quick resets before or after a timed sprint to manage interview nerves.</p>
+                </div>
+                <div className="calm-exercise-list">
+                  {practiceMeta.calmExercises.map((exercise) => (
+                    <div key={exercise.id} className="calm-exercise-item">
+                      <div className="calm-title-row">
+                        <strong>{exercise.title}</strong>
+                        {exercise.recommended_duration_seconds && (
+                          <span className="calm-duration">
+                            {formatDurationLabel(exercise.recommended_duration_seconds)}
+                          </span>
+                        )}
+                      </div>
+                      <p>{exercise.description}</p>
+                      {exercise.tip && <p className="calm-tip">{exercise.tip}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {bank.star_framework && (
           <div className="star-panel">
@@ -401,13 +574,38 @@ const RoleQuestionBank = ({
                 </button>
               </div>
 
+              <div className="timed-practice-panel">
+                <div>
+                  <h5>Timed Writing Sprint</h5>
+                  <p>Stay within a two-minute window to mirror live interview pacing.</p>
+                </div>
+                <div className="timer-display">
+                  <div className="timer-value">{formatTimerDisplay(timer.elapsed)}</div>
+                  <div className="timer-target">Target {formatTimerDisplay(TIMED_TARGET_SECONDS)}</div>
+                  <div className="timer-progress-bar" aria-label="Timed writing progress">
+                    <div className="timer-progress-fill" style={{ width: `${timerProgress}%` }} />
+                  </div>
+                  <div className="timer-controls">
+                    <button type="button" onClick={() => handleTimerControl('start')} disabled={timer.running}>
+                      <Icon name="play" size="sm" /> Start
+                    </button>
+                    <button type="button" onClick={() => handleTimerControl('pause')} disabled={!timer.running}>
+                      <Icon name="pause" size="sm" /> Pause
+                    </button>
+                    <button type="button" onClick={() => handleTimerControl('reset')} disabled={timer.elapsed === 0 && !timer.running}>
+                      <Icon name="rotate-ccw" size="sm" /> Reset
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="practice-form">
                 <textarea
                   rows={3}
                   placeholder="Overall summary or intro..."
                   value={responseForm.written_response}
                   onChange={(e) => handleResponseChange('written_response', e.target.value)}
-                  ref={registerTextarea('written_response')}
+                  ref={getTextareaRef('written_response')}
                 />
 
                 <div className="star-grid">
@@ -419,7 +617,7 @@ const RoleQuestionBank = ({
                         rows={2}
                         value={responseForm.star_response[field]}
                         onChange={(e) => handleStarFieldChange(field, e.target.value)}
-                        ref={registerTextarea(`star_${field}`)}
+                        ref={getTextareaRef(`star_${field}`)}
                       />
                     </div>
                   ))}
@@ -430,7 +628,7 @@ const RoleQuestionBank = ({
                   placeholder="Reflection or follow-up notes..."
                   value={responseForm.practice_notes}
                   onChange={(e) => handleResponseChange('practice_notes', e.target.value)}
-                  ref={registerTextarea('practice_notes')}
+                  ref={getTextareaRef('practice_notes')}
                 />
               </div>
 
@@ -643,6 +841,31 @@ const RoleQuestionBank = ({
                     <div className="history-section">
                       <h5>Practice Notes</h5>
                       <p className="notes-text">{practiceHistory.practice_notes}</p>
+                    </div>
+                  )}
+                  {(practiceHistory.last_duration_seconds || practiceHistory.total_duration_seconds) && (
+                    <div className="history-section">
+                      <h5>Timed Sprint Metrics</h5>
+                      <div className="timed-history-grid">
+                        {practiceHistory.last_duration_seconds && (
+                          <div>
+                            <strong>Last session</strong>
+                            <p>{formatDurationLabel(practiceHistory.last_duration_seconds)}</p>
+                          </div>
+                        )}
+                        {practiceHistory.total_duration_seconds && (
+                          <div>
+                            <strong>Total logged</strong>
+                            <p>{formatDurationLabel(practiceHistory.total_duration_seconds)}</p>
+                          </div>
+                        )}
+                        {practiceHistory.average_duration_seconds && (
+                          <div>
+                            <strong>Average</strong>
+                            <p>{formatDurationLabel(practiceHistory.average_duration_seconds)}</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 

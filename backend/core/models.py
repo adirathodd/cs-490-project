@@ -845,6 +845,8 @@ class JobQuestionPractice(models.Model):
     practice_count = models.PositiveIntegerField(default=1)
     first_practiced_at = models.DateTimeField(auto_now_add=True)
     last_practiced_at = models.DateTimeField(auto_now=True)
+    last_duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    total_duration_seconds = models.PositiveIntegerField(default=0)
 
     class Meta:
         unique_together = [('job', 'question_id')]

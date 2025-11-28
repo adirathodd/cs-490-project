@@ -7756,6 +7756,11 @@ def _serialize_practice_log(log: JobQuestionPractice) -> Dict[str, Any]:
     else:
         latest_coaching = log.coaching_sessions.order_by('-created_at').first()
 
+    total_duration = log.total_duration_seconds or 0
+    avg_duration = None
+    if total_duration and log.practice_count:
+        avg_duration = round(total_duration / max(log.practice_count, 1))
+
     data = {
         'practiced': True,
         'practice_count': log.practice_count,
@@ -7764,6 +7769,9 @@ def _serialize_practice_log(log: JobQuestionPractice) -> Dict[str, Any]:
         'star_response': log.star_response,
         'practice_notes': log.practice_notes,
         'difficulty': log.difficulty,
+        'last_duration_seconds': log.last_duration_seconds,
+        'total_duration_seconds': total_duration,
+        'average_duration_seconds': avg_duration,
     }
     serialized = _serialize_coaching_entry(latest_coaching)
     if serialized:
@@ -7783,6 +7791,12 @@ def _attach_practice_status(bank_data: Dict[str, Any], practice_map: Dict[str, D
     return data_copy
 
 
+def _compute_checklist_task_id(category: str | None, task_text: str | None) -> str:
+    label = (category or 'General').strip()
+    text = (task_text or '').strip() or 'Task'
+    return hashlib.sha1(f"{label}:{text}".encode('utf-8')).hexdigest()[:16]
+
+
 def _ensure_checklist_ids(preparation_checklist: Any) -> None:
     if not isinstance(preparation_checklist, list):
         return
@@ -7798,7 +7812,7 @@ def _ensure_checklist_ids(preparation_checklist: Any) -> None:
                 task_text = f"Task {item_index + 1}"
             identifier = item.get('task_id')
             if not identifier:
-                identifier = hashlib.sha1(f"{label}:{task_text}".encode('utf-8')).hexdigest()[:16]
+                identifier = _compute_checklist_task_id(label, task_text)
                 item['task_id'] = identifier
             if 'completed' not in item:
                 item['completed'] = False
@@ -7823,6 +7837,101 @@ def _prepare_insights_for_response(job, insights: Dict[str, Any]) -> Dict[str, A
     _ensure_checklist_ids(insights.get('preparation_checklist'))
     _attach_checklist_progress(job, insights)
     return insights
+
+
+def _virtual_checklist_suggestions(job: JobEntry) -> List[Dict[str, Any]]:
+    """
+    Recommend targeted checklist tasks to strengthen upcoming virtual interviews.
+    """
+    upcoming_video = job.interviews.filter(
+        interview_type='video',
+        status__in=['scheduled', 'rescheduled'],
+        scheduled_at__gte=timezone.now(),
+    ).order_by('scheduled_at').first()
+
+    if not upcoming_video:
+        return []
+
+    tasks = [
+        {
+            'category': 'Logistics',
+            'task': "Test video call technology and internet connection",
+            'tip': 'Run a two-minute rehearsal to confirm audio, camera angle, and screen-sharing.',
+        },
+        {
+            'category': 'Attire & Presentation',
+            'task': "Ensure clean, professional background for video call",
+            'tip': 'Declutter the space behind you and remove anything that could distract the interviewer.',
+        },
+        {
+            'category': 'Attire & Presentation',
+            'task': "Test lighting - face should be well-lit and visible",
+            'tip': 'Use a desk lamp angled toward you or sit facing a window so expressions remain visible.',
+        },
+        {
+            'category': 'Confidence Building',
+            'task': "Practice answering common interview questions out loud",
+            'tip': 'Record one answer per day and compare tone + pacing against your latest AI feedback.',
+        },
+    ]
+
+    task_ids = [
+        _compute_checklist_task_id(entry['category'], entry['task'])
+        for entry in tasks
+    ]
+    progress_map = {
+        entry.task_id: entry
+        for entry in PreparationChecklistProgress.objects.filter(job=job, task_id__in=task_ids)
+    }
+
+    suggestions: List[Dict[str, Any]] = []
+    for entry, task_id in zip(tasks, task_ids):
+        progress = progress_map.get(task_id)
+        suggestions.append(
+            {
+                'task_id': task_id,
+                'category': entry['category'],
+                'task': entry['task'],
+                'tip': entry['tip'],
+                'completed': bool(progress and progress.completed),
+            }
+        )
+    return suggestions
+
+
+def _calm_exercises_payload(log: JobQuestionPractice | None) -> List[Dict[str, Any]]:
+    """
+    Provide lightweight exercises that help manage nerves through preparation.
+    """
+    duration = log.last_duration_seconds if log else None
+    exercises: List[Dict[str, Any]] = [
+        {
+            'id': 'box-breathing',
+            'title': 'Box breathing reset',
+            'description': 'Inhale for 4 seconds, hold for 4, exhale for 4, hold for 4. Repeat for four cycles.',
+            'recommended_duration_seconds': 60,
+            'tip': 'Use this pattern before you start a timed writing sprint to steady your cadence.',
+        },
+        {
+            'id': 'power_pose',
+            'title': 'Confidence posture check',
+            'description': 'Stand tall, open shoulders, and rehearse your opening line to anchor confident tone.',
+            'recommended_duration_seconds': 45,
+            'tip': 'Mirrors or quick selfie videos reveal posture slumps that can translate to monotone delivery.',
+        },
+        {
+            'id': 'nerves_inventory',
+            'title': 'Nerves-to-prep conversion',
+            'description': 'List the top 3 concerns about the interview and pair each with one action item.',
+            'recommended_duration_seconds': 90,
+            'tip': 'Turn “I might ramble” into “Rehearse transitions + tighten STAR Result to < 4 sentences.”',
+        },
+    ]
+
+    if duration and duration > 150:
+        exercises[0]['tip'] = 'Your last timed response ran long; pair box breathing with a 90-second retake.'
+
+    return exercises
 
 
 def _serialize_technical_attempt(entry: TechnicalPrepPractice) -> Dict[str, Any]:
@@ -8225,10 +8334,22 @@ def job_question_bank(request, job_id):
     return Response(bank_with_practice, status=status.HTTP_200_OK)
 
 
-def _log_practice_entry(job: JobEntry, payload: Dict[str, Any]) -> JobQuestionPractice:
+def _log_practice_entry(
+    job: JobEntry,
+    payload: Dict[str, Any],
+    *,
+    increment_existing: bool = True,
+) -> JobQuestionPractice:
     difficulty = payload.get('difficulty') or 'mid'
     if difficulty not in dict(JobQuestionPractice.DIFFICULTY_CHOICES):
         difficulty = 'mid'
+
+    duration_seconds = payload.get('timed_duration_seconds')
+    try:
+        if duration_seconds is not None:
+            duration_seconds = max(int(duration_seconds), 0)
+    except (TypeError, ValueError):
+        duration_seconds = None
 
     defaults = {
         'category': payload.get('category') or 'behavioral',
@@ -8238,6 +8359,8 @@ def _log_practice_entry(job: JobEntry, payload: Dict[str, Any]) -> JobQuestionPr
         'written_response': payload.get('written_response') or '',
         'star_response': payload.get('star_response') or {},
         'practice_notes': payload.get('practice_notes') or '',
+        'last_duration_seconds': duration_seconds,
+        'total_duration_seconds': duration_seconds or 0,
     }
 
     log, created = JobQuestionPractice.objects.get_or_create(
@@ -8254,7 +8377,12 @@ def _log_practice_entry(job: JobEntry, payload: Dict[str, Any]) -> JobQuestionPr
         log.written_response = defaults['written_response']
         log.star_response = defaults['star_response']
         log.practice_notes = defaults['practice_notes']
-        log.increment_count()
+        if increment_existing:
+            log.increment_count()
+        if duration_seconds is not None:
+            log.last_duration_seconds = duration_seconds
+            if increment_existing:
+                log.total_duration_seconds = (log.total_duration_seconds or 0) + duration_seconds
         log.save(update_fields=[
             'category',
             'question_text',
@@ -8265,8 +8393,12 @@ def _log_practice_entry(job: JobEntry, payload: Dict[str, Any]) -> JobQuestionPr
             'practice_notes',
             'practice_count',
             'last_practiced_at',
+            'last_duration_seconds',
+            'total_duration_seconds',
         ])
     else:
+        if duration_seconds is not None and log.total_duration_seconds is None:
+            log.total_duration_seconds = duration_seconds or 0
         log.save()
     return log
 
@@ -8312,13 +8444,19 @@ def job_question_practice(request, job_id):
             'written_response': data.get('written_response'),
             'star_response': data.get('star_response'),
             'practice_notes': data.get('practice_notes'),
+            'timed_duration_seconds': data.get('timed_duration_seconds'),
         },
     )
+
+    suggestions = _virtual_checklist_suggestions(job)
+    calm_exercises = _calm_exercises_payload(log)
 
     return Response(
         {
             'status': 'logged',
             'practice_status': _serialize_practice_log(log),
+            'virtual_checklist_suggestions': suggestions,
+            'calm_exercises': calm_exercises,
         },
         status=status.HTTP_200_OK,
     )
@@ -8374,7 +8512,9 @@ def job_question_response_coach(request, job_id):
             'written_response': written_response,
             'star_response': star_response,
             'practice_notes': data.get('practice_notes'),
+            'timed_duration_seconds': data.get('timed_duration_seconds'),
         },
+        increment_existing=False,
     )
 
     recent_entries = list(log.coaching_sessions.order_by('-created_at')[:3])
@@ -8450,6 +8590,9 @@ def job_question_response_coach(request, job_id):
             continue
         delta_scores[metric] = round(new_val - prev_val, 1)
 
+    suggestions = _virtual_checklist_suggestions(job)
+    calm_exercises = _calm_exercises_payload(log)
+
     response_payload = {
         'question_id': question_id,
         'practice_status': _serialize_practice_log(log),
@@ -8461,6 +8604,8 @@ def job_question_response_coach(request, job_id):
             'session_count': log.coaching_sessions.count(),
             'last_session_id': session.id,
         },
+        'virtual_checklist_suggestions': suggestions,
+        'calm_exercises': calm_exercises,
     }
 
     return Response(response_payload, status=status.HTTP_200_OK)
@@ -8501,6 +8646,12 @@ def get_question_practice_history(request, job_id, question_id):
             'practice_count': practice_log.practice_count,
             'first_practiced_at': practice_log.first_practiced_at.isoformat(),
             'last_practiced_at': practice_log.last_practiced_at.isoformat(),
+            'last_duration_seconds': practice_log.last_duration_seconds,
+            'total_duration_seconds': practice_log.total_duration_seconds,
+            'average_duration_seconds': (
+                round((practice_log.total_duration_seconds or 0) / max(practice_log.practice_count, 1))
+                if practice_log.total_duration_seconds and practice_log.practice_count else None
+            ),
         }
         if history_entries:
             response_payload['coaching_history'] = history_entries

@@ -7,23 +7,15 @@ from django.db import migrations, models
 
 def add_field_if_not_exists(apps, schema_editor, model_name, field_name, field):
     """Helper function to add a field only if it doesn't already exist"""
-    from django.db import connection
     table_name = f'core_{model_name.lower()}'
-    
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = %s AND column_name = %s
-        """, [table_name, field_name])
-        
-        if not cursor.fetchone():
-            # Field doesn't exist, so add it
-            schema_editor.add_field(
-                apps.get_model('core', model_name),
-                field_name,
-                field
-            )
+    connection = schema_editor.connection
+
+    if not column_exists(connection, table_name, field_name):
+        schema_editor.add_field(
+            apps.get_model('core', model_name),
+            field_name,
+            field.clone()
+        )
 
 
 def safe_add_last_triggered_at(apps, schema_editor):
@@ -43,13 +35,73 @@ def reverse_noop(apps, schema_editor):
     pass
 
 
-def convert_id_to_uuid_applicationautomationrule(apps, schema_editor):
-    """Convert ApplicationAutomationRule id from BigInt to UUID"""
-    from django.db import connection
-    
+def clone_model_with_uuid_pk(model_class, app_registry):
+    """Create a temporary model definition that matches the given model but swaps the PK to UUID."""
+    meta_attrs = {
+        'app_label': model_class._meta.app_label,
+        'db_table': model_class._meta.db_table,
+        'managed': True,
+        'apps': app_registry,
+    }
+    if model_class._meta.ordering:
+        meta_attrs['ordering'] = model_class._meta.ordering
+    if model_class._meta.unique_together:
+        meta_attrs['unique_together'] = model_class._meta.unique_together
+    index_together = getattr(model_class._meta, 'index_together', None)
+    if index_together:
+        meta_attrs['index_together'] = index_together
+    if model_class._meta.constraints:
+        meta_attrs['constraints'] = [constraint.clone() for constraint in model_class._meta.constraints]
+    if model_class._meta.indexes:
+        meta_attrs['indexes'] = [index.clone() for index in model_class._meta.indexes]
+
+    Meta = type('Meta', (), meta_attrs)
+    attrs = {'__module__': model_class.__module__, 'Meta': Meta}
+
+    for field in model_class._meta.local_fields:
+        if field.primary_key:
+            attrs[field.name] = models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True)
+        else:
+            attrs[field.name] = field.clone()
+
+    return type(f'Temp{model_class.__name__}', (models.Model,), attrs)
+
+
+def recreate_table_with_uuid_pk_sqlite(apps, schema_editor, model_name):
+    """SQLite helper to rebuild a table with a UUID primary key while preserving other columns."""
+    model_class = apps.get_model('core', model_name)
+    temp_model = clone_model_with_uuid_pk(model_class, apps)
+    non_pk_fields = [field for field in model_class._meta.local_fields if not field.primary_key]
+    attnames = [field.attname for field in non_pk_fields]
+    rows = list(model_class.objects.using(schema_editor.connection.alias).values_list(*attnames))
+
+    connection = schema_editor.connection
+    with connection.constraint_checks_disabled():
+        schema_editor.delete_model(model_class)
+        schema_editor.create_model(temp_model)
+
+    if not rows:
+        return
+
+    column_sql = [
+        schema_editor.quote_name('id'),
+        *[schema_editor.quote_name(field.column) for field in non_pk_fields],
+    ]
+    placeholders = ', '.join('?' for _ in column_sql)
+    insert_sql = f"INSERT INTO {schema_editor.quote_name(model_class._meta.db_table)} ({', '.join(column_sql)}) VALUES ({placeholders})"
+
     with connection.cursor() as cursor:
-        # Drop the old id column and recreate as UUID
-        # This is safe because the table is empty
+        for row in rows:
+            cursor.execute(insert_sql, [str(uuid.uuid4())] + list(row))
+
+
+def convert_id_to_uuid_applicationautomationrule(apps, schema_editor):
+    """Convert ApplicationAutomationRule id from BigInt to UUID."""
+    if schema_editor.connection.vendor == 'sqlite':
+        recreate_table_with_uuid_pk_sqlite(apps, schema_editor, 'ApplicationAutomationRule')
+        return
+
+    with schema_editor.connection.cursor() as cursor:
         cursor.execute("""
             ALTER TABLE core_applicationautomationrule 
             DROP COLUMN id CASCADE;
@@ -61,12 +113,12 @@ def convert_id_to_uuid_applicationautomationrule(apps, schema_editor):
 
 
 def convert_id_to_uuid_applicationpackage(apps, schema_editor):
-    """Convert ApplicationPackage id from BigInt to UUID"""
-    from django.db import connection
-    
-    with connection.cursor() as cursor:
-        # Drop the old id column and recreate as UUID
-        # This is safe because we're doing this before adding the FK
+    """Convert ApplicationPackage id from BigInt to UUID."""
+    if schema_editor.connection.vendor == 'sqlite':
+        recreate_table_with_uuid_pk_sqlite(apps, schema_editor, 'ApplicationPackage')
+        return
+
+    with schema_editor.connection.cursor() as cursor:
         cursor.execute("""
             ALTER TABLE core_applicationpackage 
             DROP COLUMN id CASCADE;
@@ -75,6 +127,35 @@ def convert_id_to_uuid_applicationpackage(apps, schema_editor):
             ALTER TABLE core_applicationpackage 
             ADD COLUMN id UUID PRIMARY KEY DEFAULT gen_random_uuid();
         """)
+
+
+def column_exists(connection, table_name, column_name):
+    """Return True if the given column exists on the table for the active DB backend."""
+    with connection.cursor() as cursor:
+        if connection.vendor == 'sqlite':
+            cursor.execute(f"PRAGMA table_info('{table_name}')")
+            return any(row[1] == column_name for row in cursor.fetchall())
+        cursor.execute(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = %s AND column_name = %s
+            """,
+            [table_name, column_name],
+        )
+        return cursor.fetchone() is not None
+
+
+def drop_old_automationrule_columns(apps, schema_editor):
+    """Drop legacy ApplicationAutomationRule columns if present."""
+    table_name = 'core_applicationautomationrule'
+    connection = schema_editor.connection
+    for column in ['execution_count', 'last_executed', 'priority']:
+        if column_exists(connection, table_name, column):
+            schema_editor.execute(
+                f'ALTER TABLE {schema_editor.quote_name(table_name)} '
+                f'DROP COLUMN {schema_editor.quote_name(column)}'
+            )
 
 
 class Migration(migrations.Migration):
@@ -117,6 +198,38 @@ class Migration(migrations.Migration):
                 ('times_triggered', models.IntegerField(default=0)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
             ],
+        ),
+        migrations.RemoveIndex(
+            model_name='applicationchecklist',
+            name='core_applic_candida_97a0be_idx',
+        ),
+        migrations.RemoveIndex(
+            model_name='applicationchecklist',
+            name='core_applic_job_id_ff6faa_idx',
+        ),
+        migrations.RemoveIndex(
+            model_name='checklisttask',
+            name='core_checkl_checkli_86699f_idx',
+        ),
+        migrations.RemoveIndex(
+            model_name='bulkoperation',
+            name='core_bulkop_candida_3cb9b9_idx',
+        ),
+        migrations.RemoveIndex(
+            model_name='workflowautomationlog',
+            name='core_workfl_candida_e4e6c5_idx',
+        ),
+        migrations.RemoveIndex(
+            model_name='workflowautomationlog',
+            name='core_workfl_automat_84375e_idx',
+        ),
+        migrations.RemoveIndex(
+            model_name='followupreminder',
+            name='core_follow_candida_fb1693_idx',
+        ),
+        migrations.RemoveIndex(
+            model_name='scheduledsubmission',
+            name='core_schedu_candida_0e7889_idx',
         ),
         migrations.RemoveField(
             model_name='applicationchecklist',
@@ -256,18 +369,7 @@ class Migration(migrations.Migration):
             new_name='core_sharea_reviewe_08506b_idx',
             old_name='core_share_reviewe_idx',
         ),
-        migrations.RunSQL(
-            "ALTER TABLE core_applicationautomationrule DROP COLUMN IF EXISTS execution_count;",
-            reverse_sql="",
-        ),
-        migrations.RunSQL(
-            "ALTER TABLE core_applicationautomationrule DROP COLUMN IF EXISTS last_executed;",
-            reverse_sql="",
-        ),
-        migrations.RunSQL(
-            "ALTER TABLE core_applicationautomationrule DROP COLUMN IF EXISTS priority;",
-            reverse_sql="",
-        ),
+        migrations.RunPython(drop_old_automationrule_columns, reverse_noop),
         migrations.AlterUniqueTogether(
             name='applicationpackage',
             unique_together={('candidate', 'job')},
