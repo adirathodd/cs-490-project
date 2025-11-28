@@ -1260,6 +1260,64 @@ export const interviewsAPI = {
   },
 };
 
+// UC-079: Calendar integrations (Google, Outlook, etc.)
+export const calendarAPI = {
+  getIntegrations: async () => {
+    try {
+      const response = await api.get('/calendar/integrations/');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load calendar integrations' };
+    }
+  },
+
+  startGoogleConnect: async (payload = {}) => {
+    try {
+      const response = await api.post('/calendar/google/start', payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to start Google authorization' };
+    }
+  },
+
+  fetchGoogleEvents: async (params = {}) => {
+    try {
+      const usp = new URLSearchParams();
+      Object.entries(params || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') return;
+        usp.append(key, String(value));
+      });
+      const path = usp.toString() ? `/calendar/google/events?${usp.toString()}` : '/calendar/google/events';
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load Google calendar events' };
+    }
+  },
+
+  disconnectGoogle: async (integrationId, reason) => {
+    try {
+      const payload = { integration_id: integrationId };
+      if (reason) {
+        payload.reason = reason;
+      }
+      const response = await api.post('/calendar/google/disconnect', payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to disconnect Google Calendar' };
+    }
+  },
+
+  updateIntegration: async (provider, payload) => {
+    try {
+      const response = await api.patch(`/calendar/integrations/${provider}/`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update calendar integration' };
+    }
+  },
+};
+
 // UC-056: AI Cover Letter Generation API calls
 export const coverLetterAIAPI = {
   generateForJob: async (jobId, options = {}) => {
@@ -1680,6 +1738,7 @@ const _defaultExport = {
   resumeExportAPI,
   coverLetterExportAPI,
   interviewsAPI,
+  calendarAPI,
 };
 
 export default _defaultExport;
@@ -1699,6 +1758,7 @@ try {
     module.exports.resumeExportAPI = resumeExportAPI;
     module.exports.coverLetterExportAPI = coverLetterExportAPI;
     module.exports.interviewsAPI = interviewsAPI;
+    module.exports.calendarAPI = calendarAPI;
   }
 } catch (e) {
   // ignore in strict ESM environments
@@ -1736,6 +1796,7 @@ try {
     _defaultExport.resumeExportAPI = resumeExportAPI;
     _defaultExport.coverLetterExportAPI = coverLetterExportAPI;
     _defaultExport.interviewsAPI = interviewsAPI;
+    _defaultExport.calendarAPI = calendarAPI;
   }
   if (typeof module !== 'undefined' && module && module.exports) {
     module.exports = _defaultExport;
@@ -1747,6 +1808,7 @@ try {
     module.exports.resumeExportAPI = resumeExportAPI;
     module.exports.coverLetterExportAPI = coverLetterExportAPI;
     module.exports.interviewsAPI = interviewsAPI;
+    module.exports.calendarAPI = calendarAPI;
   }
 } catch (e) {
   // ignore any errors during best-effort compatibility wiring

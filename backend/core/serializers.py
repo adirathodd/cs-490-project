@@ -9,7 +9,7 @@ from django.contrib.auth.password_validation import validate_password
 from core.models import (
     CandidateProfile, Skill, CandidateSkill, Education, Certification, 
     Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory, 
-    CoverLetterTemplate, InterviewSchedule, InterviewPreparationTask,
+    CoverLetterTemplate, InterviewSchedule, InterviewPreparationTask, InterviewEvent, CalendarIntegration,
     ResumeVersion, ResumeVersionChange, ResumeShare, ShareAccessLog,
     ResumeFeedback, FeedbackComment, FeedbackNotification
 )
@@ -1622,6 +1622,85 @@ class InterviewScheduleSerializer(serializers.ModelSerializer):
                 })
         
         return data
+
+
+class CalendarIntegrationSerializer(serializers.ModelSerializer):
+    """Expose external calendar connection status without leaking secrets."""
+
+    provider_display = serializers.CharField(source='get_provider_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = CalendarIntegration
+        fields = [
+            'id', 'provider', 'provider_display', 'status', 'status_display',
+            'sync_enabled', 'external_email', 'external_account_id', 'scopes',
+            'last_synced_at', 'last_error', 'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'provider', 'provider_display', 'status', 'status_display',
+            'external_email', 'external_account_id', 'scopes',
+            'last_synced_at', 'last_error', 'created_at', 'updated_at'
+        ]
+
+
+class InterviewEventSerializer(serializers.ModelSerializer):
+    """Expose calendar metadata for interviews."""
+
+    interview = InterviewScheduleSerializer(read_only=True)
+    interview_id = serializers.PrimaryKeyRelatedField(
+        source='interview',
+        queryset=InterviewSchedule.objects.all(),
+        write_only=True,
+        required=False
+    )
+    job_id = serializers.IntegerField(source='interview.job_id', read_only=True)
+    job_title = serializers.CharField(source='interview.job.title', read_only=True)
+    job_company = serializers.CharField(source='interview.job.company_name', read_only=True)
+    scheduled_at = serializers.DateTimeField(source='interview.scheduled_at', read_only=True)
+
+    class Meta:
+        model = InterviewEvent
+        fields = [
+            'id', 'interview', 'interview_id', 'job_id', 'job_title', 'job_company', 'scheduled_at',
+            'calendar_provider', 'external_calendar_id', 'external_event_id', 'external_event_link',
+            'sync_enabled', 'sync_status', 'last_synced_at',
+            'location_override', 'video_conference_link', 'logistics_notes', 'dial_in_details',
+            'reminder_24h_sent', 'reminder_2h_sent',
+            'thank_you_note_sent', 'thank_you_note_sent_at', 'follow_up_status', 'outcome_recorded_at',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'interview', 'job_id', 'job_title', 'job_company', 'scheduled_at',
+            'external_event_link', 'last_synced_at', 'created_at', 'updated_at'
+        ]
+
+    def validate(self, attrs):
+        interview = attrs.get('interview') or getattr(self.instance, 'interview', None)
+        if not interview:
+            raise serializers.ValidationError({'interview_id': 'Interview is required.'})
+
+        request = self.context.get('request')
+        if request and hasattr(request.user, 'profile'):
+            if interview.candidate_id != request.user.profile.id:
+                raise serializers.ValidationError('You can only manage events for your own interviews.')
+
+        return attrs
+
+    def create(self, validated_data):
+        interview = validated_data.pop('interview')
+        event, _ = InterviewEvent.objects.get_or_create(interview=interview)
+        for field, value in validated_data.items():
+            setattr(event, field, value)
+        event.save()
+        return event
+
+    def update(self, instance, validated_data):
+        validated_data.pop('interview', None)
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        instance.save()
+        return instance
 
 
 # UC-071: Interview Scheduling Serializers

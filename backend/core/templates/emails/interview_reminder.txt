@@ -1,8 +1,8 @@
-Interview Reminder: {{ job_title }} @ {{ company_name }}
+{{ reminder_headline|default:"Interview Reminder" }}: {{ job_title }} @ {{ company_name }}
 
 Hi there,
 
-This is a reminder that you have an interview scheduled for tomorrow:
+{{ reminder_subtext|default:"This is a quick reminder about your upcoming interview:" }}
 
 {{ interview_type }} - {{ job_title }}
 Company: {{ company_name }}
@@ -16,7 +16,7 @@ Duration: {{ duration }} minutes
 {{ preparation_notes }}
 {% endif %}
 
-View full job details: {{ job_url }}
+{{ cta_label|default:"View job details" }}: {{ cta_url|default:job_url }}
 
 Good luck with your interview!
 

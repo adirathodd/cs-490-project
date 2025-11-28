@@ -33,7 +33,7 @@
     <div class="container">
       <div class="content">
         <div class="interview-badge">{{ interview_type }}</div>
-        <h1>Interview Tomorrow</h1>
+        <h1>{{ reminder_headline|default:"Interview Reminder" }}</h1>
         <div class="company">{{ company_name }}</div>
         <p style="color:#6b7280; margin: 4px 0;">{{ job_title }}</p>
         
@@ -74,11 +74,11 @@
         {% endif %}
         
         <div class="actions">
-          <a class="btn" href="{{ job_url }}">View Job Details</a>
+          <a class="btn" href="{{ cta_url|default:job_url }}">{{ cta_label|default:"View Job Details" }}</a>
         </div>
         
         <p class="note">
-          💪 <strong>Good luck with your interview!</strong> Remember to prepare your questions, review the job description, and test your tech setup if it's a video interview.
+          {{ reminder_subtext|default:"💪 Take a moment to review your notes, prep your questions, and test your tech setup." }}
         </p>
       </div>
       <div class="footer">

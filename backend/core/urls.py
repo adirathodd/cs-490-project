@@ -60,6 +60,14 @@ urlpatterns = [
     path('contacts/<uuid:contact_id>/job-links', views.contact_job_links, name='contact-job-links'),
     path('contacts/<uuid:contact_id>/job-links/<uuid:link_id>', views.delete_job_link, name='delete-job-link'),
 
+    # UC-079: Calendar integrations
+    path('calendar/integrations/', views.calendar_integrations, name='calendar-integrations'),
+    path('calendar/integrations/<str:provider>/', views.calendar_integration_update, name='calendar-integration-update'),
+    path('calendar/google/start', views.calendar_google_connect_start, name='calendar-google-start'),
+    path('calendar/google/callback', views.calendar_google_callback, name='calendar-google-callback'),
+    path('calendar/google/disconnect', views.calendar_google_disconnect, name='calendar-google-disconnect'),
+    path('calendar/google/events', views.calendar_google_events, name='calendar-google-events'),
+
     # UC-088: Networking Event Management
     path('networking-events', views.networking_events_list_create, name='networking-events-list-create'),
     path('networking-events/<uuid:event_id>', views.networking_event_detail, name='networking-event-detail'),
@@ -217,6 +225,8 @@ urlpatterns = [
     path('interviews/<int:pk>/dismiss-reminder/', views.dismiss_interview_reminder, name='dismiss-interview-reminder'),
     path('interviews/reminders/', views.active_interview_reminders, name='active-interview-reminders'),
     path('interviews/tasks/<int:pk>/toggle/', views.toggle_preparation_task, name='toggle-preparation-task'),
+    path('interviews/events/', views.interview_events_list_create, name='interview-events-list-create'),
+    path('interviews/events/<int:pk>/', views.interview_event_detail, name='interview-event-detail'),
     
     # UC-081: Pre-Interview Preparation Checklist endpoints
     path('interviews/<int:pk>/checklist/', views.preparation_checklist_for_interview, name='preparation-checklist'),

@@ -1,6 +1,7 @@
 # backend/core/models.py
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 import secrets
@@ -2042,6 +2043,35 @@ class InterviewSchedule(models.Model):
         if self.show_24h_reminder or self.show_1h_reminder:
             self.save(update_fields=['show_24h_reminder', 'show_1h_reminder'])
 
+    def ensure_event_metadata(self):
+        """Ensure there's a matching InterviewEvent record with logistics info."""
+        try:
+            event, created = InterviewEvent.objects.get_or_create(
+                interview=self,
+                defaults={
+                    'location_override': self.location,
+                    'video_conference_link': self.meeting_link,
+                }
+            )
+        except Exception:
+            # Avoid cascading failures if event creation hits race or db issues
+            return None
+
+        updated_fields = []
+        if not event.calendar_provider:
+            event.calendar_provider = 'in_app'
+            updated_fields.append('calendar_provider')
+        if self.location and event.location_override != self.location:
+            event.location_override = self.location
+            updated_fields.append('location_override')
+        if self.meeting_link and event.video_conference_link != self.meeting_link:
+            event.video_conference_link = self.meeting_link
+            updated_fields.append('video_conference_link')
+        if updated_fields:
+            updated_fields.append('updated_at')
+            event.save(update_fields=updated_fields)
+        return event
+
 
 class InterviewPreparationTask(models.Model):
     """Auto-generated preparation tasks for interviews (UC-071).
@@ -2093,6 +2123,191 @@ class InterviewPreparationTask(models.Model):
         self.is_completed = True
         self.completed_at = timezone.now()
         self.save()
+
+
+class InterviewEvent(models.Model):
+    """Calendar-focused metadata for scheduled interviews (UC-079)."""
+
+    PROVIDER_CHOICES = [
+        ('in_app', 'In-App Only'),
+        ('google', 'Google Calendar'),
+        ('outlook', 'Outlook Calendar'),
+        ('other', 'Other Calendar'),
+    ]
+
+    SYNC_STATUS_CHOICES = [
+        ('not_synced', 'Not Synced'),
+        ('pending', 'Pending Sync'),
+        ('synced', 'Synced'),
+        ('failed', 'Sync Failed'),
+        ('disconnected', 'Disconnected'),
+    ]
+
+    FOLLOW_UP_CHOICES = [
+        ('pending', 'Pending'),
+        ('scheduled', 'Scheduled'),
+        ('sent', 'Thank You Sent'),
+        ('skipped', 'Skipped'),
+    ]
+
+    interview = models.OneToOneField(
+        InterviewSchedule,
+        on_delete=models.CASCADE,
+        related_name='event_metadata'
+    )
+    calendar_provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES, default='in_app')
+    external_calendar_id = models.CharField(max_length=255, blank=True)
+    external_event_id = models.CharField(max_length=255, blank=True)
+    external_event_link = models.URLField(max_length=500, blank=True)
+    sync_enabled = models.BooleanField(default=False)
+    sync_status = models.CharField(max_length=20, choices=SYNC_STATUS_CHOICES, default='not_synced')
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+
+    location_override = models.CharField(max_length=500, blank=True)
+    video_conference_link = models.URLField(max_length=500, blank=True)
+    logistics_notes = models.TextField(blank=True)
+    dial_in_details = models.CharField(max_length=500, blank=True)
+
+    reminder_24h_sent = models.BooleanField(default=False)
+    reminder_2h_sent = models.BooleanField(default=False)
+    thank_you_note_sent = models.BooleanField(default=False)
+    thank_you_note_sent_at = models.DateTimeField(null=True, blank=True)
+    follow_up_status = models.CharField(max_length=20, choices=FOLLOW_UP_CHOICES, default='pending')
+    outcome_recorded_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['calendar_provider', 'sync_status']),
+            models.Index(fields=['interview', 'sync_status']),
+            models.Index(fields=['follow_up_status']),
+        ]
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"InterviewEvent for {self.interview.job.title} ({self.get_calendar_provider_display()})"
+
+    def mark_thank_you_sent(self):
+        self.thank_you_note_sent = True
+        self.thank_you_note_sent_at = timezone.now()
+        self.follow_up_status = 'sent'
+        self.save(update_fields=['thank_you_note_sent', 'thank_you_note_sent_at', 'follow_up_status', 'updated_at'])
+
+
+class CalendarIntegration(models.Model):
+    """Stores OAuth credentials + sync status for external calendar providers."""
+
+    STATUS_CHOICES = [
+        ('disconnected', 'Disconnected'),
+        ('pending', 'Pending Authorization'),
+        ('connected', 'Connected'),
+        ('error', 'Error'),
+    ]
+
+    candidate = models.ForeignKey(
+        CandidateProfile,
+        on_delete=models.CASCADE,
+        related_name='calendar_integrations'
+    )
+    provider = models.CharField(max_length=20, choices=InterviewEvent.PROVIDER_CHOICES)
+    external_email = models.EmailField(blank=True)
+    external_account_id = models.CharField(max_length=255, blank=True)
+
+    access_token = models.TextField(blank=True)
+    refresh_token = models.TextField(blank=True)
+    token_expires_at = models.DateTimeField(null=True, blank=True)
+    scopes = models.JSONField(default=list, blank=True)
+
+    sync_enabled = models.BooleanField(default=False)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='disconnected')
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True)
+
+    state_token = models.CharField(max_length=128, blank=True)
+    frontend_redirect_url = models.URLField(max_length=500, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['candidate', 'provider'], name='core_calend_candida_6af480_idx'),
+            models.Index(fields=['provider', 'status'], name='core_calend_provide_e175df_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['candidate', 'provider', 'external_account_id'],
+                condition=~Q(external_account_id=''),
+                name='unique_calendar_account_per_provider'
+            )
+        ]
+
+    def __str__(self):  # pragma: no cover - display helper
+        return f"{self.candidate.user.email} → {self.get_provider_display()} ({self.status})"
+
+    def generate_state_token(self):
+        token = secrets.token_urlsafe(32)
+        self.state_token = token
+        self.status = 'pending'
+        self.save(update_fields=['state_token', 'status', 'updated_at'])
+        return token
+
+    def mark_connected(self, *, access_token, refresh_token, expires_at, scopes, external_email=None, external_account_id=None):
+        self.access_token = access_token or ''
+        self.refresh_token = refresh_token or self.refresh_token
+        self.token_expires_at = expires_at
+        self.scopes = scopes or []
+        self.external_email = external_email or self.external_email
+        self.external_account_id = external_account_id or self.external_account_id
+        self.status = 'connected'
+        self.sync_enabled = True
+        self.last_error = ''
+        self.state_token = ''
+        self.save(update_fields=[
+            'access_token',
+            'refresh_token',
+            'token_expires_at',
+            'scopes',
+            'external_email',
+            'external_account_id',
+            'status',
+            'sync_enabled',
+            'last_error',
+            'state_token',
+            'updated_at',
+        ])
+
+    def disconnect(self, reason=None, disable_sync=True):
+        self.access_token = ''
+        self.refresh_token = ''
+        self.token_expires_at = None
+        self.external_email = ''
+        self.external_account_id = ''
+        self.state_token = ''
+        self.status = 'disconnected'
+        self.last_error = reason or ''
+        self.frontend_redirect_url = ''
+        if disable_sync:
+            self.sync_enabled = False
+        self.save(update_fields=[
+            'access_token',
+            'refresh_token',
+            'token_expires_at',
+            'external_email',
+            'external_account_id',
+            'state_token',
+            'status',
+            'last_error',
+            'sync_enabled',
+            'frontend_redirect_url',
+            'updated_at',
+        ])
+
+    def mark_error(self, message):
+        self.last_error = message
+        self.status = 'error'
+        self.save(update_fields=['last_error', 'status', 'updated_at'])
 
 
 class ResumeVersion(models.Model):
