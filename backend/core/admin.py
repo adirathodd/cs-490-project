@@ -9,6 +9,7 @@ from .models import (
     Document,
     # Application models
     Application, ApplicationStage, Interview, InterviewPrepSession, MockInterview,
+    InterviewSuccessPrediction,
     # Interview prep
     InterviewQuestion,
     # Network models
@@ -173,6 +174,13 @@ class InterviewPrepSessionAdmin(admin.ModelAdmin):
 class MockInterviewAdmin(admin.ModelAdmin):
     list_display = ['prep_session', 'score', 'created_at']
     list_filter = ['score', 'created_at']
+
+
+@admin.register(InterviewSuccessPrediction)
+class InterviewSuccessPredictionAdmin(admin.ModelAdmin):
+    list_display = ['interview', 'candidate', 'predicted_probability', 'confidence_score', 'actual_outcome', 'is_latest']
+    list_filter = ['is_latest', 'actual_outcome']
+    search_fields = ['candidate__user__username', 'interview__job__title', 'interview__job__company_name']
 
 
 # Network models

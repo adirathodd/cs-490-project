@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { authAPI } from '../../services/api';
@@ -10,12 +10,8 @@ import DashboardCalendar from './DashboardCalendar';
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { currentUser, userProfile, signOut, loading: authLoading } = useAuth();
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
+  const { currentUser, userProfile, loading: authLoading } = useAuth();
   const [profilePictureUrl, setProfilePictureUrl] = useState(null);
-  const confirmRef = useRef(null);
-  const userMenuRef = useRef(null);
 
   // Prefer the user's saved profile name first (what they edited),
   // then fall back to the Firebase provider displayName, then email.
@@ -81,54 +77,10 @@ const Dashboard = () => {
     fetchProfilePicture();
   }, [currentUser]);
 
-  useEffect(() => {
-    // Close dropdowns when clicking outside
-    const handleClickOutside = (e) => {
-      if (confirmRef.current && !confirmRef.current.contains(e.target)) {
-        setShowConfirm(false);
-      }
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
-        setShowUserMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      navigate('/login');
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
-  };
-
-  const handleSignOutClick = () => {
-    setShowConfirm((s) => !s);
-  };
-
-  const handleConfirm = async (confirm) => {
-    if (confirm) {
-      await handleSignOut();
-    } else {
-      setShowConfirm(false);
-    }
-  };
-
   const handleUpdateProfile = () => {
     if (!authLoading && currentUser) {
       navigate('/profile/edit');
     }
-  };
-
-  const handleProfile = () => {
-    setShowUserMenu(false);
-    navigate('/profile');
-  };
-
-  const toggleUserMenu = () => {
-    setShowUserMenu(!showUserMenu);
   };
 
   // Dashboard section control — default to 'Profile'

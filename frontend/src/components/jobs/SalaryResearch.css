@@ -6,6 +6,12 @@
   padding: 24px;
 }
 
+.salary-research-container.embedded {
+  padding: 0;
+  margin: 0;
+  max-width: none;
+}
+
 .salary-research-header {
   margin-bottom: 32px;
   display: flex;
@@ -187,39 +193,39 @@
 }
 
 .tabs-container {
+  padding: 0;
   margin-bottom: 24px;
 }
 
 .tabs {
   display: flex;
-  gap: 8px;
-  border-bottom: 2px solid #e0e0e0;
-  padding: 0 4px;
-  flex-wrap: wrap;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 12px 12px 0 0;
+  overflow: hidden;
 }
 
 .tab {
-  padding: 12px 24px;
-  background: none;
+  padding: 16px 24px;
+  background: transparent;
   border: none;
-  border-bottom: 3px solid transparent;
-  color: #666;
-  font-weight: 500;
   cursor: pointer;
-  transition: all 0.3s;
-  font-size: 15px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #6b7280;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s ease;
 }
 
 .tab:hover {
-  color: #667eea;
-  background: #f5f5f5;
-  border-radius: 8px 8px 0 0;
+  color: #111827;
+  background: #ffffff;
 }
 
 .tab.active {
-  color: #667eea;
-  border-bottom-color: #667eea;
-  font-weight: 600;
+  color: #6366f1;
+  border-bottom-color: #6366f1;
+  background: #ffffff;
 }
 
 .comparisons-table {

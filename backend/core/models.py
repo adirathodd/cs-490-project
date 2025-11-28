@@ -1042,6 +1042,53 @@ class InterviewChecklistProgress(models.Model):
         return f"{status} {self.task[:50]}..."
 
 
+class InterviewSuccessPrediction(models.Model):
+    """Persist interview success forecasts for historical analysis."""
+
+    interview = models.ForeignKey(
+        'InterviewSchedule',
+        on_delete=models.CASCADE,
+        related_name='success_predictions'
+    )
+    job = models.ForeignKey('JobEntry', on_delete=models.CASCADE, related_name='success_predictions')
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name='interview_success_predictions')
+
+    predicted_probability = models.DecimalField(max_digits=5, decimal_places=2)
+    confidence_score = models.DecimalField(max_digits=4, decimal_places=2)
+    preparation_score = models.DecimalField(max_digits=4, decimal_places=2, default=0)
+    match_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    research_completion = models.DecimalField(max_digits=4, decimal_places=2, default=0)
+    practice_hours = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    historical_adjustment = models.DecimalField(max_digits=4, decimal_places=2, default=0)
+
+    payload = models.JSONField(default=dict, blank=True, help_text="Serialized breakdown for reuse")
+
+    generated_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    accuracy = models.DecimalField(
+        max_digits=4,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        help_text="Absolute error between prediction and normalized outcome"
+    )
+    actual_outcome = models.CharField(max_length=20, blank=True)
+    evaluated_at = models.DateTimeField(null=True, blank=True)
+    is_latest = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['-generated_at']
+        indexes = [
+            models.Index(fields=['interview', '-generated_at']),
+            models.Index(fields=['candidate', '-generated_at']),
+            models.Index(fields=['job', '-generated_at']),
+            models.Index(fields=['is_latest']),
+        ]
+
+    def __str__(self):
+        pct = float(self.predicted_probability or 0)
+        return f"Prediction({pct:.1f}% for interview {self.interview_id})"
+
 class TechnicalPrepPractice(models.Model):
     """Track timed coding challenge attempts for UC-078."""
 

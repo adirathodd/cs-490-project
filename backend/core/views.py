@@ -114,6 +114,8 @@ from core.models import (
     InterviewEvent,
 )
 from core import google_import, tasks, response_coach, interview_followup, calendar_sync
+from core.interview_checklist import build_checklist_tasks
+from core.interview_success import InterviewSuccessForecastService, InterviewSuccessScorer
 from core.research.enrichment import fallback_domain
 from core.question_bank import build_question_bank
 from core.technical_prep import (
@@ -8710,6 +8712,27 @@ def job_preparation_checklist_toggle(request, job_id):
         progress.completed_at = timezone.now() if progress.completed else None
         progress.save(update_fields=['category', 'task', 'completed', 'completed_at', 'updated_at'])
 
+        from core.models import InterviewChecklistProgress, InterviewSchedule
+
+        job_interviews = InterviewSchedule.objects.filter(job=job)
+        interview_task = None
+        if job_interviews.exists():
+            interview = job_interviews.order_by('scheduled_at').first()
+            interview_task, _ = InterviewChecklistProgress.objects.get_or_create(
+                interview=interview,
+                task_id=task_id,
+                defaults={
+                    'category': category,
+                    'task': task,
+                },
+            )
+            interview_task.category = category
+            interview_task.task = task
+            interview_task.completed = bool(completed)
+            interview_task.completed_at = timezone.now() if interview_task.completed else None
+            interview_task.save(update_fields=['category', 'task', 'completed', 'completed_at', 'updated_at'])
+            interview.success_predictions.update(is_latest=False)
+
         return Response(
             {
                 'task_id': progress.task_id,
@@ -10101,7 +10124,17 @@ def interview_complete(request, pk):
             'follow_up_status',
             'updated_at'
         ])
-    
+
+    latest_prediction = interview.success_predictions.filter(is_latest=True).first()
+    if latest_prediction:
+        predicted_ratio = float(latest_prediction.predicted_probability or 0) / 100
+        actual_ratio = InterviewSuccessScorer.normalized_outcome(outcome)
+        absolute_error = round(abs(predicted_ratio - actual_ratio), 3)
+        latest_prediction.actual_outcome = outcome
+        latest_prediction.accuracy = absolute_error
+        latest_prediction.evaluated_at = timezone.now()
+        latest_prediction.save(update_fields=['actual_outcome', 'accuracy', 'evaluated_at'])
+
     from core.serializers import InterviewScheduleSerializer
     serializer = InterviewScheduleSerializer(interview)
     return Response(serializer.data)
@@ -10197,6 +10230,12 @@ def toggle_preparation_task(request, pk):
     
     from core.serializers import InterviewPreparationTaskSerializer
     serializer = InterviewPreparationTaskSerializer(task)
+
+    try:
+        if task.interview_id:
+            task.interview.success_predictions.update(is_latest=False)
+    except Exception:
+        pass
     return Response(serializer.data)
 
 
@@ -10259,105 +10298,40 @@ def interview_event_detail(request, pk):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-def generate_ai_role_tasks(job_title, company_name):
-    """
-    Use Gemini AI to generate role-specific preparation tasks for uncommon job titles.
-    Returns a list of task dictionaries for the Role Preparation category.
-    Uses REST API approach matching existing resume_ai.py pattern.
-    """
-    import json
-    import requests
-    from django.conf import settings
-    
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def interview_success_forecast(request):
+    """UC-085: Predict interview success probability and action plan."""
+    from core.models import InterviewSchedule
+    from django.utils import timezone
+
     try:
-        api_key = getattr(settings, 'GEMINI_API_KEY', '')
-        if not api_key:
-            return []
-        
-        model = getattr(settings, 'GEMINI_MODEL', 'gemini-2.0-flash')
-        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        
-        prompt = f"""Generate 3-4 specific, actionable preparation tasks for a {job_title} interview at {company_name}.
+        candidate = request.user.profile
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
 
-Requirements:
-- Focus on role-specific preparation (NOT general interview advice)
-- Tasks should be relevant to the {job_title} profession
-- Include industry knowledge, technical skills, or domain expertise needed
-- Make tasks specific and actionable
-- Keep each task under 100 characters
+    job_id = request.query_params.get('job')
+    refresh = request.query_params.get('refresh', '').lower() == 'true'
+    include_all = request.query_params.get('include_all', '').lower() == 'true'
 
-Return ONLY a JSON array of objects with this format:
-[
-  {{"task_id": "ai_task_1", "task": "Task description here"}},
-  {{"task_id": "ai_task_2", "task": "Task description here"}},
-  ...
-]
+    interviews = InterviewSchedule.objects.filter(candidate=candidate)
+    if not include_all:
+        interviews = interviews.filter(
+            scheduled_at__gte=timezone.now(),
+            status__in=['scheduled', 'rescheduled'],
+        )
 
-Example for "Investment Banker":
-[
-  {{"task_id": "ai_task_1", "task": "Review recent market trends and deal activity in the target sector"}},
-  {{"task_id": "ai_task_2", "task": "Prepare to discuss financial modeling and valuation techniques"}},
-  {{"task_id": "ai_task_3", "task": "Research the bank's recent transactions and league table rankings"}}
-]
+    if job_id:
+        interviews = interviews.filter(job_id=job_id)
 
-Now generate for {job_title}:"""
+    interviews = interviews.select_related('job').prefetch_related('preparation_tasks').order_by('scheduled_at')
 
-        payload = {
-            'contents': [
-                {
-                    'role': 'user',
-                    'parts': [{'text': prompt}],
-                }
-            ],
-            'generationConfig': {
-                'temperature': 0.7,
-                'topP': 0.9,
-                'topK': 40,
-                'maxOutputTokens': 1024,
-            },
-        }
-        
-        response = requests.post(endpoint, params={'key': api_key}, json=payload, timeout=30)
-        response.raise_for_status()
-        
-        result = response.json()
-        result_text = result['candidates'][0]['content']['parts'][0]['text'].strip()
-        
-        # Parse JSON response
-        # Remove markdown code blocks if present
-        if result_text.startswith('```'):
-            result_text = result_text.split('```')[1]
-            if result_text.startswith('json'):
-                result_text = result_text[4:]
-        result_text = result_text.strip()
-        
-        tasks = json.loads(result_text)
-        
-        # Add category to each task
-        for task in tasks:
-            task['category'] = 'Role Preparation'
-        
-        return tasks[:4]  # Limit to 4 tasks
-        
-    except Exception as e:
-        # Log error but don't fail the request
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Error generating AI role tasks for {job_title}: {e}")
-        
-        # Fallback to generic tasks
-        return [
-            {
-                'task_id': 'ai_generic_1',
-                'category': 'Role Preparation',
-                'task': f"Research key skills and qualifications for {job_title} roles"
-            },
-            {
-                'task_id': 'ai_generic_2',
-                'category': 'Role Preparation',
-                'task': f"Review industry trends relevant to {job_title}"
-            }
-        ]
+    service = InterviewSuccessForecastService(candidate)
+    forecast = service.generate(interviews, force_refresh=refresh)
+    return Response(forecast, status=status.HTTP_200_OK)
 
 
 def generate_preparation_tasks(interview):
@@ -10457,323 +10431,9 @@ def preparation_checklist_for_interview(request, pk):
     except InterviewSchedule.DoesNotExist:
         return Response({'error': 'Interview not found'}, status=status.HTTP_404_NOT_FOUND)
     
-    # Define comprehensive checklist structure
-    job_title = interview.job.title.lower()
     company_name = interview.job.company_name
     interview_type = interview.interview_type
-    
-    # Role-specific keywords for customization
-    is_technical = any(keyword in job_title for keyword in ['engineer', 'developer', 'programmer', 'software', 'data', 'analyst'])
-    is_management = any(keyword in job_title for keyword in ['manager', 'director', 'lead', 'head', 'vp', 'chief'])
-    is_creative = any(keyword in job_title for keyword in ['designer', 'creative', 'artist', 'writer', 'content'])
-    is_sales = any(keyword in job_title for keyword in ['sales', 'account', 'business development', 'bd'])
-    
-    # Check if we should use AI for role-specific tasks
-    use_ai_for_role = not (is_technical or is_management or is_creative or is_sales)
-    
-    checklist_tasks = []
-    
-    # Category 1: Company Research
-    company_research = [
-        {
-            'task_id': 'research_mission',
-            'category': 'Company Research',
-            'task': f"Research {company_name}'s mission, values, and culture"
-        },
-        {
-            'task_id': 'research_news',
-            'category': 'Company Research',
-            'task': f"Read recent news and press releases about {company_name}"
-        },
-        {
-            'task_id': 'research_competitors',
-            'category': 'Company Research',
-            'task': f"Identify {company_name}'s main competitors and market position"
-        },
-        {
-            'task_id': 'research_products',
-            'category': 'Company Research',
-            'task': f"Familiarize yourself with {company_name}'s products/services"
-        },
-    ]
-    checklist_tasks.extend(company_research)
-    
-    # Category 2: Role-Specific Preparation
-    role_prep = [
-        {
-            'task_id': 'review_jd',
-            'category': 'Role Preparation',
-            'task': f"Re-read and understand the {interview.job.title} job description"
-        },
-        {
-            'task_id': 'match_skills',
-            'category': 'Role Preparation',
-            'task': "Identify how your skills match the job requirements"
-        },
-    ]
-    
-    # Add role-specific tasks
-    if is_technical:
-        role_prep.extend([
-            {
-                'task_id': 'tech_review',
-                'category': 'Role Preparation',
-                'task': "Review relevant technical concepts and technologies"
-            },
-            {
-                'task_id': 'coding_practice',
-                'category': 'Role Preparation',
-                'task': "Practice coding problems on relevant platforms"
-            },
-        ])
-    elif is_management:
-        role_prep.extend([
-            {
-                'task_id': 'leadership_examples',
-                'category': 'Role Preparation',
-                'task': "Prepare examples of leadership and team management"
-            },
-            {
-                'task_id': 'metrics_ready',
-                'category': 'Role Preparation',
-                'task': "Prepare metrics showing your impact on previous teams"
-            },
-        ])
-    elif is_creative:
-        role_prep.extend([
-            {
-                'task_id': 'portfolio_review',
-                'category': 'Role Preparation',
-                'task': "Review and update your portfolio with best work"
-            },
-            {
-                'task_id': 'process_examples',
-                'category': 'Role Preparation',
-                'task': "Prepare to explain your creative process and approach"
-            },
-        ])
-    elif is_sales:
-        role_prep.extend([
-            {
-                'task_id': 'sales_achievements',
-                'category': 'Role Preparation',
-                'task': "Prepare specific sales numbers and achievements"
-            },
-            {
-                'task_id': 'sales_strategy',
-                'category': 'Role Preparation',
-                'task': "Think about sales strategies for their product/service"
-            },
-        ])
-    elif use_ai_for_role:
-        # Use Gemini AI to generate role-specific tasks for unmatched roles
-        ai_tasks = generate_ai_role_tasks(interview.job.title, company_name)
-        if ai_tasks:
-            role_prep.extend(ai_tasks)
-    
-    role_prep.append({
-        'task_id': 'star_examples',
-        'category': 'Role Preparation',
-        'task': "Prepare 3-5 STAR method examples (Situation, Task, Action, Result)"
-    })
-    checklist_tasks.extend(role_prep)
-    
-    # Category 3: Questions to Ask
-    questions_prep = [
-        {
-            'task_id': 'questions_role',
-            'category': 'Questions to Ask',
-            'task': "Prepare 2-3 questions about the role and daily responsibilities"
-        },
-        {
-            'task_id': 'questions_team',
-            'category': 'Questions to Ask',
-            'task': "Prepare questions about team structure and collaboration"
-        },
-        {
-            'task_id': 'questions_growth',
-            'category': 'Questions to Ask',
-            'task': "Prepare questions about growth opportunities and career path"
-        },
-        {
-            'task_id': 'questions_culture',
-            'category': 'Questions to Ask',
-            'task': "Prepare questions about company culture and work environment"
-        },
-    ]
-    checklist_tasks.extend(questions_prep)
-    
-    # Category 4: Attire & Presentation
-    attire_tasks = []
-    if interview_type in ['in_person', 'video']:
-        if 'startup' in company_name.lower() or 'tech' in company_name.lower():
-            attire_tasks.append({
-                'task_id': 'attire_casual',
-                'category': 'Attire & Presentation',
-                'task': "Choose business casual attire (tech/startup environment)"
-            })
-        else:
-            attire_tasks.append({
-                'task_id': 'attire_professional',
-                'category': 'Attire & Presentation',
-                'task': "Choose professional business attire"
-            })
-        
-        if interview_type == 'video':
-            attire_tasks.extend([
-                {
-                    'task_id': 'background_check',
-                    'category': 'Attire & Presentation',
-                    'task': "Ensure clean, professional background for video call"
-                },
-                {
-                    'task_id': 'lighting_check',
-                    'category': 'Attire & Presentation',
-                    'task': "Test lighting - face should be well-lit and visible"
-                },
-            ])
-    
-    checklist_tasks.extend(attire_tasks)
-    
-    # Category 5: Logistics
-    logistics = []
-    if interview_type == 'video':
-        logistics.extend([
-            {
-                'task_id': 'tech_test',
-                'category': 'Logistics',
-                'task': "Test camera, microphone, and internet connection"
-            },
-            {
-                'task_id': 'platform_test',
-                'category': 'Logistics',
-                'task': "Install and test video conferencing platform"
-            },
-            {
-                'task_id': 'backup_device',
-                'category': 'Logistics',
-                'task': "Have backup device ready in case of technical issues"
-            },
-        ])
-    elif interview_type == 'in_person':
-        location = interview.location or f"{company_name} office"
-        logistics.extend([
-            {
-                'task_id': 'route_plan',
-                'category': 'Logistics',
-                'task': f"Plan route to {location} and check travel time"
-            },
-            {
-                'task_id': 'arrival_plan',
-                'category': 'Logistics',
-                'task': "Plan to arrive 10-15 minutes early"
-            },
-            {
-                'task_id': 'parking_transit',
-                'category': 'Logistics',
-                'task': "Check parking/public transit options"
-            },
-        ])
-    elif interview_type == 'phone':
-        logistics.extend([
-            {
-                'task_id': 'quiet_space',
-                'category': 'Logistics',
-                'task': "Find a quiet space with good cell reception"
-            },
-            {
-                'task_id': 'phone_charge',
-                'category': 'Logistics',
-                'task': "Ensure phone is fully charged"
-            },
-        ])
-    
-    logistics.extend([
-        {
-            'task_id': 'interviewer_info',
-            'category': 'Logistics',
-            'task': "Research your interviewer on LinkedIn"
-        },
-        {
-            'task_id': 'time_confirm',
-            'category': 'Logistics',
-            'task': f"Confirm interview time: {interview.scheduled_at.strftime('%B %d at %I:%M %p')}"
-        },
-    ])
-    checklist_tasks.extend(logistics)
-    
-    # Category 6: Confidence & Mindset
-    confidence_tasks = [
-        {
-            'task_id': 'practice_responses',
-            'category': 'Confidence Building',
-            'task': "Practice answering common interview questions out loud"
-        },
-        {
-            'task_id': 'review_achievements',
-            'category': 'Confidence Building',
-            'task': "Review your accomplishments and strengths"
-        },
-        {
-            'task_id': 'mock_interview',
-            'category': 'Confidence Building',
-            'task': "Do a mock interview with a friend or mentor (optional)"
-        },
-        {
-            'task_id': 'positive_mindset',
-            'category': 'Confidence Building',
-            'task': "Visualize a successful interview and positive outcome"
-        },
-    ]
-    checklist_tasks.extend(confidence_tasks)
-    
-    # Category 7: Materials & Portfolio
-    materials = [
-        {
-            'task_id': 'resume_copies',
-            'category': 'Materials & Portfolio',
-            'task': "Print 3-5 copies of your resume (if in-person)"
-        },
-        {
-            'task_id': 'references_ready',
-            'category': 'Materials & Portfolio',
-            'task': "Have list of references ready"
-        },
-        {
-            'task_id': 'notepad_pen',
-            'category': 'Materials & Portfolio',
-            'task': "Prepare notepad and pen for taking notes"
-        },
-    ]
-    
-    if is_technical or is_creative:
-        materials.append({
-            'task_id': 'portfolio_ready',
-            'category': 'Materials & Portfolio',
-            'task': "Have portfolio or work samples accessible to share"
-        })
-    
-    checklist_tasks.extend(materials)
-    
-    # Category 8: Post-Interview Follow-up
-    followup_tasks = [
-        {
-            'task_id': 'thank_you_plan',
-            'category': 'Post-Interview Follow-up',
-            'task': "Plan to send thank-you email within 24 hours"
-        },
-        {
-            'task_id': 'notes_prep',
-            'category': 'Post-Interview Follow-up',
-            'task': "Prepare to take notes immediately after interview"
-        },
-        {
-            'task_id': 'next_steps',
-            'category': 'Post-Interview Follow-up',
-            'task': "Ask about next steps and timeline at end of interview"
-        },
-    ]
-    checklist_tasks.extend(followup_tasks)
+    checklist_tasks = build_checklist_tasks(interview)
     
     # Get existing progress
     existing_progress = {
@@ -10865,7 +10525,9 @@ def toggle_checklist_item(request, pk):
         progress.completed = not progress.completed
         progress.completed_at = timezone.now() if progress.completed else None
         progress.save()
-    
+
+    interview.success_predictions.update(is_latest=False)
+
     return Response({
         'task_id': task_id,
         'completed': progress.completed,

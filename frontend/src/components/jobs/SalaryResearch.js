@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { salaryAPI, jobsAPI } from '../../services/api';
 import LoadingSpinner from '../common/LoadingSpinner';
 import Icon from '../common/Icon';
 import './SalaryResearch.css';
 
-const SalaryResearch = () => {
-  const { jobId } = useParams();
+const SalaryResearch = ({ jobId: propJobId, embedded = false }) => {
+  const params = useParams();
   const navigate = useNavigate();
+  
+  // Use prop if available, otherwise fall back to route param
+  // Note: The route param might be 'jobId' or 'id' depending on the route definition
+  const jobId = propJobId || params.jobId || params.id;
   
   const [loading, setLoading] = useState(true);
   const [researching, setResearching] = useState(false);
@@ -17,11 +21,7 @@ const SalaryResearch = () => {
   const [hasData, setHasData] = useState(false);
   const [selectedView, setSelectedView] = useState('overview'); // overview, comparisons, trends, negotiation
   
-  useEffect(() => {
-    fetchJobAndResearch();
-  }, [jobId]);
-  
-  const fetchJobAndResearch = async () => {
+  const fetchJobAndResearch = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
@@ -43,7 +43,11 @@ const SalaryResearch = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId]);
+
+  useEffect(() => {
+    fetchJobAndResearch();
+  }, [fetchJobAndResearch]);
 
   const handleTriggerResearch = async (forceRefresh = false) => {
     try {
@@ -135,37 +139,55 @@ const SalaryResearch = () => {
   }
   
   return (
-    <div className="salary-research-container">
-      {/* Header */}
-      <div className="salary-research-header">
-        <div>
-          <h1 className="salary-research-title">
-            <Icon name="briefcase" size="lg" /> Salary Research
-          </h1>
-          <p className="salary-research-subtitle">
-            Market insights for {job.title} at {job.company_name}
-          </p>
+    <div className={`salary-research-container ${embedded ? 'embedded' : ''}`}>
+      {/* Header - Only show if not embedded */}
+      {!embedded && (
+        <div className="salary-research-header">
+          <div>
+            <h1 className="salary-research-title">
+              <Icon name="briefcase" size="lg" /> Salary Research
+            </h1>
+            <p className="salary-research-subtitle">
+              Market insights for {job.title} at {job.company_name}
+            </p>
+          </div>
+          <div className="salary-research-actions">
+            <button className="btn-secondary" onClick={() => navigate('/jobs')}>
+              <Icon name="arrow-left" size="sm" /> Back to Jobs
+            </button>
+            {hasData && (
+              <>
+                <button className="btn-secondary" onClick={handleExport}>
+                  <Icon name="download" size="sm" /> Export Report
+                </button>
+                <button 
+                  className="btn-primary" 
+                  onClick={() => handleTriggerResearch(true)}
+                  disabled={researching}
+                >
+                  <Icon name="refresh" size="sm" /> {researching ? 'Refreshing...' : 'Refresh Data'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
-        <div className="salary-research-actions">
-          <button className="btn-secondary" onClick={() => navigate('/jobs')}>
-            <Icon name="arrow-left" size="sm" /> Back to Jobs
+      )}
+
+      {/* Embedded Header Actions */}
+      {embedded && hasData && (
+        <div className="salary-research-actions" style={{ marginBottom: '20px', justifyContent: 'flex-end', display: 'flex', gap: '12px' }}>
+          <button className="btn-secondary" onClick={handleExport}>
+            <Icon name="download" size="sm" /> Export Report
           </button>
-          {hasData && (
-            <>
-              <button className="btn-secondary" onClick={handleExport}>
-                <Icon name="download" size="sm" /> Export Report
-              </button>
-              <button 
-                className="btn-primary" 
-                onClick={() => handleTriggerResearch(true)}
-                disabled={researching}
-              >
-                <Icon name="refresh" size="sm" /> {researching ? 'Refreshing...' : 'Refresh Data'}
-              </button>
-            </>
-          )}
+          <button 
+            className="btn-primary" 
+            onClick={() => handleTriggerResearch(true)}
+            disabled={researching}
+          >
+            <Icon name="refresh" size="sm" /> {researching ? 'Refreshing...' : 'Refresh Data'}
+          </button>
         </div>
-      </div>
+      )}
       
       {error && (
         <div className="error-message">
