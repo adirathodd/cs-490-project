@@ -80,9 +80,10 @@ const getErrorMessage = (error, fallback = 'Something went wrong.') => {
 	return fallback;
 };
 
-const SalaryNegotiation = () => {
-	const { jobId } = useParams();
+const SalaryNegotiation = ({ jobId: propJobId, embedded = false }) => {
+	const params = useParams();
 	const navigate = useNavigate();
+	const jobId = propJobId || params.jobId;
 	const [job, setJob] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState('');
@@ -227,30 +228,52 @@ const SalaryNegotiation = () => {
 	}
 
 	return (
-		<div className="negotiation-container">
-			<div className="negotiation-header">
-				<div>
-					<h1 className="negotiation-title">
-						<Icon name="briefcase" size="lg" /> Salary Negotiation Prep
-					</h1>
-					<p className="negotiation-subtitle">
-						{job.title} · {job.company_name}
-					</p>
-					{planResponse?.updated_at && (
-						<p className="negotiation-updated">
-							Last refreshed {formatDate(planResponse.updated_at)}
+		<div className={`negotiation-container ${embedded ? 'embedded' : ''}`}>
+			{!embedded && (
+				<div className="negotiation-header">
+					<div>
+						<h1 className="negotiation-title">
+							<Icon name="briefcase" size="lg" /> Salary Negotiation Prep
+						</h1>
+						<p className="negotiation-subtitle">
+							{job.title} · {job.company_name}
 						</p>
-					)}
+						{planResponse?.updated_at && (
+							<p className="negotiation-updated">
+								Last refreshed {formatDate(planResponse.updated_at)}
+							</p>
+						)}
+					</div>
+					<div className="negotiation-actions">
+						<button className="btn-secondary" onClick={() => navigate('/jobs')}>
+							<Icon name="arrow-left" size="sm" /> Back to Jobs
+						</button>
+						<button className="btn-secondary" onClick={() => handleRefreshPlan({ force_refresh: true })} disabled={refreshing}>
+							<Icon name="refresh" size="sm" /> {refreshing ? 'Refreshing…' : 'Refresh Insights'}
+						</button>
+					</div>
 				</div>
-				<div className="negotiation-actions">
-					<button className="btn-secondary" onClick={() => navigate('/jobs')}>
-						<Icon name="arrow-left" size="sm" /> Back to Jobs
-					</button>
-					<button className="btn-secondary" onClick={() => handleRefreshPlan({ force_refresh: true })} disabled={refreshing}>
-						<Icon name="refresh" size="sm" /> {refreshing ? 'Refreshing…' : 'Refresh Insights'}
-					</button>
+			)}
+
+			{embedded && (
+				<div className="negotiation-header" style={{ marginBottom: '24px', justifyContent: 'space-between', alignItems: 'center' }}>
+					<div>
+						<h2 style={{ fontSize: '24px', fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+							<Icon name="briefcase" size="md" /> Negotiation Prep
+						</h2>
+						{planResponse?.updated_at && (
+							<p className="negotiation-updated" style={{ margin: '4px 0 0 0' }}>
+								Last refreshed {formatDate(planResponse.updated_at)}
+							</p>
+						)}
+					</div>
+					<div className="negotiation-actions">
+						<button className="btn-secondary" onClick={() => handleRefreshPlan({ force_refresh: true })} disabled={refreshing}>
+							<Icon name="refresh" size="sm" /> {refreshing ? 'Refreshing…' : 'Refresh Insights'}
+						</button>
+					</div>
 				</div>
-			</div>
+			)}
 
 			{error && (
 				<div className="negotiation-error">

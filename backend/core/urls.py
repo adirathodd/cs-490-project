@@ -227,7 +227,8 @@ urlpatterns = [
     path('interviews/tasks/<int:pk>/toggle/', views.toggle_preparation_task, name='toggle-preparation-task'),
     path('interviews/events/', views.interview_events_list_create, name='interview-events-list-create'),
     path('interviews/events/<int:pk>/', views.interview_event_detail, name='interview-event-detail'),
-    
+    path('interviews/success-forecast/', views.interview_success_forecast, name='interview-success-forecast'),
+
     # UC-081: Pre-Interview Preparation Checklist endpoints
     path('interviews/<int:pk>/checklist/', views.preparation_checklist_for_interview, name='preparation-checklist'),
     path('interviews/<int:pk>/checklist/toggle/', views.toggle_checklist_item, name='toggle-checklist-item'),

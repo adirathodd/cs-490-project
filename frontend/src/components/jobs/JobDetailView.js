@@ -10,7 +10,84 @@ import InterviewScheduler from './InterviewScheduler';
 import InterviewFollowUp from './InterviewFollowUp';
 import RoleQuestionBank from './RoleQuestionBank';
 import PreparationChecklist from './PreparationChecklist';
+import JobPreparationChecklist from './JobPreparationChecklist';
+import SalaryResearch from './SalaryResearch';
+import SalaryNegotiation from './SalaryNegotiation';
 import TechnicalPrepSuite from './TechnicalPrepSuite';
+import InterviewSuccessForecast from './InterviewSuccessForecast';
+import './JobDetailView.css';
+
+const TAB_GROUPS = [
+  {
+    title: 'Overview',
+    tabs: [
+      {
+        id: 'basic',
+        label: 'Basic Information',
+        icon: 'info',
+        description: 'Job details, company context, compensation',
+      },
+      {
+        id: 'salary',
+        label: 'Salary Research',
+        icon: 'dollar-sign',
+        description: 'Market rates, compensation analysis',
+      },
+      {
+        id: 'interview',
+        label: 'Interview Insights',
+        icon: 'user-check',
+        description: 'Process, timeline, and tips',
+      },
+    ],
+  },
+  {
+    title: 'Interview Workspace',
+    tabs: [
+      {
+        id: 'interview-prep',
+        label: 'Interview Prep',
+        icon: 'check-circle',
+        description: 'Checklist & Question Bank',
+      },
+      {
+        id: 'success-forecast',
+        label: 'Success Forecast',
+        icon: 'activity',
+        description: 'Probability, action items, confidence',
+      },
+      {
+        id: 'scheduled-interviews',
+        label: 'Scheduled Interviews',
+        icon: 'calendar',
+        description: 'Upcoming rounds and reminders',
+      },
+    ],
+  },
+  {
+    title: 'Analysis & Prep',
+    tabs: [
+      {
+        id: 'match',
+        label: 'Match Analysis',
+        icon: 'zap',
+        description: 'Role fit, strengths, and improvement areas',
+      },
+      {
+        id: 'skills',
+        label: 'Skills Gap',
+        icon: 'target',
+        description: 'Required skills vs. current proficiency',
+      },
+      {
+        id: 'technical-prep',
+        label: 'Technical Prep',
+        icon: 'code',
+        description: 'Practice sprints, drills, and tracking',
+      },
+    ],
+  },
+];
 
 const JobDetailView = () => {
   const { id } = useParams();
@@ -48,6 +125,9 @@ const JobDetailView = () => {
   const [loggingTechnicalAttemptId, setLoggingTechnicalAttemptId] = useState(null);
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [selectedInterviewForFollowUp, setSelectedInterviewForFollowUp] = useState(null);
+  const [successForecast, setSuccessForecast] = useState(null);
+  const [loadingSuccessForecast, setLoadingSuccessForecast] = useState(false);
+  const [successForecastError, setSuccessForecastError] = useState('');
   
   const jobTypeOptions = [
     { value: 'ft', label: 'Full-time' },
@@ -143,7 +223,7 @@ const JobDetailView = () => {
     }
   };
 
-  const loadInterviews = async () => {
+  const loadInterviews = useCallback(async () => {
     setLoadingInterviews(true);
     try {
       const response = await interviewsAPI.getInterviews({ job: id });
@@ -156,13 +236,35 @@ const JobDetailView = () => {
     } finally {
       setLoadingInterviews(false);
     }
-  };
+  }, [id]);
+
+  const loadSuccessForecast = useCallback(async (refresh = false) => {
+    if (!job?.id) return;
+    setLoadingSuccessForecast(true);
+    setSuccessForecastError('');
+    try {
+      const data = await interviewsAPI.getSuccessForecast({ jobId: job.id, refresh });
+      setSuccessForecast(data);
+    } catch (err) {
+      console.error('Failed to load success forecast:', err);
+      const message = err?.message || err?.error || 'Failed to load success forecast';
+      setSuccessForecastError(message);
+    } finally {
+      setLoadingSuccessForecast(false);
+    }
+  }, [job?.id]);
 
   useEffect(() => {
     if (activeTab === 'scheduled-interviews') {
       loadInterviews();
     }
-  }, [activeTab, id]);
+  }, [activeTab, id, loadInterviews]);
+
+  useEffect(() => {
+    if (activeTab === 'success-forecast') {
+      loadSuccessForecast();
+    }
+  }, [activeTab, loadSuccessForecast]);
 
   const onChange = (e) => {
     const { name, value } = e.target;
@@ -689,121 +791,29 @@ const JobDetailView = () => {
       {success && <div className="success-banner">{success}</div>}
 
       {/* Tab Navigation */}
-      <div style={{ 
-        display: 'flex', 
-        gap: '8px', 
-        borderBottom: '2px solid #e5e7eb',
-        marginBottom: '24px',
-        overflowX: 'auto'
-      }}>
-        <button
-          onClick={() => setActiveTab('basic')}
-          style={{
-            padding: '12px 24px',
-            fontSize: '15px',
-            fontWeight: '600',
-            border: 'none',
-            background: 'none',
-            color: activeTab === 'basic' ? '#667eea' : '#6b7280',
-            borderBottom: activeTab === 'basic' ? '3px solid #667eea' : '3px solid transparent',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            whiteSpace: 'nowrap',
-            marginBottom: '-2px',
-          }}
-        >
-          <Icon name="info" size="sm" /> Basic Information
-        </button>
-        <button
-          onClick={() => setActiveTab('interview')}
-          style={{
-            padding: '12px 24px',
-            fontSize: '15px',
-            fontWeight: '600',
-            border: 'none',
-            background: 'none',
-            color: activeTab === 'interview' ? '#667eea' : '#6b7280',
-            borderBottom: activeTab === 'interview' ? '3px solid #667eea' : '3px solid transparent',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            whiteSpace: 'nowrap',
-            marginBottom: '-2px',
-          }}
-        >
-          <Icon name="user-check" size="sm" /> Interview Insights
-        </button>
-        <button
-          onClick={() => setActiveTab('match')}
-          style={{
-            padding: '12px 24px',
-            fontSize: '15px',
-            fontWeight: '600',
-            border: 'none',
-            background: 'none',
-            color: activeTab === 'match' ? '#667eea' : '#6b7280',
-            borderBottom: activeTab === 'match' ? '3px solid #667eea' : '3px solid transparent',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            whiteSpace: 'nowrap',
-            marginBottom: '-2px',
-          }}
-        >
-          <Icon name="zap" size="sm" /> Match Analysis
-        </button>
-        <button
-          onClick={() => setActiveTab('skills')}
-          style={{
-            padding: '12px 24px',
-            fontSize: '15px',
-            fontWeight: '600',
-            border: 'none',
-            background: 'none',
-            color: activeTab === 'skills' ? '#667eea' : '#6b7280',
-            borderBottom: activeTab === 'skills' ? '3px solid #667eea' : '3px solid transparent',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            whiteSpace: 'nowrap',
-            marginBottom: '-2px',
-          }}
-        >
-          <Icon name="target" size="sm" /> Skills Gap Analysis
-        </button>
-        <button
-          onClick={() => setActiveTab('technical-prep')}
-          style={{
-            padding: '12px 24px',
-            fontSize: '15px',
-            fontWeight: '600',
-            border: 'none',
-            background: 'none',
-            color: activeTab === 'technical-prep' ? '#667eea' : '#6b7280',
-            borderBottom: activeTab === 'technical-prep' ? '3px solid #667eea' : '3px solid transparent',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            whiteSpace: 'nowrap',
-            marginBottom: '-2px',
-          }}
-        >
-          <Icon name="code" size="sm" /> Technical Prep
-        </button>
-        <button
-          onClick={() => setActiveTab('scheduled-interviews')}
-          style={{
-            padding: '12px 24px',
-            fontSize: '15px',
-            fontWeight: '600',
-            border: 'none',
-            background: 'none',
-            color: activeTab === 'scheduled-interviews' ? '#667eea' : '#6b7280',
-            borderBottom: activeTab === 'scheduled-interviews' ? '3px solid #667eea' : '3px solid transparent',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            whiteSpace: 'nowrap',
-            marginBottom: '-2px',
-          }}
-        >
-          <Icon name="calendar" size="sm" /> Scheduled Interviews
-        </button>
+      <div className="job-tabs">
+        {TAB_GROUPS.map((group) => (
+          <div key={group.title} className="job-tab-group">
+            <p className="job-tab-group__title">{group.title}</p>
+            <div className="job-tab-group__buttons">
+              {group.tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  className={`job-tab ${activeTab === tab.id ? 'active' : ''}`}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <div className="job-tab__icon">
+                    <Icon name={tab.icon} size="sm" />
+                  </div>
+                  <div>
+                    <span className="job-tab__label">{tab.label}</span>
+                    <span className="job-tab__desc">{tab.description}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Tab Content - Basic Information */}
@@ -1363,14 +1373,23 @@ const JobDetailView = () => {
         </>
       )}
 
+      {/* Tab Content - Salary Research */}
+      {activeTab === 'salary' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+          <SalaryResearch jobId={id} embedded={true} />
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '32px' }}>
+            <SalaryNegotiation jobId={id} embedded={true} />
+          </div>
+        </div>
+      )}
+
       {/* Tab Content - Interview Insights */}
       {activeTab === 'interview' && (
         <>
+          {/* Card 1: Interview Insights (Process, Timeline, etc.) */}
           {interviewInsights ? (
             <InterviewInsights
               insights={interviewInsights}
-              onToggleChecklistItem={handleToggleChecklistItem}
-              savingChecklistId={savingChecklistId}
             />
           ) : (
             <div className="education-form-card">
@@ -1382,37 +1401,67 @@ const JobDetailView = () => {
               </div>
             </div>
           )}
-          {questionBankError && (
+        </>
+      )}
+
+      {/* Tab Content - Interview Prep */}
+      {activeTab === 'interview-prep' && (
+        <>
+          {/* Card 1: Preparation Checklist */}
+          {interviewInsights?.preparation_checklist && (
             <div className="education-form-card">
-              <div className="education-form" style={{ padding: '24px' }}>
-                <div className="error-banner" style={{ margin: 0 }}>{questionBankError}</div>
+              <div className="form-header">
+                <h3>
+                  <Icon name="check-circle" size="md" /> Preparation Checklist
+                </h3>
+              </div>
+              <div className="education-form" style={{ padding: '32px' }}>
+                <JobPreparationChecklist
+                  checklist={interviewInsights.preparation_checklist}
+                  onToggleChecklistItem={handleToggleChecklistItem}
+                  savingChecklistId={savingChecklistId}
+                />
               </div>
             </div>
           )}
-          {questionBank && (
-            <RoleQuestionBank
-              bank={questionBank}
-              loading={loadingQuestionBank}
-              savingQuestionId={savingPracticeQuestion}
-              onLogPractice={handleLogQuestionPractice}
-              jobId={job?.id}
-              onPracticeStatusUpdate={handlePracticeStatusUpdate}
-            />
-          )}
-          {!questionBank && loadingQuestionBank && (
-            <div className="education-form-card">
-              <div className="education-form" style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>
-                Loading question bank...
-              </div>
+
+          {/* Card 2: Question Bank */}
+          <div className="education-form-card">
+            <div className="form-header">
+              <h3>
+                <Icon name="layers" size="md" /> Role-Specific Question Bank
+              </h3>
             </div>
-          )}
-          {!questionBank && !loadingQuestionBank && !questionBankError && (
-            <div className="education-form-card">
-              <div className="education-form" style={{ padding: '24px', color: '#6b7280' }}>
-                Question bank is not available for this job yet.
-              </div>
+            <div className="education-form" style={{ padding: '32px' }}>
+              {questionBankError && (
+                <div className="error-banner" style={{ margin: 0, marginBottom: '16px' }}>{questionBankError}</div>
+              )}
+              
+              {questionBank && (
+                <RoleQuestionBank
+                  bank={questionBank}
+                  loading={loadingQuestionBank}
+                  savingQuestionId={savingPracticeQuestion}
+                  onLogPractice={handleLogQuestionPractice}
+                  jobId={job?.id}
+                  onPracticeStatusUpdate={handlePracticeStatusUpdate}
+                  embedded={true}
+                />
+              )}
+
+              {!questionBank && loadingQuestionBank && (
+                <div style={{ textAlign: 'center', color: '#6b7280' }}>
+                  Loading question bank...
+                </div>
+              )}
+
+              {!questionBank && !loadingQuestionBank && !questionBankError && (
+                <div style={{ color: '#6b7280' }}>
+                  Question bank is not available for this job yet.
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </>
       )}
 
@@ -1459,6 +1508,15 @@ const JobDetailView = () => {
           onPoll={handlePollTechnicalPrep}
           onLogAttempt={handleLogTechnicalAttempt}
           loggingAttemptId={loggingTechnicalAttemptId}
+        />
+      )}
+
+      {activeTab === 'success-forecast' && (
+        <InterviewSuccessForecast
+          data={successForecast}
+          loading={loadingSuccessForecast}
+          error={successForecastError}
+          onRefresh={() => loadSuccessForecast(true)}
         />
       )}
 

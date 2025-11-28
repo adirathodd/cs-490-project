@@ -4,6 +4,12 @@
 	padding: 24px;
 }
 
+.negotiation-container.embedded {
+	padding: 0;
+	margin: 0;
+	max-width: none;
+}
+
 .negotiation-header {
 	display: flex;
 	justify-content: space-between;
@@ -437,14 +443,37 @@
 
 .outcome-layout {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+	grid-template-columns: 1fr 1fr;
 	gap: 24px;
+	align-items: start;
+}
+
+@media (max-width: 1024px) {
+	.outcome-layout {
+		grid-template-columns: 1fr;
+	}
 }
 
 .outcome-history {
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
+	max-height: 500px;
+	overflow-y: auto;
+	padding-right: 8px;
+}
+
+.outcome-history::-webkit-scrollbar {
+	width: 6px;
+}
+
+.outcome-history::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.outcome-history::-webkit-scrollbar-thumb {
+	background-color: #cbd5e1;
+	border-radius: 20px;
 }
 
 .outcome-item {
@@ -478,6 +507,20 @@
 	display: flex;
 	flex-direction: column;
 	gap: 16px;
+}
+
+.outcome-form .form-grid {
+	grid-template-columns: 1fr 1fr;
+	gap: 12px;
+}
+
+.outcome-form label {
+	font-size: 13px;
+}
+
+.outcome-form input,
+.outcome-form select {
+	padding: 8px 10px;
 }
 
 .outcome-form h3,

@@ -12,7 +12,7 @@ import Icon from '../common/Icon';
  * - Success tips
  * - Interview preparation checklist
  */
-const InterviewInsights = ({ insights, onToggleChecklistItem, savingChecklistId }) => {
+const InterviewInsights = ({ insights }) => {
   if (!insights || !insights.has_data) {
     return null;
   }
@@ -23,19 +23,18 @@ const InterviewInsights = ({ insights, onToggleChecklistItem, savingChecklistId 
     preparation_recommendations,
     timeline,
     success_tips,
-    preparation_checklist,
     disclaimer
   } = insights;
 
   return (
-    <div className="education-form-card">
-      <div className="form-header">
-        <h3>
-          <Icon name="target" size="md" /> Interview Insights & Preparation
-        </h3>
-      </div>
-
-      <div style={{ padding: '32px' }}>
+    <>
+      <div className="education-form-card">
+        <div className="form-header">
+          <h3>
+            <Icon name="target" size="md" /> Interview Insights
+          </h3>
+        </div>
+        <div style={{ padding: '32px' }}>
         {/* Disclaimer */}
         {disclaimer && (
           <div style={{
@@ -206,7 +205,7 @@ const InterviewInsights = ({ insights, onToggleChecklistItem, savingChecklistId 
           </div>
         )}
 
-        {/* Common Interview Questions */}
+        {/* Common Questions */}
         {common_questions && (
           <div style={{ marginBottom: '32px' }}>
             <h4 style={{
@@ -223,7 +222,7 @@ const InterviewInsights = ({ insights, onToggleChecklistItem, savingChecklistId 
             </h4>
 
             {common_questions.technical && common_questions.technical.length > 0 && (
-              <div style={{ marginBottom: '20px' }}>
+              <div style={{ marginBottom: '24px' }}>
                 <h5 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>
                   Technical Questions
                 </h5>
@@ -235,7 +234,7 @@ const InterviewInsights = ({ insights, onToggleChecklistItem, savingChecklistId 
                   flexDirection: 'column',
                   gap: '10px'
                 }}>
-                  {common_questions.technical.map((question, index) => (
+                  {common_questions.technical.slice(0, 8).map((question, index) => (
                     <li key={index} style={{
                       fontSize: '14px',
                       color: '#4b5563',
@@ -382,91 +381,9 @@ const InterviewInsights = ({ insights, onToggleChecklistItem, savingChecklistId 
           </div>
         )}
 
-        {/* Preparation Checklist */}
-        {preparation_checklist && preparation_checklist.length > 0 && (
-          <div>
-            <h4 style={{
-              fontSize: '18px',
-              fontWeight: '600',
-              color: '#111827',
-              marginBottom: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
-              <Icon name="check-square" size="sm" />
-              Preparation Checklist
-            </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {preparation_checklist.map((category, catIndex) => (
-                <div key={catIndex} style={{
-                  padding: '20px',
-                  backgroundColor: '#f9fafb',
-                  borderRadius: '8px',
-                  border: '1px solid #e5e7eb'
-                }}>
-                  <h5 style={{
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    color: '#111827',
-                    marginBottom: '12px'
-                  }}>
-                    {category.category}
-                  </h5>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {category.items.map((item, itemIndex) => (
-                      <label key={item.task_id || itemIndex} style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '12px',
-                        cursor: 'pointer',
-                        padding: '8px',
-                        borderRadius: '6px',
-                        transition: 'background-color 0.2s'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!!item.completed}
-                          onChange={(e) => {
-                            if (onToggleChecklistItem) {
-                              onToggleChecklistItem({
-                                taskId: item.task_id,
-                                category: category.category,
-                                task: item.task,
-                                completed: e.target.checked,
-                              });
-                            }
-                          }}
-                          disabled={!onToggleChecklistItem || savingChecklistId === item.task_id}
-                          style={{
-                            width: '18px',
-                            height: '18px',
-                            marginTop: '2px',
-                            cursor: onToggleChecklistItem ? 'pointer' : 'not-allowed',
-                            accentColor: '#667eea',
-                            opacity: savingChecklistId === item.task_id ? 0.6 : 1,
-                          }}
-                        />
-                        <span style={{
-                          fontSize: '14px',
-                          color: '#374151',
-                          lineHeight: '1.5'
-                        }}>
-                          {item.task}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
+    </>
   );
 };
 

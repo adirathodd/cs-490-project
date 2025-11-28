@@ -1249,6 +1249,20 @@ export const interviewsAPI = {
     }
   },
 
+  // UC-085: Interview success probability forecast
+  getSuccessForecast: async ({ jobId, refresh } = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (jobId) params.append('job', jobId);
+      if (refresh) params.append('refresh', 'true');
+      const query = params.toString() ? `?${params.toString()}` : '';
+      const response = await api.get(`/interviews/success-forecast/${query}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || error.response?.data || { message: 'Failed to load success forecast' };
+    }
+  },
+
   // UC-082: Generate interview follow-up templates
   generateFollowUp: async (data) => {
     try {
