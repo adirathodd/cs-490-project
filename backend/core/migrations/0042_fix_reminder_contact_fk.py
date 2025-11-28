@@ -1,6 +1,22 @@
 from django.db import migrations
 
 
+def column_exists(connection, table_name, column_name):
+    with connection.cursor() as cursor:
+        if connection.vendor == 'sqlite':
+            cursor.execute(f"PRAGMA table_info('{table_name}')")
+            return any(row[1] == column_name for row in cursor.fetchall())
+        cursor.execute(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = %s AND column_name = %s
+            """,
+            [table_name, column_name],
+        )
+        return cursor.fetchone() is not None
+
+
 def rebuild_reminder_if_missing_contact(apps, schema_editor):
     """
     Some dev databases have a legacy core_reminder table without contact/owner
@@ -10,15 +26,7 @@ def rebuild_reminder_if_missing_contact(apps, schema_editor):
     """
     connection = schema_editor.connection
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT 1
-            FROM information_schema.columns
-            WHERE table_name = 'core_reminder' AND column_name = 'contact_id'
-            """
-        )
-        has_contact_id = cursor.fetchone() is not None
+    has_contact_id = column_exists(connection, 'core_reminder', 'contact_id')
 
     if has_contact_id:
         return
@@ -34,8 +42,8 @@ def rebuild_reminder_if_missing_contact(apps, schema_editor):
         )
 
     # Drop and recreate table with the current model schema.
-    with connection.cursor() as cursor:
-        cursor.execute("DROP TABLE IF EXISTS core_reminder CASCADE")
+    drop_suffix = "" if connection.vendor == "sqlite" else " CASCADE"
+    schema_editor.execute(f"DROP TABLE IF EXISTS {schema_editor.quote_name('core_reminder')}{drop_suffix}")
 
     Reminder = apps.get_model("core", "Reminder")
     schema_editor.create_model(Reminder)

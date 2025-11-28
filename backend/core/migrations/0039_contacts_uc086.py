@@ -5,6 +5,42 @@ import uuid
 from django.conf import settings
 
 
+def get_column_type(connection, table_name, column_name):
+    with connection.cursor() as cursor:
+        if connection.vendor == 'sqlite':
+            cursor.execute(f"PRAGMA table_info('{table_name}')")
+            for row in cursor.fetchall():
+                if row[1] == column_name:
+                    return (row[2] or '').lower()
+            return None
+        cursor.execute(
+            """
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_name = %s AND column_name = %s
+            """,
+            [table_name, column_name],
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+
+def table_exists(connection, table_name):
+    with connection.cursor() as cursor:
+        if connection.vendor == 'sqlite':
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=%s",
+                [table_name],
+            )
+            return cursor.fetchone() is not None
+        cursor.execute(
+            "SELECT to_regclass(%s)",
+            [f'public.{table_name}'],
+        )
+        result = cursor.fetchone()
+        return result and result[0] is not None
+
+
 def ensure_contact_pk_is_uuid(apps, schema_editor):
     """
     In older dev databases, core_contact was created with a bigint PK and a different
@@ -14,17 +50,9 @@ def ensure_contact_pk_is_uuid(apps, schema_editor):
     manual reset so we don't silently destroy records.
     """
     connection = schema_editor.connection
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT data_type
-            FROM information_schema.columns
-            WHERE table_name = 'core_contact' AND column_name = 'id'
-            """
-        )
-        row = cursor.fetchone()
+    column_type = get_column_type(connection, 'core_contact', 'id')
 
-    if not row:
+    if not column_type:
         # Table does not exist; create it with the current model definition.
         Contact = apps.get_model('core', 'Contact')
         Referral = apps.get_model('core', 'Referral')
@@ -32,25 +60,15 @@ def ensure_contact_pk_is_uuid(apps, schema_editor):
         schema_editor.create_model(Referral)
         return
 
-    column_type = row[0]
     if column_type == 'uuid':
         return
-
-    def table_exists(table_name):
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT to_regclass(%s)",
-                [f'public.{table_name}'],
-            )
-            result = cursor.fetchone()
-            return result and result[0] is not None
 
     contact_count = 0
     referral_count = 0
     with connection.cursor() as cursor:
         cursor.execute("SELECT COUNT(*) FROM core_contact")
         contact_count = cursor.fetchone()[0]
-        if table_exists("core_referral"):
+        if table_exists(connection, "core_referral"):
             cursor.execute("SELECT COUNT(*) FROM core_referral")
             referral_count = cursor.fetchone()[0]
 
@@ -61,9 +79,9 @@ def ensure_contact_pk_is_uuid(apps, schema_editor):
         )
 
     # Safe to rebuild since there is no data.
-    with connection.cursor() as cursor:
-        cursor.execute("DROP TABLE IF EXISTS core_referral CASCADE")
-        cursor.execute("DROP TABLE IF EXISTS core_contact CASCADE")
+    drop_suffix = "" if connection.vendor == 'sqlite' else " CASCADE"
+    schema_editor.execute(f"DROP TABLE IF EXISTS {schema_editor.quote_name('core_referral')}{drop_suffix}")
+    schema_editor.execute(f"DROP TABLE IF EXISTS {schema_editor.quote_name('core_contact')}{drop_suffix}")
 
     Contact = apps.get_model('core', 'Contact')
     Referral = apps.get_model('core', 'Referral')

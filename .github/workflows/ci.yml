@@ -30,16 +30,11 @@ jobs:
         run: |
           cd backend
           echo "=================================="
-          echo "Running Django Test Suite"
-          echo "Expected: 121/139 tests passing"
-          echo "Coverage: 89.87% on Sprint 1 components"
+          echo "Running pytest Django test suite"
+          echo "Backend configured settings: backend.settings"
+          echo "Pytest runs entire suite to report all failures"
           echo "=================================="
-          # Run all tests and capture output
-          python manage.py test core.tests --verbosity=2 || true
-          echo "=================================="
-          echo "Note: 18 test failures are expected (test setup issues, not bugs)"
-          echo "87% pass rate meets Sprint 1 requirements"
-          echo "=================================="
+          pytest --ds=backend.settings --disable-warnings -vv
 
   frontend:
     name: Frontend tests (React + Jest)

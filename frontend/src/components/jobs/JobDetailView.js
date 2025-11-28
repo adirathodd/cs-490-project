@@ -493,7 +493,7 @@ const JobDetailView = () => {
       handlePracticeStatusUpdate(payload.question_id, practiceStatus);
       setSuccess('Practice response saved!');
       setTimeout(() => setSuccess(''), 3000);
-      return practiceStatus;
+      return response;
     } catch (err) {
       setError(err?.message || 'Failed to save practice');
     } finally {
