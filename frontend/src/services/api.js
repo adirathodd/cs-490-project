@@ -2399,6 +2399,150 @@ export const networkingAPI = {
   },
 };
 
+export const mentorshipAPI = {
+  getRequests: async () => {
+    try {
+      const response = await api.get('/mentorship/requests');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to load mentorship requests' };
+    }
+  },
+
+  getRelationships: async () => {
+    try {
+      const response = await api.get('/mentorship/relationships');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to load mentorship relationships' };
+    }
+  },
+
+  sendRequest: async (payload) => {
+    try {
+      const response = await api.post('/mentorship/requests', payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to send mentorship request' };
+    }
+  },
+
+  respondToRequest: async (requestId, action) => {
+    try {
+      const response = await api.post(`/mentorship/requests/${requestId}/respond`, { action });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to update mentorship request' };
+    }
+  },
+
+  cancelRequest: async (requestId) => {
+    try {
+      const response = await api.post(`/mentorship/requests/${requestId}/cancel`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to cancel mentorship request' };
+    }
+  },
+
+  getShareSettings: async (teamMemberId) => {
+    try {
+      const response = await api.get(`/mentorship/relationships/${teamMemberId}/sharing`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to load sharing settings' };
+    }
+  },
+
+  updateShareSettings: async (teamMemberId, payload) => {
+    try {
+      const response = await api.put(`/mentorship/relationships/${teamMemberId}/sharing`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to update sharing settings' };
+    }
+  },
+
+  getSharedData: async (teamMemberId) => {
+    try {
+      const response = await api.get(`/mentorship/relationships/${teamMemberId}/shared-data`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to load shared data' };
+    }
+  },
+
+  getGoals: async (teamMemberId) => {
+    try {
+      const response = await api.get(`/mentorship/relationships/${teamMemberId}/goals`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to load mentorship goals' };
+    }
+  },
+
+  createGoal: async (teamMemberId, payload) => {
+    try {
+      const response = await api.post(`/mentorship/relationships/${teamMemberId}/goals`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to create mentorship goal' };
+    }
+  },
+
+  updateGoal: async (goalId, payload) => {
+    try {
+      const response = await api.patch(`/mentorship/goals/${goalId}`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to update mentorship goal' };
+    }
+  },
+
+  deleteGoal: async (goalId) => {
+    try {
+      await api.delete(`/mentorship/goals/${goalId}`);
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to delete mentorship goal' };
+    }
+  },
+
+  getProgressReport: async (teamMemberId, params = {}) => {
+    try {
+      const search = new URLSearchParams(params).toString();
+      const path = search
+        ? `/mentorship/relationships/${teamMemberId}/progress-report?${search}`
+        : `/mentorship/relationships/${teamMemberId}/progress-report`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to load progress report' };
+    }
+  },
+
+  getMessages: async (teamMemberId, params = {}) => {
+    try {
+      const query = new URLSearchParams(params).toString();
+      const url = query
+        ? `/mentorship/relationships/${teamMemberId}/messages?${query}`
+        : `/mentorship/relationships/${teamMemberId}/messages`;
+      const response = await api.get(url);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to load messages' };
+    }
+  },
+
+  sendMessage: async (teamMemberId, payload) => {
+    try {
+      const response = await api.post(`/mentorship/relationships/${teamMemberId}/messages`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to send message' };
+    }
+  },
+};
+
 // UC-101: Career Goals API
 export const goalsAPI = {
   // Goals CRUD
@@ -2536,6 +2680,7 @@ try {
     module.exports.commentAPI = commentAPI;
     module.exports.notificationAPI = notificationAPI;
     module.exports.networkingAPI = networkingAPI;
+    module.exports.mentorshipAPI = mentorshipAPI;
     module.exports.goalsAPI = goalsAPI;
   }
 } catch (e) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
 // Component under test
 import RoleQuestionBank from '../components/jobs/RoleQuestionBank';
@@ -59,14 +59,16 @@ describe('RoleQuestionBank', () => {
 
     jobsAPI.getQuestionPracticeHistory.mockResolvedValueOnce(historyResponse);
 
-    render(
-      <RoleQuestionBank
-        bank={bank}
-        loading={false}
-        onLogPractice={jest.fn()}
-        jobId={123}
-      />
-    );
+    await act(async () => {
+      render(
+        <RoleQuestionBank
+          bank={bank}
+          loading={false}
+          onLogPractice={jest.fn()}
+          jobId={123}
+        />
+      );
+    });
 
     // Card content shows prompt
     expect(screen.getByText(/Explain a stack vs queue/i)).toBeInTheDocument();
@@ -80,7 +82,9 @@ describe('RoleQuestionBank', () => {
     expect(viewBtn).toBeInTheDocument();
 
     // Click view history -> should call API and show modal content
-    fireEvent.click(viewBtn);
+    await act(async () => {
+      fireEvent.click(viewBtn);
+    });
 
     await waitFor(() => expect(jobsAPI.getQuestionPracticeHistory).toHaveBeenCalledWith(123, 'q-1'));
 

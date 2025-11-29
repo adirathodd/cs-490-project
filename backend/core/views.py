@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from rest_framework.authentication import SessionAuthentication
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.core.management import call_command
 from django.utils.text import slugify
 from django.conf import settings
@@ -49,6 +50,18 @@ from core.serializers import (
     ResumeVersionCompareSerializer,
     ResumeVersionMergeSerializer,
     ResumeShareListSerializer,
+    MentorshipRequestSerializer,
+    MentorshipRequestCreateSerializer,
+    MentorshipRelationshipSerializer,
+    MentorshipShareSettingsSerializer,
+    MentorshipShareSettingsUpdateSerializer,
+    MentorshipSharedApplicationSerializer,
+    MentorshipGoalSerializer,
+    MentorshipGoalInputSerializer,
+    MentorshipMessageSerializer,
+    DocumentSummarySerializer,
+    JobEntrySummarySerializer,
+    CandidatePublicProfileSerializer,
     CalendarIntegrationSerializer,
 )
 from core.serializers import (
@@ -113,6 +126,12 @@ from core.models import (
     EventFollowUp,
     CalendarIntegration,
     InterviewEvent,
+    TeamMember,
+    MentorshipRequest,
+    MentorshipSharingPreference,
+    MentorshipSharedApplication,
+    MentorshipGoal,
+    MentorshipMessage,
 )
 from core import google_import, tasks, response_coach, interview_followup, calendar_sync
 from core.interview_checklist import build_checklist_tasks
@@ -130,6 +149,124 @@ from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 from core import google_import
 
 logger = logging.getLogger(__name__)
+
+
+def _get_candidate_profile_for_request(user):
+    try:
+        return CandidateProfile.objects.select_related('user').get(user=user)
+    except CandidateProfile.DoesNotExist:
+        return None
+
+
+def _ensure_sharing_preference(team_member):
+    preference, _ = MentorshipSharingPreference.objects.get_or_create(team_member=team_member)
+    return preference
+
+
+def _build_goal_summary(goal_list):
+    total = len(goal_list)
+    active = sum(1 for goal in goal_list if goal.status == 'active')
+    completed = sum(1 for goal in goal_list if goal.status == 'completed')
+    cancelled = sum(1 for goal in goal_list if goal.status == 'cancelled')
+    return {
+        'total': total,
+        'active': active,
+        'completed': completed,
+        'cancelled': cancelled,
+    }
+
+
+def _count_practice_questions(candidate, since=None):
+    qs = QuestionResponseCoaching.objects.filter(job__candidate=candidate)
+    if since:
+        qs = qs.filter(created_at__gte=since)
+    return qs.count()
+
+
+def _build_progress_report(team_member, request, days):
+    now = timezone.now()
+    window_days = max(1, min(int(days), 30))
+    since = now - timedelta(days=window_days)
+    candidate = team_member.candidate
+
+    new_jobs_qs = JobEntry.objects.filter(candidate=candidate, created_at__gte=since)
+    job_responses_qs = JobEntry.objects.filter(
+        candidate=candidate,
+        status__in={'phone_screen', 'interview', 'offer', 'rejected'},
+        updated_at__gte=since,
+    )
+    new_jobs = JobEntrySummarySerializer(new_jobs_qs, many=True, context={'request': request}).data
+    responded_jobs = JobEntrySummarySerializer(job_responses_qs, many=True, context={'request': request}).data
+
+    projects_created_qs = Project.objects.filter(candidate=candidate, created_at__gte=since)
+    projects_completed_qs = Project.objects.filter(
+        candidate=candidate,
+        status='completed',
+        updated_at__gte=since,
+    )
+    projects_created = ProjectSerializer(projects_created_qs[:10], many=True, context={'request': request}).data
+    projects_completed = ProjectSerializer(projects_completed_qs[:10], many=True, context={'request': request}).data
+
+    goals_created_qs = team_member.mentorship_goals.filter(created_at__gte=since)
+    goals_completed_qs = team_member.mentorship_goals.filter(completed_at__gte=since)
+    goals_created = MentorshipGoalSerializer(goals_created_qs, many=True, context={'request': request}).data
+    goals_completed = MentorshipGoalSerializer(goals_completed_qs, many=True, context={'request': request}).data
+
+    practice_entries_qs = QuestionResponseCoaching.objects.filter(
+        job__candidate=candidate,
+        created_at__gte=since,
+    ).select_related('job').order_by('-created_at')
+    practice_questions = practice_entries_qs.count()
+    score_values = []
+    practice_entries = []
+    for entry in practice_entries_qs[:10]:
+        score = None
+        scores = entry.scores or {}
+        if isinstance(scores, dict):
+            score = scores.get('overall')
+            if isinstance(score, (int, float)):
+                score_values.append(float(score))
+        job = entry.job
+        practice_entries.append({
+            'created_at': entry.created_at.isoformat() if entry.created_at else '',
+            'question': entry.question_text[:200],
+            'score': score,
+            'job_title': getattr(job, 'title', ''),
+            'company_name': getattr(job, 'company_name', ''),
+        })
+    avg_score = round(sum(score_values) / len(score_values), 1) if score_values else None
+
+    report = {
+        'generated_at': now.isoformat(),
+        'window_start': since.isoformat(),
+        'window_end': now.isoformat(),
+        'window_days': window_days,
+        'jobs': {
+            'new_count': len(new_jobs),
+            'responses_count': len(responded_jobs),
+            'new_applications': new_jobs[:10],
+            'responses': responded_jobs[:10],
+        },
+        'projects': {
+            'created_count': projects_created_qs.count(),
+            'completed_count': projects_completed_qs.count(),
+            'created': projects_created,
+            'completed': projects_completed,
+        },
+        'goals': {
+            'created_count': goals_created_qs.count(),
+            'completed_count': goals_completed_qs.count(),
+            'created': goals_created,
+            'completed': goals_completed,
+        },
+        'interview_practice': {
+            'questions_practiced': practice_questions,
+            'average_score': avg_score,
+            'entries': practice_entries,
+        },
+    }
+    return report
+
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def cover_letter_template_list_create(request):
@@ -12413,6 +12550,532 @@ def generate_interview_followup(request):
             {"error": str(e)}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# ======================
+# Mentorship endpoints
+# ======================
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def mentorship_requests_view(request):
+    """List incoming/outgoing mentorship requests or create a new request."""
+    profile = _get_candidate_profile_for_request(request.user)
+    if not profile:
+        return Response({"error": "Candidate profile not found for user."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if request.method == "GET":
+        base_qs = MentorshipRequest.objects.select_related('requester__user', 'receiver__user')
+        incoming_qs = base_qs.filter(receiver=profile).order_by('-created_at')
+        outgoing_qs = base_qs.filter(requester=profile).order_by('-created_at')
+        serializer_context = {'request': request}
+        return Response({
+            'incoming': MentorshipRequestSerializer(incoming_qs, many=True, context=serializer_context).data,
+            'outgoing': MentorshipRequestSerializer(outgoing_qs, many=True, context=serializer_context).data,
+        })
+
+    serializer = MentorshipRequestCreateSerializer(
+        data=request.data,
+        context={
+            'requester_profile': profile,
+            'request': request,
+        },
+    )
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    mentorship_request = serializer.save()
+    response_serializer = MentorshipRequestSerializer(mentorship_request, context={'request': request})
+    return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def respond_to_mentorship_request(request, request_id):
+    """Accept or decline a mentorship request if you are the receiver."""
+    profile = _get_candidate_profile_for_request(request.user)
+    if not profile:
+        return Response({"error": "Candidate profile not found for user."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        mentorship_request = MentorshipRequest.objects.select_related('requester__user', 'receiver__user').get(id=request_id)
+    except MentorshipRequest.DoesNotExist:
+        return Response({"error": "Mentorship request not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if mentorship_request.receiver_id != profile.id:
+        return Response({"error": "Only the receiver can respond to this request."}, status=status.HTTP_403_FORBIDDEN)
+
+    if mentorship_request.status != 'pending':
+        return Response({"error": "This request is no longer pending."}, status=status.HTTP_400_BAD_REQUEST)
+
+    action = (request.data.get('action') or '').strip().lower()
+    if action not in ('accept', 'decline'):
+        return Response({"error": "Action must be 'accept' or 'decline'."}, status=status.HTTP_400_BAD_REQUEST)
+
+    mentorship_request.responded_at = timezone.now()
+    mentorship_request.responded_by = request.user
+
+    if action == 'accept':
+        mentorship_request.status = 'accepted'
+        mentorship_request.save(update_fields=['status', 'responded_at', 'responded_by'])
+
+        mentee_profile = mentorship_request.get_mentee_profile()
+        mentor_user = mentorship_request.get_mentor_user()
+        defaults = {
+            'role': 'mentor',
+            'permission_level': 'view',
+            'is_active': True,
+            'accepted_at': timezone.now(),
+        }
+        team_member, created = TeamMember.objects.get_or_create(
+            candidate=mentee_profile,
+            user=mentor_user,
+            defaults=defaults,
+        )
+        if not created:
+            updated_fields = []
+            if team_member.role != 'mentor':
+                team_member.role = 'mentor'
+                updated_fields.append('role')
+            if not team_member.is_active:
+                team_member.is_active = True
+                updated_fields.append('is_active')
+            if not team_member.permission_level:
+                team_member.permission_level = 'view'
+                updated_fields.append('permission_level')
+            if not team_member.accepted_at:
+                team_member.accepted_at = timezone.now()
+                updated_fields.append('accepted_at')
+            if updated_fields:
+                team_member.save(update_fields=updated_fields)
+        _ensure_sharing_preference(team_member)
+    else:
+        mentorship_request.status = 'declined'
+        mentorship_request.save(update_fields=['status', 'responded_at', 'responded_by'])
+
+    serializer = MentorshipRequestSerializer(mentorship_request, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def cancel_mentorship_request(request, request_id):
+    """Allow a requester to cancel a pending mentorship request."""
+    profile = _get_candidate_profile_for_request(request.user)
+    if not profile:
+        return Response({"error": "Candidate profile not found for user."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        mentorship_request = MentorshipRequest.objects.select_related('requester__user', 'receiver__user').get(id=request_id)
+    except MentorshipRequest.DoesNotExist:
+        return Response({"error": "Mentorship request not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if mentorship_request.requester_id != profile.id:
+        return Response({"error": "Only the requester can cancel this mentorship request."}, status=status.HTTP_403_FORBIDDEN)
+
+    if mentorship_request.status != 'pending':
+        return Response({"error": "Only pending requests can be cancelled."}, status=status.HTTP_400_BAD_REQUEST)
+
+    mentorship_request.status = 'cancelled'
+    mentorship_request.responded_at = timezone.now()
+    mentorship_request.responded_by = request.user
+    mentorship_request.save(update_fields=['status', 'responded_at', 'responded_by'])
+
+    serializer = MentorshipRequestSerializer(mentorship_request, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def mentorship_relationships(request):
+    """Provide separate lists of accepted mentors and mentees for the current user."""
+    profile = _get_candidate_profile_for_request(request.user)
+    if not profile:
+        return Response({"error": "Candidate profile not found for user."}, status=status.HTTP_400_BAD_REQUEST)
+
+    mentors_qs = TeamMember.objects.filter(
+        candidate=profile,
+        role='mentor',
+        is_active=True,
+    ).select_related('candidate__user', 'user__profile', 'sharing_preference').prefetch_related(
+        'shared_applications__job',
+        'shared_applications__job__resume_doc',
+        'shared_applications__job__cover_letter_doc',
+    )
+
+    mentees_qs = TeamMember.objects.filter(
+        user=request.user,
+        role='mentor',
+        is_active=True,
+    ).select_related('candidate__user', 'user__profile', 'sharing_preference').prefetch_related(
+        'shared_applications__job',
+        'shared_applications__job__resume_doc',
+        'shared_applications__job__cover_letter_doc',
+    )
+
+    serializer_context = {'request': request}
+    return Response({
+        'mentors': MentorshipRelationshipSerializer(mentors_qs, many=True, context=serializer_context).data,
+        'mentees': MentorshipRelationshipSerializer(mentees_qs, many=True, context=serializer_context).data,
+    })
+
+
+@api_view(["GET", "PUT"])
+@permission_classes([IsAuthenticated])
+def mentorship_sharing_preferences_view(request, team_member_id):
+    """Allow mentees to manage what information a specific mentor can access."""
+    profile = _get_candidate_profile_for_request(request.user)
+    if not profile:
+        return Response({"error": "Candidate profile not found for user."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        team_member = TeamMember.objects.select_related('candidate__user', 'user').get(id=team_member_id)
+    except TeamMember.DoesNotExist:
+        return Response({"error": "Mentor relationship not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if team_member.candidate_id != profile.id:
+        return Response({"error": "Only the mentee can manage these sharing settings."}, status=status.HTTP_403_FORBIDDEN)
+
+    preference = _ensure_sharing_preference(team_member)
+
+    if request.method == "GET":
+        serializer = MentorshipShareSettingsSerializer(preference, context={'request': request})
+        return Response(serializer.data)
+
+    serializer = MentorshipShareSettingsUpdateSerializer(
+        data=request.data,
+        context={'preference': preference, 'request': request},
+    )
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer.save()
+    preference.refresh_from_db()
+    output = MentorshipShareSettingsSerializer(preference, context={'request': request}).data
+    return Response(output)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def mentorship_shared_data(request, team_member_id):
+    """Provide mentors with the data a mentee has shared."""
+    try:
+        team_member = TeamMember.objects.select_related(
+            'candidate__user',
+            'user',
+            'sharing_preference',
+        ).get(id=team_member_id)
+    except TeamMember.DoesNotExist:
+        return Response({"error": "Mentor relationship not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    allowed_user_ids = {team_member.user_id, team_member.candidate.user_id}
+    if request.user.id not in allowed_user_ids:
+        return Response({"error": "You do not have access to this mentorship data."}, status=status.HTTP_403_FORBIDDEN)
+
+    viewer_role = 'mentor' if team_member.user_id == request.user.id else 'mentee'
+
+    preference = _ensure_sharing_preference(team_member)
+    candidate = team_member.candidate
+    shared_job_entries = []
+
+    def serialize_job_entry(job_entry, notes=''):
+        shared_job_entries.append(job_entry)
+        data = JobEntrySummarySerializer(job_entry, context={'request': request}).data
+        resume_doc = getattr(job_entry, 'resume_doc', None)
+        cover_doc = getattr(job_entry, 'cover_letter_doc', None)
+        resume_payload = (
+            DocumentSummarySerializer(resume_doc, context={'request': request}).data
+            if resume_doc else None
+        )
+        cover_payload = (
+            DocumentSummarySerializer(cover_doc, context={'request': request}).data
+            if cover_doc else None
+        )
+        return {
+            'id': None,
+            'job': data,
+            'job_id': job_entry.id,
+            'include_documents': bool(resume_doc or cover_doc),
+            'notes': notes or '',
+            'shared_resume_document': resume_payload,
+            'shared_cover_letter_document': cover_payload,
+            'shared_resume_document_id': getattr(resume_doc, 'id', None),
+            'shared_cover_letter_document_id': getattr(cover_doc, 'id', None),
+            'shared_at': None,
+        }
+
+    response_data = {
+        'team_member_id': team_member.id,
+        'mentee': CandidatePublicProfileSerializer(candidate, context={'request': request}).data,
+        'sections': {
+            'share_profile_basics': preference.share_profile_basics,
+            'share_skills': preference.share_skills,
+            'share_employment': preference.share_employment,
+            'share_education': preference.share_education,
+            'share_certifications': preference.share_certifications,
+            'share_documents': preference.share_documents,
+            'share_job_applications': preference.job_sharing_mode != 'none',
+        },
+        'job_sharing_mode': preference.job_sharing_mode,
+        'updated_at': preference.updated_at,
+        'viewer_role': viewer_role,
+    }
+
+    if preference.share_profile_basics:
+        response_data['profile'] = BasicProfileSerializer(candidate, context={'request': request}).data
+
+    if preference.share_skills:
+        skills_qs = CandidateSkill.objects.filter(candidate=candidate).select_related('skill')
+        response_data['skills'] = CandidateSkillSerializer(skills_qs, many=True, context={'request': request}).data
+
+    if preference.share_employment:
+        employment_qs = WorkExperience.objects.filter(candidate=candidate).order_by('-start_date')
+        response_data['employment_history'] = WorkExperienceSerializer(
+            employment_qs,
+            many=True,
+            context={'request': request},
+        ).data
+
+    if preference.share_education:
+        education_qs = Education.objects.filter(candidate=candidate).order_by('-start_date')
+        response_data['education_history'] = EducationSerializer(
+            education_qs,
+            many=True,
+            context={'request': request},
+        ).data
+
+    if preference.share_certifications:
+        certifications_qs = Certification.objects.filter(candidate=candidate).order_by('-issue_date')
+        response_data['certifications'] = CertificationSerializer(
+            certifications_qs,
+            many=True,
+            context={'request': request},
+        ).data
+
+    if preference.share_documents:
+        doc_payloads = []
+        shared_application_ids = set(
+            MentorshipSharedApplication.objects.filter(team_member=team_member).values_list('job_id', flat=True)
+        )
+        if shared_application_ids:
+            shared_docs = Document.objects.filter(
+                job_entries__in=shared_application_ids,
+                candidate=candidate,
+            ).distinct()
+            for doc in shared_docs:
+                doc_payloads.append(
+                    DocumentSummarySerializer(doc, context={'request': request}).data
+                )
+        if doc_payloads:
+            response_data['documents'] = doc_payloads
+
+    goals = list(team_member.mentorship_goals.order_by('-created_at'))
+    response_data['goals'] = MentorshipGoalSerializer(goals, many=True, context={'request': request}).data
+    response_data['goal_summary'] = _build_goal_summary(goals)
+
+    shared_jobs_qs = MentorshipSharedApplication.objects.filter(team_member=team_member).select_related(
+        'job',
+        'job__resume_doc',
+        'job__cover_letter_doc',
+    )
+    manual_entries = JobEntry.objects.none()
+    if preference.job_sharing_mode == 'all':
+        manual_entries = JobEntry.objects.filter(candidate=candidate)
+    elif preference.job_sharing_mode == 'responses':
+        manual_entries = JobEntry.objects.filter(
+            candidate=candidate,
+            status__in={'phone_screen', 'interview', 'offer'},
+        )
+    manual_entries = manual_entries.exclude(id__in=shared_jobs_qs.values_list('job_id', flat=True))
+
+    shared_applications = [
+        MentorshipSharedApplicationSerializer(obj, context={'request': request}).data
+        for obj in shared_jobs_qs
+    ]
+    manual_shared = [serialize_job_entry(job_entry) for job_entry in manual_entries]
+    response_data['shared_applications'] = shared_applications + manual_shared
+
+    return Response(response_data)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def mentorship_goals(request, team_member_id):
+    """List or create mentorship goals for a specific relationship."""
+    try:
+        team_member = TeamMember.objects.select_related('candidate__user', 'user').get(id=team_member_id)
+    except TeamMember.DoesNotExist:
+        return Response({"error": "Mentorship relationship not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    candidate_user_id = team_member.candidate.user_id
+    if request.user.id == team_member.user_id:
+        viewer_role = 'mentor'
+    elif request.user.id == candidate_user_id:
+        viewer_role = 'mentee'
+    else:
+        return Response({"error": "You do not have access to these goals."}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "GET":
+        goals = list(team_member.mentorship_goals.order_by('-created_at'))
+        serializer = MentorshipGoalSerializer(goals, many=True, context={'request': request})
+        return Response({
+            'viewer_role': viewer_role,
+            'goal_summary': _build_goal_summary(goals),
+            'goals': serializer.data,
+        })
+
+    if viewer_role != 'mentor':
+        return Response({"error": "Only mentors can create or edit goals."}, status=status.HTTP_403_FORBIDDEN)
+
+    serializer = MentorshipGoalInputSerializer(
+        data=request.data,
+        context={'team_member': team_member, 'request': request},
+    )
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    goal = serializer.save()
+    output = MentorshipGoalSerializer(goal, context={'request': request}).data
+    return Response(output, status=status.HTTP_201_CREATED)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def mentorship_goal_detail(request, goal_id):
+    """Update or delete a specific mentorship goal."""
+    try:
+        goal = MentorshipGoal.objects.select_related('team_member__candidate__user', 'team_member__user').get(id=goal_id)
+    except MentorshipGoal.DoesNotExist:
+        return Response({"error": "Goal not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    team_member = goal.team_member
+    candidate_user_id = team_member.candidate.user_id
+    if request.user.id not in {team_member.user_id, candidate_user_id}:
+        return Response({"error": "You do not have access to this goal."}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "DELETE":
+        if request.user.id != team_member.user_id:
+            return Response({"error": "Only mentors can delete goals."}, status=status.HTTP_403_FORBIDDEN)
+        goal.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    if request.user.id != team_member.user_id:
+        return Response({"error": "Only mentors can update goals."}, status=status.HTTP_403_FORBIDDEN)
+
+    serializer = MentorshipGoalInputSerializer(
+        goal,
+        data=request.data,
+        partial=True,
+        context={'team_member': team_member, 'request': request},
+    )
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    goal = serializer.save()
+    output = MentorshipGoalSerializer(goal, context={'request': request}).data
+    return Response(output)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def mentorship_progress_report(request, team_member_id):
+    """Provide a progress report for the specified mentorship relationship."""
+    try:
+        team_member = TeamMember.objects.select_related('candidate__user', 'user').get(id=team_member_id)
+    except TeamMember.DoesNotExist:
+        return Response({"error": "Mentorship relationship not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    candidate_user_id = team_member.candidate.user_id
+    if request.user.id not in {team_member.user_id, candidate_user_id}:
+        return Response({"error": "You do not have access to this progress report."}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        days = int(request.query_params.get('days', 7))
+    except (TypeError, ValueError):
+        days = 7
+
+    report = _build_progress_report(team_member, request, days)
+    report['viewer_role'] = 'mentor' if request.user.id == team_member.user_id else 'mentee'
+    return Response(report)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def mentorship_messages(request, team_member_id):
+    """Secure chat between mentor and mentee for a given relationship."""
+    try:
+        team_member = TeamMember.objects.select_related('candidate__user', 'user').get(id=team_member_id)
+    except TeamMember.DoesNotExist:
+        return Response({"error": "Mentorship relationship not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    candidate_user_id = team_member.candidate.user_id
+    mentor_user_id = team_member.user_id
+
+    if request.user.id == mentor_user_id:
+        viewer_role = 'mentor'
+    elif request.user.id == candidate_user_id:
+        viewer_role = 'mentee'
+    else:
+        return Response({"error": "You do not have access to this conversation."}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "GET":
+        try:
+            limit = int(request.query_params.get('limit', 50))
+        except (TypeError, ValueError):
+            limit = 50
+        limit = max(1, min(limit, 200))
+
+        after_param = request.query_params.get('after')
+        qs = MentorshipMessage.objects.filter(team_member=team_member)
+        if after_param:
+            after_dt = parse_datetime(after_param)
+            if after_dt:
+                if timezone.is_naive(after_dt):
+                    after_dt = timezone.make_aware(after_dt, timezone.get_current_timezone())
+                qs = qs.filter(created_at__gt=after_dt)
+
+        messages = list(qs.order_by('-created_at')[:limit])
+        messages.reverse()
+
+        if viewer_role == 'mentor':
+            MentorshipMessage.objects.filter(
+                team_member=team_member,
+                is_read_by_mentor=False,
+            ).exclude(sender_id=mentor_user_id).update(is_read_by_mentor=True)
+        else:
+            MentorshipMessage.objects.filter(
+                team_member=team_member,
+                is_read_by_mentee=False,
+            ).exclude(sender_id=candidate_user_id).update(is_read_by_mentee=True)
+
+        serializer = MentorshipMessageSerializer(
+            messages,
+            many=True,
+            context={'request': request, 'viewer_role': viewer_role},
+        )
+        last_timestamp = messages[-1].created_at if messages else None
+        response_payload = {
+            'messages': serializer.data,
+            'count': len(messages),
+        }
+        if last_timestamp:
+            response_payload['latest'] = last_timestamp.isoformat()
+        return Response(response_payload)
+
+    message_text = (request.data.get('message') or '').strip()
+    if not message_text:
+        return Response({'message': 'Message cannot be empty.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    message = MentorshipMessage.objects.create(
+        team_member=team_member,
+        sender=request.user,
+        message=message_text,
+        is_read_by_mentor=request.user.id == mentor_user_id,
+        is_read_by_mentee=request.user.id == candidate_user_id,
+    )
+    serializer = MentorshipMessageSerializer(
+        message,
+        context={'request': request, 'viewer_role': viewer_role},
+    )
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 # ==================== UC-101: Career Goals ====================

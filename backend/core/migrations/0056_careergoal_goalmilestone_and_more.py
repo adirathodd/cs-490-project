@@ -58,26 +58,6 @@ class Migration(migrations.Migration):
                 'ordering': ['order', 'target_date'],
             },
         ),
-        migrations.RenameIndex(
-            model_name='interviewsuccessprediction',
-            new_name='core_interv_intervi_9bc100_idx',
-            old_name='core_succ_pred_interview_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='interviewsuccessprediction',
-            new_name='core_interv_candida_178a75_idx',
-            old_name='core_succ_pred_candidate_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='interviewsuccessprediction',
-            new_name='core_interv_job_id_1a36cc_idx',
-            old_name='core_succ_pred_job_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='interviewsuccessprediction',
-            new_name='core_interv_is_late_d6548a_idx',
-            old_name='core_succ_pred_latest_idx',
-        ),
         migrations.AddField(
             model_name='careergoal',
             name='linked_jobs',

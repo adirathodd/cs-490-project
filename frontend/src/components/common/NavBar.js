@@ -142,6 +142,7 @@ const NavBar = () => {
   </div>
 
   <NavLink to="/analytics" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Analytics</NavLink>
+  <NavLink to="/mentorship" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Mentors</NavLink>
         
   {/* Profile dropdown */}
   <div className="nav-dropdown" ref={profileDropdownRef}>

@@ -80,6 +80,18 @@ urlpatterns = [
     path('networking-events/<uuid:event_id>/follow-ups/<uuid:follow_up_id>/complete', views.event_follow_up_complete, name='event-follow-up-complete'),
     path('networking-events/analytics', views.networking_analytics, name='networking-analytics'),
 
+    # Mentorship & collaboration
+    path('mentorship/requests', views.mentorship_requests_view, name='mentorship-requests'),
+    path('mentorship/requests/<uuid:request_id>/respond', views.respond_to_mentorship_request, name='mentorship-request-respond'),
+    path('mentorship/requests/<uuid:request_id>/cancel', views.cancel_mentorship_request, name='mentorship-request-cancel'),
+    path('mentorship/relationships', views.mentorship_relationships, name='mentorship-relationships'),
+    path('mentorship/relationships/<int:team_member_id>/sharing', views.mentorship_sharing_preferences_view, name='mentorship-sharing-preferences'),
+    path('mentorship/relationships/<int:team_member_id>/shared-data', views.mentorship_shared_data, name='mentorship-shared-data'),
+    path('mentorship/relationships/<int:team_member_id>/goals', views.mentorship_goals, name='mentorship-goals'),
+    path('mentorship/goals/<uuid:goal_id>', views.mentorship_goal_detail, name='mentorship-goal-detail'),
+    path('mentorship/relationships/<int:team_member_id>/progress-report', views.mentorship_progress_report, name='mentorship-progress-report'),
+    path('mentorship/relationships/<int:team_member_id>/messages', views.mentorship_messages, name='mentorship-messages'),
+
     # Profile Picture endpoints (UC-022)
     path('profile/picture', views.get_profile_picture, name='get-profile-picture'),
     path('profile/picture/upload', views.upload_profile_picture, name='upload-profile-picture'),

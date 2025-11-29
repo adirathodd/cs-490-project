@@ -1,23 +1,15 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-
-const mockUnmark = jest.fn(() => Promise.resolve({}));
-
-jest.mock('../../../services/api', () => ({
-  referralAPI: {
-    unmarkCompleted: (id) => mockUnmark(id),
-    markSent: jest.fn(),
-    markResponse: jest.fn(),
-    markCompleted: jest.fn(),
-    expressGratitude: jest.fn(),
-    suggestFollowUp: jest.fn()
-  }
-}));
-
+import { referralAPI } from '../../../services/api';
 import ReferralDetailModal from '../ReferralDetailModal';
 
 describe('ReferralDetailModal Mark Active', () => {
+  beforeEach(() => {
+    referralAPI.unmarkCompleted.mockReset();
+    referralAPI.unmarkCompleted.mockResolvedValue({});
+  });
+
   test('calls unmarkCompleted and triggers onUpdate', async () => {
     const onClose = jest.fn();
     const onUpdate = jest.fn();
@@ -34,9 +26,11 @@ describe('ReferralDetailModal Mark Active', () => {
     render(<ReferralDetailModal referral={referral} onClose={onClose} onUpdate={onUpdate} />);
 
     const markActiveBtn = await screen.findByRole('button', { name: /Mark Active/i });
-    await userEvent.click(markActiveBtn);
+    await act(async () => {
+      await userEvent.click(markActiveBtn);
+    });
 
-    await waitFor(() => expect(mockUnmark).toHaveBeenCalledWith('test-uuid'));
+    await waitFor(() => expect(referralAPI.unmarkCompleted).toHaveBeenCalledWith('test-uuid'));
     expect(onUpdate).toHaveBeenCalled();
   });
 });
