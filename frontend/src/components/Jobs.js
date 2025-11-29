@@ -60,6 +60,7 @@ const Jobs = () => {
   });
   const [sortBy, setSortBy] = useState('date_added');
   const [showFilters, setShowFilters] = useState(false);
+  const [viewMode, setViewMode] = useState('list');
 
   // UC-045: Archive State
   const [showArchived, setShowArchived] = useState(false);
@@ -99,6 +100,9 @@ const Jobs = () => {
         if (prefs.filters) setFilters(prev => ({ ...prev, ...prefs.filters }));
         if (prefs.sortBy) setSortBy(prefs.sortBy);
         if (prefs.showFilters !== undefined) setShowFilters(prefs.showFilters);
+        if (prefs.viewMode && ['list', 'grid'].includes(prefs.viewMode)) {
+          setViewMode(prefs.viewMode);
+        }
       }
     } catch (e) {
       console.warn('Failed to load saved search preferences:', e);
@@ -108,12 +112,12 @@ const Jobs = () => {
   // UC-039: Save search preferences to localStorage when they change
   useEffect(() => {
     try {
-      const prefs = { searchQuery, filters, sortBy, showFilters };
+      const prefs = { searchQuery, filters, sortBy, showFilters, viewMode };
       localStorage.setItem('jobSearchPreferences', JSON.stringify(prefs));
     } catch (e) {
       console.warn('Failed to save search preferences:', e);
     }
-  }, [searchQuery, filters, sortBy, showFilters]);
+  }, [searchQuery, filters, sortBy, showFilters, viewMode]);
 
   // UC-042: Load documents and defaults
   useEffect(() => {
@@ -789,10 +793,34 @@ const Jobs = () => {
 
       <h2>Job Tracker</h2>
 
-      {/* 2. Job Tracker section name and description */}
+      {/* 2. Job Tracker section name and description  */} 
       <div className="education-header">
         <h2><Icon name="briefcase" size="md" /> Your Job Entries</h2>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div 
+            className="jobs-view-toggle" 
+            role="group" 
+            aria-label="Select job layout"
+          >
+            <button
+              type="button"
+              className={`jobs-view-toggle__option ${viewMode === 'list' ? 'is-active' : ''}`}
+              onClick={() => setViewMode('list')}
+              aria-pressed={viewMode === 'list'}
+            >
+              <Icon name="list" size="sm" ariaLabel="List view" />
+              <span>List</span>
+            </button>
+            <button
+              type="button"
+              className={`jobs-view-toggle__option ${viewMode === 'grid' ? 'is-active' : ''}`}
+              onClick={() => setViewMode('grid')}
+              aria-pressed={viewMode === 'grid'}
+            >
+              <Icon name="grid" size="sm" ariaLabel="Grid view" />
+              <span>Grid</span>
+            </button>
+          </div>
           {/* UC-042: Set Default Materials button */}
           <button
             className="btn-secondary"
@@ -1446,7 +1474,7 @@ const Jobs = () => {
           )}
         </div>
       ) : (
-        <div className="education-list">
+        <div className={`education-list ${viewMode === 'grid' ? 'grid-view' : 'list-view'}`}>
           {/* UC-045: Bulk select all checkbox with action buttons - Active Jobs */}
           {!showArchived && items.length > 0 && (
             <div style={{ 

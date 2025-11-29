@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from './Icon';
 
@@ -15,10 +15,29 @@ const endOfMonth = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
 
 const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 1);
 
+const COLLAPSE_PREF_KEY = 'jobsCalendarCollapsed';
+
 export default function DeadlineCalendar({ items = [], interviews = [], onSelectDate }) {
   const navigate = useNavigate();
   const [current, setCurrent] = useState(startOfMonth(new Date()));
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return sessionStorage.getItem(COLLAPSE_PREF_KEY) === 'true';
+    } catch (err) {
+      console.warn('Failed to load calendar collapse state:', err);
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.setItem(COLLAPSE_PREF_KEY, isCollapsed ? 'true' : 'false');
+    } catch (err) {
+      console.warn('Failed to save calendar collapse state:', err);
+    }
+  }, [isCollapsed]);
 
   const { weeks, monthLabel } = useMemo(() => {
     const start = startOfMonth(current);
@@ -94,7 +113,7 @@ export default function DeadlineCalendar({ items = [], interviews = [], onSelect
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button 
             className="btn-secondary calendar-collapse-btn"
-            onClick={() => setIsCollapsed(!isCollapsed)}
+            onClick={() => setIsCollapsed((prev) => !prev)}
             title={isCollapsed ? "Expand Calendar" : "Collapse Calendar"}
             aria-label={isCollapsed ? "Expand Calendar" : "Collapse Calendar"}
             style={{ 

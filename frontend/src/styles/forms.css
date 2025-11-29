@@ -481,6 +481,47 @@
   margin: 0 0 32px 0;
 }
 
+.jobs-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  flex-wrap: nowrap;
+}
+
+.jobs-view-toggle__option {
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.jobs-view-toggle__option:hover {
+  color: #4c1d95;
+}
+
+.jobs-view-toggle__option.is-active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: var(--white);
+  box-shadow: 0 6px 14px rgba(102, 126, 234, 0.35);
+}
+
+.jobs-view-toggle__option:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
 .education-list {
   position: relative;
   padding-left: 40px;
@@ -796,6 +837,47 @@
   margin-right: 8px;
 }
 
+.education-list.grid-view {
+  padding-left: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+}
+
+.education-list.grid-view::before {
+  display: none;
+}
+
+.education-list.grid-view .education-item {
+  margin: 0;
+  min-height: 100%;
+}
+
+.education-list.grid-view .education-item::before {
+  display: none;
+}
+
+.education-list.grid-view .education-item-header {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.education-list.grid-view .education-item-actions {
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.education-list.grid-view .education-item-actions > * {
+  flex: 1 1 44px;
+  min-width: 44px;
+}
+
+.education-list.grid-view .education-item-details {
+  border-top: 1px solid #f3f4f6;
+}
+
 .gpa-badge {
   display: inline-block;
   background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 100%);
@@ -932,6 +1014,25 @@
 
   .education-item-sub {
     font-size: 14px;
+  }
+
+  .education-list.grid-view {
+    grid-template-columns: 1fr;
+  }
+
+  .education-list.grid-view .education-item-actions {
+    justify-content: center;
+  }
+
+  .jobs-view-toggle {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .jobs-view-toggle__option {
+    flex: 1 1 140px;
+    justify-content: center;
   }
 }
 
@@ -1269,4 +1370,3 @@
 .spin {
   animation: spin 1s linear infinite;
 }
-
