@@ -1,0 +1,20 @@
+Follow up with {{ company_name }}
+
+Hi there,
+
+Friendly reminder to send a thank-you note while the conversation is still fresh.
+
+Role: {{ job_title }}
+Company: {{ company_name }}
+Interviewed on: {{ interview_time }}
+
+Draft preview
+Subject: {{ followup_subject }}
+
+{{ followup_body }}
+
+{{ cta_label|default:"Open Interview Workspace" }}: {{ cta_url|default:interview_url }}
+
+You've got this! A timely thank-you note keeps you top of mind.
+
+— {{ brand }}

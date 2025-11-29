@@ -1,0 +1,119 @@
+services:
+  backend:
+    build:
+      context: ./backend          # Points to your Django project folder
+      dockerfile: Dockerfile      # Uses backend/Dockerfile
+    container_name: ats_backend
+    # Run Gunicorn (production-like WSGI server) to avoid Django dev-server startup banners
+    # This keeps logs concise; for dev you can still exec into container and run manage.py if needed.
+    command: "gunicorn backend.wsgi:application --bind 0.0.0.0:8000 --workers 3 --log-level warning --access-logfile - --error-logfile -"
+    volumes:
+      - ./backend/:/app/
+      - media_files:/app/media    # Persistent storage for uploaded files
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      DJANGO_SETTINGS_MODULE: backend.settings
+      DATABASE_URL: postgres://postgres:postgres@db:5432/yourdb
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
+  reminders:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ats_reminders
+    command: sh -c "sh /app/scripts/run_deadline_reminder_loop.sh"
+    volumes:
+      - ./backend/:/app/
+    env_file:
+      - ./backend/.env
+    environment:
+      DJANGO_SETTINGS_MODULE: backend.settings
+      DATABASE_URL: postgres://postgres:postgres@db:5432/yourdb
+      REDIS_URL: redis://redis:6379/0
+      REMINDERS_TZ: America/New_York
+      REMINDERS_HOUR: 9
+      REMINDERS_MINUTE: 0
+    depends_on:
+      - db
+      - redis
+
+  frontend:
+    build:
+      context: ./frontend         # Points to your React app folder
+      dockerfile: Dockerfile      # Uses frontend/Dockerfile
+      args:
+        - REACT_APP_FIREBASE_API_KEY=${REACT_APP_FIREBASE_API_KEY:-}
+        - REACT_APP_FIREBASE_AUTH_DOMAIN=${REACT_APP_FIREBASE_AUTH_DOMAIN:-}
+        - REACT_APP_FIREBASE_PROJECT_ID=${REACT_APP_FIREBASE_PROJECT_ID:-}
+        - REACT_APP_API_URL=${REACT_APP_API_URL:-http://backend:8000/api}
+    container_name: ats_frontend
+    env_file:
+      - ./frontend/.env
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+  db:
+    image: postgres:15-alpine
+    container_name: ats_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: yourdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: ats_redis
+    ports:
+      - "6379:6379"
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ats_celery_worker
+    command: celery -A backend worker --loglevel=info
+    env_file:
+      - ./backend/.env
+    environment:
+      DJANGO_SETTINGS_MODULE: backend.settings
+      DATABASE_URL: postgres://postgres:postgres@db:5432/yourdb
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend/:/app/
+    depends_on:
+      - backend
+      - redis
+
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ats_celery_beat
+    command: celery -A backend beat --loglevel=info
+    env_file:
+      - ./backend/.env
+    environment:
+      DJANGO_SETTINGS_MODULE: backend.settings
+      DATABASE_URL: postgres://postgres:postgres@db:5432/yourdb
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend/:/app/
+    depends_on:
+      - backend
+      - redis
+
+volumes:
+  postgres_data:
+  media_files:  # Volume for user-uploaded media files

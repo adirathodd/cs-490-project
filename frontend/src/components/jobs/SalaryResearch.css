@@ -1,0 +1,428 @@
+/* SalaryResearch.css */
+
+.salary-research-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.salary-research-container.embedded {
+  padding: 0;
+  margin: 0;
+  max-width: none;
+}
+
+.salary-research-header {
+  margin-bottom: 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.salary-research-title {
+  font-size: 32px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.salary-research-subtitle {
+  color: #666;
+  font-size: 16px;
+}
+
+.salary-research-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.salary-research-card {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  margin-bottom: 24px;
+}
+
+.salary-research-card h2 {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 16px 24px;
+  margin: -32px -32px 24px -32px;
+  border-radius: 16px 16px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.salary-research-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 24px;
+}
+
+.salary-stats {
+  padding: 20px 0;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.stat-item {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #333;
+}
+
+.compensation-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.comp-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+.comp-label {
+  font-weight: 500;
+  color: #666;
+}
+
+.comp-value {
+  font-weight: 600;
+  color: #333;
+  font-size: 16px;
+}
+
+.comp-divider {
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, #ddd 50%, transparent 100%);
+  margin: 8px 0;
+}
+
+.comp-total {
+  background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
+  border: 2px solid #667eea;
+}
+
+.comp-total .comp-value {
+  color: #667eea;
+  font-size: 18px;
+}
+
+.market-insights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.insight-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: #f9f9f9;
+  border-radius: 12px;
+}
+
+.insight-label {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.insight-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.benefits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.benefit-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+.benefit-name {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.benefit-value {
+  font-size: 14px;
+  color: #666;
+}
+
+.tabs-container {
+  padding: 0;
+  margin-bottom: 24px;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 12px 12px 0 0;
+  overflow: hidden;
+}
+
+.tab {
+  padding: 16px 24px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #6b7280;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.tab:hover {
+  color: #111827;
+  background: #ffffff;
+}
+
+.tab.active {
+  color: #6366f1;
+  border-bottom-color: #6366f1;
+  background: #ffffff;
+}
+
+.comparisons-table {
+  overflow-x: auto;
+}
+
+.comparisons-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.comparisons-table th {
+  text-align: left;
+  padding: 12px;
+  font-weight: 600;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.comparisons-table td {
+  padding: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.trends-chart {
+  padding: 16px 0;
+}
+
+.trend-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.trend-year {
+  width: 72px;
+  font-weight: 600;
+  font-size: 16px;
+  color: #334155;
+}
+
+.trend-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trend-bar-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.trend-bar-track {
+  flex: 1;
+  position: relative;
+  height: 32px;
+  background: #eef2ff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.trend-bar-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #667eea 0%, #a855f7 100%);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  padding: 0 12px;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.trend-growth {
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 64px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.trend-range-text {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.negotiation-content {
+  padding: 8px 0;
+}
+
+.negotiation-summary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 24px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+
+.tips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tip-item {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+.error-message {
+  padding: 16px;
+  background: #fee;
+  color: #c00;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  background: white;
+  color: #667eea;
+  border: 2px solid #667eea;
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-secondary:hover {
+  background: #667eea;
+  color: white;
+  transform: translateY(-2px);
+}
+
+@media (max-width: 768px) {
+  .salary-research-container {
+    padding: 16px;
+  }
+  
+  .salary-research-header {
+    flex-direction: column;
+  }
+  
+  .salary-research-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .stat-row {
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+}

@@ -1,0 +1,443 @@
+/* Navigation styles */
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: var(--primary-color);
+  color: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  min-height: 56px; /* consistent header height for positioning */
+}
+
+/* Make sure the nav uses border-box sizing so padding/borders don't
+   cause unexpected overflow, and take the full available width. */
+.nav, .nav * { box-sizing: border-box; }
+
+.nav-brand {
+  font-weight: 600;
+  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Keep the brand from growing too large and allow truncation on small widths */
+.nav-brand { flex: 0 0 auto; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+
+.nav-brand-logo { height: 28px; width: auto; margin-right: 0; display: inline-block; }
+.nav-brand-text { display: none; }
+/* By default the brand is inline; on small screens we'll center it visually */
+
+.nav-links {
+  /* Use CSS Grid so items are centered by default and rows use equal-width
+     columns when they wrap on medium screens. On wide screens (handled by
+     the media query below) this will switch to a single centered flex row. */
+  display: grid;
+  gap: 1rem;
+  align-items: center;
+  grid-auto-flow: row;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  justify-items: center;
+  margin: 0 auto; /* center the grid within the nav */
+  width: 100%;
+}
+
+/* Give nav-links the ability to shrink so it won't push the user menu off-screen */
+.nav-links { min-width: 0; margin: 0 0.5rem; }
+.nav-link {
+  color: #e2e8f0; /* slate-200 */
+  text-decoration: none;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  transition: background 0.2s ease, color 0.2s ease;
+  background: transparent;
+  border: 1px solid transparent; /* keep layout stable when highlighting */
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.nav-link:hover {
+  background: #1e293b; /* slate-800 */
+  color: #fff;
+}
+
+.nav-link.active {
+  background: #334155; /* slate-700 */
+  color: #fff;
+}
+
+/* Dropdown styles */
+.nav-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.nav-dropdown-toggle {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+/* Make dropdown toggles visually match regular nav links */
+.nav-dropdown-toggle {
+  background: transparent;
+  color: #e2e8f0;
+  text-decoration: none;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  transition: background 0.2s ease, color 0.2s ease;
+  border: 1px solid transparent; /* match .nav-link to avoid shift */
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: inherit; /* match surrounding nav font */
+  line-height: 1.2;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+.nav-dropdown-toggle:hover {
+  background: #1e293b;
+  color: #fff;
+}
+
+.nav-dropdown-toggle.active {
+  background: #334155;
+  color: #fff;
+}
+
+.nav-dropdown-toggle:focus {
+  outline: none;
+}
+
+/* Visible focus ring without changing layout */
+.nav-link:focus-visible,
+.nav-dropdown-toggle:focus-visible {
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.12), 0 0 0 1px rgba(37,99,235,0.95);
+  outline: none;
+  border-color: rgba(37,99,235,0.2);
+}
+
+.nav-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 0.25rem;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  min-width: 200px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem 0;
+}
+
+.nav-dropdown-item {
+  color: #e2e8f0;
+  text-decoration: none;
+  padding: 0.6rem 1rem;
+  transition: background 0.2s ease;
+  white-space: nowrap;
+  display: block;
+}
+
+.nav-dropdown-item:hover {
+  background: #1e293b;
+  color: #fff;
+}
+
+.nav-dropdown-item.active {
+  background: #334155;
+  color: #fff;
+}
+
+.nav-user {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Keep the user control area fixed so links shrink instead of overflow */
+.nav-user { flex: 0 0 auto; }
+
+.nav-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #475569; /* slate-600 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+}
+
+.nav-btn {
+  background: transparent;
+  color: #e2e8f0;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+}
+
+.nav-btn:hover {
+  background: #1e293b;
+}
+
+.nav-toggle {
+  display: none;
+  background: transparent;
+  color: #e2e8f0;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.5rem; /* increase touch target */
+  line-height: 1;
+}
+
+/* Show hamburger on tablets and below so navigation collapses for widths <= 1024px */
+@media (max-width: 1024px) {
+  .nav-toggle { display: block; }
+  /* make nav a positioning context so we can place the toggle at the far right */
+  .nav { position: relative; }
+  .nav-toggle { position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); }
+  .nav-links { display: none; }
+  .nav-links.open {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    position: absolute;
+    top: 64px;
+    left: 0;
+    right: 0;
+    background: linear-gradient(180deg, #0f172a 0%, #071024 100%);
+    padding: 1rem 1rem;
+    border-top: 1px solid #0b1220;
+    z-index: 1100;
+  }
+
+  /* Prevent the mobile menu from extending beyond the viewport */
+  .nav-links.open {
+    max-height: calc(100vh - 72px);
+    overflow-y: auto;
+  }
+
+  /* Make links larger and touch-friendly when the menu is open */
+  .nav-links.open .nav-link {
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    border: 1px solid transparent;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  /* Mobile dropdown adjustments */
+  .nav-links.open .nav-dropdown {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .nav-links.open .nav-dropdown-menu {
+    position: static;
+    margin-top: 0.5rem;
+    width: 100%;
+    box-shadow: none;
+    border: none;
+    background: #1e293b;
+  }
+
+/* Slightly larger logo on very small screens for readability */
+@media (max-width: 480px) {
+  .nav-brand-logo { height: 32px; }
+}
+  
+  .nav-links.open .nav-dropdown-toggle {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+    font-size: 1rem; /* match expanded link size */
+    padding: 0.75rem 1rem;
+    border: 1px solid transparent;
+    box-sizing: border-box;
+  }
+  
+  .nav-links.open .nav-dropdown-item {
+    text-align: center;
+  }
+
+/* Make dropdown items consistent sizing */
+.nav-dropdown-item {
+  padding: 0.6rem 1rem;
+  box-sizing: border-box;
+}
+
+  /* Ensure logout button / user actions remain accessible */
+  .nav-user { display: none; }
+}
+
+/* Hide the graphic logo on narrower windows so navigation items have more space.
+   This removes the image while keeping the brand container for accessibility. */
+@media (max-width: 1200px) {
+  .nav-brand-logo { display: none; }
+}
+
+/* Desktop: ensure everything fits on a single centered row and doesn't wrap. */
+@media (min-width: 1201px) {
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Make nav-links a centered, single-row flex container that fills available
+     space between the brand and user controls. Prevent wrapping so items stay
+     on one row in a full-window layout. */
+  .nav-links {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: nowrap;
+    flex: 1 1 auto;
+    width: auto;
+  }
+
+  /* Ensure link sizing is consistent while allowing longer labels to fit
+     by reducing minimum size. */
+  .nav-links .nav-link,
+  .nav-links .nav-dropdown-toggle {
+    min-width: 110px;
+  }
+
+  .nav-brand-logo { display: inline-block; }
+}
+
+/* Mobile-only helpers */
+.mobile-only { display: none; }
+@media (max-width: 1024px) {
+  .nav-links.open .mobile-only { display: block; }
+}
+
+/* On very small screens ensure button sizes are large enough for touch */
+@media (max-width: 480px) {
+  .nav-toggle { font-size: 1.6rem; padding: 0.6rem; }
+  .nav-links.open .nav-link { font-size: 1.05rem; padding: 0.85rem 1rem; }
+}
+
+/* Tablet band: 768px - 1024px
+   Explicitly left-align the brand and right-align the hamburger toggle.
+   This ensures the toggle does not end up visually centered when the
+   smaller-screen grid rules are not active. */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .nav {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    padding-left: 1rem;
+    padding-right: 3rem; /* leave room for absolutely positioned toggle */
+  }
+
+  .nav-brand {
+    margin-right: auto;
+    text-align: left;
+    max-width: calc(100% - 80px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* force left alignment on tablet by absolutely placing the brand */
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .nav-toggle {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    justify-self: end;
+    z-index: 1200;
+  }
+
+  .nav-links.open { top: 64px; }
+}
+
+/* Fix alignment and centering for small screens (320px - 767px).
+   Use a grid layout so brand is centered and hamburger sits to the right
+   without overlapping. This avoids absolute positioning conflicts. */
+@media (max-width: 767px) {
+  .nav {
+    display: grid;
+    grid-template-columns: 1fr auto 56px; /* left spacer, center brand, right toggle */
+    align-items: center;
+    column-gap: 8px;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .nav-brand {
+    grid-column: 2;
+    justify-self: center;
+    transform: none;
+    position: relative;
+    max-width: calc(100% - 120px); /* avoid overlap with the toggle */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: auto;
+  }
+
+  .nav-toggle {
+    grid-column: 3;
+    justify-self: end;
+    position: relative;
+    right: 0;
+    top: 0;
+    transform: none;
+    z-index: 1200;
+  }
+
+  .nav-links.open {
+    grid-column: 1 / -1;
+    top: 56px;
+  }
+
+  .nav-links.open .nav-link { text-align: center; }
+
+  .nav-user { display: none; }
+}
+
+/* Breadcrumbs */
+.breadcrumbs {
+  font-size: 0.9rem;
+  padding: 0.5rem 1rem;
+  color: #334155;
+}
+
+.breadcrumbs a {
+  color: #475569;
+  text-decoration: none;
+}
+
+.breadcrumbs a:hover { text-decoration: underline; }
+
+
+/* Contacts floating button */
+
+
