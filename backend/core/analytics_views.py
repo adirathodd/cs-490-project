@@ -25,9 +25,13 @@ def cover_letter_analytics_view(request):
         profile = CandidateProfile.objects.get(user=request.user)
         qs = JobEntry.objects.filter(candidate=profile)
         
-        # ===========================
+        # 
+# 
+# =
         # 1. GENERAL ANALYTICS (from original jobs_stats)
-        # ===========================
+        # 
+# 
+# =
         funnel_stats = _calculate_funnel_analytics(qs)
         industry_benchmarks = _calculate_industry_benchmarks(qs)
         response_trends = _calculate_response_trends(qs)
@@ -35,9 +39,13 @@ def cover_letter_analytics_view(request):
         goal_progress = _calculate_goal_progress(qs)
         insights_recommendations = _calculate_insights_recommendations(qs)
         
-        # ===========================
+        # 
+# 
+# =
         # 2. COVER LETTER ANALYTICS (new)
-        # ===========================
+        # 
+# 
+# =
         cover_letter_performance = _calculate_cover_letter_analytics(qs)
         
         # Return comprehensive response

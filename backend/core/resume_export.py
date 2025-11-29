@@ -209,9 +209,13 @@ def collect_profile_data(profile) -> Dict[str, Any]:
     return data
 
 
-# ============================================================================
+# 
+# 
+# =
 # PLAIN TEXT EXPORT
-# ============================================================================
+# 
+# 
+# =
 
 def export_plain_text(profile_data: Dict[str, Any]) -> str:
     """
@@ -336,9 +340,13 @@ def export_plain_text(profile_data: Dict[str, Any]) -> str:
     return '\n'.join(lines)
 
 
-# ============================================================================
+# 
+# 
+# =
 # HTML EXPORT
-# ============================================================================
+# 
+# 
+# =
 
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
@@ -719,9 +727,13 @@ def export_html(profile_data: Dict[str, Any], theme: str = 'professional', water
     return html
 
 
-# ============================================================================
+# 
+# 
+# =
 # DOCX (Word) EXPORT
-# ============================================================================
+# 
+# 
+# =
 
 def export_docx(profile_data: Dict[str, Any], theme: str = 'professional', watermark: str = '') -> bytes:
     """
@@ -1086,9 +1098,13 @@ def export_docx(profile_data: Dict[str, Any], theme: str = 'professional', water
     return docx_io.read()
 
 
-# ============================================================================
+# 
+# 
+# =
 # MAIN EXPORT FUNCTION
-# ============================================================================
+# 
+# 
+# =
 
 def export_resume(
     profile=None,

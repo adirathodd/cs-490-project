@@ -186,6 +186,9 @@ const Dashboard = () => {
                 const networkingCards = [
                   { key: 'contacts', icon: <Icon name="users" size="lg" ariaLabel="Contacts" />, title: 'Contacts', desc: 'Manage your professional contacts, notes and reminders', action: () => navigate('/contacts'), actionText: 'Manage Contacts' },
                   { key: 'events', icon: <Icon name="calendar" size="lg" ariaLabel="Networking Events" />, title: 'Networking Events', desc: 'Track events, set goals, and manage professional connections', action: () => navigate('/networking'), actionText: 'Manage Events' },
+                  { key: 'references', icon: <Icon name="award" size="lg" ariaLabel="References" />, title: 'Professional References', desc: 'Manage references, track requests, and prepare talking points', action: () => navigate('/references'), actionText: 'Manage References' },
+                  { key: 'referrals', icon: <Icon name="users" size="lg" ariaLabel="Referrals" />, title: 'Referral Requests', desc: 'Track referral requests, follow-ups, and status', action: () => navigate('/referrals'), actionText: 'Manage Referrals' },
+
                 ];
 
                 const cardsFor = (id) => {

@@ -1,4 +1,6 @@
 # Generated migration for UC-052: Resume Sharing and Feedback
+# NOTE: This is a no-op migration as the tables were already created in 0026_b_uc_052_resume_sharing_feedback
+
 
 import uuid
 from django.conf import settings
@@ -14,6 +16,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # No operations - tables already exist from 0026_b_uc_052_resume_sharing_feedback
         # ResumeShare model
         migrations.CreateModel(
             name='ResumeShare',

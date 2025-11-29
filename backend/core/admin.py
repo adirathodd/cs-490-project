@@ -26,6 +26,10 @@ from .models import (
     Reminder, Notification,
     # Projects
     Project, ProjectMedia,
+    # UC-095: Reference Management models
+    ProfessionalReference, ReferenceRequest, ReferenceTemplate, 
+    ReferenceAppreciation, ReferencePortfolio,
+
 )
 
 
@@ -288,9 +292,13 @@ class NotificationAdmin(admin.ModelAdmin):
     search_fields = ['user__username', 'title', 'message']
 
 
-# ======================
+# 
+# 
+# =
 # UC-069: AUTOMATION ADMIN CONFIGURATIONS
-# ======================
+# 
+# 
+# =
 
 @admin.register(ApplicationPackage)
 class ApplicationPackageAdmin(admin.ModelAdmin):
@@ -298,6 +306,84 @@ class ApplicationPackageAdmin(admin.ModelAdmin):
     list_filter = ['status', 'created_at']
     search_fields = ['candidate__user__username', 'job__title', 'job__company_name']
     readonly_fields = ['created_at', 'updated_at']
+
+
+# 
+
+# 
+# 
+# =
+# UC-095: REFERENCE MANAGEMENT ADMIN CONFIGURATIONS
+# 
+# 
+# =
+
+@admin.register(ProfessionalReference)
+class ProfessionalReferenceAdmin(admin.ModelAdmin):
+    list_display = ['name', 'title', 'company', 'user', 'relationship_type', 'availability_status', 'times_used', 'is_active']
+    list_filter = ['relationship_type', 'availability_status', 'is_active', 'created_at']
+    search_fields = ['name', 'title', 'company', 'email', 'user__username', 'user__email']
+    readonly_fields = ['id', 'created_at', 'updated_at', 'times_used']
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('id', 'user', 'name', 'title', 'company', 'email', 'phone', 'linkedin_url')
+        }),
+        ('Relationship', {
+            'fields': ('relationship_type', 'relationship_description', 'years_known')
+        }),
+        ('Availability', {
+            'fields': ('availability_status', 'permission_granted_date', 'last_used_date', 'preferred_contact_method')
+        }),
+        ('Details', {
+            'fields': ('best_for_roles', 'best_for_industries', 'key_strengths_to_highlight', 
+                      'projects_worked_together', 'talking_points')
+        }),
+        ('Maintenance', {
+            'fields': ('last_contacted_date', 'next_check_in_date', 'notes')
+        }),
+        ('Tracking', {
+            'fields': ('times_used', 'is_active', 'created_at', 'updated_at')
+        }),
+    )
+
+
+@admin.register(ReferenceRequest)
+class ReferenceRequestAdmin(admin.ModelAdmin):
+    list_display = ['user', 'reference', 'company_name', 'position_title', 'request_status', 'due_date', 'created_at']
+    list_filter = ['request_status', 'contributed_to_success', 'created_at']
+    search_fields = ['user__username', 'reference__name', 'company_name', 'position_title']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    raw_id_fields = ['user', 'reference', 'application', 'job_opportunity']
+
+
+@admin.register(ReferenceTemplate)
+class ReferenceTemplateAdmin(admin.ModelAdmin):
+    list_display = ['name', 'user', 'template_type', 'is_default', 'times_used', 'created_at']
+    list_filter = ['template_type', 'is_default', 'created_at']
+    search_fields = ['name', 'user__username', 'content']
+    readonly_fields = ['id', 'created_at', 'updated_at', 'times_used']
+
+
+@admin.register(ReferenceAppreciation)
+class ReferenceAppreciationAdmin(admin.ModelAdmin):
+    list_display = ['user', 'reference', 'appreciation_type', 'date', 'created_at']
+    list_filter = ['appreciation_type', 'date']
+    search_fields = ['user__username', 'reference__name', 'description']
+    readonly_fields = ['id', 'created_at']
+    raw_id_fields = ['user', 'reference']
+
+
+@admin.register(ReferencePortfolio)
+class ReferencePortfolioAdmin(admin.ModelAdmin):
+    list_display = ['name', 'user', 'is_default', 'times_used', 'created_at']
+    list_filter = ['is_default', 'created_at']
+    search_fields = ['name', 'user__username', 'description']
+    readonly_fields = ['id', 'created_at', 'updated_at', 'times_used']
+    filter_horizontal = ['references']
+
+
+
+
 @admin.register(MentorshipSharingPreference)
 class MentorshipSharingPreferenceAdmin(admin.ModelAdmin):
     list_display = ['team_member', 'share_profile_basics', 'share_skills', 'share_job_applications', 'updated_at']

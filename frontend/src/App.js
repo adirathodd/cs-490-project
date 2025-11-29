@@ -28,7 +28,9 @@ import SalaryNegotiation from './components/jobs/SalaryNegotiation';
 import Goals from './components/goals/Goals';
 import ContactsPage from './components/contacts/ContactsPage';
 import NetworkingEvents from './components/networking/NetworkingEvents';
+import ReferencesPage from './components/references/ReferencesPage';
 import MentorshipDashboard from './components/mentorship/MentorshipDashboard';
+import ReferralManagement from './components/referrals/ReferralManagement';
 import MentorshipMenteeDashboard from './components/mentorship/MenteeDashboard';
 import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
@@ -362,6 +364,18 @@ function App() {
               </PrivateRoute>
             }
           />
+
+          <Route
+            path="/referrals"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ReferralManagement />
+              </PrivateRoute>
+            }
+          />
+
           <Route
             path="/mentorship/mentees/:teamMemberId"
             element={
@@ -374,6 +388,18 @@ function App() {
           />
 
           <Route
+            path="/references"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ReferencesPage />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+
             path="/resume/versions"
             element={
               <PrivateRoute>

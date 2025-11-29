@@ -137,6 +137,21 @@ const NavBar = () => {
         >
           Contacts
         </NavLink>
+        <NavLink
+          to="/references"
+          className="nav-dropdown-item"
+          onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
+        >
+          References
+        </NavLink>
+        <NavLink
+          to="/referrals"
+          className="nav-dropdown-item"
+          onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
+        >
+          Referrals
+        </NavLink>
+
       </div>
     )}
   </div>

@@ -26,9 +26,13 @@ from core.research import CompanyResearchService
 User = get_user_model()
 
 
-# ======================
+# 
+# 
+# =
 # FIXTURES
-# ======================
+# 
+# 
+# =
 
 @pytest.fixture
 def api_client():
@@ -113,9 +117,13 @@ def mock_news_items():
     ]
 
 
-# ======================
+# 
+# 
+# =
 # COMPANY RESEARCH SERVICE TESTS
-# ======================
+# 
+# 
+# =
 
 class TestCompanyResearchService:
     """Tests for CompanyResearchService class."""
@@ -151,9 +159,13 @@ class TestCompanyResearchService:
         assert service._format_employee_count(500) == "201-1000 employees"
 
 
-# ======================
+# 
+# 
+# =
 # API ENDPOINT TESTS
-# ======================
+# 
+# 
+# =
 
 class TestAutomatedResearchEndpoint:
     """Tests for research API endpoints."""
@@ -230,9 +242,13 @@ class TestRefreshCompanyResearchEndpoint:
         assert response.json()['refreshed'] is True
 
 
-# ======================
+# 
+# 
+# =
 # EDGE CASE AND ERROR HANDLING TESTS
-# ======================
+# 
+# 
+# =
 
 class TestEdgeCasesAndErrors:
     """Edge cases and error handling."""
@@ -255,9 +271,13 @@ class TestEdgeCasesAndErrors:
         assert service.research_data['recent_news'] == []
 
 
-# ======================
+# 
+# 
+# =
 # INTEGRATION TESTS
-# ======================
+# 
+# 
+# =
 
 class TestIntegration:
     """Integration tests."""
