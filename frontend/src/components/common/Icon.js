@@ -63,6 +63,8 @@ import {
   FaArrowLeft,
   FaSave,
   FaLayerGroup,
+  FaListUl,
+  FaThLarge,
   FaBullseye,
 } from 'react-icons/fa';
 
@@ -159,6 +161,9 @@ const iconMap = {
   layers: FaLayerGroup,
   target: FaBullseye,
   loader: FaSpinner,
+  list: FaListUl,
+  grid: FaThLarge,
+  layout: FaThLarge,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {
