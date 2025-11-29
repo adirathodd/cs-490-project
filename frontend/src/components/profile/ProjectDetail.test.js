@@ -1,14 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
-
-// Mock projectsAPI.getProject
-const mockGetProject = jest.fn();
-jest.mock('../../services/api', () => ({
-  projectsAPI: {
-    getProject: (...args) => mockGetProject(...args),
-  },
-}));
+import { projectsAPI } from '../../services/api';
 
 // Provide controlled router hooks
 const mockNavigate = jest.fn();
@@ -56,7 +49,7 @@ describe('ProjectDetail', () => {
       outcomes: 'Outcomes here',
     };
 
-    mockGetProject.mockResolvedValueOnce(project);
+    projectsAPI.getProject.mockResolvedValueOnce(project);
 
     render(<ProjectDetail />);
 
@@ -91,7 +84,7 @@ describe('ProjectDetail', () => {
   });
 
   test('shows error banner when API fails', async () => {
-    mockGetProject.mockRejectedValueOnce(new Error('Network fail'));
+    projectsAPI.getProject.mockRejectedValueOnce(new Error('Network fail'));
 
     render(<ProjectDetail />);
 
@@ -100,7 +93,7 @@ describe('ProjectDetail', () => {
 
   test('copy link and print buttons call appropriate APIs', async () => {
     const project = { id: 42, name: 'Copy Test' };
-    mockGetProject.mockResolvedValueOnce(project);
+    projectsAPI.getProject.mockResolvedValueOnce(project);
 
     render(<ProjectDetail />);
 
@@ -121,7 +114,7 @@ describe('ProjectDetail', () => {
 
   test('back button calls navigate(-1)', async () => {
     const project = { id: 42, name: 'Back Test' };
-    mockGetProject.mockResolvedValueOnce(project);
+    projectsAPI.getProject.mockResolvedValueOnce(project);
 
     render(<ProjectDetail />);
 

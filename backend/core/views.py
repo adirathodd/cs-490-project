@@ -25,6 +25,7 @@ from django.conf import settings
 from django.utils.text import slugify
 from django.conf import settings
 from core.authentication import FirebaseAuthentication
+from core.interview_performance import InterviewPerformanceAnalyticsService
 from core.serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
@@ -10332,6 +10333,30 @@ def interview_success_forecast(request):
     service = InterviewSuccessForecastService(candidate)
     forecast = service.generate(interviews, force_refresh=refresh)
     return Response(forecast, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def interview_performance_analytics(request):
+    """UC-080: Interview performance analytics dashboard."""
+    try:
+        candidate = request.user.profile
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    service = InterviewPerformanceAnalyticsService(candidate)
+    try:
+        payload = service.build()
+    except Exception as exc:  # pragma: no cover - safety net
+        logger.exception('Interview performance analytics failed: %s', exc)
+        return Response(
+            {'error': {'code': 'analytics_error', 'message': 'Unable to build interview analytics.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    return Response(payload, status=status.HTTP_200_OK)
 
 
 def generate_preparation_tasks(interview):

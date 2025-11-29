@@ -5,6 +5,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { jobsAPI } from '../../services/api';
 import Icon from '../common/Icon';
 import '../profile/ProfileForm.css';
+import './JobsPipeline.css';
 
 const STAGES = [
   { key: 'interested', label: 'Interested', color: '#edf2ff' },
@@ -15,6 +16,19 @@ const STAGES = [
   { key: 'rejected', label: 'Rejected', color: '#fff5f5' },
 ];
 
+const toProperCase = (value) => {
+  if (!value || typeof value !== 'string') return value || '';
+  return value
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const getMatchScoreTone = (score) => {
+  if (score >= 80) return 'is-strong';
+  if (score >= 60) return 'is-medium';
+  return 'is-low';
+};
+
 function daysInStage(job) {
   if (typeof job.days_in_stage === 'number') return job.days_in_stage;
   if (!job.last_status_change) return 0;
@@ -23,90 +37,98 @@ function daysInStage(job) {
   return Math.max(0, Math.floor((now - t) / (1000 * 60 * 60 * 24)));
 }
 
-const JobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact = false, onOpenLink, dragHandle }) => (
-  <div
-    className="profile-form-card"
-    style={{ padding: compact ? 8 : 12, marginBottom: 8, border: selected ? '2px solid #6366f1' : '1px solid #e5e7eb' }}
-    data-testid={`job-card-${job.id}`}
-    onClick={onToggleSelect}
-    role="button"
-  >
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-      <div style={{ fontWeight: 600 }}>
-        {job.title} <span style={{ color: '#666', fontWeight: 400 }}>@ {job.company_name}</span>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {/* Match Score Badge */}
-        {job.match_score && (
-          <div 
-            style={{
-              background: job.match_score >= 80 ? '#059669' : job.match_score >= 60 ? '#f59e0b' : '#dc2626',
-              color: 'white',
-              padding: '2px 6px',
-              borderRadius: '4px',
-              fontSize: '11px',
-              fontWeight: '600',
-              minWidth: '35px',
-              textAlign: 'center'
-            }}
-            title={`Match Score: ${job.match_score}% - ${job.match_grade || 'N/A'}`}
-          >
-            {Math.round(job.match_score)}%
-          </div>
-        )}
-        {dragHandle}
-        {job.posting_url ? (
-          <a
-            href={job.posting_url}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
+const JobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact = false, dragHandle }) => {
+  const score = typeof job.match_score === 'number' ? job.match_score : Number(job.match_score);
+  const matchTone = Number.isFinite(score) ? getMatchScoreTone(score) : null;
+  const jobType = job.job_type ? toProperCase(job.job_type.replace(/_/g, ' ')) : 'N/A';
+  const title = job.title ? toProperCase(job.title) : 'Untitled Role';
+  const company = job.company_name ? toProperCase(job.company_name) : 'Unknown Company';
+
+  return (
+    <div
+      className={`pipeline-job-card${selected ? ' is-selected' : ''}${compact ? ' is-compact' : ''}${onToggleSelect ? ' is-selectable' : ''}`}
+      data-testid={`job-card-${job.id}`}
+      onClick={onToggleSelect}
+      role={onToggleSelect ? 'button' : undefined}
+      tabIndex={onToggleSelect ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (!onToggleSelect) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onToggleSelect();
+        }
+      }}
+    >
+      <div className="pipeline-job-header">
+        <div>
+          <p className="pipeline-job-title">{title}</p>
+          <p className="pipeline-job-company">@ {company}</p>
+        </div>
+        <div className="pipeline-job-actions">
+          {Number.isFinite(score) && (
+            <span
+              className={`pipeline-match-badge ${matchTone}`}
+              title={`Match Score: ${Math.round(score)}%${job.match_grade ? ` - ${job.match_grade}` : ''}`}
+            >
+              {Math.round(score)}%
+            </span>
+          )}
+          {dragHandle}
+          {job.posting_url ? (
+            <a
+              className="pipeline-icon-button"
+              href={job.posting_url}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              title="Open job link"
+            >
+              <Icon name="link" size="sm" />
+            </a>
+          ) : null}
+          <button
+            type="button"
+            className="pipeline-icon-button"
+            onClick={(e) => { e.stopPropagation(); onOpenDetails?.(job); }}
             onMouseDown={(e) => e.stopPropagation()}
-            title="Open job link"
+            title="View details"
           >
-            <Icon name="link" size="sm" />
-          </a>
-        ) : null}
-        <button
-          className="back-button"
-          onClick={(e) => { e.stopPropagation(); onOpenDetails?.(job); }}
-          onMouseDown={(e) => e.stopPropagation()}
-          title="View details"
-          style={{ padding: '2px 6px' }}
-        >
-          <Icon name="info" size="sm" />
-        </button>
+            <Icon name="info" size="sm" />
+          </button>
+        </div>
       </div>
-    </div>
-    <div style={{ color: '#666', fontSize: 13 }}>
-      {job.location || '—'} • {job.job_type?.toUpperCase()}
-    </div>
-    <div style={{ color: '#555', fontSize: 12 }}>Days in stage: {daysInStage(job)}</div>
-    {job.application_deadline && (
-      (() => {
+      <div className="pipeline-job-meta">
+        <span>{job.location ? toProperCase(job.location) : '—'}</span>
+        <span>{jobType}</span>
+      </div>
+      <div className="pipeline-job-stage">
+        <span>Days in stage</span>
+        <strong>{daysInStage(job)}</strong>
+      </div>
+      {job.application_deadline && (() => {
         const d = new Date(job.application_deadline);
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const diff = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        // Only color urgency when job is still 'interested'
-        let color = '#94a3b8'; // neutral gray by default
+        let color = '#94a3b8';
         if (job.status === 'interested') {
-          color = '#059669'; // green
-          if (diff < 0) color = '#dc2626'; // red overdue
-          else if (diff <= 3) color = '#f59e0b'; // yellow/orange for urgent
+          color = '#059669';
+          if (diff < 0) color = '#dc2626';
+          else if (diff <= 3) color = '#f59e0b';
         }
         return (
-          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 10, height: 10, borderRadius: 4, background: color }} aria-hidden="true" />
-            <div style={{ color: '#444', fontSize: 12 }} title={`Application deadline: ${job.application_deadline}`}>
+          <div className="pipeline-deadline">
+            <span className="pipeline-deadline-indicator" style={{ background: color }} aria-hidden="true" />
+            <span title={`Application deadline: ${job.application_deadline}`}>
               {diff < 0 ? `Overdue by ${Math.abs(diff)}d` : `${diff}d left`}
-            </div>
+            </span>
           </div>
         );
-      })()
-    )}
-  </div>
-);
+      })()}
+    </div>
+  );
+};
 
 // Draggable/sortable wrapper for a job card using dnd-kit
 const SortableJobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact = false }) => {
@@ -120,13 +142,12 @@ const SortableJobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact
   };
   const handle = (
     <span
-      /* visual handle only; whole card is draggable */
+      className="pipeline-drag-indicator"
       onClick={(e) => e.stopPropagation()}
       title="Drag"
       aria-label="Drag handle"
-      style={{ cursor: 'grab', userSelect: 'none', padding: '2px 4px', border: '1px dashed #e5e7eb', borderRadius: 4, color: '#666' }}
     >
-      ▒▒
+      <Icon name="grip" size="sm" />
     </span>
   );
   return (
@@ -140,19 +161,10 @@ const SortableJobCard = ({ job, selected, onToggleSelect, onOpenDetails, compact
 const DroppableColumn = ({ id, children, isEmpty }) => {
   const { setNodeRef, isOver } = useDroppable({ id });
   return (
-    <div
-      ref={setNodeRef}
-      style={{
-        minHeight: 24,
-        paddingBottom: 2,
-        outline: isOver ? '2px dashed #6366f1' : 'none',
-        outlineOffset: -2,
-        transition: 'outline 120ms ease',
-      }}
-    >
+    <div ref={setNodeRef} className={`pipeline-droppable${isOver ? ' is-over' : ''}`}>
       {children}
       {isOver && isEmpty && (
-        <div style={{ color: '#666', fontSize: 12, textAlign: 'center', padding: 8 }}>Drop here</div>
+        <div className="pipeline-droppable-empty">Drop here</div>
       )}
     </div>
   );
@@ -178,8 +190,9 @@ export default function JobsPipeline() {
   const [sortByRecency, setSortByRecency] = useState({}); // stageKey -> boolean
   const [openMenu, setOpenMenu] = useState(null); // stageKey | null
   const [compact, setCompact] = useState(false);
-  const [drawerJob, setDrawerJob] = useState(null);
+  const [detailJob, setDetailJob] = useState(null);
   const [pendingMoveTarget, setPendingMoveTarget] = useState(null); // target stage key awaiting confirmation
+  const getStageCount = (key) => counts[key] ?? (jobsByStage[key]?.length || 0);
   // threshold can be configured via localStorage key 'pipeline_move_threshold'
   const getConfiguredThreshold = () => {
     try {
@@ -438,9 +451,13 @@ export default function JobsPipeline() {
     }
   };
 
+  const totalJobs = STAGES.reduce((acc, stage) => acc + getStageCount(stage.key), 0);
+  const interviewingJobs = getStageCount('phone_screen') + getStageCount('interview');
+  const offerJobs = getStageCount('offer');
+
   return (
-    <div className="profile-form-container" style={{ flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start' }}>
-      <div className="profile-form-card" style={{ maxWidth: 'none', width: '100%' }}>
+    <div className="pipeline-page">
+      <div className="pipeline-shell">
         <div className="page-backbar">
           <a
             className="btn-back"
@@ -450,264 +467,267 @@ export default function JobsPipeline() {
           >
             ← Back
           </a>
-          <button className="btn-back" onClick={() => (window.location.href = '/dashboard')}>← Back to Dashboard</button>
         </div>
-        <div className="profile-header">
+
+        <section className="pipeline-hero">
           <div>
-            <h2>Job Pipeline</h2>
-            <p className="form-subtitle">Track jobs through stages. Drag cards between columns.</p>
+            <p className="pipeline-hero-eyebrow">Opportunity tracker</p>
+            <h1>Job Pipeline</h1>
+            <p className="pipeline-hero-subtitle">Stay on top of every application stage. Drag cards between columns or use bulk actions for faster updates.</p>
           </div>
-        </div>
+          <div className="pipeline-hero-actions">
+            <a className="btn-back pipeline-primary-action" href="/jobs">+ Add Job</a>
+            <button className="btn-back" type="button" onClick={() => setCompact((p) => !p)}>
+              <Icon name={compact ? 'layers' : 'grip'} size="sm" /> {compact ? 'Cozy cards' : 'Compact cards'}
+            </button>
+          </div>
+        </section>
 
         {error && (
           <div className="error-banner" role="alert"><span className="error-icon">!</span><span>{error}</span></div>
         )}
 
-        {/* Summary chips */}
-        <div className="form-row" style={{ alignItems: 'center', marginBottom: 8 }}>
-          {(() => {
-            const totals = STAGES.reduce((acc, s) => acc + (counts[s.key] ?? (jobsByStage[s.key]?.length || 0)), 0);
-            const interviewing = (counts['phone_screen'] ?? 0) + (counts['interview'] ?? 0);
-            const offers = counts['offer'] ?? 0;
-            return (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  className="back-button"
-                  title="Show all jobs"
-                  onClick={() => setFilter('all')}
-                  aria-label="Show all jobs"
-                >
-                  Total: {totals}
-                </button>
-                <button className="back-button" onClick={() => setFilter('interviewing')}>Interviewing: {interviewing}</button>
-                <button className="back-button" onClick={() => setFilter('offer')}>Offers: {offers}</button>
-              </div>
-            );
-          })()}
-        </div>
+        <section className="pipeline-stats">
+          <button
+            type="button"
+            className={`pipeline-stat ${filter === 'all' ? 'is-active' : ''}`}
+            onClick={() => setFilter('all')}
+          >
+            <Icon name="layers" size="lg" />
+            <div>
+              <span>Total jobs</span>
+              <strong>{totalJobs}</strong>
+            </div>
+          </button>
+          <button
+            type="button"
+            className={`pipeline-stat ${filter === 'interviewing' ? 'is-active' : ''}`}
+            onClick={() => setFilter('interviewing')}
+          >
+            <Icon name="briefcase" size="lg" />
+            <div>
+              <span>Interviewing</span>
+              <strong>{interviewingJobs}</strong>
+            </div>
+          </button>
+          <button
+            type="button"
+            className={`pipeline-stat ${filter === 'offer' ? 'is-active' : ''}`}
+            onClick={() => setFilter('offer')}
+          >
+            <Icon name="thumbs-up" size="lg" />
+            <div>
+              <span>Offers</span>
+              <strong>{offerJobs}</strong>
+            </div>
+          </button>
+        </section>
 
-        <div className="form-row" style={{ alignItems: 'center' }}>
-          <div className="form-group" style={{ flex: 1 }}>
-            <label>Search jobs</label>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by title, company, or location"
-            />
+        <section className="pipeline-toolbar" aria-label="Pipeline controls">
+          <div className="pipeline-control pipeline-control--grow">
+            <label htmlFor="pipeline-search">Search jobs</label>
+            <div className="pipeline-input-with-icon">
+              <Icon name="search" size="sm" />
+              <input
+                id="pipeline-search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by title, company, or location"
+              />
+            </div>
           </div>
-          <div className="form-group">
-            <label>Filter by status</label>
-            <select value={filter} onChange={(e) => setFilter(e.target.value)}>
+          <div className="pipeline-control">
+            <label htmlFor="pipeline-filter">Filter by status</label>
+            <select id="pipeline-filter" value={filter} onChange={(e) => setFilter(e.target.value)}>
               <option value="all">All</option>
               <option value="interviewing">Interviewing (Phone + Interview)</option>
-              {STAGES.map(s => (<option key={s.key} value={s.key}>{s.label}</option>))}
+              {STAGES.map((s) => (<option key={s.key} value={s.key}>{s.label}</option>))}
             </select>
           </div>
-          <div className="form-group" style={{ ...(bulkMode ? { flex: '1 0 100%', maxWidth: '100%' } : {}) }}>
+          <div className="pipeline-control pipeline-control--bulk">
             <label>Bulk actions</label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="back-button" onClick={() => setBulkMode(!bulkMode)}>{bulkMode ? 'Done Selecting' : 'Select Multiple'}</button>
-              {/* Bulk deadline management */}
+            <div className="pipeline-bulk-actions">
+              <button className="btn-back" type="button" onClick={() => setBulkMode(!bulkMode)}>
+                {bulkMode ? 'Done Selecting' : 'Select Multiple'}
+              </button>
               {bulkMode && (
                 <>
-                  <button className="back-button" onClick={() => setShowDeadlineModal(true)} disabled={selected.size === 0}>Set deadline</button>
-                  <button className="back-button" onClick={async () => {
-                    // clear deadlines for selected
-                    if (selected.size === 0) return;
-                    try {
-                      const ids = Array.from(selected);
-                      await jobsAPI.bulkUpdateDeadline(ids, null);
-                      setSelected(new Set());
-                      await load();
-                    } catch (e) { setError('Failed to clear deadlines'); }
-                  }} disabled={selected.size === 0}>Clear deadlines</button>
+                  <button className="btn-back" type="button" onClick={() => setShowDeadlineModal(true)} disabled={selected.size === 0}>Set deadline</button>
+                  <button
+                    className="btn-back"
+                    type="button"
+                    onClick={async () => {
+                      if (selected.size === 0) return;
+                      try {
+                        const ids = Array.from(selected);
+                        await jobsAPI.bulkUpdateDeadline(ids, null);
+                        setSelected(new Set());
+                        await load();
+                      } catch (e) {
+                        setError('Failed to clear deadlines');
+                      }
+                    }}
+                    disabled={selected.size === 0}
+                  >
+                    Clear deadlines
+                  </button>
                 </>
               )}
             </div>
           </div>
-          <div className="form-group" style={{ alignSelf: 'flex-end', flex: '0 0 auto' }}>
-            <label>&nbsp;</label>
-            <a className="back-button" href="/jobs" style={{ textDecoration: 'none' }}>+ Add Job</a>
-          </div>
-          <div className="form-group" style={{ alignSelf: 'flex-end' }}>
-            <label>&nbsp;</label>
-            <button className="back-button" onClick={() => setCompact((p) => !p)}>{compact ? 'Cozy cards' : 'Compact cards'}</button>
-          </div>
-        </div>
-  </div>
+        </section>
 
-  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${visibleStages.length}, 1fr)`, gap: 12, width: '100%', marginTop: 16 }}>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
-          {visibleStages.map((stage) => (
-            <div key={stage.key} className="profile-form-card" style={{ background: stage.color, padding: 0, marginTop: 0 }}>
-              <div style={{ maxHeight: '65vh', overflowY: 'auto' }}>
-                <div style={{ position: 'sticky', top: 0, zIndex: 1, background: stage.color, borderBottom: '1px solid #e5e7eb', padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {/** Column checkbox for bulk moves: appears when bulkMode is active. Clicking moves selected jobs to this stage. */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <h3 style={{ margin: 0 }}><Icon name="list" size="sm" /> {stage.label}</h3>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {bulkMode ? (
-                      (() => {
-                        const sel = Array.from(selected);
-                        let checked = false;
-                        let indeterminate = false;
-                        if (sel.length > 0) {
-                          const inThis = sel.map((id) => findJobById(id)?.status === stage.key);
-                          checked = inThis.every(Boolean);
-                          indeterminate = inThis.some(Boolean) && !checked;
-                        }
-                        return (
-                          <div
-                            onMouseEnter={() => setHoveredStage(stage.key)}
-                            onMouseLeave={() => setHoveredStage(null)}
-                            style={{ display: 'inline-flex', alignItems: 'center', position: 'relative' }}
-                          >
-                            <input
-                              type="checkbox"
-                              title={`Move selected jobs to ${stage.label}`}
-                              aria-label={`Move selected jobs to ${stage.label}`}
-                              disabled={selected.size === 0}
-                              checked={checked}
-                              onChange={(e) => { e.stopPropagation(); initiateMoveSelected(stage.key); }}
-                              ref={(el) => { if (el) el.indeterminate = indeterminate; }}
-                              style={{ width: 18, height: 18, cursor: selected.size === 0 ? 'not-allowed' : 'pointer', opacity: selected.size === 0 ? 0.5 : 1 }}
-                            />
-                            {/* Hover badge showing how many selected will be moved (visible only when hovering this column) */}
-                            {selected.size > 0 && (
-                              <div
-                                role="status"
-                                style={{
-                                  position: 'absolute',
-                                  top: -8,
-                                  right: -8,
-                                  background: '#6366f1',
-                                  color: '#fff',
-                                  borderRadius: '50%',
-                                  width: 18,
-                                  height: 18,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: 11,
-                                  pointerEvents: 'none',
-                                  opacity: hoveredStage === stage.key ? 1 : 0,
-                                  transition: 'opacity 120ms ease',
-                                }}
-                                data-testid={`move-badge-${stage.key}`}
-                              >{selected.size}</div>
-                            )}
-                          </div>
-                        );
-                      })()
-                    ) : null}
-                    <div title="count" style={{ fontWeight: 600 }}>{counts[stage.key] ?? (jobsByStage[stage.key]?.length || 0)}</div>
-                    <button
-                      className="back-button"
-                      aria-label={`Column options for ${stage.label}`}
-                      onClick={() => setOpenMenu((prev) => (prev === stage.key ? null : stage.key))}
-                      style={{ padding: '4px 8px' }}
-                    >⋯</button>
-                    {openMenu === stage.key && (
-                      <div style={{ position: 'absolute', right: 12, top: 44, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, boxShadow: '0 8px 20px rgba(0,0,0,0.08)', zIndex: 2 }}>
-                        <button
-                          className="back-button"
-                          onClick={() => {
-                            setSortByRecency((p) => ({ ...p, [stage.key]: !p[stage.key] }));
-                            setOpenMenu(null);
-                          }}
-                          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'transparent' }}
-                        >{sortByRecency[stage.key] ? 'Unsort' : 'Sort by recency'}</button>
-                        <button
-                          className="back-button"
-                          onClick={() => {
-                            setCollapsed((p) => ({ ...p, [stage.key]: !p[stage.key] }));
-                            setOpenMenu(null);
-                          }}
-                          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'transparent' }}
-                        >{collapsed[stage.key] ? 'Expand' : 'Collapse'}</button>
+        <section
+          className="pipeline-columns"
+          style={{ '--stage-count': visibleStages.length }}
+        >
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
+            {visibleStages.map((stage) => {
+              const visibleList = !collapsed[stage.key] ? filteredAndSorted(stage.key) : [];
+              const droppableEmpty = !collapsed[stage.key] && visibleList.length === 0;
+              const stageCount = getStageCount(stage.key);
+              return (
+                <div key={stage.key} className="pipeline-column" style={{ '--stage-color': stage.color }}>
+                  <div className="pipeline-column-scroll">
+                    <header className="pipeline-column-header">
+                      <div className="pipeline-column-title">
+                        <span className="pipeline-column-dot" aria-hidden="true" />
+                        <div>
+                          <h3>{stage.label}</h3>
+                          <span title="count">{stageCount} active</span>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                </div>
-                <div style={{ padding: 12 }}>
-                  {(() => {
-                    // Use the exact list that is rendered for SortableContext items to keep dnd-kit indexes in sync
-                    const visibleList = !collapsed[stage.key] ? filteredAndSorted(stage.key) : [];
-                    const isEmpty = !visibleList || visibleList.length === 0;
-                    return (
+                      <div className="pipeline-column-controls">
+                        {bulkMode ? (() => {
+                          const sel = Array.from(selected);
+                          let checked = false;
+                          let indeterminate = false;
+                          if (sel.length > 0) {
+                            const inThis = sel.map((id) => findJobById(id)?.status === stage.key);
+                            checked = inThis.every(Boolean);
+                            indeterminate = inThis.some(Boolean) && !checked;
+                          }
+                          return (
+                            <div
+                              className="pipeline-stage-bulk"
+                              onMouseEnter={() => setHoveredStage(stage.key)}
+                              onMouseLeave={() => setHoveredStage(null)}
+                            >
+                              <input
+                                type="checkbox"
+                                title={`Move selected jobs to ${stage.label}`}
+                                aria-label={`Move selected jobs to ${stage.label}`}
+                                disabled={selected.size === 0}
+                                checked={checked}
+                                onChange={(e) => { e.stopPropagation(); initiateMoveSelected(stage.key); }}
+                                ref={(el) => { if (el) el.indeterminate = indeterminate; }}
+                              />
+                              {selected.size > 0 && (
+                                <span
+                                  className="pipeline-stage-badge"
+                                  role="status"
+                                  style={{ opacity: hoveredStage === stage.key ? 1 : 0 }}
+                                  data-testid={`move-badge-${stage.key}`}
+                                >
+                                  {selected.size}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })() : null}
+                        <button
+                          type="button"
+                          className="pipeline-icon-button"
+                          aria-label={`Column options for ${stage.label}`}
+                          onClick={() => setOpenMenu((prev) => (prev === stage.key ? null : stage.key))}
+                        >⋯</button>
+                        {openMenu === stage.key && (
+                          <div className="pipeline-column-menu">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSortByRecency((p) => ({ ...p, [stage.key]: !p[stage.key] }));
+                                setOpenMenu(null);
+                              }}
+                            >{sortByRecency[stage.key] ? 'Unsort' : 'Sort by recency'}</button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCollapsed((p) => ({ ...p, [stage.key]: !p[stage.key] }));
+                                setOpenMenu(null);
+                              }}
+                            >{collapsed[stage.key] ? 'Expand' : 'Collapse'}</button>
+                          </div>
+                        )}
+                      </div>
+                    </header>
+                    <div className="pipeline-column-body">
                       <SortableContext id={stage.key} items={visibleList.map((j) => j.id)} strategy={verticalListSortingStrategy}>
-                        <DroppableColumn id={stage.key} isEmpty={isEmpty}>
+                        <DroppableColumn id={stage.key} isEmpty={droppableEmpty}>
                           {visibleList.map((job) => (
-                        <SortableJobCard
-                          key={job.id}
-                          job={job}
-                          selected={bulkMode && selected.has(job.id)}
-                          onToggleSelect={() => bulkMode && toggleSelect(job.id)}
-                          onOpenDetails={(j) => setDrawerJob(j)}
-                          compact={compact}
-                        />
+                            <SortableJobCard
+                              key={job.id}
+                              job={job}
+                              selected={bulkMode && selected.has(job.id)}
+                              onToggleSelect={bulkMode ? () => toggleSelect(job.id) : undefined}
+                              onOpenDetails={(j) => setDetailJob(j)}
+                              compact={compact}
+                            />
                           ))}
-                          {loading && <p>Loading…</p>}
-                          {!loading && isEmpty && <p style={{ color: '#666' }}>No jobs</p>}
+                          {loading && <p className="pipeline-empty">Loading…</p>}
+                          {!loading && droppableEmpty && <p className="pipeline-empty">No jobs</p>}
                         </DroppableColumn>
                       </SortableContext>
-                    );
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            <DragOverlay>
+              {activeId ? (
+                <div style={{ cursor: 'grabbing' }}>
+                  {(() => {
+                    const j = findJobById(activeId);
+                    return j ? <JobCard job={j} selected={false} compact={compact} /> : null;
                   })()}
                 </div>
-              </div>
-            </div>
-          ))}
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        </section>
 
-          <DragOverlay>
-            {activeId ? (
-              <div style={{ cursor: 'grabbing' }}>
-                {(() => {
-                  const j = findJobById(activeId);
-                  return j ? <JobCard job={j} selected={false} onToggleSelect={() => {}} compact={compact} /> : null;
-                })()}
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      </div>
-
-        {/* Confirmation modal for large bulk moves */}
         {pendingMoveTarget && (
           <>
-            <div onClick={() => setPendingMoveTarget(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.15)' }} />
+            <div className="pipeline-modal-overlay" onClick={() => setPendingMoveTarget(null)} />
             <div
+              className="pipeline-modal"
               role="dialog"
               aria-modal="true"
-              style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', background: '#fff', padding: 20, borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.15)', zIndex: 60, width: 'min(520px, 92vw)' }}
               onKeyDown={(e) => {
-                // close on Escape
                 if (e.key === 'Escape') setPendingMoveTarget(null);
               }}
             >
-              <h3 style={{ marginTop: 0 }}>Confirm bulk move</h3>
-              <p>You're moving {Array.from(selected).length} jobs to <strong>{STAGES.find(s => s.key === pendingMoveTarget)?.label}</strong>. This action cannot be undone.</p>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button className="back-button" onClick={() => setPendingMoveTarget(null)} ref={(el) => { if (el && pendingMoveTarget) el.focus(); }}>Cancel</button>
-                <button className="back-button" onClick={() => performMoveSelected(pendingMoveTarget)} style={{ background: '#6366f1', color: '#fff' }} ref={(el) => { if (el && pendingMoveTarget) el.focus(); }}>Confirm</button>
+              <h3>Confirm bulk move</h3>
+              <p>You're moving {Array.from(selected).length} jobs to <strong>{STAGES.find((s) => s.key === pendingMoveTarget)?.label}</strong>. This action cannot be undone.</p>
+              <div className="pipeline-modal-actions">
+                <button className="btn-back" type="button" onClick={() => setPendingMoveTarget(null)}>Cancel</button>
+                <button className="btn-back pipeline-primary-action" type="button" onClick={() => performMoveSelected(pendingMoveTarget)}>Confirm</button>
               </div>
             </div>
           </>
         )}
 
-        {/* Bulk deadline modal */}
         {showDeadlineModal && (
           <>
-            <div onClick={() => setShowDeadlineModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.15)' }} />
-            <div role="dialog" aria-modal="true" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', background: '#fff', padding: 20, borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.15)', zIndex: 60, width: 'min(520px, 92vw)' }}>
-              <h3 style={{ marginTop: 0 }}>Set deadline for selected jobs</h3>
+            <div className="pipeline-modal-overlay" onClick={() => setShowDeadlineModal(false)} />
+            <div className="pipeline-modal" role="dialog" aria-modal="true">
+              <h3>Set deadline for selected jobs</h3>
               <p>Choose a date to apply to the selected jobs (or leave blank to cancel):</p>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <input type="date" value={deadlineValue} onChange={(e) => setDeadlineValue(e.target.value)} />
-                <button className="back-button" onClick={() => { setDeadlineValue(''); setShowDeadlineModal(false); }}>Cancel</button>
-                <button className="back-button" onClick={() => performBulkDeadline(deadlineValue)} style={{ background: '#6366f1', color: '#fff' }}>Apply</button>
+                <button className="btn-back" type="button" onClick={() => { setDeadlineValue(''); setShowDeadlineModal(false); }}>Cancel</button>
+                <button className="btn-back pipeline-primary-action" type="button" onClick={() => performBulkDeadline(deadlineValue)}>Apply</button>
               </div>
               <div style={{ marginTop: 8 }}>
                 <small style={{ color: '#666' }}>Tip: To clear deadlines, use the "Clear deadlines" button in Bulk actions.</small>
@@ -716,47 +736,96 @@ export default function JobsPipeline() {
           </>
         )}
 
-        {/* Undo snackbar */}
-      {showUndo && undoData && (
-        <div data-testid="undo-snackbar" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', background: '#111827', color: '#fff', padding: '10px 14px', borderRadius: 8, zIndex: 70, display: 'flex', gap: 8, alignItems: 'center' }} role="status">
-          <div>Moved {undoData.ids.length} jobs.</div>
-          <button className="back-button" onClick={handleUndo}>Undo</button>
-        </div>
-      )}
-
-      {showUndoDeadline && undoDeadlineData && (
-        <div data-testid="undo-deadline-snackbar" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', background: '#111827', color: '#fff', padding: '10px 14px', borderRadius: 8, zIndex: 70, display: 'flex', gap: 8, alignItems: 'center' }} role="status">
-          <div>Updated deadlines for {undoDeadlineData.ids.length} jobs.</div>
-          <button className="back-button" onClick={handleUndoDeadline}>Undo</button>
-        </div>
-      )}
-
-      {/* Right-side details drawer */}
-      {drawerJob && (
-        <>
-          <div onClick={() => setDrawerJob(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.15)' }} />
-          <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: 'min(420px, 92vw)', background: '#fff', borderLeft: '1px solid #e5e7eb', boxShadow: '-8px 0 24px rgba(0,0,0,0.08)', padding: 16, overflowY: 'auto', zIndex: 50 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0 }}>{drawerJob.title}</h3>
-              <button className="back-button" onClick={() => setDrawerJob(null)}>Close</button>
-            </div>
-            <div style={{ color: '#666', marginBottom: 8 }}>{drawerJob.company_name} • {drawerJob.location || '—'} • {drawerJob.job_type?.toUpperCase()}</div>
-            {drawerJob.posting_url && (
-              <div style={{ marginBottom: 8 }}>
-                <a className="back-button" href={drawerJob.posting_url} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-                  <Icon name="link" size="sm" /> Open job posting
-                </a>
-              </div>
-            )}
-            {drawerJob.description && (
-              <div className="profile-form-card" style={{ padding: 12 }}>
-                <h4 style={{ marginTop: 0 }}>Description / Notes</h4>
-                <p style={{ whiteSpace: 'pre-wrap' }}>{drawerJob.description}</p>
-              </div>
-            )}
+        {showUndo && undoData && (
+          <div data-testid="undo-snackbar" className="pipeline-snackbar" role="status">
+            <div>Moved {undoData.ids.length} jobs.</div>
+            <button className="btn-back" type="button" onClick={handleUndo}>Undo</button>
           </div>
-        </>
-      )}
+        )}
+
+        {showUndoDeadline && undoDeadlineData && (
+          <div data-testid="undo-deadline-snackbar" className="pipeline-snackbar" role="status">
+            <div>Updated deadlines for {undoDeadlineData.ids.length} jobs.</div>
+            <button className="btn-back" type="button" onClick={handleUndoDeadline}>Undo</button>
+          </div>
+        )}
+
+        {detailJob && (
+          <>
+            <div className="pipeline-modal-overlay" onClick={() => setDetailJob(null)} />
+            <div
+              className="pipeline-detail-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="pipeline-detail-title"
+            >
+              <div className="pipeline-detail-header">
+                <div>
+                  <p className="pipeline-hero-eyebrow">Job details</p>
+                  <h3 id="pipeline-detail-title">{detailJob.title || 'Untitled role'}</h3>
+                  <p className="pipeline-detail-company">@ {detailJob.company_name ? toProperCase(detailJob.company_name) : 'Unknown Company'}</p>
+                </div>
+                <button className="btn-back" type="button" onClick={() => setDetailJob(null)}>Close</button>
+              </div>
+              <div className="pipeline-detail-scroll">
+                <div className="pipeline-detail-meta">
+                  <div className="pipeline-detail-stat">
+                    <span>Stage</span>
+                    <strong>{detailJob.status ? toProperCase(detailJob.status.replace(/_/g, ' ')) : 'Unknown'}</strong>
+                  </div>
+                  <div className="pipeline-detail-stat">
+                    <span>Days in stage</span>
+                    <strong>{daysInStage(detailJob)}</strong>
+                  </div>
+                  <div className="pipeline-detail-stat">
+                    <span>Job type</span>
+                    <strong>{detailJob.job_type ? toProperCase(detailJob.job_type.replace(/_/g, ' ')) : '—'}</strong>
+                  </div>
+                  <div className="pipeline-detail-stat">
+                    <span>Location</span>
+                    <strong>{detailJob.location ? toProperCase(detailJob.location) : '—'}</strong>
+                  </div>
+                  {detailJob.application_deadline && (
+                    <div className="pipeline-detail-stat">
+                      <span>Deadline</span>
+                      <strong>{new Date(detailJob.application_deadline).toLocaleDateString()}</strong>
+                    </div>
+                  )}
+                  {Number.isFinite(Number(detailJob.match_score)) && (
+                    <div className="pipeline-detail-stat">
+                      <span>Match score</span>
+                      <strong>{Math.round(Number(detailJob.match_score))}%</strong>
+                    </div>
+                  )}
+                </div>
+
+                {detailJob.description ? (
+                  <section className="pipeline-detail-section">
+                    <h4 className="pipeline-detail-heading">Job Description:</h4>
+                    <p>{detailJob.description}</p>
+                  </section>
+                ) : (
+                  <section className="pipeline-detail-section">
+                    <h4 className="pipeline-detail-heading">Job Description:</h4>
+                    <p className="pipeline-detail-empty">No description provided.</p>
+                  </section>
+                )}
+
+                <div className="pipeline-detail-actions">
+                  {detailJob.posting_url && (
+                    <a className="btn-back pipeline-primary-action" href={detailJob.posting_url} target="_blank" rel="noreferrer">
+                      <Icon name="link" size="sm" /> Open posting
+                    </a>
+                  )}
+                  <a className="btn-back" href={`/jobs/${detailJob.id}`}>
+                    <Icon name="briefcase" size="sm" /> View full record
+                  </a>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

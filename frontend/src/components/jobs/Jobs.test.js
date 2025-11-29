@@ -291,7 +291,8 @@ describe('Jobs component (UC-036 & UC-038)', () => {
 
     await screen.findByText(/ux designer/i);
 
-    const link = screen.getByRole('link', { name: /view/i });
+    // The posting link is rendered as an icon-only anchor with an aria-label
+    const link = screen.getByRole('link', { name: /open job posting/i });
     expect(link).toHaveAttribute('href', 'https://example.com/job/123');
     expect(link).toHaveAttribute('target', '_blank');
   });
