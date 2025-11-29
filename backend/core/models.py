@@ -3674,3 +3674,150 @@ class EventFollowUp(models.Model):
     
     def __str__(self):
         return f"{self.get_action_type_display()} - {self.event.name}"
+
+
+class CareerGoal(models.Model):
+    """
+    UC-101: Career goal setting and achievement tracking.
+    Enables users to set SMART goals with milestones and track progress.
+    """
+    GOAL_TYPES = [
+        ('short_term', 'Short-term (< 6 months)'),
+        ('long_term', 'Long-term (6+ months)'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('not_started', 'Not Started'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+        ('paused', 'Paused'),
+        ('abandoned', 'Abandoned'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='career_goals')
+    
+    # SMART Goal components
+    title = models.CharField(max_length=200, help_text="Specific goal title")
+    description = models.TextField(help_text="Detailed goal description")
+    goal_type = models.CharField(max_length=20, choices=GOAL_TYPES, default='short_term')
+    
+    # Measurable metrics
+    target_metric = models.CharField(max_length=200, blank=True, 
+                                     help_text="What metric defines success? e.g., '5 interviews', '$120K salary'")
+    current_value = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+                                        help_text="Current progress value")
+    target_value = models.DecimalField(max_digits=10, decimal_places=2, default=100,
+                                       help_text="Target value to achieve")
+    
+    # Achievable & Relevant context
+    action_steps = models.JSONField(default=list, blank=True, 
+                                    help_text="List of actionable steps to achieve goal")
+    linked_jobs = models.ManyToManyField('JobOpportunity', blank=True, related_name='career_goals',
+                                         help_text="Jobs connected to this goal")
+    
+    # Time-bound
+    target_date = models.DateField(help_text="Goal deadline")
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    
+    # Status and progress
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_started')
+    progress_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0,
+                                              help_text="Auto-calculated or manual progress %")
+    
+    # Motivation and accountability
+    motivation_notes = models.TextField(blank=True, help_text="Why this goal matters")
+    accountability_partner = models.EmailField(blank=True, help_text="Optional accountability partner email")
+    share_progress = models.BooleanField(default=False, help_text="Share progress with accountability partner")
+    
+    # Recommendations and insights
+    ai_recommendations = models.JSONField(default=dict, blank=True,
+                                          help_text="AI-generated recommendations for achieving goal")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['user', 'target_date']),
+            models.Index(fields=['status', 'target_date']),
+        ]
+    
+    def calculate_progress(self):
+        """Auto-calculate progress based on current vs target value"""
+        if self.target_value > 0:
+            progress = (self.current_value / self.target_value) * 100
+            return min(progress, 100)
+        return 0
+    
+    def update_progress(self, new_value):
+        """Update current value and recalculate progress"""
+        self.current_value = new_value
+        self.progress_percentage = self.calculate_progress()
+        if self.progress_percentage >= 100 and self.status != 'completed':
+            self.mark_completed()
+        elif self.progress_percentage < 100 and self.status == 'completed':
+            self.status = 'in_progress'
+            self.completed_at = None
+        self.save()
+    
+    def mark_completed(self):
+        """Mark goal as completed with timestamp"""
+        self.status = 'completed'
+        self.completed_at = timezone.now()
+        self.progress_percentage = 100
+        self.save()
+    
+    def is_overdue(self):
+        """Check if goal is past target date and not completed"""
+        return (self.target_date < timezone.now().date() and 
+                self.status not in ['completed', 'abandoned'])
+    
+    def __str__(self):
+        return f"{self.title} ({self.get_status_display()})"
+
+
+class GoalMilestone(models.Model):
+    """
+    Sub-goals or milestones within a career goal for better tracking.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    goal = models.ForeignKey(CareerGoal, on_delete=models.CASCADE, related_name='milestones')
+    
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    target_date = models.DateField(null=True, blank=True)
+    completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    order = models.PositiveIntegerField(default=0, help_text="Display order")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['order', 'target_date']
+        indexes = [
+            models.Index(fields=['goal', 'completed']),
+        ]
+    
+    def mark_completed(self):
+        """Mark milestone as completed"""
+        self.completed = True
+        self.completed_at = timezone.now()
+        self.save()
+        
+        # Update parent goal progress based on milestone completion
+        total_milestones = self.goal.milestones.count()
+        completed_milestones = self.goal.milestones.filter(completed=True).count()
+        if total_milestones > 0:
+            milestone_progress = (completed_milestones / total_milestones) * 100
+            # Update parent goal if milestone-based tracking
+            if self.goal.progress_percentage < milestone_progress:
+                self.goal.progress_percentage = milestone_progress
+                self.goal.save()
+    
+    def __str__(self):
+        return f"{self.title} - {self.goal.title}"

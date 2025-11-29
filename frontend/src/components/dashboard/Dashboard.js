@@ -170,6 +170,7 @@ const Dashboard = () => {
                   { key: 'education', icon: <Icon name="education" size="lg" ariaLabel="Education" />, title: 'Education', desc: 'Add and manage your educational background', action: () => navigate('/education'), actionText: 'Manage Education' },
                   { key: 'certs', icon: <Icon name="cert" size="lg" ariaLabel="Certifications" />, title: 'Certifications', desc: 'Add and manage your professional certifications', action: () => navigate('/certifications'), actionText: 'Manage Certifications' },
                   { key: 'projects', icon: <Icon name="project" size="lg" ariaLabel="Projects" />, title: 'Projects', desc: 'Showcase significant work beyond employment', action: () => navigate('/projects'), actionText: 'Manage Projects' },
+                  { key: 'goals', icon: <Icon name="target" size="lg" color="#000000" ariaLabel="Career Goals" />, title: 'Goals & Milestones', desc: 'Set goals, add milestones, and track your progress', action: () => navigate('/goals'), actionText: 'Open Goals' },
                 ];
 
                 const applicationCards = [

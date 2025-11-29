@@ -15,7 +15,7 @@ from core.models import (
 )
 from core.models import (
     Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink,
-    NetworkingEvent, EventGoal, EventConnection, EventFollowUp
+    NetworkingEvent, EventGoal, EventConnection, EventFollowUp, CareerGoal, GoalMilestone
 )
 
 class CoverLetterTemplateSerializer(serializers.ModelSerializer):
@@ -2337,4 +2337,96 @@ class NetworkingEventListSerializer(serializers.ModelSerializer):
     def get_pending_follow_ups_count(self, obj):
         if obj.pk:
             return obj.follow_ups.filter(completed=False).count()
+        return 0
+
+
+# UC-101: Career Goal serializers
+class GoalMilestoneSerializer(serializers.ModelSerializer):
+    target_date = serializers.DateField(required=False, allow_null=True)
+
+    def to_internal_value(self, data):
+        """Treat blank strings for optional fields as null."""
+        data_copy = data.copy() if hasattr(data, 'copy') else dict(data)
+        if data_copy.get('target_date') in ['', None]:
+            data_copy['target_date'] = None
+        return super().to_internal_value(data_copy)
+
+    class Meta:
+        model = GoalMilestone
+        fields = [
+            'id', 'goal', 'title', 'description', 'target_date', 'completed', 
+            'completed_at', 'order', 'created_at', 'updated_at'
+        ]
+        # `goal` is supplied by the view, so keep it read-only to avoid client validation errors
+        read_only_fields = ['id', 'goal', 'completed_at', 'created_at', 'updated_at']
+
+
+class CareerGoalSerializer(serializers.ModelSerializer):
+    milestones = GoalMilestoneSerializer(many=True, read_only=True)
+    progress_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    is_overdue = serializers.SerializerMethodField()
+    days_remaining = serializers.SerializerMethodField()
+    milestone_completion_rate = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = CareerGoal
+        fields = [
+            'id', 'user', 'title', 'description', 'goal_type', 'target_metric',
+            'current_value', 'target_value', 'action_steps', 'linked_jobs',
+            'target_date', 'started_at', 'completed_at', 'status', 'progress_percentage',
+            'motivation_notes', 'accountability_partner', 'share_progress', 'ai_recommendations',
+            'created_at', 'updated_at', 'milestones', 'is_overdue', 'days_remaining',
+            'milestone_completion_rate'
+        ]
+        read_only_fields = ['id', 'user', 'started_at', 'completed_at', 'progress_percentage', 
+                            'created_at', 'updated_at']
+    
+    def get_is_overdue(self, obj):
+        return obj.is_overdue()
+    
+    def get_days_remaining(self, obj):
+        if obj.status in ['completed', 'abandoned']:
+            return 0
+        from django.utils import timezone
+        delta = obj.target_date - timezone.now().date()
+        return max(delta.days, 0)
+    
+    def get_milestone_completion_rate(self, obj):
+        if obj.pk:
+            total = obj.milestones.count()
+            if total == 0:
+                return None
+            completed = obj.milestones.filter(completed=True).count()
+            return round((completed / total) * 100, 2)
+        return None
+
+
+class CareerGoalListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for goal list views"""
+    progress_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    is_overdue = serializers.SerializerMethodField()
+    days_remaining = serializers.SerializerMethodField()
+    milestone_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = CareerGoal
+        fields = [
+            'id', 'title', 'goal_type', 'status', 'target_date', 'progress_percentage',
+            'is_overdue', 'days_remaining', 'milestone_count', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'progress_percentage', 'created_at', 'updated_at']
+    
+    def get_is_overdue(self, obj):
+        return obj.is_overdue()
+    
+    def get_days_remaining(self, obj):
+        if obj.status in ['completed', 'abandoned']:
+            return 0
+        from django.utils import timezone
+        delta = obj.target_date - timezone.now().date()
+        return max(delta.days, 0)
+    
+    def get_milestone_count(self, obj):
+        if obj.pk:
+            return obj.milestones.count()
         return 0

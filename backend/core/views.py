@@ -12388,3 +12388,365 @@ def generate_interview_followup(request):
             {"error": str(e)}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# ==================== UC-101: Career Goals ====================
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def career_goals_list_create(request):
+    """
+    GET: List all career goals for the authenticated user
+    POST: Create a new career goal
+    """
+    from core.models import CareerGoal
+    from core.serializers import CareerGoalSerializer, CareerGoalListSerializer
+    
+    if request.method == "GET":
+        goals = CareerGoal.objects.filter(user=request.user)
+        
+        # Filter by status if provided
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            goals = goals.filter(status=status_filter)
+        
+        # Filter by type if provided
+        type_filter = request.query_params.get('goal_type')
+        if type_filter:
+            goals = goals.filter(goal_type=type_filter)
+        
+        serializer = CareerGoalSerializer(goals, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == "POST":
+        serializer = CareerGoalSerializer(data=request.data)
+        if serializer.is_valid():
+            goal = serializer.save(user=request.user)
+            
+            # Auto-set started_at if status is in_progress
+            if goal.status == 'in_progress' and not goal.started_at:
+                goal.started_at = timezone.now()
+                goal.save()
+            
+            return Response(
+                CareerGoalSerializer(goal).data,
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["GET", "PUT", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def career_goal_detail(request, pk):
+    """
+    GET: Retrieve a specific career goal
+    PUT/PATCH: Update a career goal
+    DELETE: Delete a career goal
+    """
+    from core.models import CareerGoal
+    from core.serializers import CareerGoalSerializer
+    
+    try:
+        goal = CareerGoal.objects.get(pk=pk, user=request.user)
+    except CareerGoal.DoesNotExist:
+        return Response(
+            {"error": "Goal not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == "GET":
+        serializer = CareerGoalSerializer(goal)
+        return Response(serializer.data)
+    
+    elif request.method in ["PUT", "PATCH"]:
+        partial = request.method == "PATCH"
+        serializer = CareerGoalSerializer(goal, data=request.data, partial=partial)
+        if serializer.is_valid():
+            updated_goal = serializer.save()
+            
+            # Auto-set started_at if transitioning to in_progress
+            if (updated_goal.status == 'in_progress' and 
+                not updated_goal.started_at):
+                updated_goal.started_at = timezone.now()
+                updated_goal.save()
+            
+            return Response(CareerGoalSerializer(updated_goal).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == "DELETE":
+        goal.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def update_goal_progress(request, pk):
+    """
+    Update the progress value for a goal and recalculate percentage.
+    
+    Payload: {"current_value": 50}
+    """
+    from core.models import CareerGoal
+    from core.serializers import CareerGoalSerializer
+    
+    try:
+        goal = CareerGoal.objects.get(pk=pk, user=request.user)
+    except CareerGoal.DoesNotExist:
+        return Response(
+            {"error": "Goal not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    new_value = request.data.get('current_value')
+    if new_value is None:
+        return Response(
+            {"error": "current_value is required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        parsed_value = Decimal(str(new_value))
+    except (InvalidOperation, TypeError, ValueError):
+        return Response(
+            {"error": "current_value must be a valid number"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if parsed_value < 0:
+        return Response(
+            {"error": "current_value must be non-negative"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    goal.update_progress(parsed_value)
+    return Response(CareerGoalSerializer(goal).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def complete_goal(request, pk):
+    """Mark a goal as completed."""
+    from core.models import CareerGoal
+    from core.serializers import CareerGoalSerializer
+    
+    try:
+        goal = CareerGoal.objects.get(pk=pk, user=request.user)
+    except CareerGoal.DoesNotExist:
+        return Response(
+            {"error": "Goal not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    goal.mark_completed()
+    return Response(CareerGoalSerializer(goal).data)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def goal_milestones_list_create(request, goal_pk):
+    """
+    GET: List milestones for a goal
+    POST: Create a new milestone for a goal
+    """
+    from core.models import CareerGoal, GoalMilestone
+    from core.serializers import GoalMilestoneSerializer
+    
+    try:
+        goal = CareerGoal.objects.get(pk=goal_pk, user=request.user)
+    except CareerGoal.DoesNotExist:
+        return Response(
+            {"error": "Goal not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == "GET":
+        milestones = goal.milestones.all()
+        serializer = GoalMilestoneSerializer(milestones, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == "POST":
+        serializer = GoalMilestoneSerializer(data=request.data)
+        if serializer.is_valid():
+            milestone = serializer.save(goal=goal)
+            return Response(
+                GoalMilestoneSerializer(milestone).data,
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["PUT", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def goal_milestone_detail(request, goal_pk, milestone_pk):
+    """
+    PUT/PATCH: Update a milestone
+    DELETE: Delete a milestone
+    """
+    from core.models import CareerGoal, GoalMilestone
+    from core.serializers import GoalMilestoneSerializer
+    
+    try:
+        goal = CareerGoal.objects.get(pk=goal_pk, user=request.user)
+        milestone = goal.milestones.get(pk=milestone_pk)
+    except (CareerGoal.DoesNotExist, GoalMilestone.DoesNotExist):
+        return Response(
+            {"error": "Goal or milestone not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method in ["PUT", "PATCH"]:
+        partial = request.method == "PATCH"
+        serializer = GoalMilestoneSerializer(milestone, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == "DELETE":
+        milestone.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def complete_milestone(request, goal_pk, milestone_pk):
+    """Mark a milestone as completed."""
+    from core.models import CareerGoal, GoalMilestone
+    from core.serializers import GoalMilestoneSerializer
+    
+    try:
+        goal = CareerGoal.objects.get(pk=goal_pk, user=request.user)
+        milestone = goal.milestones.get(pk=milestone_pk)
+    except (CareerGoal.DoesNotExist, GoalMilestone.DoesNotExist):
+        return Response(
+            {"error": "Goal or milestone not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    milestone.mark_completed()
+    return Response(GoalMilestoneSerializer(milestone).data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def career_goals_analytics(request):
+    """
+    Provide analytics and insights for the user's career goals.
+    
+    Returns:
+    - Goal completion rate
+    - Average progress across active goals
+    - Overdue goals count
+    - Achievement patterns
+    - Recommendations
+    """
+    from core.models import CareerGoal
+    from django.db.models import Avg, Count, Q
+    
+    user = request.user
+    goals = CareerGoal.objects.filter(user=user)
+    
+    # Basic metrics
+    total_goals = goals.count()
+    completed_goals = goals.filter(status='completed').count()
+    active_goals = goals.filter(status='in_progress').count()
+    overdue_goals = goals.filter(
+        Q(target_date__lt=timezone.now().date()),
+        ~Q(status__in=['completed', 'abandoned'])
+    ).count()
+    
+    completion_rate = (completed_goals / total_goals * 100) if total_goals > 0 else 0
+    
+    # Average progress on active goals
+    avg_progress = goals.filter(status='in_progress').aggregate(
+        avg=Avg('progress_percentage')
+    )['avg'] or 0
+    
+    # Goal type breakdown
+    goal_types = goals.values('goal_type').annotate(count=Count('id'))
+    
+    # Recent achievements
+    recent_completed = goals.filter(
+        status='completed'
+    ).order_by('-completed_at')[:5]
+    
+    from core.serializers import CareerGoalListSerializer
+    
+    return Response({
+        'overview': {
+            'total_goals': total_goals,
+            'completed_goals': completed_goals,
+            'active_goals': active_goals,
+            'overdue_goals': overdue_goals,
+            'completion_rate': round(completion_rate, 1),
+            'average_progress': round(avg_progress, 1),
+        },
+        'goal_types': list(goal_types),
+        'recent_achievements': CareerGoalListSerializer(
+            recent_completed,
+            many=True
+        ).data,
+        'recommendations': _generate_goal_recommendations(user, goals),
+    })
+
+
+def _generate_goal_recommendations(user, goals):
+    """Generate AI-powered recommendations for goal setting and achievement."""
+    recommendations = []
+    
+    # Check if user has goals
+    if goals.count() == 0:
+        recommendations.append({
+            'type': 'get_started',
+            'message': 'Set your first career goal to start tracking your progress!',
+            'priority': 'high'
+        })
+        return recommendations
+    
+    # Check for overdue goals
+    overdue = goals.filter(
+        target_date__lt=timezone.now().date(),
+        status__in=['not_started', 'in_progress']
+    )
+    if overdue.exists():
+        recommendations.append({
+            'type': 'overdue_goals',
+            'message': f'You have {overdue.count()} overdue goal(s). Consider revising target dates or marking them complete.',
+            'priority': 'high'
+        })
+    
+    # Check for stalled goals
+    stalled = goals.filter(
+        status='in_progress',
+        progress_percentage__lt=25,
+        created_at__lt=timezone.now() - timedelta(days=30)
+    )
+    if stalled.exists():
+        recommendations.append({
+            'type': 'stalled_progress',
+            'message': f'{stalled.count()} goal(s) haven\'t progressed much. Break them into smaller milestones.',
+            'priority': 'medium'
+        })
+    
+    # Encourage milestone creation
+    goals_without_milestones = goals.filter(milestones__isnull=True).count()
+    if goals_without_milestones > 0:
+        recommendations.append({
+            'type': 'add_milestones',
+            'message': f'{goals_without_milestones} goal(s) have no milestones. Add milestones for better tracking.',
+            'priority': 'low'
+        })
+    
+    # Balance short-term and long-term goals
+    short_term = goals.filter(goal_type='short_term').count()
+    long_term = goals.filter(goal_type='long_term').count()
+    if short_term == 0 and long_term > 0:
+        recommendations.append({
+            'type': 'balance_goals',
+            'message': 'Consider adding short-term goals to create momentum toward your long-term objectives.',
+            'priority': 'medium'
+        })
+    
+    return recommendations

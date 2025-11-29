@@ -2389,6 +2389,134 @@ export const networkingAPI = {
   },
 };
 
+// UC-101: Career Goals API
+export const goalsAPI = {
+  // Goals CRUD
+  getGoals: async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.status) params.append('status', filters.status);
+      if (filters.goal_type) params.append('goal_type', filters.goal_type);
+      const query = params.toString() ? `?${params.toString()}` : '';
+      const response = await api.get(`/career-goals/${query}`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch goals' };
+    }
+  },
+
+  getGoal: async (goalId) => {
+    try {
+      const response = await api.get(`/career-goals/${goalId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch goal details' };
+    }
+  },
+
+  createGoal: async (goalData) => {
+    try {
+      const response = await api.post('/career-goals/', goalData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to create goal' };
+    }
+  },
+
+  updateGoal: async (goalId, goalData) => {
+    try {
+      const response = await api.patch(`/career-goals/${goalId}/`, goalData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update goal' };
+    }
+  },
+
+  deleteGoal: async (goalId) => {
+    try {
+      await api.delete(`/career-goals/${goalId}/`);
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete goal' };
+    }
+  },
+
+  // Progress tracking
+  updateProgress: async (goalId, currentValue) => {
+    try {
+      const response = await api.post(`/career-goals/${goalId}/update-progress/`, {
+        current_value: currentValue,
+      });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update progress' };
+    }
+  },
+
+  completeGoal: async (goalId) => {
+    try {
+      const response = await api.post(`/career-goals/${goalId}/complete/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to complete goal' };
+    }
+  },
+
+  // Milestones
+  getMilestones: async (goalId) => {
+    try {
+      const response = await api.get(`/career-goals/${goalId}/milestones/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch milestones' };
+    }
+  },
+
+  createMilestone: async (goalId, milestoneData) => {
+    try {
+      const response = await api.post(`/career-goals/${goalId}/milestones/`, milestoneData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to create milestone' };
+    }
+  },
+
+  updateMilestone: async (goalId, milestoneId, milestoneData) => {
+    try {
+      const response = await api.patch(`/career-goals/${goalId}/milestones/${milestoneId}/`, milestoneData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update milestone' };
+    }
+  },
+
+  deleteMilestone: async (goalId, milestoneId) => {
+    try {
+      await api.delete(`/career-goals/${goalId}/milestones/${milestoneId}/`);
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete milestone' };
+    }
+  },
+
+  completeMilestone: async (goalId, milestoneId) => {
+    try {
+      const response = await api.post(`/career-goals/${goalId}/milestones/${milestoneId}/complete/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to complete milestone' };
+    }
+  },
+
+  // Analytics
+  getAnalytics: async () => {
+    try {
+      const response = await api.get('/career-goals/analytics/');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch analytics' };
+    }
+  },
+};
+
 // Export for module compatibility
 try {
   if (typeof module !== 'undefined' && module.exports) {
@@ -2398,6 +2526,7 @@ try {
     module.exports.commentAPI = commentAPI;
     module.exports.notificationAPI = notificationAPI;
     module.exports.networkingAPI = networkingAPI;
+    module.exports.goalsAPI = goalsAPI;
   }
 } catch (e) {
   // ignore

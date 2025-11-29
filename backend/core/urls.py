@@ -236,6 +236,16 @@ urlpatterns = [
     # UC-082: Interview Follow-Up Templates
     path('interviews/follow-up/generate/', views.generate_interview_followup, name='generate-interview-followup'),
 
+    # UC-101: Career Goals endpoints
+    path('career-goals/', views.career_goals_list_create, name='career-goals-list-create'),
+    path('career-goals/<uuid:pk>/', views.career_goal_detail, name='career-goal-detail'),
+    path('career-goals/<uuid:pk>/update-progress/', views.update_goal_progress, name='update-goal-progress'),
+    path('career-goals/<uuid:pk>/complete/', views.complete_goal, name='complete-goal'),
+    path('career-goals/<uuid:goal_pk>/milestones/', views.goal_milestones_list_create, name='goal-milestones-list-create'),
+    path('career-goals/<uuid:goal_pk>/milestones/<uuid:milestone_pk>/', views.goal_milestone_detail, name='goal-milestone-detail'),
+    path('career-goals/<uuid:goal_pk>/milestones/<uuid:milestone_pk>/complete/', views.complete_milestone, name='complete-milestone'),
+    path('career-goals/analytics/', views.career_goals_analytics, name='career-goals-analytics'),
+
     # UC-052: Resume Version Management endpoints
     path('resume-versions/', views.resume_versions_list_create, name='resume-versions-list-create'),
     path('resume-versions/<uuid:version_id>/', views.resume_version_detail, name='resume-version-detail'),
