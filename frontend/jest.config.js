@@ -6,6 +6,9 @@ module.exports = {
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '\\.(jpg|jpeg|png|gif|svg|webp)$': '<rootDir>/__mocks__/fileMock.js',
     '^react-icons/fa$': '<rootDir>/__mocks__/react-icons/fa.js',
+    '^rehype-sanitize$': '<rootDir>/src/__mocks__/rehype-sanitize.js',
+    '^remark-gfm$': '<rootDir>/src/__mocks__/remark-gfm.js',
+    '^react-markdown$': '<rootDir>/src/__mocks__/react-markdown.js',
   },
   transform: {
     '^.+\\.(js|jsx|ts|tsx)$': ['babel-jest', {
@@ -19,7 +22,8 @@ module.exports = {
     }]
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(react-icons|@dnd-kit)/)'
+    // Allow transforming these ESM packages which ship modern syntax
+    'node_modules/(?!(react-icons|@dnd-kit|react-markdown|rehype-sanitize|remark-gfm|devlop)/)'
   ],
   moduleFileExtensions: ['js', 'jsx', 'json', 'node'],
   testMatch: [
