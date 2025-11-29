@@ -176,6 +176,24 @@ const resumeExportAPI = {
 	exportResume: jestFn(),
 };
 
+const mentorshipAPI = {
+	getRequests: jestFn(),
+	getRelationships: jestFn(),
+	sendRequest: jestFn(),
+	respondToRequest: jestFn(),
+	cancelRequest: jestFn(),
+	getShareSettings: jestFn(),
+	updateShareSettings: jestFn(),
+	getSharedData: jestFn(),
+	getProgressReport: jestFn(),
+	getMessages: jestFn(),
+	getGoals: jestFn(),
+	createGoal: jestFn(),
+	updateGoal: jestFn(),
+	deleteGoal: jestFn(),
+	sendMessage: jestFn(),
+};
+
 module.exports = {
 	__esModule: true,
 	default: {},
@@ -195,4 +213,5 @@ module.exports = {
 	documentsAPI,
 	resumeVersionAPI,
 	resumeExportAPI,
+	mentorshipAPI,
 };

@@ -138,6 +138,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='mentorshipmessage',
-            index=models.Index(fields=['team_member', '-created_at'], name='core_mentors_team_me_efacc8_idx'),
+            index=models.Index(fields=['team_member', '-created_at'], name='core_mentor_msg_team_idx'),
         ),
     ]
