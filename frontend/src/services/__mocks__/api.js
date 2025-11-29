@@ -194,6 +194,25 @@ const mentorshipAPI = {
 	sendMessage: jestFn(),
 };
 
+const goalsAPI = {
+	getGoals: jestFn(),
+	getAnalytics: jestFn(),
+	getGoal: jestFn(),
+	createGoal: jestFn(),
+	updateGoal: jestFn(),
+	deleteGoal: jestFn(),
+	updateProgress: jestFn(),
+};
+
+const referralAPI = {
+	markSent: jestFn(),
+	markResponse: jestFn(),
+	markCompleted: jestFn(),
+	unmarkCompleted: jestFn(),
+	expressGratitude: jestFn(),
+	suggestFollowUp: jestFn(),
+};
+
 module.exports = {
 	__esModule: true,
 	default: {},
@@ -214,4 +233,6 @@ module.exports = {
 	resumeVersionAPI,
 	resumeExportAPI,
 	mentorshipAPI,
+	goalsAPI,
+	referralAPI,
 };

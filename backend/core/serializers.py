@@ -316,6 +316,36 @@ class BasicProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Summary must not exceed 500 characters.")
         return value
 
+    def validate_phone(self, value):
+        """Normalize and validate phone numbers."""
+        if value:
+            cleaned = re.sub(r'[\s\-\(\)\.]', '', value)
+            if not re.match(r'^\+?1?\d{10,15}$', cleaned):
+                raise serializers.ValidationError("Please enter a valid phone number.")
+        return value
+
+    def update(self, instance, validated_data):
+        """
+        Support writing dotted-source fields (user.first_name, etc.) and
+        ensure profile-specific validation (phone) still runs.
+        """
+        user_data = validated_data.pop('user', {})
+
+        if user_data:
+            user = instance.user
+            for attr, value in user_data.items():
+                setattr(user, attr, value)
+            user.save()
+
+        if 'phone' in validated_data:
+            validated_data['phone'] = self.validate_phone(validated_data['phone'])
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        return instance
+
 
 class CandidatePublicProfileSerializer(serializers.ModelSerializer):
     """Lightweight serializer for sharing limited candidate information."""

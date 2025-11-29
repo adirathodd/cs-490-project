@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import Goals from './Goals';
 import { goalsAPI } from '../../services/api';
@@ -66,12 +66,14 @@ const mockAnalytics = {
 	},
 };
 
-const renderGoals = () => {
-	return render(
-		<BrowserRouter>
-			<Goals />
-		</BrowserRouter>
-	);
+const renderGoals = async () => {
+	await act(async () => {
+		render(
+			<BrowserRouter>
+				<Goals />
+			</BrowserRouter>
+		);
+	});
 };
 
 describe('Goals Component', () => {
@@ -82,7 +84,7 @@ describe('Goals Component', () => {
 	});
 
 	it('renders header and analytics overview', async () => {
-		renderGoals();
+		await renderGoals();
 
 		await waitFor(() => {
 			expect(screen.getByText('Career Goals')).toBeInTheDocument();
@@ -96,7 +98,7 @@ describe('Goals Component', () => {
 	it('updates goal progress from the inline control', async () => {
 		goalsAPI.updateProgress.mockResolvedValue({ ...mockGoals[0], current_value: 60, progress_percentage: 60 });
 
-		renderGoals();
+		await renderGoals();
 
 		await waitFor(() => {
 			expect(screen.getByText('Complete 5 Technical Interviews')).toBeInTheDocument();
