@@ -24,6 +24,10 @@ if (typeof global.URL.revokeObjectURL === 'undefined') {
 	global.URL.revokeObjectURL = jest.fn();
 }
 
+if (typeof window !== 'undefined') {
+	window.scrollTo = jest.fn();
+}
+
 // Mock Firebase services to avoid initializing real SDK in tests
 jest.mock('./services/firebase', () => ({
 	__esModule: true,
@@ -135,6 +139,20 @@ jest.mock('./services/firebase', () => ({
 		getJobMatchAnalysis: jest.fn(),
 		triggerJobMatchAnalysis: jest.fn(),
 		},
+		companyAPI: {
+			searchCompanies: jest.fn().mockResolvedValue([]),
+		},
+		materialsAPI: {
+			listDocuments: jest.fn().mockResolvedValue([]),
+			uploadDocument: jest.fn(),
+			deleteDocument: jest.fn(),
+			getDownloadUrl: jest.fn().mockReturnValue('https://example.com/document/1'),
+			getJobMaterials: jest.fn().mockResolvedValue({ resume_doc: null, cover_letter_doc: null, history: [] }),
+			updateJobMaterials: jest.fn().mockResolvedValue({}),
+			getDefaults: jest.fn().mockResolvedValue({ default_resume_doc: null, default_cover_letter_doc: null }),
+			setDefaults: jest.fn().mockResolvedValue({}),
+			getAnalytics: jest.fn().mockResolvedValue({}),
+		},
 		interviewsAPI: {
 			getInterviews: jest.fn().mockResolvedValue([]),
 			getInterview: jest.fn(),
@@ -162,6 +180,19 @@ jest.mock('./services/firebase', () => ({
 			generateDocument: jest.fn(),
 		},
 	}));
+
+const { companyAPI, materialsAPI } = require('./services/api');
+
+beforeEach(() => {
+	materialsAPI.listDocuments.mockResolvedValue([]);
+	materialsAPI.getDefaults.mockResolvedValue({ default_resume_doc: null, default_cover_letter_doc: null });
+	materialsAPI.setDefaults.mockResolvedValue({});
+	materialsAPI.getJobMaterials.mockResolvedValue({ resume_doc: null, cover_letter_doc: null, history: [] });
+	materialsAPI.updateJobMaterials.mockResolvedValue({});
+	materialsAPI.getDownloadUrl.mockReturnValue('https://example.com/document/1');
+	materialsAPI.getAnalytics.mockResolvedValue({});
+	companyAPI.searchCompanies.mockResolvedValue([]);
+});
 
 	// Mock firebase/auth directly for components that import from it
 	jest.mock('firebase/auth', () => ({
