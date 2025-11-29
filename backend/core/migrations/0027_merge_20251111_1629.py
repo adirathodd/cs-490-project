@@ -6,7 +6,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0016_uc_052_resume_sharing_feedback'),
+        ('core', '0026_b_uc_052_resume_sharing_feedback'),
         ('core', '0026_add_document_analytics_fields'),
     ]
 

@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('core', '0055_interviewsuccessprediction'),
+        ('core', '0057_referraloutcome_referralrequest_and_more'),
     ]
 
     operations = [
@@ -141,4 +141,3 @@ class Migration(migrations.Migration):
             index=models.Index(fields=['team_member', '-created_at'], name='core_mentors_team_me_efacc8_idx'),
         ),
     ]
-

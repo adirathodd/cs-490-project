@@ -3,7 +3,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("core", "0036_merge_20251115_2346"),
+        ("core", "0036_z_merge_20251115_2346"),
         ("core", "0036_interviewchecklistprogress_and_more"),
     ]
     # This migration was intended to convert legacy integer referral.contact_id

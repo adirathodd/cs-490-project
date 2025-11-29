@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('core', '0056_careergoal_goalmilestone_and_more'),
-        ('core', '0056_referraloutcome_referralrequest_and_more'),
+        ('core', '0057_referraloutcome_referralrequest_and_more'),
     ]
 
     operations = [

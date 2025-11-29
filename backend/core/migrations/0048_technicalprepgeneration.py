@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('core', '0047_salarynegotiationplan_salarynegotiationoutcome_and_more'),
-        ('core', '0046_technicalprep_models'),
+        ('core', '0060_technicalprep_models'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
