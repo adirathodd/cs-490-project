@@ -1272,6 +1272,16 @@ export const interviewsAPI = {
       throw error.response?.data?.error || { message: 'Failed to generate follow-up' };
     }
   },
+
+  // UC-080: Interview performance analytics
+  getPerformanceAnalytics: async () => {
+    try {
+      const response = await api.get('/interviews/performance-analytics/');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to load interview analytics' };
+    }
+  },
 };
 
 // UC-079: Calendar integrations (Google, Outlook, etc.)

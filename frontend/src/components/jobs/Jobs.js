@@ -92,6 +92,7 @@ const [companySearchStatus, setCompanySearchStatus] = useState('');
   });
   const [sortBy, setSortBy] = useState('date_added');
   const [showFilters, setShowFilters] = useState(false);
+  const [viewMode, setViewMode] = useState('list');
 
   // UC-045: Archive State
   const [showArchived, setShowArchived] = useState(false);
@@ -144,6 +145,9 @@ const companyDropdownRef = useRef(null);
         if (prefs.filters) setFilters(prev => ({ ...prev, ...prefs.filters }));
         if (prefs.sortBy) setSortBy(prefs.sortBy);
         if (prefs.showFilters !== undefined) setShowFilters(prefs.showFilters);
+        if (prefs.viewMode && ['list', 'grid'].includes(prefs.viewMode)) {
+          setViewMode(prefs.viewMode);
+        }
       }
     } catch (e) {
       console.warn('Failed to load saved search preferences:', e);
@@ -156,12 +160,12 @@ const companyDropdownRef = useRef(null);
   useEffect(() => {
     if (!prefsLoaded) return;
     try {
-      const prefs = { searchQuery, filters, sortBy, showFilters };
+      const prefs = { searchQuery, filters, sortBy, showFilters, viewMode };
       localStorage.setItem('jobSearchPreferences', JSON.stringify(prefs));
     } catch (e) {
       console.warn('Failed to save search preferences:', e);
     }
-  }, [searchQuery, filters, sortBy, showFilters, prefsLoaded]);
+  }, [searchQuery, filters, sortBy, showFilters, viewMode, prefsLoaded]);
 
   // UC-042: Load documents and defaults
   useEffect(() => {
@@ -370,6 +374,14 @@ const companyDropdownRef = useRef(null);
     const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`(${escapedQuery})`, 'gi');
     return text.replace(regex, '<mark style="background: #fef08a; padding: 0 2px;">$1</mark>');
+  };
+
+  const formatDescriptionForView = (text) => {
+    if (!text) return '';
+    if (viewMode !== 'grid') return text;
+    const trimmed = text.trim();
+    if (trimmed.length <= 220) return trimmed;
+    return `${trimmed.slice(0, 220).trim()}...`;
   };
 
   const onChange = (e) => {
@@ -1021,6 +1033,31 @@ const companyDropdownRef = useRef(null);
       <div className="education-header">
         <h2><Icon name="briefcase" size="md" /> Your Job Entries</h2>
         <div style={headerActionsWrapperStyle}>
+          <div 
+            className="jobs-view-toggle" 
+            role="group" 
+            aria-label="Select job layout"
+            style={{ flex: '1 1 220px', justifyContent: 'center' }}
+          >
+            <button
+              type="button"
+              className={`jobs-view-toggle__option ${viewMode === 'list' ? 'is-active' : ''}`}
+              onClick={() => setViewMode('list')}
+              aria-pressed={viewMode === 'list'}
+            >
+              <Icon name="list" size="sm" ariaLabel="List view" />
+              <span>List</span>
+            </button>
+            <button
+              type="button"
+              className={`jobs-view-toggle__option ${viewMode === 'grid' ? 'is-active' : ''}`}
+              onClick={() => setViewMode('grid')}
+              aria-pressed={viewMode === 'grid'}
+            >
+              <Icon name="grid" size="sm" ariaLabel="Grid view" />
+              <span>Grid</span>
+            </button>
+          </div>
           {/* UC-042: Set Default Materials button */}
           <button
             className="btn-secondary"
@@ -1963,7 +2000,7 @@ const companyDropdownRef = useRef(null);
           )}
         </div>
       ) : (
-        <div className="education-list">
+        <>
           {/* UC-045: Bulk select all checkbox with action buttons - Active Jobs */}
           {!showArchived && items.length > 0 && (
             <div style={{ 
@@ -2109,7 +2146,10 @@ const companyDropdownRef = useRef(null);
               )}
             </div>
           )}
-          {(items || []).map((item) => (
+          <div className={`education-list ${viewMode === 'grid' ? 'grid-view' : 'list-view'}`}>
+          {(items || []).map((item) => {
+            const descriptionForDisplay = formatDescriptionForView(item.description);
+            return (
             <div key={item.id} className="education-item">
               <div className="education-item-header">
                 {/* UC-045: Checkbox for bulk selection - both active and archived */}
@@ -2185,7 +2225,8 @@ const companyDropdownRef = useRef(null);
                       href={item.posting_url}
                       target="_blank"
                       rel="noreferrer"
-                      title="View Job Posting"
+                      title="Open job posting"
+                      aria-label="Open job posting"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <Icon name="link" size="sm" ariaLabel="View" />
@@ -2197,7 +2238,8 @@ const companyDropdownRef = useRef(null);
                       e.stopPropagation();
                       navigate(`/jobs/${item.id}`);
                     }}
-                    title="View Details"
+                    title="View job details"
+                    aria-label="View job details"
                   >
                     <Icon name="eye" size="sm" ariaLabel="View" />
                   </button>
@@ -2209,7 +2251,8 @@ const companyDropdownRef = useRef(null);
                         e.stopPropagation();
                         openMaterialsModal(item);
                       }}
-                      title="Manage Materials"
+                    title="Manage materials"
+                    aria-label="Manage materials"
                     >
                       <Icon name="file-text" size="sm" ariaLabel="Materials" />
                     </button>
@@ -2222,7 +2265,8 @@ const companyDropdownRef = useRef(null);
                         e.stopPropagation();
                         navigate(`/jobs/${item.id}/salary-research`);
                       }}
-                      title="Salary Research"
+                      title="Open salary research"
+                      aria-label="Open salary research"
                     >
                       <Icon name="dollar" size="sm" ariaLabel="Salary Research" />
                     </button>
@@ -2235,7 +2279,8 @@ const companyDropdownRef = useRef(null);
                         e.stopPropagation();
                         navigate(`/jobs/${item.id}/salary-negotiation`);
                       }}
-                      title="Negotiation Prep"
+                      title="Open negotiation prep"
+                      aria-label="Open negotiation prep"
                     >
                       <Icon name="layers" size="sm" ariaLabel="Salary Negotiation" />
                     </button>
@@ -2248,7 +2293,8 @@ const companyDropdownRef = useRef(null);
                           e.stopPropagation();
                           startEdit(item);
                         }}
-                        title="Edit"
+                        title="Edit entry"
+                        aria-label="Edit entry"
                       >
                         <Icon name="edit" size="sm" ariaLabel="Edit" />
                       </button>
@@ -2258,7 +2304,8 @@ const companyDropdownRef = useRef(null);
                           e.stopPropagation();
                           onArchive(item.id, 'other');
                         }}
-                        title="Archive"
+                        title="Archive entry"
+                        aria-label="Archive entry"
                       >
                         <Icon name="archive" size="sm" ariaLabel="Archive" />
                       </button>
@@ -2271,7 +2318,8 @@ const companyDropdownRef = useRef(null);
                         e.stopPropagation();
                         onRestore(item.id);
                       }}
-                      title="Restore"
+                      title="Restore entry"
+                      aria-label="Restore entry"
                       style={{ background: '#10b981', color: 'white' }}
                     >
                       <Icon name="restore" size="sm" ariaLabel="Restore" />
@@ -2283,7 +2331,8 @@ const companyDropdownRef = useRef(null);
                       e.stopPropagation();
                       onDelete(item.id);
                     }}
-                    title="Delete Permanently"
+                    title="Delete entry permanently"
+                    aria-label="Delete entry permanently"
                   >
                     <Icon name="trash" size="sm" ariaLabel="Delete" />
                   </button>
@@ -2292,12 +2341,14 @@ const companyDropdownRef = useRef(null);
               {(item.industry || item.description) && (
                 <div className="education-item-details">
                   {item.industry && <div><strong>Industry:</strong> {item.industry}</div>}
-                  {item.description && <div><strong>Notes:</strong> {item.description}</div>}
+                  {descriptionForDisplay && <div><strong>Notes:</strong> {descriptionForDisplay}</div>}
                 </div>
               )}
             </div>
-          ))}
-        </div>
+            );
+          })}
+          </div>
+        </>
       )}
 
       {/* UC-045: Archive Reason Modal */}

@@ -3,22 +3,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 // Component under test
 import RoleQuestionBank from '../components/jobs/RoleQuestionBank';
+import { jobsAPI } from '../services/api';
 
 // Mock the Icon component to keep tests focused and lightweight
 jest.mock('../components/common/Icon', () => (props) => {
   const { name } = props;
   return <span data-testid={`icon-${name}`}>{name}</span>;
 });
-
-// Mock the API module used by the component
-const mockGetHistory = jest.fn();
-const mockCoachResponse = jest.fn();
-jest.mock('../services/api', () => ({
-  jobsAPI: {
-    getQuestionPracticeHistory: (...args) => mockGetHistory(...args),
-    coachQuestionResponse: (...args) => mockCoachResponse(...args),
-  },
-}));
 
 describe('RoleQuestionBank', () => {
   const bank = {
@@ -51,8 +42,8 @@ describe('RoleQuestionBank', () => {
   };
 
   beforeEach(() => {
-    mockGetHistory.mockReset();
-    mockCoachResponse.mockReset();
+    jobsAPI.getQuestionPracticeHistory.mockReset();
+    jobsAPI.coachQuestionResponse.mockReset();
   });
 
   test('renders question card and shows view history modal when history exists', async () => {
@@ -66,7 +57,7 @@ describe('RoleQuestionBank', () => {
       practice_count: 2,
     };
 
-    mockGetHistory.mockResolvedValueOnce(historyResponse);
+    jobsAPI.getQuestionPracticeHistory.mockResolvedValueOnce(historyResponse);
 
     render(
       <RoleQuestionBank
@@ -91,7 +82,7 @@ describe('RoleQuestionBank', () => {
     // Click view history -> should call API and show modal content
     fireEvent.click(viewBtn);
 
-    await waitFor(() => expect(mockGetHistory).toHaveBeenCalledWith(123, 'q-1'));
+    await waitFor(() => expect(jobsAPI.getQuestionPracticeHistory).toHaveBeenCalledWith(123, 'q-1'));
 
     expect(await screen.findByText(/Practice History/i)).toBeInTheDocument();
     expect(screen.getByText(/A stack is LIFO/)).toBeInTheDocument();

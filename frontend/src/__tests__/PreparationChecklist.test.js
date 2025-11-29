@@ -2,21 +2,12 @@ import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 import PreparationChecklist from '../components/jobs/PreparationChecklist';
+import { interviewsAPI } from '../services/api';
 
 jest.mock('../components/common/Icon', () => (props) => {
   const { name } = props;
   return <span data-testid={`icon-${name}`}>{name}</span>;
 });
-
-const mockGetChecklist = jest.fn();
-const mockToggle = jest.fn();
-
-jest.mock('../services/api', () => ({
-  interviewsAPI: {
-    getPreparationChecklist: (...args) => mockGetChecklist(...args),
-    toggleChecklistItem: (...args) => mockToggle(...args),
-  },
-}));
 
 describe('PreparationChecklist', () => {
   const checklistData = {
@@ -38,13 +29,13 @@ describe('PreparationChecklist', () => {
   };
 
   beforeEach(() => {
-    mockGetChecklist.mockReset();
-    mockToggle.mockReset();
+    interviewsAPI.getPreparationChecklist.mockReset();
+    interviewsAPI.toggleChecklistItem.mockReset();
   });
 
   test('loads checklist and toggles a task', async () => {
-    mockGetChecklist.mockResolvedValueOnce(checklistData);
-    mockToggle.mockResolvedValueOnce({ completed: true, completed_at: '2025-11-15T12:00:00Z' });
+    interviewsAPI.getPreparationChecklist.mockResolvedValueOnce(checklistData);
+    interviewsAPI.toggleChecklistItem.mockResolvedValueOnce({ completed: true, completed_at: '2025-11-15T12:00:00Z' });
 
     const onClose = jest.fn();
 
@@ -68,7 +59,7 @@ describe('PreparationChecklist', () => {
     fireEvent.click(checkbox);
 
     // Ensure API toggle called with expected payload
-    await waitFor(() => expect(mockToggle).toHaveBeenCalledWith(1, {
+    await waitFor(() => expect(interviewsAPI.toggleChecklistItem).toHaveBeenCalledWith(1, {
       task_id: 't-1',
       category: 'Company Research',
       task: 'Review company website'

@@ -63,6 +63,8 @@ import {
   FaArrowLeft,
   FaSave,
   FaLayerGroup,
+  FaListUl,
+  FaThLarge,
 } from 'react-icons/fa';
 
 // Simple, centralized Icon wrapper used across the app.
@@ -157,6 +159,9 @@ const iconMap = {
   save: FaSave,
   layers: FaLayerGroup,
   loader: FaSpinner,
+  list: FaListUl,
+  grid: FaThLarge,
+  layout: FaThLarge,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {

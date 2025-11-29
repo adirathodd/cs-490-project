@@ -3,21 +3,6 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import ResumeVersionControl from './ResumeVersionControl';
 import { resumeVersionAPI } from '../../services/api';
 
-jest.mock('../../services/api', () => ({
-  resumeVersionAPI: {
-    listVersions: jest.fn(),
-    setDefault: jest.fn(),
-    archiveVersion: jest.fn(),
-    restoreVersion: jest.fn(),
-    deleteVersion: jest.fn(),
-    duplicateVersion: jest.fn(),
-    compareVersions: jest.fn(),
-    getVersionHistory: jest.fn(),
-    mergeVersions: jest.fn(),
-    updateVersion: jest.fn(),
-  }
-}));
-
 // Mock Icon to avoid rendering complexity
 jest.mock('../common/Icon', () => (props) => <span data-testid={`icon-${props.name}`}>{props.name}</span>);
 
