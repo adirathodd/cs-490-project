@@ -6,7 +6,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0030_contacts_uc086'),
+        ('core', '0030_z_contacts_uc086_noop'),
         ('core', '0038_conservative_referral_legacy_mapping'),
     ]
 

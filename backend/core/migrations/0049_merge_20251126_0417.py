@@ -6,7 +6,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0046_technicalprep_models'),
+        ('core', '0060_technicalprep_models'),
         ('core', '0048_technicalprepgeneration'),
     ]
 
