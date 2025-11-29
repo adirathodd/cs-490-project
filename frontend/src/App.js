@@ -25,6 +25,7 @@ import JobDetailView from './components/jobs/JobDetailView';
 import JobTimelineView from './components/jobs/JobTimelineView';
 import SalaryResearch from './components/jobs/SalaryResearch';
 import SalaryNegotiation from './components/jobs/SalaryNegotiation';
+import Goals from './components/goals/Goals';
 import ContactsPage from './components/contacts/ContactsPage';
 import NetworkingEvents from './components/networking/NetworkingEvents';
 import { CompanyInsights } from './features/company';
@@ -293,6 +294,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <SalaryNegotiation />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/goals"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <Goals />
               </PrivateRoute>
             }
           />
