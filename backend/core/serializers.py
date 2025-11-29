@@ -25,7 +25,6 @@ from core.models import (
 
 from core.models import Referral, Application, JobOpportunity
 
-
 class CoverLetterTemplateSerializer(serializers.ModelSerializer):
     class Meta:
         model = CoverLetterTemplate
@@ -171,208 +170,207 @@ class ReferralSerializer(serializers.ModelSerializer):
                 return parsed.get('relationship_strength')
         except Exception:
             pass
-        """
-        Serializers for authentication and user management.
-        """
-        import os
-        import re
-        from django.db.models import Q, Count
-        from django.utils import timezone
-        from rest_framework import serializers
-        from django.contrib.auth import get_user_model
-        from django.contrib.auth.password_validation import validate_password
-        from core.models import (
-            CandidateProfile, Skill, CandidateSkill, Education, Certification,
-            Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory,
-            CoverLetterTemplate, InterviewSchedule, InterviewPreparationTask, InterviewEvent, CalendarIntegration,
-            QuestionResponseCoaching, ResumeVersion, ResumeVersionChange, ResumeShare, ShareAccessLog,
-            ResumeFeedback, FeedbackComment, FeedbackNotification,
-            TeamMember, MentorshipRequest, MentorshipSharingPreference, MentorshipSharedApplication,
-            MentorshipGoal, MentorshipMessage,
-        )
-        from core.models import (
-            Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink,
-            ContactJobLink, NetworkingEvent, EventGoal, EventConnection, EventFollowUp, CareerGoal, GoalMilestone,
-            ProfessionalReference, ReferenceRequest, ReferenceTemplate, ReferenceAppreciation, ReferencePortfolio,
-        )
+        return 'moderate'
 
-        from core.models import Referral, Application, JobOpportunity
+    def create(self, validated_data):
+        # Creation is handled in the view where we have access to request.user
+        raise NotImplementedError('Use view.create to handle creation')
 
 
-        class CoverLetterTemplateSerializer(serializers.ModelSerializer):
-            class Meta:
-                model = CoverLetterTemplate
-                fields = [
-                    "id", "name", "description", "template_type", "industry", "content", "sample_content",
-                    "owner", "is_shared", "imported_from", "usage_count", "last_used", "created_at", "updated_at",
-                    "customization_options", "original_file_type", "original_filename",
-                ]
-                read_only_fields = [
-                    "id", "owner", "usage_count", "last_used", "created_at", "updated_at",
-                    "original_file_content", "original_file_type", "original_filename",
-                ]
+class UserLoginSerializer(serializers.Serializer):
+    """
+    Serializer for UC-002: User Login with Email and Password.
+    """
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(write_only=True, required=True)
+    
+    def validate_email(self, value):
+        """Normalize email to lowercase."""
+        return value.lower()
 
 
-        User = get_user_model()
+class UserProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer for user profile information.
+    """
+    email = serializers.EmailField(source='user.email', read_only=True)
+    first_name = serializers.CharField(source='user.first_name', max_length=150)
+    last_name = serializers.CharField(source='user.last_name', max_length=150)
+    full_name = serializers.SerializerMethodField()
+    full_location = serializers.SerializerMethodField()
+    # Accept nested user data for updates (write-only)
+    user = serializers.DictField(write_only=True, required=False)
+    
+    class Meta:
+        model = CandidateProfile
+        fields = [
+            'email', 'first_name', 'last_name', 'full_name',
+            'phone', 'city', 'state', 'full_location',
+            'headline', 'summary', 'industry', 'experience_level',
+            'location', 'years_experience', 'preferred_roles', 
+            'portfolio_url', 'visibility', 'user'
+        ]
+    
+    def get_full_name(self, obj):
+        """Get user's full name with sensible fallback to email/username."""
+        name = f"{obj.user.first_name} {obj.user.last_name}".strip()
+        if not name and obj.user:
+            return obj.user.email or obj.user.username or ""
+        return name
+    
+    def get_full_location(self, obj):
+        """Get formatted location."""
+        return obj.get_full_location()
+
+    def update(self, instance, validated_data):
+        """Update user and profile information, supporting nested user dict."""
+        user_data = validated_data.pop('user', {})
+
+        # Update user fields
+        if user_data:
+            user = instance.user
+            for attr, value in user_data.items():
+                setattr(user, attr, value)
+            user.save()
+
+        # Update profile fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        return instance
+
+    def validate_phone(self, value):
+        """Validate phone number format for user profile."""
+        if value:
+            cleaned = re.sub(r'[\s\-\(\)\.]', '', value)
+            if not re.match(r'^\+?1?\d{10,15}$', cleaned):
+                raise serializers.ValidationError("Please enter a valid phone number.")
+        return value
+
+class TagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tag
+        fields = ['id', 'name', 'type']
+        read_only_fields = ['id']
 
 
-        class UserRegistrationSerializer(serializers.Serializer):
-            """
-            Serializer for UC-001: User Registration with Email.
-            """
-            email = serializers.EmailField(required=True)
-            password = serializers.CharField(write_only=True, required=True, min_length=8)
-            confirm_password = serializers.CharField(write_only=True, required=True)
-            first_name = serializers.CharField(required=True, max_length=150)
-            last_name = serializers.CharField(required=True, max_length=150)
+class ContactNoteSerializer(serializers.ModelSerializer):
+    author = serializers.ReadOnlyField(source='author.id')
 
-            def validate_email(self, value):
-                """Validate email format."""
-                # Additional email validation
-                if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', value):
-                    raise serializers.ValidationError("Please enter a valid email address.")
-
-                return value.lower()
-
-            def validate_password(self, value):
-                """
-                Validate password meets requirements:
-                - Minimum 8 characters
-                - At least 1 uppercase letter
-                - At least 1 lowercase letter
-                - At least 1 number
-                """
-                if len(value) < 8:
-                    raise serializers.ValidationError("Password must be at least 8 characters long.")
-
-                if not re.search(r'[A-Z]', value):
-                    raise serializers.ValidationError("Password must contain at least one uppercase letter.")
-
-                if not re.search(r'[a-z]', value):
-                    raise serializers.ValidationError("Password must contain at least one lowercase letter.")
-
-                if not re.search(r'\d', value):
-                    raise serializers.ValidationError("Password must contain at least one number.")
-
-                # Use Django's built-in password validators
-                validate_password(value)
-
-                return value
-
-            def validate(self, data):
-                """Validate that passwords match."""
-                if data['password'] != data['confirm_password']:
-                    raise serializers.ValidationError({
-                        'confirm_password': "Passwords do not match."
-                    })
-                return data
-
-            def create(self, validated_data):
-                """This will be handled by the view using Firebase."""
-                pass
+    class Meta:
+        model = ContactNote
+        fields = ['id', 'contact', 'author', 'content', 'interests', 'created_at']
+        read_only_fields = ['id', 'author', 'created_at']
 
 
-        class ReferralSerializer(serializers.ModelSerializer):
-            """API serializer for Referral objects used by the frontend.
+class InteractionSerializer(serializers.ModelSerializer):
+    owner = serializers.ReadOnlyField(source='owner.id')
 
-            This serializer exposes a convenient shape the frontend expects
-            while mapping to the existing `Referral` model which links to an
-            `Application` and a `Contact`.
-            """
-            id = serializers.ReadOnlyField()
-            job = serializers.SerializerMethodField()
-            job_title = serializers.SerializerMethodField()
-            job_company = serializers.SerializerMethodField()
-            referral_source_display_name = serializers.SerializerMethodField()
-            request_message = serializers.SerializerMethodField()
-            relationship_strength = serializers.SerializerMethodField()
-
-            class Meta:
-                model = Referral
-                fields = [
-                    'id', 'job', 'job_title', 'job_company', 'status',
-                    'referral_source_display_name', 'relationship_strength',
-                    'request_message', 'notes', 'requested_date', 'completed_date'
-                ]
-
-            def get_job(self, obj):
-                try:
-                    return str(obj.application.job.id)
-                except Exception:
-                    return None
-
-            def get_job_title(self, obj):
-                try:
-                    return getattr(obj.application.job, 'title', '')
-                except Exception:
-                    return ''
-
-            def get_job_company(self, obj):
-                try:
-                    company = getattr(obj.application.job, 'company', None)
-                    return getattr(company, 'name', '') if company else ''
-                except Exception:
-                    return ''
-
-            def get_referral_source_display_name(self, obj):
-                contact = getattr(obj, 'contact', None)
-                if not contact:
-                    return ''
-                return getattr(contact, 'display_name', '') or f"{getattr(contact, 'first_name', '')} {getattr(contact, 'last_name', '')}".strip()
-
-            def get_request_message(self, obj):
-                # The existing Referral model doesn't store a dedicated message field.
-                # We store the user's message inside `notes` when creating via the API
-                # and retrieve it here when possible.
-                notes = obj.notes or ''
-                # If notes looks like JSON with 'request_message', attempt to parse it.
-                try:
-                    import json
-                    parsed = json.loads(notes)
-                    if isinstance(parsed, dict) and 'request_message' in parsed:
-                        return parsed.get('request_message')
-                except Exception:
-                    pass
-                return notes
-
-            def get_relationship_strength(self, obj):
-                # Relationship strength is not a field on Referral; attempt to parse from notes JSON.
-                notes = obj.notes or ''
-                try:
-                    import json
-                    parsed = json.loads(notes)
-                    if isinstance(parsed, dict) and 'relationship_strength' in parsed:
-                        return parsed.get('relationship_strength')
-                except Exception:
-                    pass
-                return 'moderate'
-
-            def create(self, validated_data):
-                # Creation is handled in the view where we have access to request.user
-                raise NotImplementedError('Use view.create to handle creation')
+    class Meta:
+        model = Interaction
+        fields = ['id', 'contact', 'owner', 'type', 'date', 'duration_minutes', 'summary', 'follow_up_needed', 'metadata', 'created_at']
+        read_only_fields = ['id', 'owner', 'created_at']
 
 
-        class UserLoginSerializer(serializers.Serializer):
-            """
-            Serializer for UC-002: User Login with Email and Password.
-            """
-            email = serializers.EmailField(required=True)
-            password = serializers.CharField(write_only=True, required=True)
+class ReminderSerializer(serializers.ModelSerializer):
+    owner = serializers.ReadOnlyField(source='owner.id')
 
-            def validate_email(self, value):
-                """Normalize email to lowercase."""
-                return value.lower()
+    class Meta:
+        model = Reminder
+        fields = ['id', 'contact', 'owner', 'message', 'due_date', 'recurrence', 'completed', 'created_at']
+        read_only_fields = ['id', 'owner', 'created_at']
 
 
-        class UserProfileSerializer(serializers.ModelSerializer):
-            """
-            Serializer for user profile information.
-            """
-            email = serializers.EmailField(source='user.email', read_only=True)
-            first_name = serializers.CharField(source='user.first_name', max_length=150)
-            last_name = serializers.CharField(source='user.last_name', max_length=150)
-            full_name = serializers.SerializerMethodField()
-            full_location = serializers.SerializerMethodField()
+class ImportJobSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ImportJob
+        fields = ['id', 'owner', 'provider', 'status', 'started_at', 'completed_at', 'errors', 'result_summary', 'created_at']
+        read_only_fields = ['id', 'owner', 'status', 'started_at', 'completed_at', 'errors', 'result_summary', 'created_at']
+
+
+class ContactCompanyLinkSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactCompanyLink
+        fields = ['id', 'contact', 'company', 'role_title', 'start_date', 'end_date']
+        read_only_fields = ['id']
+
+
+class ContactJobLinkSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactJobLink
+        fields = ['id', 'contact', 'job', 'relationship_to_job']
+        read_only_fields = ['id']
+
+
+class MutualConnectionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MutualConnection
+        fields = ['id', 'contact', 'related_contact', 'context', 'source', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class ContactSerializer(serializers.ModelSerializer):
+    tags = TagSerializer(many=True, read_only=True)
+    notes = ContactNoteSerializer(many=True, read_only=True)
+    interactions = InteractionSerializer(many=True, read_only=True)
+    reminders = ReminderSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Contact
+        fields = [
+            'id', 'owner', 'first_name', 'last_name', 'display_name', 'title', 'email', 'phone', 'location',
+            'company_name', 'company', 'linkedin_url', 'profile_url', 'photo_url', 'industry', 'role',
+            'relationship_type', 'relationship_strength', 'last_interaction', 'tags', 'external_id', 'metadata',
+            'is_private', 'created_at', 'updated_at', 'notes', 'interactions', 'reminders'
+        ]
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+    
+    def validate_summary(self, value):
+        """Validate summary is within 500 character limit."""
+        if len(value) > 500:
+            raise serializers.ValidationError("Summary must not exceed 500 characters.")
+        return value
+    
+    def validate_phone(self, value):
+        """Validate phone number format."""
+        if value:
+            # Remove common formatting characters
+            cleaned = re.sub(r'[\s\-\(\)\.]', '', value)
+            if not re.match(r'^\+?1?\d{10,15}$', cleaned):
+                raise serializers.ValidationError("Please enter a valid phone number.")
+        return value
+    
+    def update(self, instance, validated_data):
+        """Update user and profile information."""
+        user_data = validated_data.pop('user', {})
+        
+        # Update user fields
+        if user_data:
+            user = instance.user
+            for attr, value in user_data.items():
+                setattr(user, attr, value)
+            user.save()
+        
+        # Update profile fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        return instance
+
+
+class BasicProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer for UC-021: Basic Profile Information Form.
+    Handles basic profile information including name, contact, and professional details.
+    """
+    first_name = serializers.CharField(source='user.first_name', max_length=150, required=False)
+    last_name = serializers.CharField(source='user.last_name', max_length=150, required=False)
+    email = serializers.EmailField(source='user.email', read_only=True)
+    full_name = serializers.SerializerMethodField(read_only=True)
+    full_location = serializers.SerializerMethodField(read_only=True)
+    character_count = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = CandidateProfile
@@ -697,13 +695,9 @@ class ProfilePictureSerializer(serializers.ModelSerializer):
         return bool(obj.profile_picture)
 
 
-# 
-# 
-# =
+# ======================
 # UC-026: SKILLS SERIALIZERS
-# 
-# 
-# =
+# ======================
 
 class SkillSerializer(serializers.ModelSerializer):
     """Serializer for Skill model - represents available skills."""
@@ -818,13 +812,9 @@ class SkillAutocompleteSerializer(serializers.Serializer):
     usage_count = serializers.IntegerField(required=False)
 
 
-# 
-# 
-# =
+# ======================
 # UC-027: SKILLS CATEGORY ORGANIZATION SERIALIZERS
-# 
-# 
-# =
+# ======================
 
 class SkillReorderSerializer(serializers.Serializer):
     """Serializer for reordering skills within or between categories."""
@@ -850,13 +840,9 @@ class CategorySummarySerializer(serializers.Serializer):
     avg_years = serializers.FloatField()
 
 
-# 
-# 
-# =
+# ======================
 # Education serializers
-# 
-# 
-# =
+# ======================
 
 class EducationSerializer(serializers.ModelSerializer):
     """Serializer for educational background entries"""
@@ -943,13 +929,9 @@ class EducationSerializer(serializers.ModelSerializer):
         return data
 
 
-# 
-# 
-# =
+# ======================
 # UC-030: CERTIFICATIONS SERIALIZERS
-# 
-# 
-# =
+# ======================
 
 class CertificationSerializer(serializers.ModelSerializer):
     """Serializer for professional certifications"""
@@ -1006,13 +988,9 @@ class CertificationSerializer(serializers.ModelSerializer):
         return data
 
 
-# 
-# 
-# =
+# ======================
 # UC-031: PROJECTS SERIALIZERS
-# 
-# 
-# =
+# ======================
 
 class ProjectMediaSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField(read_only=True)
@@ -1122,13 +1100,9 @@ class ProjectSerializer(serializers.ModelSerializer):
         return instance
 
 
-# 
-# 
-# =
+# ======================
 # UC-023, UC-024, UC-025: EMPLOYMENT HISTORY SERIALIZERS
-# 
-# 
-# =
+# ======================
 
 class WorkExperienceSerializer(serializers.ModelSerializer):
     """Employment history entry serializer (add, view/edit, delete)."""
@@ -1388,13 +1362,9 @@ class WorkExperienceSummarySerializer(serializers.ModelSerializer):
 
 
 
-# 
-# 
-# =
+# ======================
 # UC-036: JOB ENTRIES SERIALIZER
-# 
-# 
-# =
+# ======================
 
 class JobEntrySerializer(serializers.ModelSerializer):
     # Serializer for user-tracked job entries (UC-036 + UC-038).
@@ -1587,13 +1557,9 @@ class JobEntrySerializer(serializers.ModelSerializer):
         return res
 
 
-# 
-# 
-# =
+# ======================
 # UC-043: COMPANY INFORMATION SERIALIZERS
-# 
-# 
-# =
+# ======================
 
 class CompanyResearchSerializer(serializers.Serializer):
     """Serializer for company research data."""
@@ -2444,13 +2410,9 @@ class FeedbackSummaryExportSerializer(serializers.Serializer):
     )
 
 
-# 
-# 
-# =
+# ======================
 # Networking Event Serializers (UC-088)
-# 
-# 
-# =
+# ======================
 
 
 class EventGoalSerializer(serializers.ModelSerializer):
@@ -3472,15 +3434,9 @@ class CareerGoalListSerializer(serializers.ModelSerializer):
         return 0
 
 
-# 
-
-# 
-# 
-# =
+# ============================
 # UC-095: Professional Reference Management Serializers
-# 
-# 
-# =
+# ============================
 
 class ProfessionalReferenceSerializer(serializers.ModelSerializer):
     """Serializer for professional references"""
@@ -3659,6 +3615,3 @@ class ReferencePortfolioListSerializer(serializers.ModelSerializer):
             return obj.references.count()
         return 0
 
-# 
-# 
-# =

@@ -79,7 +79,6 @@ from core.serializers import (
     EventGoalSerializer,
     EventConnectionSerializer,
     EventFollowUpSerializer,
-<<<<<<< HEAD
     ReferralSerializer,
     ProfessionalReferenceSerializer,
     ProfessionalReferenceListSerializer,
@@ -89,8 +88,7 @@ from core.serializers import (
     ReferenceAppreciationSerializer,
     ReferencePortfolioSerializer,
     ReferencePortfolioListSerializer,
-=======
->>>>>>> origin/main
+
 )
 from core.models import (
     CandidateProfile,
@@ -105,11 +103,9 @@ from core.models import (
     UserAccount,
     JobEntry,
     JobOpportunity,
-<<<<<<< HEAD
     Application,
     Referral,
-=======
->>>>>>> origin/main
+
     Document,
     JobMaterialsHistory,
     CoverLetterTemplate,
@@ -143,14 +139,12 @@ from core.models import (
     EventFollowUp,
     CalendarIntegration,
     InterviewEvent,
-<<<<<<< HEAD
     ProfessionalReference,
     ReferenceRequest,
     ReferenceTemplate,
     ReferenceAppreciation,
     ReferencePortfolio,
-=======
->>>>>>> origin/main
+
     TeamMember,
     MentorshipRequest,
     MentorshipSharingPreference,
@@ -173,7 +167,6 @@ from django.shortcuts import redirect
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 from core import google_import
 
-<<<<<<< HEAD
 import uuid
 from rest_framework.permissions import AllowAny
 
@@ -546,9 +539,6 @@ def referral_update_outcome(request, referral_id):
     serializer = ReferralSerializer(referral, context={'request': request})
     return Response(serializer.data)
 
-
-=======
->>>>>>> origin/main
 logger = logging.getLogger(__name__)
 
 
@@ -1374,10 +1364,14 @@ def _delete_user_and_data(user):
         logger.warning(f"Failed to send account deletion email to {email}: {e}")
 
 
-# ======================
+# 
+# 
+# =
 # Contacts / Network API (UC-086)
 # Module-level API views for contact management
-# ======================
+# 
+# 
+# =
 
 
 @api_view(["GET", "POST"])
@@ -3492,9 +3486,13 @@ def get_profile_picture(request):
         )
 
 
-# ======================
+# 
+# 
+# =
 # UC-026: SKILLS VIEWS
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -3744,9 +3742,13 @@ def skills_categories(request):
     return Response(categories, status=status.HTTP_200_OK)
 
 
-# ======================
+# 
+# 
+# =
 # UC-027: SKILLS CATEGORY ORGANIZATION VIEWS
-# ======================
+# 
+# 
+# =
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -4020,9 +4022,13 @@ def skills_export(request):
         )
 
 
-# ======================
+# 
+# 
+# =
 # Education views
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -4151,9 +4157,13 @@ def education_detail(request, education_id):
         )
 
 
-# ======================
+# 
+# 
+# =
 # UC-036: JOB ENTRIES
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -5044,9 +5054,13 @@ def import_job_from_url(request):
         )
 
 
-# ======================
+# 
+# 
+# =
 # UC-042: Application Materials
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -5345,9 +5359,13 @@ def materials_defaults(request):
         return Response({'error': {'code': 'internal_error', 'message': 'Failed to update defaults'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# ======================
+# 
+# 
+# =
 # UC-045: JOB ARCHIVING
-# ======================
+# 
+# 
+# =
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -5543,9 +5561,13 @@ def job_delete(request, job_id):
         )
 
 
-# ======================
+# 
+# 
+# =
 # UC-030: CERTIFICATIONS VIEWS
-# ======================
+# 
+# 
+# =
 
 # Predefined categories (can be expanded later or driven from data)
 CERTIFICATION_CATEGORIES = [
@@ -5763,9 +5785,13 @@ def certification_detail(request, certification_id):
         )
 
     
-# ======================
+# 
+# 
+# =
 # UC-031: PROJECTS VIEWS
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -6030,9 +6056,13 @@ def project_media_delete(request, project_id, media_id):
         return Response({'error': {'code': 'internal_error', 'message': 'Failed to delete media.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# ======================
+# 
+# 
+# =
 # UC-023, UC-024, UC-025: EMPLOYMENT HISTORY VIEWS
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -6344,9 +6374,13 @@ def employment_timeline(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# ======================
+# 
+# 
+# =
 # UC-043: COMPANY INFORMATION DISPLAY
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -6567,9 +6601,13 @@ def job_company_info(request, job_id):
         )
 
 
-# ======================
+# 
+# 
+# =
 # UC-047: AI RESUME CONTENT GENERATION
-# ======================
+# 
+# 
+# =
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -6692,9 +6730,13 @@ def compile_latex_to_pdf(request):
         )
 
 
-# ======================
+# 
+# 
+# =
 # UC-056: AI COVER LETTER CONTENT GENERATION
-# ======================
+# 
+# 
+# =
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -7230,9 +7272,13 @@ def export_ai_cover_letter(request):
         )
 
 
-# ======================
+# 
+# 
+# =
 # Cover Letter Document Saving
-# ======================
+# 
+# 
+# =
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -7360,9 +7406,13 @@ def save_ai_cover_letter_document(request):
     return Response({'message': 'Cover letter saved to Documents.', 'document': payload}, status=status.HTTP_201_CREATED)
 
 
-# ======================
+# 
+# 
+# =
 # UC-063: AUTOMATED COMPANY RESEARCH
-# ======================
+# 
+# 
+# =
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -7608,9 +7658,13 @@ def refresh_company_research(request, company_name):
         )
 
 
-# ==============================================
+# 
+# 
+# =
 # UC-067: SALARY RESEARCH AND BENCHMARKING
-# ==============================================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -8109,9 +8163,13 @@ def _serialize_outcome(outcome):
     }
 
 
-# ============================================================================
+# 
+# 
+# =
 # UC-060: Grammar and Spell Checking
-# ============================================================================
+# 
+# 
+# =
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -9764,9 +9822,13 @@ def job_match_score(request, job_id):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-# ======================
+# 
+# 
+# =
 # UC-051: RESUME EXPORT ENDPOINTS
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -10465,9 +10527,13 @@ def extract_profile_from_latex(latex_content):
     return profile
 
 
-# ============================================
+# 
+# 
+# =
 # UC-071: Interview Scheduling Views
-# ============================================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -12203,12 +12269,18 @@ def export_feedback_summary(request):
 
 
 
-# ============================================================================
+# 
+# 
+# =
 
 
-# ============================================================================
+# 
+# 
+# =
 # UC-069: Application Workflow Automation Views
-# ============================================================================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -12584,9 +12656,13 @@ def generate_application_package(request, job_id):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# ======================
+# 
+# 
+# =
 # Networking Event Management API (UC-088)
-# ======================
+# 
+# 
+# =
 
 
 @api_view(['GET', 'POST'])
@@ -12953,9 +13029,13 @@ def generate_interview_followup(request):
         )
 
 
-# ======================
+# 
+# 
+# =
 # Mentorship endpoints
-# ======================
+# 
+# 
+# =
 
 
 @api_view(["GET", "POST"])
@@ -13479,7 +13559,7 @@ def mentorship_messages(request, team_member_id):
     return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-# ==================== UC-101: Career Goals ====================
+# UC-101: Career Goals
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
@@ -13511,7 +13591,6 @@ def career_goals_list_create(request):
         serializer = CareerGoalSerializer(data=request.data)
         if serializer.is_valid():
             goal = serializer.save(user=request.user)
-<<<<<<< HEAD
             references = references.filter(availability_status=availability)
         
         serializer = ProfessionalReferenceListSerializer(references, many=True)
@@ -13971,9 +14050,15 @@ def generate_reference_preparation_guide(request):
         )
 
 
-# ============================
+# 
+
+# 
+# 
+# =
 # UC-095: Professional Reference Management Views
-# ============================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -14003,7 +14088,7 @@ def references_list_create(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# ==================== UC-101: Career Goals ====================
+# UC-101: Career Goals
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
@@ -14035,9 +14120,6 @@ def career_goals_list_create(request):
         serializer = CareerGoalSerializer(data=request.data)
         if serializer.is_valid():
             goal = serializer.save(user=request.user)
-=======
->>>>>>> origin/main
-            
             # Auto-set started_at if status is in_progress
             if goal.status == 'in_progress' and not goal.started_at:
                 goal.started_at = timezone.now()
@@ -14365,7 +14447,5 @@ def _generate_goal_recommendations(user, goals):
         })
     
     return recommendations
-<<<<<<< HEAD
 
-=======
->>>>>>> origin/main
+

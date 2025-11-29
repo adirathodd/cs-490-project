@@ -79,7 +79,6 @@ const extractErrorMessage = (error, fallback) => {
   return fallback;
 };
 
-<<<<<<< HEAD
 // Contacts API (minimal surface used by referrals components)
 export const contactsAPI = {
   list: async (params = {}) => {
@@ -130,8 +129,6 @@ export const contactsAPI = {
   },
 };
 
-=======
->>>>>>> origin/main
 // Profile API calls
 export const profileAPI = {
   getUserProfile: async (userId) => {
@@ -2596,7 +2593,6 @@ export const mentorshipAPI = {
   },
 };
 
-<<<<<<< HEAD
 // UC-095: Referral / Reference requests API
 export const referralAPI = {
   list: async (params = {}) => {
@@ -2723,8 +2719,6 @@ export const referralAPI = {
   },
 };
 
-=======
->>>>>>> origin/main
 // UC-101: Career Goals API
 export const goalsAPI = {
   // Goals CRUD
