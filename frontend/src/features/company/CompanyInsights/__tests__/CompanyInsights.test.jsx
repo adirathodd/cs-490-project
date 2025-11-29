@@ -7,18 +7,7 @@ jest.mock('react-router-dom', () => ({
   useParams: () => ({ id: 'job-1' }),
 }));
 
-// Mock the API used by the component
-const mockGetJob = jest.fn();
-const mockGetJobCompanyInsights = jest.fn();
-const mockUpdateJob = jest.fn();
-
-jest.mock('../../../../services/api', () => ({
-  jobsAPI: {
-    getJob: (...args) => mockGetJob(...args),
-    getJobCompanyInsights: (...args) => mockGetJobCompanyInsights(...args),
-    updateJob: (...args) => mockUpdateJob(...args),
-  },
-}));
+import { jobsAPI } from '../../../../services/api';
 
 // Now import the component under test
 import CompanyInsights, {
@@ -36,6 +25,9 @@ import CompanyInsights, {
 
 beforeEach(() => {
   jest.resetAllMocks();
+  jobsAPI.getJob.mockReset();
+  jobsAPI.getJobCompanyInsights.mockReset();
+  jobsAPI.updateJob.mockReset();
   localStorage.clear();
   // default clipboard mock
   global.navigator.clipboard = { writeText: jest.fn().mockResolvedValue() };
@@ -62,10 +54,10 @@ describe('CompanyInsights integration tests', () => {
       },
     };
 
-    mockGetJob.mockResolvedValueOnce(jobData);
-    mockGetJobCompanyInsights.mockResolvedValueOnce(jobData.company_info);
+    jobsAPI.getJob.mockResolvedValueOnce(jobData);
+    jobsAPI.getJobCompanyInsights.mockResolvedValueOnce(jobData.company_info);
 
-    mockUpdateJob.mockImplementation(async (id, payload) => ({ ...jobData, personal_notes: payload.personal_notes }));
+    jobsAPI.updateJob.mockImplementation(async (id, payload) => ({ ...jobData, personal_notes: payload.personal_notes }));
 
     render(<CompanyInsights />);
 
@@ -109,11 +101,11 @@ describe('CompanyInsights integration tests', () => {
       },
     };
 
-    mockGetJob.mockResolvedValueOnce(jobData);
-    mockGetJobCompanyInsights.mockResolvedValueOnce(jobData.company_info);
+    jobsAPI.getJob.mockResolvedValueOnce(jobData);
+    jobsAPI.getJobCompanyInsights.mockResolvedValueOnce(jobData.company_info);
 
     // First updateJob call returns job with personal_notes containing snippet
-    mockUpdateJob.mockImplementationOnce(async (id, payload) => ({ ...jobData, personal_notes: payload.personal_notes }));
+    jobsAPI.updateJob.mockImplementationOnce(async (id, payload) => ({ ...jobData, personal_notes: payload.personal_notes }));
 
     render(<CompanyInsights />);
 
@@ -127,10 +119,10 @@ describe('CompanyInsights integration tests', () => {
 
     // Now simulate that the job already has the snippet so Remove from Notes appears
     const snippet = '[NEWS:news-0]';
-    mockGetJob.mockResolvedValueOnce({ ...jobData, personal_notes: `${snippet}\nSome notes` });
-    mockGetJobCompanyInsights.mockResolvedValueOnce(jobData.company_info);
+    jobsAPI.getJob.mockResolvedValueOnce({ ...jobData, personal_notes: `${snippet}\nSome notes` });
+    jobsAPI.getJobCompanyInsights.mockResolvedValueOnce(jobData.company_info);
     // For removal, updateJob will be called again
-    mockUpdateJob.mockImplementationOnce(async (id, payload) => ({ ...jobData, personal_notes: payload.personal_notes }));
+    jobsAPI.updateJob.mockImplementationOnce(async (id, payload) => ({ ...jobData, personal_notes: payload.personal_notes }));
 
     // Rerender component to pick up the updated job with notes
     render(<CompanyInsights />);
@@ -184,9 +176,9 @@ describe('exported helpers unit tests', () => {
       company_info: { id: 'c1', name: 'Acme', recent_news: [{ title: 'T', summary: 'S', date: '2020-01-01', url: 'https://a' }] },
       personal_notes: '',
     };
-    mockGetJob.mockResolvedValueOnce(jobData);
-    mockGetJobCompanyInsights.mockResolvedValueOnce(jobData.company_info);
-    mockUpdateJob.mockResolvedValueOnce(jobData);
+    jobsAPI.getJob.mockResolvedValueOnce(jobData);
+    jobsAPI.getJobCompanyInsights.mockResolvedValueOnce(jobData.company_info);
+    jobsAPI.updateJob.mockResolvedValueOnce(jobData);
     render(<CompanyInsights />);
     expect(await screen.findByText('Acme')).toBeInTheDocument();
     const copyBtn = await screen.findByRole('button', { name: /Copy Summary/i });

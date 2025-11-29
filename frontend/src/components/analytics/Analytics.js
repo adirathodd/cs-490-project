@@ -2,11 +2,55 @@ import React, { useEffect, useState } from 'react';
 import { jobsAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import Icon from '../common/Icon';
+import InterviewPerformanceAnalytics from './InterviewPerformanceAnalytics';
 
 const card = { padding: 16, borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb', marginBottom: 16 };
 const sectionTitle = { fontSize: 18, fontWeight: 700, marginBottom: 12, color: '#1f2937' };
 
 export default function Analytics() {
+  const [activeTab, setActiveTab] = useState('applications');
+  const tabs = [
+    { id: 'applications', label: 'Application Analytics' },
+    { id: 'interviews', label: 'Interview Performance' },
+  ];
+
+  return (
+    <div style={{ padding: 16 }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', marginBottom: 12 }}>
+        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700 }}>Analytics Command Center</h1>
+        <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+          Toggle between application metrics and AI-assisted interview performance insights.
+        </p>
+      </div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', maxWidth: 1200, margin: '0 auto' }}>
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              padding: '10px 18px',
+              borderRadius: 999,
+              border: activeTab === tab.id ? '2px solid #2563eb' : '1px solid #d1d5db',
+              background: activeTab === tab.id ? '#eff6ff' : '#fff',
+              color: activeTab === tab.id ? '#1d4ed8' : '#374151',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <div style={{ marginTop: 24 }}>
+        {activeTab === 'applications' ? <ApplicationAnalyticsPanel /> : <InterviewPerformanceAnalytics />}
+      </div>
+    </div>
+  );
+}
+
+function ApplicationAnalyticsPanel() {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -16,9 +60,7 @@ export default function Analytics() {
   const loadAnalytics = async () => {
     setLoading(true);
     try {
-      // Use the analytics endpoint that includes cover letter performance
       const data = await jobsAPI.getAnalytics();
-      console.log('Analytics data received:', data);
       setAnalytics(data);
       setError('');
     } catch (e) {
