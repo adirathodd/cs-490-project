@@ -31,8 +31,7 @@ import NetworkingEvents from './components/networking/NetworkingEvents';
 import ReferencesPage from './components/references/ReferencesPage';
 import MentorshipDashboard from './components/mentorship/MentorshipDashboard';
 import ReferralManagement from './components/referrals/ReferralManagement';
-
-import MentorshipDashboard from './components/mentorship/MentorshipDashboard';import MentorshipMenteeDashboard from './components/mentorship/MenteeDashboard';
+import MentorshipMenteeDashboard from './components/mentorship/MenteeDashboard';
 import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
 import { AiCoverLetterGenerator } from './features/cover-letter';
