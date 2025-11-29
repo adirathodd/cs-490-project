@@ -58,4 +58,4 @@ jobs:
         env:
           CI: true
         run: |
-          npm test -- --watchAll=false
+          npm test -- --runInBand --watchAll=false
