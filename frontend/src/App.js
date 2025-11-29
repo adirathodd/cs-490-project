@@ -27,6 +27,8 @@ import SalaryResearch from './components/jobs/SalaryResearch';
 import SalaryNegotiation from './components/jobs/SalaryNegotiation';
 import ContactsPage from './components/contacts/ContactsPage';
 import NetworkingEvents from './components/networking/NetworkingEvents';
+import MentorshipDashboard from './components/mentorship/MentorshipDashboard';
+import MentorshipMenteeDashboard from './components/mentorship/MenteeDashboard';
 import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
 import { AiCoverLetterGenerator } from './features/cover-letter';
@@ -336,6 +338,26 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <NetworkingEvents />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/mentorship"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <MentorshipDashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/mentorship/mentees/:teamMemberId"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <MentorshipMenteeDashboard />
               </PrivateRoute>
             }
           />

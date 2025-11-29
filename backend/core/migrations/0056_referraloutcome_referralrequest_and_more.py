@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0055_interviewsuccessprediction'),
+        ('core', '0057_mentorship_features'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

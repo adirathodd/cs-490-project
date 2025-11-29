@@ -103,6 +103,8 @@ class CandidateSkill(models.Model):
     level = models.CharField(max_length=20, default="intermediate")  # beginner|intermediate|advanced|expert
     years = models.DecimalField(max_digits=4, decimal_places=1, default=0)
     order = models.IntegerField(default=0, help_text="Display order within category")
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
 
     class Meta:
         unique_together = [("candidate", "skill")]
@@ -750,6 +752,238 @@ class TeamMember(models.Model):
         unique_together = [("candidate", "user")]
         indexes = [models.Index(fields=["candidate", "is_active"])]
 
+
+class MentorshipRequest(models.Model):
+    """Track invitations between users for mentor/mentee collaboration."""
+
+    ROLE_CHOICES = [
+        ('mentor', 'Mentor'),
+        ('mentee', 'Mentee'),
+    ]
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('declined', 'Declined'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    requester = models.ForeignKey(
+        CandidateProfile,
+        on_delete=models.CASCADE,
+        related_name="sent_mentorship_requests",
+    )
+    receiver = models.ForeignKey(
+        CandidateProfile,
+        on_delete=models.CASCADE,
+        related_name="received_mentorship_requests",
+    )
+    role_for_requester = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    message = models.TextField(blank=True)
+    responded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='mentorship_responses',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=["requester", "status"]),
+            models.Index(fields=["receiver", "status"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['requester', 'receiver'],
+                condition=models.Q(status='pending'),
+                name='unique_pending_mentorship_request',
+            ),
+        ]
+
+    def get_mentor_user(self):
+        """Return the Django user who would act as mentor if accepted."""
+        if self.role_for_requester == 'mentee':
+            return self.receiver.user
+        return self.requester.user
+
+    def get_mentee_profile(self):
+        """Return the candidate profile that would be mentored if accepted."""
+        if self.role_for_requester == 'mentee':
+            return self.requester
+        return self.receiver
+
+
+class MentorshipSharingPreference(models.Model):
+    """Per-mentor sharing toggles for mentee data visibility."""
+
+    JOB_SHARING_CHOICES = [
+        ('none', 'Do not share jobs'),
+        ('all', 'Share all jobs'),
+        ('responded', 'Share jobs with responses'),
+        ('selected', 'Share selected jobs'),
+    ]
+
+    team_member = models.OneToOneField(
+        TeamMember,
+        on_delete=models.CASCADE,
+        related_name='sharing_preference',
+    )
+    share_profile_basics = models.BooleanField(default=False)
+    share_skills = models.BooleanField(default=False)
+    share_employment = models.BooleanField(default=False)
+    share_education = models.BooleanField(default=False)
+    share_certifications = models.BooleanField(default=False)
+    share_documents = models.BooleanField(default=False)
+    share_job_applications = models.BooleanField(default=False)
+    job_sharing_mode = models.CharField(max_length=20, choices=JOB_SHARING_CHOICES, default='selected')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"SharingPreference(team_member={self.team_member_id})"
+
+
+class MentorshipSharedApplication(models.Model):
+    """Specific job applications a mentee has shared with a mentor."""
+
+    team_member = models.ForeignKey(
+        TeamMember,
+        on_delete=models.CASCADE,
+        related_name='shared_applications',
+    )
+    job = models.ForeignKey(
+        'JobEntry',
+        on_delete=models.CASCADE,
+        related_name='mentorship_shares',
+    )
+    include_documents = models.BooleanField(default=False)
+    shared_resume = models.ForeignKey(
+        Document,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    shared_cover_letter = models.ForeignKey(
+        Document,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    notes = models.TextField(blank=True)
+    shared_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('team_member', 'job')]
+        indexes = [
+            models.Index(fields=['team_member', 'job']),
+        ]
+
+
+class MentorshipGoal(models.Model):
+    """Track quantitative mentorship goals set by mentors for mentees."""
+
+    GOAL_TYPE_CHOICES = [
+        ('applications_submitted', 'Job applications submitted'),
+        ('skills_added', 'Skills added'),
+        ('projects_completed', 'Projects completed'),
+        ('skill_add', 'Add a specific skill'),
+        ('skill_improve', 'Improve an existing skill'),
+        ('interview_practice', 'Interview practice questions'),
+    ]
+
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    SKILL_LEVEL_CHOICES = [
+        ('beginner', 'Beginner'),
+        ('intermediate', 'Intermediate'),
+        ('advanced', 'Advanced'),
+        ('expert', 'Expert'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_member = models.ForeignKey(
+        TeamMember,
+        on_delete=models.CASCADE,
+        related_name='mentorship_goals',
+    )
+    goal_type = models.CharField(max_length=40, choices=GOAL_TYPE_CHOICES)
+    title = models.CharField(max_length=255, blank=True)
+    notes = models.TextField(blank=True)
+    target_value = models.PositiveIntegerField(default=1)
+    baseline_value = models.PositiveIntegerField(default=0)
+    due_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    skill = models.ForeignKey(
+        Skill,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='mentorship_goal_targets',
+    )
+    custom_skill_name = models.CharField(max_length=160, blank=True)
+    required_level = models.CharField(max_length=20, choices=SKILL_LEVEL_CHOICES, blank=True)
+    starting_level = models.CharField(max_length=20, choices=SKILL_LEVEL_CHOICES, blank=True)
+    metric_scope = models.CharField(max_length=60, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['team_member', 'status']),
+            models.Index(fields=['goal_type']),
+        ]
+
+    def __str__(self):
+        name = self.title or dict(self.GOAL_TYPE_CHOICES).get(self.goal_type, self.goal_type)
+        return f"{name} ({self.team_member_id})"
+
+    @property
+    def skill_display_name(self):
+        if self.skill:
+            return self.skill.name
+        return self.custom_skill_name
+
+
+class MentorshipMessage(models.Model):
+    """Secure mentor/mentee chat messages."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_member = models.ForeignKey(
+        TeamMember,
+        on_delete=models.CASCADE,
+        related_name='messages',
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='mentorship_messages',
+    )
+    message = models.TextField()
+    is_read_by_mentor = models.BooleanField(default=False)
+    is_read_by_mentee = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['team_member', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"MentorshipMessage(team_member={self.team_member_id}, sender={self.sender_id})"
 
 class SharedNote(models.Model):
     """Collaborative notes and feedback on applications"""

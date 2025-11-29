@@ -13,7 +13,9 @@ from .models import (
     # Interview prep
     InterviewQuestion,
     # Network models
-    Contact, Referral, TeamMember, SharedNote,
+    Contact, Referral, TeamMember, SharedNote, MentorshipRequest,
+    MentorshipSharingPreference, MentorshipSharedApplication, MentorshipGoal,
+    MentorshipMessage,
     # Analytics models
     UserActivity, PerformanceMetric, SuccessPattern, MarketIntelligence,
     # AI & Automation
@@ -206,6 +208,18 @@ class TeamMemberAdmin(admin.ModelAdmin):
     search_fields = ['candidate__user__username', 'user__username']
 
 
+@admin.register(MentorshipRequest)
+class MentorshipRequestAdmin(admin.ModelAdmin):
+    list_display = ['requester', 'receiver', 'role_for_requester', 'status', 'created_at']
+    list_filter = ['role_for_requester', 'status', 'created_at']
+    search_fields = [
+        'requester__user__username',
+        'receiver__user__username',
+        'requester__user__email',
+        'receiver__user__email',
+    ]
+
+
 @admin.register(SharedNote)
 class SharedNoteAdmin(admin.ModelAdmin):
     list_display = ['application', 'author', 'is_private', 'created_at']
@@ -284,3 +298,44 @@ class ApplicationPackageAdmin(admin.ModelAdmin):
     list_filter = ['status', 'created_at']
     search_fields = ['candidate__user__username', 'job__title', 'job__company_name']
     readonly_fields = ['created_at', 'updated_at']
+@admin.register(MentorshipSharingPreference)
+class MentorshipSharingPreferenceAdmin(admin.ModelAdmin):
+    list_display = ['team_member', 'share_profile_basics', 'share_skills', 'share_job_applications', 'updated_at']
+    list_filter = ['share_profile_basics', 'share_skills', 'share_job_applications']
+    search_fields = ['team_member__candidate__user__email', 'team_member__user__email']
+
+
+@admin.register(MentorshipSharedApplication)
+class MentorshipSharedApplicationAdmin(admin.ModelAdmin):
+    list_display = ['team_member', 'job', 'include_documents', 'shared_at']
+    list_filter = ['include_documents', 'shared_at']
+    search_fields = ['team_member__candidate__user__email', 'job__title', 'job__company_name']
+
+
+@admin.register(MentorshipGoal)
+class MentorshipGoalAdmin(admin.ModelAdmin):
+    list_display = ['team_member', 'goal_type', 'title', 'target_value', 'status', 'due_date', 'created_at']
+    list_filter = ['goal_type', 'status']
+    search_fields = [
+        'team_member__candidate__user__email',
+        'team_member__user__email',
+        'title',
+        'custom_skill_name',
+    ]
+
+
+@admin.register(MentorshipMessage)
+class MentorshipMessageAdmin(admin.ModelAdmin):
+    list_display = ['team_member', 'sender', 'short_message', 'created_at', 'is_read_by_mentor', 'is_read_by_mentee']
+    list_filter = ['is_read_by_mentor', 'is_read_by_mentee', 'created_at']
+    search_fields = [
+        'team_member__candidate__user__email',
+        'team_member__user__email',
+        'sender__email',
+        'message',
+    ]
+
+    def short_message(self, obj):
+        text = obj.message or ''
+        return text if len(text) <= 60 else f"{text[:57]}..."
+    short_message.short_description = 'Message'

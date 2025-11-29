@@ -3,15 +3,19 @@ Serializers for authentication and user management.
 """
 import os
 import re
+from django.db.models import Q, Count
+from django.utils import timezone
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from core.models import (
     CandidateProfile, Skill, CandidateSkill, Education, Certification, 
     Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory, 
-    CoverLetterTemplate, InterviewSchedule, InterviewPreparationTask, InterviewEvent, CalendarIntegration,
+    CoverLetterTemplate, InterviewSchedule, InterviewPreparationTask, InterviewEvent, CalendarIntegration, QuestionResponseCoaching,
     ResumeVersion, ResumeVersionChange, ResumeShare, ShareAccessLog,
-    ResumeFeedback, FeedbackComment, FeedbackNotification
+    ResumeFeedback, FeedbackComment, FeedbackNotification,
+    TeamMember, MentorshipRequest, MentorshipSharingPreference, MentorshipSharedApplication,
+    MentorshipGoal, MentorshipMessage,
 )
 from core.models import (
     Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink,
@@ -311,7 +315,74 @@ class BasicProfileSerializer(serializers.ModelSerializer):
         if value and len(value) > 500:
             raise serializers.ValidationError("Summary must not exceed 500 characters.")
         return value
-    
+
+
+class CandidatePublicProfileSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for sharing limited candidate information."""
+
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
+    full_name = serializers.SerializerMethodField()
+    email = serializers.EmailField(source='user.email', read_only=True)
+
+    class Meta:
+        model = CandidateProfile
+        fields = [
+            'id',
+            'user_id',
+            'full_name',
+            'email',
+            'headline',
+            'industry',
+            'experience_level',
+            'city',
+            'state',
+        ]
+
+    def get_full_name(self, obj):
+        return f"{obj.user.first_name} {obj.user.last_name}".strip() or (obj.user.email or '')
+
+
+class DocumentSummarySerializer(serializers.ModelSerializer):
+    preview_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Document
+        fields = [
+            'id',
+            'document_name',
+            'doc_type',
+            'version',
+            'created_at',
+            'generated_by_ai',
+            'preview_url',
+        ]
+
+    def get_preview_url(self, obj):
+        url = obj.document_url
+        request = self.context.get('request') if isinstance(self.context, dict) else None
+        if request and url and url.startswith('/'):
+            return request.build_absolute_uri(url)
+        return url
+
+
+class JobEntrySummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = JobEntry
+        fields = [
+            'id',
+            'title',
+            'company_name',
+            'status',
+            'job_type',
+            'location',
+            'industry',
+            'description',
+            'posting_url',
+            'personal_notes',
+            'application_deadline',
+            'updated_at',
+        ]
+
     def validate_phone(self, value):
         """Validate phone number format."""
         if value:
@@ -2338,3 +2409,821 @@ class NetworkingEventListSerializer(serializers.ModelSerializer):
         if obj.pk:
             return obj.follow_ups.filter(completed=False).count()
         return 0
+
+
+class MentorshipRequestSerializer(serializers.ModelSerializer):
+    """Expose mentorship request information and lightweight profile details."""
+
+    requester_profile = CandidatePublicProfileSerializer(source='requester', read_only=True)
+    receiver_profile = CandidatePublicProfileSerializer(source='receiver', read_only=True)
+
+    class Meta:
+        model = MentorshipRequest
+        fields = [
+            'id',
+            'role_for_requester',
+            'status',
+            'message',
+            'created_at',
+            'responded_at',
+            'requester_profile',
+            'receiver_profile',
+        ]
+        read_only_fields = fields
+
+
+class MentorshipRequestCreateSerializer(serializers.Serializer):
+    """Validate inbound mentorship request submissions."""
+
+    target_profile_id = serializers.UUIDField(required=False)
+    target_email = serializers.EmailField(required=False, allow_blank=True)
+    requester_role = serializers.ChoiceField(choices=MentorshipRequest.ROLE_CHOICES)
+    message = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+
+    def validate(self, attrs):
+        requester_profile = self.context.get('requester_profile')
+        if not requester_profile:
+            raise serializers.ValidationError("Requester profile missing.")
+
+        target_profile_id = attrs.get('target_profile_id')
+        target_email = (attrs.get('target_email') or '').strip()
+        target_profile = None
+
+        if target_profile_id:
+            try:
+                target_profile = CandidateProfile.objects.select_related('user').get(id=target_profile_id)
+            except CandidateProfile.DoesNotExist:
+                raise serializers.ValidationError({'target_profile_id': "Target profile not found."})
+        elif target_email:
+            try:
+                target_profile = CandidateProfile.objects.select_related('user').get(user__email__iexact=target_email)
+            except CandidateProfile.DoesNotExist:
+                raise serializers.ValidationError({'target_email': "No user with that email was found."})
+        else:
+            raise serializers.ValidationError({'target_email': "Provide an email or profile id for the mentor/mentee."})
+
+        if target_profile.id == requester_profile.id:
+            raise serializers.ValidationError({'target_profile_id': "You cannot send a mentorship request to yourself."})
+
+        # Prevent duplicate active mentorships
+        if attrs['requester_role'] == 'mentor':
+            mentee_profile = target_profile
+            mentor_user = requester_profile.user
+        else:
+            mentee_profile = requester_profile
+            mentor_user = target_profile.user
+
+        if TeamMember.objects.filter(candidate=mentee_profile, user=mentor_user, role='mentor', is_active=True).exists():
+            raise serializers.ValidationError({'target_profile_id': "You already have an active mentorship with this user."})
+
+        # Block pending requests in either direction
+        has_pending = MentorshipRequest.objects.filter(
+            status='pending'
+        ).filter(
+            Q(requester=requester_profile, receiver=target_profile) |
+            Q(requester=target_profile, receiver=requester_profile)
+        ).exists()
+
+        if has_pending:
+            raise serializers.ValidationError({'target_profile_id': "There is already a pending request between you and this user."})
+
+        attrs['target_profile'] = target_profile
+        attrs['mentee_profile'] = mentee_profile
+        attrs['mentor_user'] = mentor_user
+        return attrs
+
+    def create(self, validated_data):
+        requester_profile = self.context['requester_profile']
+        target_profile = validated_data['target_profile']
+
+        return MentorshipRequest.objects.create(
+            requester=requester_profile,
+            receiver=target_profile,
+            role_for_requester=validated_data['requester_role'],
+            message=validated_data.get('message', '').strip(),
+        )
+
+
+MENTOR_GOAL_LEVEL_ORDER = {
+    'beginner': 1,
+    'intermediate': 2,
+    'advanced': 3,
+    'expert': 4,
+}
+
+MENTOR_GOAL_COUNT_TYPES = {'applications_submitted', 'skills_added', 'projects_completed', 'interview_practice'}
+MENTOR_GOAL_SKILL_TYPES = {'skill_add', 'skill_improve'}
+
+
+def _normalize_skill_level(value):
+    if not value:
+        return ''
+    value = value.strip().lower()
+    return value if value in MENTOR_GOAL_LEVEL_ORDER else ''
+
+
+def _skill_level_value(level):
+    return MENTOR_GOAL_LEVEL_ORDER.get(_normalize_skill_level(level), 0)
+
+
+def _find_candidate_skill(candidate, skill, custom_skill_name):
+    qs = CandidateSkill.objects.filter(candidate=candidate).select_related('skill')
+    if skill:
+        qs = qs.filter(skill=skill)
+    elif custom_skill_name:
+        qs = qs.filter(skill__name__iexact=custom_skill_name.strip())
+    else:
+        return None
+    return qs.first()
+
+
+def _count_practice_questions(candidate, since=None):
+    qs = QuestionResponseCoaching.objects.filter(job__candidate=candidate)
+    if since:
+        qs = qs.filter(created_at__gte=since)
+    return qs.count()
+
+
+def calculate_goal_progress(goal):
+    """Compute current progress state for a mentorship goal."""
+    candidate = goal.team_member.candidate
+    progress = {
+        'current_total': 0,
+        'progress_value': 0,
+        'target_value': goal.target_value or 0,
+        'target_met': False,
+        'current_level': '',
+    }
+
+    if goal.goal_type == 'applications_submitted':
+        current_total = JobEntry.objects.filter(candidate=candidate).count()
+        progress_value = max(0, current_total - goal.baseline_value)
+        target = goal.target_value or 0
+        progress.update({
+            'current_total': current_total,
+            'progress_value': progress_value,
+            'target_value': target,
+            'target_met': target > 0 and progress_value >= target,
+        })
+        return progress
+
+    if goal.goal_type == 'skills_added':
+        current_total = CandidateSkill.objects.filter(candidate=candidate).count()
+        progress_value = max(0, current_total - goal.baseline_value)
+        target = goal.target_value or 0
+        progress.update({
+            'current_total': current_total,
+            'progress_value': progress_value,
+            'target_value': target,
+            'target_met': target > 0 and progress_value >= target,
+        })
+        return progress
+
+    if goal.goal_type == 'projects_completed':
+        current_total = Project.objects.filter(candidate=candidate, status='completed').count()
+        progress_value = max(0, current_total - goal.baseline_value)
+        target = goal.target_value or 0
+        progress.update({
+            'current_total': current_total,
+            'progress_value': progress_value,
+            'target_value': target,
+            'target_met': target > 0 and progress_value >= target,
+        })
+        return progress
+
+    if goal.goal_type == 'interview_practice':
+        current_total = _count_practice_questions(candidate)
+        progress_value = max(0, current_total - goal.baseline_value)
+        target = goal.target_value or 0
+        progress.update({
+            'current_total': current_total,
+            'progress_value': progress_value,
+            'target_value': target,
+            'target_met': target > 0 and progress_value >= target,
+        })
+        return progress
+
+    # Skill-based goals
+    skill_entry = _find_candidate_skill(candidate, goal.skill, goal.custom_skill_name)
+    current_level = getattr(skill_entry, 'level', '') or ''
+    progress['current_level'] = current_level
+
+    if goal.goal_type == 'skill_add':
+        meets_requirement = bool(skill_entry)
+        if goal.required_level:
+            meets_requirement = meets_requirement and _skill_level_value(current_level) >= _skill_level_value(goal.required_level)
+        progress.update({
+            'current_total': 1 if skill_entry else 0,
+            'progress_value': 1 if meets_requirement else 0,
+            'target_value': 1,
+            'target_met': meets_requirement,
+        })
+        return progress
+
+    if goal.goal_type == 'skill_improve':
+        start_value = _skill_level_value(goal.starting_level or current_level)
+        target_level_value = _skill_level_value(goal.required_level)
+        current_value = _skill_level_value(current_level)
+        delta_needed = max(1, target_level_value - start_value) if target_level_value else 1
+        progress_value = max(0, current_value - start_value)
+        progress.update({
+            'current_total': current_value,
+            'progress_value': min(progress_value, delta_needed),
+            'target_value': delta_needed,
+            'target_met': target_level_value > 0 and current_value >= target_level_value,
+        })
+        return progress
+
+    return progress
+
+
+class MentorshipGoalSerializer(serializers.ModelSerializer):
+    """Expose mentorship goal details plus computed progress."""
+
+    mentee = CandidatePublicProfileSerializer(source='team_member.candidate', read_only=True)
+    mentor = serializers.SerializerMethodField()
+    skill_name = serializers.SerializerMethodField()
+    progress_value = serializers.SerializerMethodField()
+    current_total = serializers.SerializerMethodField()
+    progress_percent = serializers.SerializerMethodField()
+    target_met = serializers.SerializerMethodField()
+    current_level = serializers.SerializerMethodField()
+    viewer_can_edit = serializers.SerializerMethodField()
+    progress_target = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MentorshipGoal
+        fields = [
+            'id',
+            'team_member',
+            'goal_type',
+            'title',
+            'notes',
+            'target_value',
+            'baseline_value',
+            'due_date',
+            'status',
+            'skill',
+            'skill_name',
+            'custom_skill_name',
+            'required_level',
+            'starting_level',
+            'metric_scope',
+            'created_at',
+            'updated_at',
+            'completed_at',
+            'mentee',
+            'mentor',
+            'progress_value',
+            'current_total',
+            'progress_percent',
+            'target_met',
+            'current_level',
+            'viewer_can_edit',
+            'progress_target',
+        ]
+        read_only_fields = fields
+
+    def _get_progress(self, obj):
+        cached = getattr(obj, '_goal_progress', None)
+        if cached is None:
+            cached = calculate_goal_progress(obj)
+            setattr(obj, '_goal_progress', cached)
+        return cached
+
+    def _serialize_user_profile(self, user):
+        profile = getattr(user, 'profile', None)
+        if profile:
+            return CandidatePublicProfileSerializer(profile, context=self.context).data
+        return {
+            'id': None,
+            'user_id': user.id,
+            'full_name': user.get_full_name() or user.email,
+            'email': user.email,
+            'headline': '',
+            'industry': '',
+            'experience_level': '',
+            'city': '',
+            'state': '',
+        }
+
+    def get_mentor(self, obj):
+        return self._serialize_user_profile(obj.team_member.user)
+
+    def get_skill_name(self, obj):
+        return obj.skill_display_name
+
+    def get_progress_value(self, obj):
+        return self._get_progress(obj).get('progress_value', 0)
+
+    def get_current_total(self, obj):
+        return self._get_progress(obj).get('current_total', 0)
+
+    def get_progress_percent(self, obj):
+        progress = self._get_progress(obj)
+        target = progress.get('target_value') or 0
+        if target <= 0:
+            return 0
+        value = progress.get('progress_value', 0)
+        percent = int(round((value / target) * 100))
+        return max(0, min(100, percent))
+
+    def get_target_met(self, obj):
+        return bool(self._get_progress(obj).get('target_met'))
+
+    def get_current_level(self, obj):
+        return self._get_progress(obj).get('current_level', '')
+
+    def get_viewer_can_edit(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        return request.user.id == obj.team_member.user_id
+
+    def get_progress_target(self, obj):
+        progress = self._get_progress(obj)
+        target = progress.get('target_value')
+        if target is not None:
+            return target
+        return obj.target_value
+
+
+class MentorshipMessageSerializer(serializers.ModelSerializer):
+    sender = serializers.SerializerMethodField()
+    is_own = serializers.SerializerMethodField()
+    read_by_viewer = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MentorshipMessage
+        fields = [
+            'id',
+            'message',
+            'created_at',
+            'sender',
+            'is_own',
+            'read_by_viewer',
+        ]
+        read_only_fields = fields
+
+    def _serialize_sender(self, user):
+        profile = getattr(user, 'profile', None)
+        if profile:
+            return CandidatePublicProfileSerializer(profile, context=self.context).data
+        full_name = user.get_full_name() or user.email or ''
+        return {
+            'id': None,
+            'user_id': user.id,
+            'full_name': full_name,
+            'email': user.email,
+            'headline': '',
+            'industry': '',
+            'experience_level': '',
+            'city': '',
+            'state': '',
+        }
+
+    def get_sender(self, obj):
+        return self._serialize_sender(obj.sender)
+
+    def get_is_own(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        return request.user.id == obj.sender_id
+
+    def get_read_by_viewer(self, obj):
+        viewer_role = self.context.get('viewer_role')
+        if viewer_role == 'mentor':
+            return obj.is_read_by_mentor
+        if viewer_role == 'mentee':
+            return obj.is_read_by_mentee
+        return False
+
+    def get_progress_target(self, obj):
+        progress = self._get_progress(obj)
+        if 'target_value' in progress:
+            return progress['target_value']
+        return obj.target_value
+
+
+class MentorshipGoalInputSerializer(serializers.ModelSerializer):
+    """Validate mentor-submitted goal payloads."""
+
+    skill_id = serializers.PrimaryKeyRelatedField(
+        queryset=Skill.objects.all(),
+        source='skill',
+        required=False,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = MentorshipGoal
+        fields = [
+            'id',
+            'goal_type',
+            'title',
+            'notes',
+            'target_value',
+            'due_date',
+            'skill_id',
+            'custom_skill_name',
+            'required_level',
+            'starting_level',
+            'metric_scope',
+            'status',
+        ]
+        read_only_fields = ['id']
+
+    def validate(self, attrs):
+        goal_type = attrs.get('goal_type') or getattr(self.instance, 'goal_type', None)
+        if not goal_type:
+            raise serializers.ValidationError({'goal_type': 'Goal type is required.'})
+
+        if goal_type in MENTOR_GOAL_COUNT_TYPES:
+            target = attrs.get('target_value') or getattr(self.instance, 'target_value', 0)
+            if not target or target <= 0:
+                raise serializers.ValidationError({'target_value': 'Provide a positive target value.'})
+
+        if goal_type in MENTOR_GOAL_SKILL_TYPES:
+            skill = attrs.get('skill') or getattr(self.instance, 'skill', None)
+            skill_name = attrs.get('custom_skill_name') or getattr(self.instance, 'custom_skill_name', '')
+            if not skill and not skill_name.strip():
+                raise serializers.ValidationError({'custom_skill_name': 'Enter the skill to focus on.'})
+            required_level = attrs.get('required_level') or getattr(self.instance, 'required_level', '')
+            if goal_type == 'skill_improve' and not required_level:
+                raise serializers.ValidationError({'required_level': 'Select a target proficiency level.'})
+
+        return attrs
+
+    def create(self, validated_data):
+        team_member = self.context['team_member']
+        validated_data['team_member'] = team_member
+        goal_type = validated_data['goal_type']
+        candidate = team_member.candidate
+
+        if goal_type in MENTOR_GOAL_COUNT_TYPES:
+            validated_data['baseline_value'] = self._get_baseline(goal_type, candidate)
+        if goal_type in MENTOR_GOAL_SKILL_TYPES:
+            validated_data.setdefault('target_value', 1)
+            validated_data['required_level'] = _normalize_skill_level(validated_data.get('required_level'))
+            validated_data['starting_level'] = _normalize_skill_level(validated_data.get('starting_level'))
+            if not validated_data.get('title'):
+                validated_data['title'] = self._default_title(goal_type, validated_data)
+            if goal_type == 'skill_improve':
+                validated_data['starting_level'] = validated_data['starting_level'] or self._detect_current_level(
+                    candidate,
+                    validated_data.get('skill'),
+                    validated_data.get('custom_skill_name'),
+                )
+        else:
+            if not validated_data.get('title'):
+                validated_data['title'] = self._default_title(goal_type, validated_data)
+
+        if validated_data.get('status') == 'completed':
+            validated_data['completed_at'] = timezone.now()
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        if instance.goal_type in MENTOR_GOAL_SKILL_TYPES:
+            if 'required_level' in validated_data:
+                validated_data['required_level'] = _normalize_skill_level(validated_data.get('required_level'))
+            if 'starting_level' in validated_data:
+                validated_data['starting_level'] = _normalize_skill_level(validated_data.get('starting_level'))
+        new_status = validated_data.get('status')
+        if new_status:
+            if new_status == 'completed' and instance.status != 'completed':
+                validated_data['completed_at'] = timezone.now()
+            elif new_status != 'completed':
+                validated_data['completed_at'] = None
+        return super().update(instance, validated_data)
+
+    def _default_title(self, goal_type, data):
+        if goal_type == 'applications_submitted':
+            return f"Apply to {data.get('target_value')} jobs"
+        if goal_type == 'skills_added':
+            return f"Add {data.get('target_value')} new skills"
+        if goal_type == 'projects_completed':
+            return f"Complete {data.get('target_value')} projects"
+        if goal_type in {'skill_add', 'skill_improve'}:
+            skill_obj = data.get('skill')
+            skill_label = ''
+            if skill_obj:
+                skill_label = getattr(skill_obj, 'name', str(skill_obj))
+            else:
+                skill_label = data.get('custom_skill_name') or ''
+            verb = 'Add' if goal_type == 'skill_add' else 'Improve'
+            suffix = '' if goal_type == 'skill_add' else ' proficiency'
+            return f"{verb} {skill_label}{suffix}".strip()
+        if goal_type == 'interview_practice':
+            return f"Practice {data.get('target_value')} interview questions"
+        return "Mentorship goal"
+
+    def _get_baseline(self, goal_type, candidate):
+        if goal_type == 'applications_submitted':
+            return JobEntry.objects.filter(candidate=candidate).count()
+        if goal_type == 'skills_added':
+            return CandidateSkill.objects.filter(candidate=candidate).count()
+        if goal_type == 'projects_completed':
+            return Project.objects.filter(candidate=candidate, status='completed').count()
+        if goal_type == 'interview_practice':
+            return _count_practice_questions(candidate)
+        return 0
+
+    def _detect_current_level(self, candidate, skill, custom_skill_name):
+        entry = _find_candidate_skill(candidate, skill, custom_skill_name)
+        return _normalize_skill_level(getattr(entry, 'level', ''))
+
+
+class MentorshipRelationshipSerializer(serializers.ModelSerializer):
+    """Expose accepted mentorship relationships from TeamMember entries."""
+
+    mentee = CandidatePublicProfileSerializer(source='candidate', read_only=True)
+    mentor = serializers.SerializerMethodField()
+    collaborator = serializers.SerializerMethodField()
+    current_user_role = serializers.SerializerMethodField()
+    share_settings = serializers.SerializerMethodField()
+    goal_summary = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamMember
+        fields = [
+            'id',
+            'role',
+            'permission_level',
+            'invited_at',
+            'accepted_at',
+            'is_active',
+            'mentee',
+            'mentor',
+            'collaborator',
+            'current_user_role',
+            'share_settings',
+            'goal_summary',
+        ]
+        read_only_fields = fields
+
+    def _serialize_user_profile(self, user):
+        profile = getattr(user, 'profile', None)
+        if profile:
+            return CandidatePublicProfileSerializer(profile, context=self.context).data
+        full_name = user.get_full_name() or user.email or ''
+        return {
+            'id': None,
+            'user_id': user.id,
+            'full_name': full_name,
+            'email': user.email,
+            'headline': '',
+            'industry': '',
+            'experience_level': '',
+            'city': '',
+            'state': '',
+        }
+
+    def get_mentor(self, obj):
+        return self._serialize_user_profile(obj.user)
+
+    def get_current_user_role(self, obj):
+        request = self.context.get('request')
+        if request and request.user == obj.user:
+            return 'mentor'
+        return 'mentee'
+
+    def get_collaborator(self, obj):
+        request = self.context.get('request')
+        if request and request.user == obj.user:
+            return CandidatePublicProfileSerializer(obj.candidate, context=self.context).data
+        return self._serialize_user_profile(obj.user)
+
+    def get_share_settings(self, obj):
+        pref = getattr(obj, 'sharing_preference', None)
+        if not pref:
+            return None
+        request = self.context.get('request')
+        summary = {
+            'share_profile_basics': pref.share_profile_basics,
+            'share_skills': pref.share_skills,
+            'share_employment': pref.share_employment,
+            'share_education': pref.share_education,
+            'share_certifications': pref.share_certifications,
+            'share_documents': pref.share_documents,
+            'share_job_applications': pref.job_sharing_mode != 'none',
+            'job_sharing_mode': pref.job_sharing_mode,
+            'shared_applications': [],
+            'updated_at': pref.updated_at,
+        }
+        if pref.job_sharing_mode == 'selected':
+            shared_apps = MentorshipSharedApplicationSerializer(
+                obj.shared_applications.select_related(
+                    'job',
+                    'job__resume_doc',
+                    'job__cover_letter_doc',
+                ),
+                many=True,
+                context=self.context,
+            ).data
+            summary['shared_applications'] = shared_apps
+        if request and obj.candidate.user == request.user:
+            return MentorshipShareSettingsSerializer(pref, context=self.context).data
+        return summary
+
+    def get_goal_summary(self, obj):
+        goals = getattr(obj, 'prefetched_goals', None)
+        if goals is None:
+            goals = list(obj.mentorship_goals.all())
+        total = len(goals)
+        active = sum(1 for goal in goals if goal.status == 'active')
+        completed = sum(1 for goal in goals if goal.status == 'completed')
+        return {
+            'total': total,
+            'active': active,
+            'completed': completed,
+        }
+
+
+class MentorshipSharedApplicationSerializer(serializers.ModelSerializer):
+    job = JobEntrySummarySerializer(read_only=True)
+    job_id = serializers.IntegerField(source='job.id', read_only=True)
+    shared_resume_document = serializers.SerializerMethodField()
+    shared_cover_letter_document = serializers.SerializerMethodField()
+    shared_resume_document_id = serializers.SerializerMethodField()
+    shared_cover_letter_document_id = serializers.SerializerMethodField()
+    include_documents = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MentorshipSharedApplication
+        fields = [
+            'id',
+            'job',
+            'job_id',
+            'include_documents',
+            'notes',
+            'shared_resume_document',
+            'shared_cover_letter_document',
+            'shared_resume_document_id',
+            'shared_cover_letter_document_id',
+            'shared_at',
+        ]
+        read_only_fields = fields
+
+    def _get_job_document(self, obj, attr):
+        job = getattr(obj, 'job', None)
+        if not job:
+            return None
+        return getattr(job, attr, None)
+
+    def get_shared_resume_document(self, obj):
+        doc = self._get_job_document(obj, 'resume_doc')
+        if not doc:
+            return None
+        return DocumentSummarySerializer(doc, context=self.context).data
+
+    def get_shared_cover_letter_document(self, obj):
+        doc = self._get_job_document(obj, 'cover_letter_doc')
+        if not doc:
+            return None
+        return DocumentSummarySerializer(doc, context=self.context).data
+
+    def get_shared_resume_document_id(self, obj):
+        doc = self._get_job_document(obj, 'resume_doc')
+        return getattr(doc, 'id', None)
+
+    def get_shared_cover_letter_document_id(self, obj):
+        doc = self._get_job_document(obj, 'cover_letter_doc')
+        return getattr(doc, 'id', None)
+
+    def get_include_documents(self, obj):
+        return bool(self.get_shared_resume_document_id(obj) or self.get_shared_cover_letter_document_id(obj))
+
+
+class MentorshipShareSettingsSerializer(serializers.ModelSerializer):
+    shared_applications = serializers.SerializerMethodField()
+    available_jobs = serializers.SerializerMethodField()
+    available_documents = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MentorshipSharingPreference
+        fields = [
+            'share_profile_basics',
+            'share_skills',
+            'share_employment',
+            'share_education',
+            'share_certifications',
+            'share_documents',
+            'share_job_applications',
+            'job_sharing_mode',
+            'shared_applications',
+            'available_jobs',
+            'available_documents',
+            'updated_at',
+        ]
+
+    def get_shared_applications(self, obj):
+        if obj.job_sharing_mode != 'selected':
+            return []
+        qs = obj.team_member.shared_applications.select_related(
+            'job',
+            'job__resume_doc',
+            'job__cover_letter_doc',
+        )
+        return MentorshipSharedApplicationSerializer(qs, many=True, context=self.context).data
+
+    def get_available_jobs(self, obj):
+        jobs = JobEntry.objects.filter(candidate=obj.team_member.candidate).order_by('-updated_at')
+        return JobEntrySummarySerializer(jobs, many=True, context=self.context).data
+
+    def get_available_documents(self, obj):
+        documents = Document.objects.filter(candidate=obj.team_member.candidate).order_by('-created_at')
+        resumes = documents.filter(doc_type='resume')
+        cover_letters = documents.filter(doc_type='cover_letter')
+        return {
+            'resumes': DocumentSummarySerializer(resumes, many=True, context=self.context).data,
+            'cover_letters': DocumentSummarySerializer(cover_letters, many=True, context=self.context).data,
+        }
+
+
+class MentorshipShareSettingsUpdateSerializer(serializers.Serializer):
+    share_profile_basics = serializers.BooleanField(required=False)
+    share_skills = serializers.BooleanField(required=False)
+    share_employment = serializers.BooleanField(required=False)
+    share_education = serializers.BooleanField(required=False)
+    share_certifications = serializers.BooleanField(required=False)
+    share_documents = serializers.BooleanField(required=False)
+    share_job_applications = serializers.BooleanField(required=False)
+    job_sharing_mode = serializers.ChoiceField(
+        choices=MentorshipSharingPreference.JOB_SHARING_CHOICES,
+        required=False,
+    )
+    shared_applications = serializers.ListField(child=serializers.DictField(), required=False)
+
+    def validate_shared_applications(self, value):
+        preference = self.context['preference']
+        candidate = preference.team_member.candidate
+        cleaned = []
+        seen_job_ids = set()
+        for item in value:
+            job_id = item.get('job_id')
+            if not job_id:
+                raise serializers.ValidationError("Each shared application must include a job_id.")
+            try:
+                job = JobEntry.objects.get(id=job_id, candidate=candidate)
+            except JobEntry.DoesNotExist:
+                raise serializers.ValidationError(f"Job {job_id} not found for this mentee.")
+            if job_id in seen_job_ids:
+                raise serializers.ValidationError("Duplicate job_id entries are not allowed.")
+            seen_job_ids.add(job_id)
+            cleaned.append({
+                'job': job,
+                'notes': item.get('notes', '').strip(),
+            })
+        return cleaned
+
+    def validate(self, attrs):
+        preference = self.context['preference']
+        job_mode = attrs.get('job_sharing_mode', preference.job_sharing_mode)
+        if 'shared_applications' in attrs and job_mode != 'selected':
+            raise serializers.ValidationError({'shared_applications': "Shared applications can only be provided when job_sharing_mode is 'selected'."})
+        return attrs
+
+    def save(self, **kwargs):
+        preference = self.context['preference']
+        for field in [
+            'share_profile_basics',
+            'share_skills',
+            'share_employment',
+            'share_education',
+            'share_certifications',
+            'share_documents',
+            'share_job_applications',
+        ]:
+            if field in self.validated_data:
+                setattr(preference, field, self.validated_data[field])
+
+        job_mode = self.validated_data.get('job_sharing_mode', preference.job_sharing_mode)
+        preference.job_sharing_mode = job_mode
+        preference.share_job_applications = job_mode != 'none'
+        preference.save()
+
+        if job_mode != 'selected':
+            MentorshipSharedApplication.objects.filter(team_member=preference.team_member).delete()
+        elif 'shared_applications' in self.validated_data:
+            updated_jobs = []
+            for payload in self.validated_data['shared_applications']:
+                job = payload['job']
+                resume_doc = getattr(job, 'resume_doc', None)
+                cover_doc = getattr(job, 'cover_letter_doc', None)
+                shared_obj, _ = MentorshipSharedApplication.objects.update_or_create(
+                    team_member=preference.team_member,
+                    job=job,
+                    defaults={
+                        'include_documents': bool(resume_doc or cover_doc),
+                        'shared_resume': resume_doc,
+                        'shared_cover_letter': cover_doc,
+                        'notes': payload['notes'],
+                    },
+                )
+                updated_jobs.append(shared_obj.job_id)
+            MentorshipSharedApplication.objects.filter(
+                team_member=preference.team_member
+            ).exclude(job_id__in=updated_jobs).delete()
+
+        return preference
