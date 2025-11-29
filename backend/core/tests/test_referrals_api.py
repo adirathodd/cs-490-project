@@ -1,4 +1,5 @@
 from django.urls import reverse
+from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
 from django.contrib.auth import get_user_model
@@ -56,5 +57,3 @@ class ReferralStatusAPITests(APITestCase):
         self.assertEqual(resp2.status_code, status.HTTP_200_OK)
         self.referral.refresh_from_db()
         self.assertEqual(self.referral.status, 'requested')
-
-*** End Patch
