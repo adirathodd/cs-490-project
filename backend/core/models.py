@@ -68,6 +68,11 @@ class CandidateProfile(models.Model):
     preferred_roles = models.JSONField(default=list, blank=True)
     portfolio_url = models.URLField(blank=True)
     visibility = models.CharField(max_length=20, default="private")  # private|shared|public
+    
+    # UC-089: LinkedIn Integration
+    linkedin_url = models.URLField(blank=True, help_text="LinkedIn profile URL")
+    linkedin_imported = models.BooleanField(default=False)
+    linkedin_import_date = models.DateTimeField(null=True, blank=True)
     # UC-042: Default materials selection
     # Default resume/cover letter documents to prefill on new applications/jobs
     default_resume_doc = models.ForeignKey(
@@ -2426,6 +2431,81 @@ class CalendarIntegration(models.Model):
         self.last_error = message
         self.status = 'error'
         self.save(update_fields=['last_error', 'status', 'updated_at'])
+
+
+class LinkedInIntegration(models.Model):
+    """UC-089: LinkedIn OAuth integration and profile import tracking"""
+    
+    STATUS_CHOICES = [
+        ('not_connected', 'Not Connected'),
+        ('connected', 'Connected'),
+        ('synced', 'Synced'),
+        ('error', 'Error'),
+    ]
+    
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name='linkedin_integration'
+    )
+    
+    # OAuth tokens
+    access_token = models.TextField(blank=True)
+    refresh_token = models.TextField(blank=True)
+    token_expires_at = models.DateTimeField(null=True, blank=True)
+    
+    # Imported profile data
+    linkedin_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
+    linkedin_profile_url = models.URLField(blank=True)
+    
+    # Import metadata
+    last_sync_date = models.DateTimeField(null=True, blank=True)
+    import_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_connected')
+    last_error = models.TextField(blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['user']),
+            models.Index(fields=['linkedin_id']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.email} - LinkedIn ({self.import_status})"
+    
+    def mark_connected(self, access_token, refresh_token='', expires_at=None, linkedin_id='', profile_url=''):
+        """Mark the integration as connected with OAuth data"""
+        self.access_token = access_token
+        self.refresh_token = refresh_token
+        self.token_expires_at = expires_at
+        self.linkedin_id = linkedin_id
+        self.linkedin_profile_url = profile_url
+        self.import_status = 'connected'
+        self.last_error = ''
+        self.save()
+    
+    def mark_synced(self):
+        """Mark profile data as synced"""
+        self.last_sync_date = timezone.now()
+        self.import_status = 'synced'
+        self.save(update_fields=['last_sync_date', 'import_status', 'updated_at'])
+    
+    def mark_error(self, error_message):
+        """Mark integration as having an error"""
+        self.import_status = 'error'
+        self.last_error = error_message
+        self.save(update_fields=['import_status', 'last_error', 'updated_at'])
+    
+    def disconnect(self):
+        """Disconnect and clear OAuth data"""
+        self.access_token = ''
+        self.refresh_token = ''
+        self.token_expires_at = None
+        self.import_status = 'not_connected'
+        self.last_error = ''
+        self.save()
 
 
 class ResumeVersion(models.Model):
