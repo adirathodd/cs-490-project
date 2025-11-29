@@ -3825,6 +3825,7 @@ class GoalMilestone(models.Model):
         return f"{self.title} - {self.goal.title}"
 
 
+<<<<<<< HEAD
 # ============================
 # UC-095: Professional Reference Management
 # ============================
@@ -4071,6 +4072,8 @@ class ReferencePortfolio(models.Model):
         return self.name
 
 
+=======
+>>>>>>> origin/main
 class MentorshipRequest(models.Model):
     """Track inbound/outbound mentorship invitations between users."""
 

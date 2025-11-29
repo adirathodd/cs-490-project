@@ -20,13 +20,19 @@
     "firebase": "^10.8.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+<<<<<<< HEAD
     "react-markdown": "^8.0.7",
+=======
+>>>>>>> origin/main
     "react-easy-crop": "^5.0.8",
     "react-icons": "^4.11.0",
     "react-router-dom": "^6.22.0",
     "react-scripts": "5.0.1",
+<<<<<<< HEAD
     "rehype-sanitize": "^5.0.1",
     "remark-gfm": "^3.0.1",
+=======
+>>>>>>> origin/main
     "web-vitals": "^2.1.4"
   },
   "devDependencies": {

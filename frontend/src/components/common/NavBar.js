@@ -137,6 +137,7 @@ const NavBar = () => {
         >
           Contacts
         </NavLink>
+<<<<<<< HEAD
         <NavLink
           to="/references"
           className="nav-dropdown-item"
@@ -151,6 +152,8 @@ const NavBar = () => {
         >
           Referrals
         </NavLink>
+=======
+>>>>>>> origin/main
       </div>
     )}
   </div>

@@ -290,6 +290,7 @@ urlpatterns = [
     path('feedback-notifications/', views.feedback_notifications, name='feedback-notifications'),
     path('feedback-notifications/<uuid:notification_id>/read/', views.mark_notification_read, name='mark-notification-read'),
     path('feedback/export/', views.export_feedback_summary, name='export-feedback-summary'),
+<<<<<<< HEAD
     
     # UC-095: Professional Reference Management endpoints
     path('references/', views.references_list_create, name='references-list-create'),
@@ -319,4 +320,6 @@ urlpatterns = [
     path('referrals/<str:referral_id>/express-gratitude', views.referral_express_gratitude, name='referral-express-gratitude'),
     path('referrals/<str:referral_id>/suggest-follow-up', views.referral_suggest_follow_up, name='referral-suggest-follow-up'),
     path('referrals/<str:referral_id>/outcome', views.referral_update_outcome, name='referral-update-outcome'),
+=======
+>>>>>>> origin/main
 ]

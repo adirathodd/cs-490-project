@@ -111,8 +111,13 @@ const ReferralForm = ({ onClose, onSuccess, editingReferral = null }) => {
       };
 
       const result = await referralAPI.generateMessage(payload);
+<<<<<<< HEAD
       setAiSuggestion(result || null);
       setShowAiPanel(!!result);
+=======
+      setAiSuggestion(result);
+      setShowAiPanel(true);
+>>>>>>> origin/main
     } catch (err) {
       setError('Failed to generate message: ' + err.message);
     } finally {
@@ -121,6 +126,7 @@ const ReferralForm = ({ onClose, onSuccess, editingReferral = null }) => {
   };
 
   const handleUseAiMessage = () => {
+<<<<<<< HEAD
     if (!aiSuggestion) return;
     setFormData(prev => ({
       ...prev,
@@ -131,6 +137,19 @@ const ReferralForm = ({ onClose, onSuccess, editingReferral = null }) => {
       suggested_send_date: (aiSuggestion.timing_guidance && aiSuggestion.timing_guidance.optimal_date) || prev.suggested_send_date
     }));
     setShowAiPanel(false);
+=======
+    if (aiSuggestion) {
+      setFormData(prev => ({
+        ...prev,
+        request_message: aiSuggestion.message,
+        message_tone: aiSuggestion.tone,
+        optimal_timing_suggestion: aiSuggestion.timing_guidance.guidance_text,
+        etiquette_guidance: aiSuggestion.etiquette_guidance,
+        suggested_send_date: aiSuggestion.timing_guidance.optimal_date
+      }));
+      setShowAiPanel(false);
+    }
+>>>>>>> origin/main
   };
 
   const handleSubmit = async (e) => {
@@ -349,23 +368,40 @@ const ReferralForm = ({ onClose, onSuccess, editingReferral = null }) => {
               <div className="ai-suggestion-panel">
                 <h4>AI-Generated Message</h4>
                 <div className="suggestion-content">
+<<<<<<< HEAD
                         <div className="suggestion-subject">
                           <strong>Subject:</strong> {aiSuggestion?.subject_line || ''}
                         </div>
                         <div className="suggestion-message">
                           <pre>{aiSuggestion?.message || ''}</pre>
                         </div>
+=======
+                  <div className="suggestion-subject">
+                    <strong>Subject:</strong> {aiSuggestion.subject_line}
+                  </div>
+                  <div className="suggestion-message">
+                    <pre>{aiSuggestion.message}</pre>
+                  </div>
+>>>>>>> origin/main
                   <div className="suggestion-guidance">
                     <details>
                       <summary>Timing Guidance</summary>
                       <div className="guidance-content">
+<<<<<<< HEAD
                         <GuidanceRenderer text={aiSuggestion?.timing_guidance?.guidance_text || ''} />
+=======
+                        <GuidanceRenderer text={aiSuggestion.timing_guidance.guidance_text} />
+>>>>>>> origin/main
                       </div>
                     </details>
                     <details>
                       <summary>Etiquette Tips</summary>
                       <div className="guidance-content">
+<<<<<<< HEAD
                         <GuidanceRenderer text={aiSuggestion?.etiquette_guidance || ''} />
+=======
+                        <GuidanceRenderer text={aiSuggestion.etiquette_guidance} />
+>>>>>>> origin/main
                       </div>
                     </details>
                   </div>

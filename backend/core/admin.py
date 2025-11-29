@@ -26,9 +26,12 @@ from .models import (
     Reminder, Notification,
     # Projects
     Project, ProjectMedia,
+<<<<<<< HEAD
     # UC-095: Reference Management models
     ProfessionalReference, ReferenceRequest, ReferenceTemplate, 
     ReferenceAppreciation, ReferencePortfolio,
+=======
+>>>>>>> origin/main
 )
 
 
@@ -301,6 +304,7 @@ class ApplicationPackageAdmin(admin.ModelAdmin):
     list_filter = ['status', 'created_at']
     search_fields = ['candidate__user__username', 'job__title', 'job__company_name']
     readonly_fields = ['created_at', 'updated_at']
+<<<<<<< HEAD
 
 
 # ======================
@@ -371,6 +375,8 @@ class ReferencePortfolioAdmin(admin.ModelAdmin):
     filter_horizontal = ['references']
 
 
+=======
+>>>>>>> origin/main
 @admin.register(MentorshipSharingPreference)
 class MentorshipSharingPreferenceAdmin(admin.ModelAdmin):
     list_display = ['team_member', 'share_profile_basics', 'share_skills', 'share_job_applications', 'updated_at']

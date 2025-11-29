@@ -19,12 +19,18 @@ from core.models import (
 )
 from core.models import (
     Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink,
+<<<<<<< HEAD
     NetworkingEvent, EventGoal, EventConnection, EventFollowUp, CareerGoal, GoalMilestone,
     ProfessionalReference, ReferenceRequest, ReferenceTemplate, ReferenceAppreciation, ReferencePortfolio
 )
 
 from core.models import Referral, Application, JobOpportunity
 
+=======
+    NetworkingEvent, EventGoal, EventConnection, EventFollowUp, CareerGoal, GoalMilestone
+)
+
+>>>>>>> origin/main
 class CoverLetterTemplateSerializer(serializers.ModelSerializer):
     class Meta:
         model = CoverLetterTemplate
@@ -97,6 +103,7 @@ class UserRegistrationSerializer(serializers.Serializer):
         pass
 
 
+<<<<<<< HEAD
 class ReferralSerializer(serializers.ModelSerializer):
     """API serializer for Referral objects used by the frontend.
 
@@ -177,6 +184,8 @@ class ReferralSerializer(serializers.ModelSerializer):
         raise NotImplementedError('Use view.create to handle creation')
 
 
+=======
+>>>>>>> origin/main
 class UserLoginSerializer(serializers.Serializer):
     """
     Serializer for UC-002: User Login with Email and Password.
@@ -3432,6 +3441,7 @@ class CareerGoalListSerializer(serializers.ModelSerializer):
         if obj.pk:
             return obj.milestones.count()
         return 0
+<<<<<<< HEAD
 
 
 # ============================
@@ -3615,3 +3625,5 @@ class ReferencePortfolioListSerializer(serializers.ModelSerializer):
             return obj.references.count()
         return 0
 
+=======
+>>>>>>> origin/main

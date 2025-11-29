@@ -79,6 +79,7 @@ from core.serializers import (
     EventGoalSerializer,
     EventConnectionSerializer,
     EventFollowUpSerializer,
+<<<<<<< HEAD
     ReferralSerializer,
     ProfessionalReferenceSerializer,
     ProfessionalReferenceListSerializer,
@@ -88,6 +89,8 @@ from core.serializers import (
     ReferenceAppreciationSerializer,
     ReferencePortfolioSerializer,
     ReferencePortfolioListSerializer,
+=======
+>>>>>>> origin/main
 )
 from core.models import (
     CandidateProfile,
@@ -102,8 +105,11 @@ from core.models import (
     UserAccount,
     JobEntry,
     JobOpportunity,
+<<<<<<< HEAD
     Application,
     Referral,
+=======
+>>>>>>> origin/main
     Document,
     JobMaterialsHistory,
     CoverLetterTemplate,
@@ -137,11 +143,14 @@ from core.models import (
     EventFollowUp,
     CalendarIntegration,
     InterviewEvent,
+<<<<<<< HEAD
     ProfessionalReference,
     ReferenceRequest,
     ReferenceTemplate,
     ReferenceAppreciation,
     ReferencePortfolio,
+=======
+>>>>>>> origin/main
     TeamMember,
     MentorshipRequest,
     MentorshipSharingPreference,
@@ -164,6 +173,7 @@ from django.shortcuts import redirect
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 from core import google_import
 
+<<<<<<< HEAD
 import uuid
 from rest_framework.permissions import AllowAny
 
@@ -537,6 +547,8 @@ def referral_update_outcome(request, referral_id):
     return Response(serializer.data)
 
 
+=======
+>>>>>>> origin/main
 logger = logging.getLogger(__name__)
 
 
@@ -13499,6 +13511,7 @@ def career_goals_list_create(request):
         serializer = CareerGoalSerializer(data=request.data)
         if serializer.is_valid():
             goal = serializer.save(user=request.user)
+<<<<<<< HEAD
             references = references.filter(availability_status=availability)
         
         serializer = ProfessionalReferenceListSerializer(references, many=True)
@@ -14022,6 +14035,8 @@ def career_goals_list_create(request):
         serializer = CareerGoalSerializer(data=request.data)
         if serializer.is_valid():
             goal = serializer.save(user=request.user)
+=======
+>>>>>>> origin/main
             
             # Auto-set started_at if status is in_progress
             if goal.status == 'in_progress' and not goal.started_at:
@@ -14350,4 +14365,7 @@ def _generate_goal_recommendations(user, goals):
         })
     
     return recommendations
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main

@@ -15,7 +15,10 @@ const ReferralManagement = () => {
   const [activeTab, setActiveTab] = useState('active'); // active, completed, all
   const [selectedReferral, setSelectedReferral] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+<<<<<<< HEAD
   const [cardLoading, setCardLoading] = useState({});
+=======
+>>>>>>> origin/main
 
   useEffect(() => {
     fetchReferrals();
@@ -57,6 +60,7 @@ const ReferralManagement = () => {
     setShowDetailModal(true);
   };
 
+<<<<<<< HEAD
   const cardActionMarkSent = async (id) => {
     if (!window.confirm('Mark this referral as sent?')) return;
     setCardLoading((s) => ({ ...s, [id]: true }));
@@ -118,6 +122,8 @@ const ReferralManagement = () => {
     }
   };
 
+=======
+>>>>>>> origin/main
   const handleCreateNew = () => {
     setShowForm(true);
   };
@@ -284,6 +290,7 @@ const ReferralManagement = () => {
                   >
                     View Details
                   </button>
+<<<<<<< HEAD
 
                   {/* Quick actions on the card for convenience */}
                   {referral.status === 'draft' && (
@@ -314,6 +321,8 @@ const ReferralManagement = () => {
                       {cardLoading[referral.id] ? 'Working...' : 'Make Active'}
                     </button>
                   )}
+=======
+>>>>>>> origin/main
                 </div>
               </div>
             ))}

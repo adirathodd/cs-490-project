@@ -7,7 +7,10 @@ import {
   FaBriefcase,
   FaGraduationCap,
   FaMedal,
+<<<<<<< HEAD
   FaAward,
+=======
+>>>>>>> origin/main
   FaPuzzlePiece,
   FaFolderOpen,
   FaCamera,
@@ -92,7 +95,10 @@ const iconMap = {
   briefcase: FaBriefcase,
   education: FaGraduationCap,
   cert: FaMedal,
+<<<<<<< HEAD
   award: FaAward,
+=======
+>>>>>>> origin/main
   project: FaPuzzlePiece,
   folder: FaFolderOpen,
   camera: FaCamera,
