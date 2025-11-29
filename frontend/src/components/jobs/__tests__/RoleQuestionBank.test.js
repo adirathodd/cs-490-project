@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import RoleQuestionBank from '../RoleQuestionBank';
 
@@ -48,8 +48,10 @@ const mockBank = {
 };
 
 describe('RoleQuestionBank', () => {
-  test('renders categories and question details', () => {
-    render(<RoleQuestionBank bank={mockBank} />);
+  test('renders categories and question details', async () => {
+    await act(async () => {
+      render(<RoleQuestionBank bank={mockBank} />);
+    });
 
     expect(screen.getByText(/Role-Specific Question Bank/i)).toBeInTheDocument();
     expect(screen.getByText(/Tell me about a time/i)).toBeInTheDocument();
@@ -59,17 +61,23 @@ describe('RoleQuestionBank', () => {
 
   test('opens practice modal and submits response', async () => {
     const onLogPractice = jest.fn().mockResolvedValue({});
-    render(<RoleQuestionBank bank={mockBank} onLogPractice={onLogPractice} />);
+    await act(async () => {
+      render(<RoleQuestionBank bank={mockBank} onLogPractice={onLogPractice} />);
+    });
 
     const logButton = screen.getByRole('button', { name: /log practice/i });
-    await userEvent.click(logButton);
+    await act(async () => {
+      await userEvent.click(logButton);
+    });
 
     const modal = await screen.findByRole('dialog');
     const summaryField = within(modal).getByPlaceholderText(/overall summary/i);
     await userEvent.type(summaryField, 'Aligned exec team');
 
     const saveButton = within(modal).getByRole('button', { name: /save practice/i });
-    await userEvent.click(saveButton);
+    await act(async () => {
+      await userEvent.click(saveButton);
+    });
 
     expect(onLogPractice).toHaveBeenCalledWith(expect.objectContaining({
       question_id: 'beh-1',
