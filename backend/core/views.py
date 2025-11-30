@@ -14449,3 +14449,455 @@ def _generate_goal_recommendations(user, goals):
     return recommendations
 
 
+# ================================================================================
+# UC-077: Mock Interview Practice Sessions
+# ================================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def start_mock_interview(request):
+    """
+    UC-077: Start a new mock interview session.
+    
+    Expected payload:
+    {
+        "job_id": <optional job entry id>,
+        "interview_type": "behavioral|technical|case_study|mixed",
+        "difficulty_level": "entry|mid|senior|executive",
+        "question_count": 5,
+        "focus_areas": ["leadership", "problem-solving"]
+    }
+    """
+    from core.mock_interview import MockInterviewGenerator
+    from core.models import MockInterviewSession, MockInterviewQuestion, JobEntry
+    from core.serializers import MockInterviewSessionSerializer
+    
+    user = request.user
+    data = request.data
+    
+    # Validate and get job if specified
+    job = None
+    job_title = None
+    job_description = None
+    if 'job_id' in data and data['job_id']:
+        try:
+            job = JobEntry.objects.get(id=data['job_id'], candidate=user.profile)
+            job_title = job.position_title
+            job_description = job.description
+        except JobEntry.DoesNotExist:
+            return Response(
+                {'error': 'Job not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    # Extract parameters with defaults
+    interview_type = data.get('interview_type', 'behavioral')
+    difficulty_level = data.get('difficulty_level', 'mid')
+    question_count = int(data.get('question_count', 5))
+    focus_areas = data.get('focus_areas', [])
+    
+    # Validate interview_type
+    valid_types = ['behavioral', 'technical', 'case_study', 'mixed']
+    if interview_type not in valid_types:
+        return Response(
+            {'error': f'Invalid interview_type. Must be one of: {", ".join(valid_types)}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Create the session
+    session = MockInterviewSession.objects.create(
+        user=user,
+        job=job,
+        interview_type=interview_type,
+        status='in_progress',
+        question_count=question_count,
+        difficulty_level=difficulty_level,
+        focus_areas=focus_areas
+    )
+    
+    try:
+        # Generate questions using AI
+        generator = MockInterviewGenerator()
+        questions_data = generator.generate_questions(
+            interview_type=interview_type,
+            difficulty_level=difficulty_level,
+            focus_areas=focus_areas,
+            job_title=job_title,
+            job_description=job_description,
+            count=question_count
+        )
+        
+        # Create question objects
+        for i, q_data in enumerate(questions_data, 1):
+            MockInterviewQuestion.objects.create(
+                session=session,
+                question_number=i,
+                question_text=q_data['question'],
+                question_category=q_data.get('category', 'general'),
+                suggested_framework=q_data.get('framework', 'STAR'),
+                ideal_answer_points=q_data.get('ideal_points', [])
+            )
+        
+        # Return session with all questions
+        serializer = MockInterviewSessionSerializer(session)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    except Exception as e:
+        # If question generation fails, delete the session
+        session.delete()
+        return Response(
+            {'error': f'Failed to generate interview questions: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def submit_mock_interview_answer(request):
+    """
+    UC-077: Submit an answer to a mock interview question.
+    
+    Expected payload:
+    {
+        "session_id": <uuid>,
+        "question_number": 1,
+        "answer": "In my previous role..."
+    }
+    """
+    from core.mock_interview import MockInterviewCoach
+    from core.models import MockInterviewSession, MockInterviewQuestion
+    from core.serializers import MockInterviewQuestionSerializer
+    
+    user = request.user
+    data = request.data
+    
+    session_id = data.get('session_id')
+    question_number = data.get('question_number')
+    answer = data.get('answer', '').strip()
+    
+    if not session_id or not question_number:
+        return Response(
+            {'error': 'session_id and question_number are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if not answer:
+        return Response(
+            {'error': 'Answer cannot be empty'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        # Get session and verify ownership
+        session = MockInterviewSession.objects.get(id=session_id, user=user)
+        
+        if session.status != 'in_progress':
+            return Response(
+                {'error': 'This interview session is not active'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get the question
+        question = MockInterviewQuestion.objects.get(
+            session=session,
+            question_number=question_number
+        )
+        
+        # Submit the answer
+        question.submit_answer(answer)
+        
+        # Evaluate the answer using AI
+        coach = MockInterviewCoach()
+        evaluation = coach.evaluate_answer(
+            question=question.question_text,
+            answer=answer,
+            ideal_points=question.ideal_answer_points,
+            framework=question.suggested_framework,
+            category=question.question_category
+        )
+        
+        # Save evaluation results
+        question.answer_score = evaluation['score']
+        question.ai_feedback = evaluation['feedback']
+        question.strengths = evaluation['strengths']
+        question.improvements = evaluation['improvements']
+        question.keyword_coverage = evaluation['keyword_coverage']
+        question.save()
+        
+        # Return updated question with evaluation
+        serializer = MockInterviewQuestionSerializer(question)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    except MockInterviewSession.DoesNotExist:
+        return Response(
+            {'error': 'Session not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except MockInterviewQuestion.DoesNotExist:
+        return Response(
+            {'error': 'Question not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to evaluate answer: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def complete_mock_interview(request):
+    """
+    UC-077: Complete a mock interview session and generate summary.
+    
+    Expected payload:
+    {
+        "session_id": <uuid>
+    }
+    """
+    from core.mock_interview import MockInterviewCoach
+    from core.models import MockInterviewSession, MockInterviewSummary
+    from core.serializers import MockInterviewSummarySerializer
+    from django.db.models import Avg
+    
+    user = request.user
+    session_id = request.data.get('session_id')
+    
+    if not session_id:
+        return Response(
+            {'error': 'session_id is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        # Get session and verify ownership
+        session = MockInterviewSession.objects.get(id=session_id, user=user)
+        
+        if session.status != 'in_progress':
+            return Response(
+                {'error': 'This interview session is not active'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if all questions have been answered
+        total_questions = session.questions.count()
+        answered_questions = session.questions.filter(
+            user_answer__isnull=False
+        ).exclude(user_answer='').count()
+        
+        if answered_questions < total_questions:
+            return Response(
+                {
+                    'error': 'Not all questions have been answered',
+                    'answered': answered_questions,
+                    'total': total_questions
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Calculate overall score
+        overall_score = session.calculate_overall_score()
+        if overall_score is not None:
+            session.overall_score = overall_score
+        
+        # Mark session as completed
+        session.mark_completed()
+        
+        # Prepare data for summary generation
+        questions = session.questions.all().order_by('question_number')
+        questions_and_answers = [
+            {
+                'question': q.question_text,
+                'category': q.question_category,
+                'answer': q.user_answer,
+                'score': float(q.answer_score or 0),
+                'feedback': q.ai_feedback,
+                'strengths': q.strengths,
+                'improvements': q.improvements
+            }
+            for q in questions
+        ]
+        
+        # Generate comprehensive summary using AI
+        coach = MockInterviewCoach()
+        summary_data = coach.generate_session_summary(
+            questions_and_answers=questions_and_answers,
+            overall_score=float(overall_score or 0),
+            interview_type=session.interview_type
+        )
+        
+        # Calculate performance by category
+        performance_by_category = {}
+        for q in questions:
+            cat = q.question_category or 'general'
+            if cat not in performance_by_category:
+                performance_by_category[cat] = []
+            if q.answer_score:
+                performance_by_category[cat].append(float(q.answer_score))
+        
+        # Average scores per category
+        for cat in performance_by_category:
+            scores = performance_by_category[cat]
+            performance_by_category[cat] = round(sum(scores) / len(scores), 2)
+        
+        # Calculate component scores (simplified)
+        response_quality = float(overall_score) if overall_score else 0
+        communication_score = float(overall_score) * 0.95 if overall_score else 0
+        structure_score = float(overall_score) * 1.05 if overall_score else 0
+        structure_score = min(structure_score, 100)
+        
+        # Compare to previous sessions
+        previous_sessions = MockInterviewSession.objects.filter(
+            user=user,
+            status='completed',
+            interview_type=session.interview_type
+        ).exclude(id=session.id).order_by('-completed_at')[:3]
+        
+        compared_to_previous = {}
+        if previous_sessions.exists():
+            prev_scores = [
+                float(s.overall_score) for s in previous_sessions 
+                if s.overall_score is not None
+            ]
+            if prev_scores:
+                avg_previous = sum(prev_scores) / len(prev_scores)
+                compared_to_previous = {
+                    'average_previous_score': round(avg_previous, 2),
+                    'current_score': float(overall_score or 0),
+                    'improvement': round(float(overall_score or 0) - avg_previous, 2)
+                }
+        
+        # Create summary
+        summary = MockInterviewSummary.objects.create(
+            session=session,
+            performance_by_category=performance_by_category,
+            response_quality_score=response_quality,
+            communication_score=communication_score,
+            structure_score=structure_score,
+            top_strengths=summary_data.get('top_strengths', []),
+            critical_areas=summary_data.get('critical_areas', []),
+            recommended_practice_topics=summary_data.get('recommended_practice_topics', []),
+            next_steps=summary_data.get('next_steps', []),
+            overall_assessment=summary_data.get('overall_assessment', ''),
+            readiness_level=summary_data.get('readiness_level', 'needs_practice'),
+            estimated_interview_readiness=summary_data.get('estimated_interview_readiness', int(overall_score or 0)),
+            compared_to_previous_sessions=compared_to_previous,
+            improvement_trend=summary_data.get('improvement_trend', 'stable')
+        )
+        
+        # Update session with summary insights
+        session.strengths = summary_data.get('top_strengths', [])[:3]
+        session.areas_for_improvement = summary_data.get('critical_areas', [])[:3]
+        session.ai_summary = summary_data.get('overall_assessment', '')[:500]
+        session.save()
+        
+        # Return complete summary
+        serializer = MockInterviewSummarySerializer(summary)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    except MockInterviewSession.DoesNotExist:
+        return Response(
+            {'error': 'Session not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to complete interview: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_mock_interviews(request):
+    """
+    UC-077: List all mock interview sessions for the user.
+    
+    Query params:
+    - status: Filter by status (in_progress, completed, abandoned)
+    - interview_type: Filter by type
+    - limit: Number of results (default 20)
+    """
+    from core.models import MockInterviewSession
+    from core.serializers import MockInterviewSessionListSerializer
+    
+    user = request.user
+    
+    # Build query
+    sessions = MockInterviewSession.objects.filter(user=user)
+    
+    # Apply filters
+    status_filter = request.query_params.get('status')
+    if status_filter:
+        sessions = sessions.filter(status=status_filter)
+    
+    type_filter = request.query_params.get('interview_type')
+    if type_filter:
+        sessions = sessions.filter(interview_type=type_filter)
+    
+    # Limit results
+    limit = int(request.query_params.get('limit', 20))
+    sessions = sessions.order_by('-started_at')[:limit]
+    
+    serializer = MockInterviewSessionListSerializer(sessions, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_mock_interview_session(request, session_id):
+    """
+    UC-077: Get details of a specific mock interview session.
+    """
+    from core.models import MockInterviewSession
+    from core.serializers import MockInterviewSessionSerializer
+    
+    user = request.user
+    
+    try:
+        session = MockInterviewSession.objects.get(id=session_id, user=user)
+        serializer = MockInterviewSessionSerializer(session)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except MockInterviewSession.DoesNotExist:
+        return Response(
+            {'error': 'Session not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_mock_interview_summary(request, session_id):
+    """
+    UC-077: Get summary for a completed mock interview session.
+    """
+    from core.models import MockInterviewSession, MockInterviewSummary
+    from core.serializers import MockInterviewSummarySerializer
+    
+    user = request.user
+    
+    try:
+        session = MockInterviewSession.objects.get(id=session_id, user=user)
+        
+        if session.status != 'completed':
+            return Response(
+                {'error': 'Session must be completed to view summary'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            summary = MockInterviewSummary.objects.get(session=session)
+            serializer = MockInterviewSummarySerializer(summary)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except MockInterviewSummary.DoesNotExist:
+            return Response(
+                {'error': 'Summary not found. Please try completing the interview again.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    except MockInterviewSession.DoesNotExist:
+        return Response(
+            {'error': 'Session not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )

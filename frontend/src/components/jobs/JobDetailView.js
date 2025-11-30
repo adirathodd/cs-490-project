@@ -1401,6 +1401,39 @@ const JobDetailView = () => {
               </div>
             </div>
           )}
+
+          {/* Card 2: Interview Research Brief (UC-074) */}
+          <div className="education-form-card">
+            <div className="form-header">
+              <h3>
+                <Icon name="book-open" size="md" /> Company Research Brief
+              </h3>
+            </div>
+            <div className="education-form" style={{ padding: '32px' }}>
+              <p style={{ color: '#6b7280', marginBottom: '20px' }}>
+                Get comprehensive company research, talking points, and intelligent questions for your interview.
+              </p>
+              <button
+                onClick={() => navigate(`/interview-research/${id}`)}
+                style={{
+                  padding: '12px 24px',
+                  fontSize: '15px',
+                  fontWeight: '600',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: 'white',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <Icon name="book-open" size="sm" /> View Research Brief
+              </button>
+            </div>
+          </div>
         </>
       )}
 
@@ -1460,6 +1493,90 @@ const JobDetailView = () => {
                   Question bank is not available for this job yet.
                 </div>
               )}
+
+              <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #e5e7eb' }}>
+                <button
+                  onClick={() => navigate(`/question-bank/${id}`)}
+                  style={{
+                    padding: '12px 24px',
+                    fontSize: '15px',
+                    fontWeight: '600',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: 'white',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <Icon name="layers" size="sm" /> Open Full Question Bank
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Interview Practice Tools (UC-076, UC-077) */}
+          <div className="education-form-card">
+            <div className="form-header">
+              <h3>
+                <Icon name="mic" size="md" /> Interview Practice
+              </h3>
+            </div>
+            <div className="education-form" style={{ padding: '32px' }}>
+              <div style={{ display: 'grid', gap: '16px' }}>
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: '#f9fafb',
+                  borderRadius: '8px',
+                  border: '1px solid #e5e7eb'
+                }}>
+                  <h4 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: '600' }}>
+                    <Icon name="message-circle" size="sm" /> AI Response Coaching
+                  </h4>
+                  <p style={{ color: '#6b7280', fontSize: '14px', margin: '0 0 16px 0' }}>
+                    Get detailed AI feedback on your interview responses with STAR framework analysis.
+                  </p>
+                  <p style={{ color: '#9ca3af', fontSize: '13px', fontStyle: 'italic', marginBottom: '16px' }}>
+                    Note: Response coaching is accessed from individual questions in the Question Bank above.
+                  </p>
+                </div>
+
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: '#f9fafb',
+                  borderRadius: '8px',
+                  border: '1px solid #e5e7eb'
+                }}>
+                  <h4 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: '600' }}>
+                    <Icon name="mic" size="sm" /> Mock Interview Sessions
+                  </h4>
+                  <p style={{ color: '#6b7280', fontSize: '14px', margin: '0 0 16px 0' }}>
+                    Practice complete interview sessions with sequential questions and performance feedback.
+                  </p>
+                  <button
+                    onClick={() => navigate('/mock-interview')}
+                    style={{
+                      padding: '10px 20px',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      color: 'white',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <Icon name="play" size="sm" /> Start Mock Interview
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </>
