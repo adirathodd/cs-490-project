@@ -12,15 +12,15 @@ export default function JobsCalendar() {
     setLoading(true);
     try {
       // Load deadlines
-      const deadlines = await jobsAPI.getUpcomingDeadlines(50);
+      const deadlines = await jobsAPI.getUpcomingDeadlines(50).catch(() => []);
       console.log('Loaded deadlines:', deadlines);
       
       // Load ALL interviews (not just upcoming) for debugging
-      const interviews = await interviewsAPI.getInterviews({});
+      const interviews = await interviewsAPI.getInterviews({}).catch(() => []);
       console.log('Loaded interviews:', interviews);
       
       // Load active reminders
-      const activeReminders = await interviewsAPI.getActiveReminders();
+      const activeReminders = await interviewsAPI.getActiveReminders().catch(() => []);
       console.log('Active reminders:', activeReminders);
       setReminders(activeReminders || []);
       
@@ -148,7 +148,7 @@ export default function JobsCalendar() {
         </div>
       )}
       
-      {loading && <p>Loading…</p>}
+      {loading && <p>Loading...</p>}
       {error && <div style={{ color: 'red' }}>{error}</div>}
       {!loading && items.length === 0 && <p>No upcoming deadlines or interviews</p>}
       

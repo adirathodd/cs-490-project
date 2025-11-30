@@ -53,7 +53,7 @@ describe('SupporterPublic', () => {
     expect(screen.getByText(/Application funnel/i)).toBeInTheDocument();
     expect(screen.getByText(/phone screen/i)).toBeInTheDocument();
     expect(screen.getByText(/Alex received a Interview/i)).toBeInTheDocument();
-    expect(screen.getByText(/How they’re feeling/i)).toBeInTheDocument();
+    expect(screen.getByText(/How they're feeling/i)).toBeInTheDocument();
     expect(screen.getByText(/Score: 7/)).toBeInTheDocument();
     expect(screen.getByText(/How you can support/i)).toBeInTheDocument();
     // Linkified AI tip

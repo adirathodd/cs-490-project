@@ -205,7 +205,7 @@ const SupporterPublic = () => {
           <div className="supporters-card__header">
             <div>
               <p className="eyebrow">Status</p>
-              <h3>How they’re feeling</h3>
+              <h3>How they're feeling</h3>
             </div>
           </div>
           <div className="supporters-mood">

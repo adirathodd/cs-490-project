@@ -290,7 +290,7 @@ const Supporters = () => {
         <div className="supporters-card__header">
           <div>
             <p className="eyebrow">Status</p>
-            <h3>How I’m feeling</h3>
+            <h3>How I'm feeling</h3>
           </div>
           <button
             type="button"
@@ -321,11 +321,11 @@ const Supporters = () => {
             />
           </div>
           <div className="field" style={{ gridColumn: '1 / -1' }}>
-            <label htmlFor="supporter-mood-note">How I’m feeling (optional)</label>
+            <label htmlFor="supporter-mood-note">How I'm feeling (optional)</label>
             <textarea
               id="supporter-mood-note"
               rows={3}
-              aria-label="How I’m feeling (optional)"
+              aria-label="How I'm feeling (optional)"
               value={moodNote}
               onChange={(e) => setMoodNote(e.target.value)}
               placeholder="Share a short update"

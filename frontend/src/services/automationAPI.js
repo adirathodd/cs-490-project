@@ -28,8 +28,16 @@ class AutomationAPI {
       const response = await fetch(url, config);
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+        let errorText = '';
+        let errorData = {};
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          errorText = await response.text().catch(() => '');
+        }
+        const message = errorData.error || errorData.message || errorText || `HTTP ${response.status}`;
+        console.warn(`API request failed: ${endpoint} (${response.status})`, message);
+        return { error: message, status: response.status };
       }
 
       // Handle no-content responses
@@ -37,10 +45,17 @@ class AutomationAPI {
         return null;
       }
 
-      return await response.json();
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        return await response.json();
+      }
+      return {};
     } catch (error) {
       console.error(`API request failed: ${endpoint}`, error);
-      throw error;
+      if (error?.message === 'Network error' || error?.name === 'TypeError') {
+        return { error: 'Network error' };
+      }
+      return { error: error?.message || 'Request failed' };
     }
   }
 

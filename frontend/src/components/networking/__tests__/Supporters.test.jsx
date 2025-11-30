@@ -94,7 +94,7 @@ describe('Supporters', () => {
 
     // Mood
     fireEvent.change(screen.getByLabelText(/Score/i), { target: { value: '9' } });
-    fireEvent.change(screen.getByLabelText(/How I’m feeling/i), { target: { value: 'Great' } });
+    fireEvent.change(screen.getByLabelText(/How I'm feeling/i), { target: { value: 'Great' } });
     fireEvent.click(screen.getByRole('button', { name: /Save/i }));
     await waitFor(() => expect(supportersAPI.updateMood).toHaveBeenCalledWith({ score: 9, note: 'Great' }));
 
