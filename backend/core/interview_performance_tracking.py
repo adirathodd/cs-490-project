@@ -45,13 +45,14 @@ class InterviewPerformanceTracker:
         ).values('period').annotate(
             total_interviews=Count('id'),
             offers=Count(Case(
-                When(outcome='offer_received', then=1),
+                # Map excellent/good outcomes to offers
+                When(outcome__in=['excellent', 'good'], then=1),
             )),
             rejections=Count(Case(
-                When(outcome__in=['rejected', 'no_response'], then=1),
+                When(outcome__in=['rejected', 'poor'], then=1),
             )),
             pending=Count(Case(
-                When(outcome='pending', then=1),
+                When(outcome='', then=1),
             ))
         ).order_by('period')
         
@@ -74,7 +75,8 @@ class InterviewPerformanceTracker:
     
     def analyze_by_interview_format(self):
         """Analyze performance by interview format."""
-        formats = ['phone_screen', 'video', 'in_person', 'panel', 'technical', 'behavioral']
+        # Use actual InterviewSchedule INTERVIEW_TYPES choices
+        formats = ['phone', 'video', 'in_person', 'assessment', 'group']
         results = []
         
         for format_type in formats:
@@ -84,8 +86,9 @@ class InterviewPerformanceTracker:
             if total == 0:
                 continue
             
-            offers = interviews.filter(outcome='offer_received').count()
-            rejections = interviews.filter(outcome__in=['rejected', 'no_response']).count()
+            # Map excellent/good to offers
+            offers = interviews.filter(outcome__in=['excellent', 'good']).count()
+            rejections = interviews.filter(outcome__in=['rejected', 'poor']).count()
             
             results.append({
                 'format': format_type,
@@ -120,13 +123,15 @@ class InterviewPerformanceTracker:
         
         real_progress = []
         for interview in real_interviews[:20]:  # Last 20 interviews
-            # Map outcome to score
+            # Map outcome to score (using actual InterviewSchedule choices)
             outcome_scores = {
-                'offer_received': 100,
-                'advanced_to_next_round': 75,
-                'pending': 50,
-                'rejected': 25,
-                'no_response': 10,
+                'excellent': 100,
+                'good': 85,
+                'average': 70,
+                'poor': 40,
+                'rejected': 20,
+                'withdrew': 10,
+                '': 50,  # No outcome yet
             }
             score = outcome_scores.get(interview.outcome, 50)
             
@@ -290,7 +295,7 @@ class InterviewPerformanceTracker:
         # Check conversion rate
         total_interviews = self.interviews.count()
         if total_interviews > 0:
-            offers = self.interviews.filter(outcome='offer_received').count()
+            offers = self.interviews.filter(outcome__in=['excellent', 'good']).count()
             conversion_rate = (offers / total_interviews * 100)
             
             if conversion_rate < 20:
@@ -345,7 +350,7 @@ class InterviewPerformanceTracker:
         """Benchmark performance against successful patterns."""
         # Calculate user's metrics
         total_interviews = self.interviews.count()
-        offers = self.interviews.filter(outcome='offer_received').count()
+        offers = self.interviews.filter(outcome__in=['excellent', 'good']).count()
         conversion_rate = (offers / total_interviews * 100) if total_interviews > 0 else 0
         
         mock_count = self.mock_sessions.filter(status='completed').count()
