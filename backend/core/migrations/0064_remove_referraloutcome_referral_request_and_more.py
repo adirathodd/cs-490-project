@@ -3,6 +3,27 @@
 from django.db import migrations, models
 
 
+def drop_index_if_exists(name: str) -> migrations.RunSQL:
+    return migrations.RunSQL(
+        sql=f"DROP INDEX IF EXISTS {name};",
+        reverse_sql=migrations.RunSQL.noop,
+    )
+
+
+def drop_column_if_exists(table: str, column: str) -> migrations.RunSQL:
+    return migrations.RunSQL(
+        sql=f"ALTER TABLE IF EXISTS {table} DROP COLUMN IF EXISTS {column} CASCADE;",
+        reverse_sql=migrations.RunSQL.noop,
+    )
+
+
+def drop_table_if_exists(table: str) -> migrations.RunSQL:
+    return migrations.RunSQL(
+        sql=f"DROP TABLE IF EXISTS {table} CASCADE;",
+        reverse_sql=migrations.RunSQL.noop,
+    )
+
+
 def rename_indexes_if_exist(apps, schema_editor):
     """Safely rename indexes only if they exist."""
     from django.db import connection
@@ -86,42 +107,47 @@ class Migration(migrations.Migration):
 
     operations = [
         # Remove indexes that reference fields we're about to delete
-        migrations.RemoveIndex(
-            model_name='referralrequest',
-            name='core_referr_user_id_4661e3_idx',
+        drop_index_if_exists('core_referr_user_id_4661e3_idx'),
+        drop_index_if_exists('core_referr_job_id_a06b61_idx'),
+        drop_index_if_exists('core_referr_contact_7879d3_idx'),
+        drop_index_if_exists('core_referr_user_id_b6ee03_idx'),
+        drop_index_if_exists('core_referr_user_id_bb95d6_idx'),
+        # Now remove the fields (database operations guarded for environments where tables never existed)
+        migrations.SeparateDatabaseAndState(
+            database_operations=[drop_column_if_exists('core_referraloutcome', 'referral_request_id')],
+            state_operations=[
+                migrations.RemoveField(
+                    model_name='referraloutcome',
+                    name='referral_request',
+                ),
+            ],
         ),
-        migrations.RemoveIndex(
-            model_name='referralrequest',
-            name='core_referr_job_id_a06b61_idx',
+        migrations.SeparateDatabaseAndState(
+            database_operations=[drop_column_if_exists('core_referralrequest', 'contact_id')],
+            state_operations=[
+                migrations.RemoveField(
+                    model_name='referralrequest',
+                    name='contact',
+                ),
+            ],
         ),
-        migrations.RemoveIndex(
-            model_name='referralrequest',
-            name='core_referr_contact_7879d3_idx',
+        migrations.SeparateDatabaseAndState(
+            database_operations=[drop_column_if_exists('core_referralrequest', 'job_id')],
+            state_operations=[
+                migrations.RemoveField(
+                    model_name='referralrequest',
+                    name='job',
+                ),
+            ],
         ),
-        migrations.RemoveIndex(
-            model_name='referralrequest',
-            name='core_referr_user_id_b6ee03_idx',
-        ),
-        migrations.RemoveIndex(
-            model_name='referralrequest',
-            name='core_referr_user_id_bb95d6_idx',
-        ),
-        # Now remove the fields
-        migrations.RemoveField(
-            model_name='referraloutcome',
-            name='referral_request',
-        ),
-        migrations.RemoveField(
-            model_name='referralrequest',
-            name='contact',
-        ),
-        migrations.RemoveField(
-            model_name='referralrequest',
-            name='job',
-        ),
-        migrations.RemoveField(
-            model_name='referralrequest',
-            name='user',
+        migrations.SeparateDatabaseAndState(
+            database_operations=[drop_column_if_exists('core_referralrequest', 'user_id')],
+            state_operations=[
+                migrations.RemoveField(
+                    model_name='referralrequest',
+                    name='user',
+                ),
+            ],
         ),
         # Use custom function to safely rename indexes
         migrations.RunPython(rename_indexes_if_exist, reverse_rename_indexes),
@@ -130,10 +156,20 @@ class Migration(migrations.Migration):
             name='company_name',
             field=models.CharField(blank=True, max_length=180),
         ),
-        migrations.DeleteModel(
-            name='ReferralOutcome',
+        migrations.SeparateDatabaseAndState(
+            database_operations=[drop_table_if_exists('core_referraloutcome')],
+            state_operations=[
+                migrations.DeleteModel(
+                    name='ReferralOutcome',
+                ),
+            ],
         ),
-        migrations.DeleteModel(
-            name='ReferralRequest',
+        migrations.SeparateDatabaseAndState(
+            database_operations=[drop_table_if_exists('core_referralrequest')],
+            state_operations=[
+                migrations.DeleteModel(
+                    name='ReferralRequest',
+                ),
+            ],
         ),
     ]
