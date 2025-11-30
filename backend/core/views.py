@@ -14844,6 +14844,23 @@ def _calculate_practice_engagement(candidate, days=30):
     }
 
 
+def _build_practice_recommendations(practice_stats):
+    """Generate simple coaching suggestions based on practice mix and scores."""
+    recs = []
+    categories = practice_stats.get('categories') or []
+    for cat in categories:
+        label = cat.get('category') or 'General'
+        count = cat.get('count') or 0
+        avg = cat.get('average_score')
+        if count < 3:
+            recs.append(f"Add more {label.lower()} practice (only {count} recent sessions). Aim for 3-5 reps this week.")
+        elif avg is not None and avg < 70:
+            recs.append(f"Focus on {label.lower()} answers; average score {avg}. Review frameworks and practice 3 targeted questions.")
+    if not recs:
+        recs.append("Keep a balanced mix of practice. Maintain streaks and revisit weakest topics weekly.")
+    return recs
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def mentorship_relationship_analytics(request, team_member_id):
@@ -14862,12 +14879,14 @@ def mentorship_relationship_analytics(request, team_member_id):
     timing = _calculate_candidate_time_to_response(candidate)
     volume = _calculate_candidate_weekly_volume(candidate)
     practice = _calculate_practice_engagement(candidate)
+    practice_recs = _build_practice_recommendations(practice)
 
     return Response({
         'funnel_analytics': funnel,
         'time_to_response': timing,
         'volume_patterns': volume,
         'practice_engagement': practice,
+        'practice_recommendations': practice_recs,
     })
 
 

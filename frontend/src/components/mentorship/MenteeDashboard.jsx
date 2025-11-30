@@ -663,71 +663,83 @@ const MentorshipMenteeDashboard = () => {
         {analyticsError && <div className="mentorship-alert mentorship-alert--error">{analyticsError}</div>}
         {!analytics && analyticsLoading && <LoadingSpinner />}
         {analytics && (
-          <div className="mentorship-analytics-grid">
-            <div className="mentorship-analytic-card">
-              <p className="mentorship-card__eyebrow">Funnel</p>
-              <h4>{analytics.funnel_analytics?.total_applications || 0} applications</h4>
-              <div className="mentorship-funnel-stats">
-                {Object.entries(analytics.funnel_analytics?.status_breakdown || {}).map(([key, val]) => (
-                  <div key={key} className="mentorship-funnel-row">
-                    <span className="muted">{formatStageLabel(key)}</span>
-                    <span>{val}</span>
+          <>
+            <div className="mentorship-analytics-grid">
+              <div className="mentorship-analytic-card">
+                <p className="mentorship-card__eyebrow">Funnel</p>
+                <h4>{analytics.funnel_analytics?.total_applications || 0} applications</h4>
+                <div className="mentorship-funnel-stats">
+                  {Object.entries(analytics.funnel_analytics?.status_breakdown || {}).map(([key, val]) => (
+                    <div key={key} className="mentorship-funnel-row">
+                      <span className="muted">{formatStageLabel(key)}</span>
+                      <span>{val}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mentorship-funnel-rates">
+                  <span>Response {analytics.funnel_analytics?.response_rate || 0}%</span>
+                  <span>Interview {analytics.funnel_analytics?.interview_rate || 0}%</span>
+                  <span>Offer {analytics.funnel_analytics?.offer_rate || 0}%</span>
+                </div>
+              </div>
+              <div className="mentorship-analytic-card">
+                <p className="mentorship-card__eyebrow">Stage timing</p>
+                <ul className="mentorship-timing-list">
+                  <li>
+                    <span>Application → Response</span>
+                    <strong>{formatTiming(analytics.time_to_response?.avg_application_to_response_days)}</strong>
+                  </li>
+                  <li>
+                    <span>Application → Interview</span>
+                    <strong>{formatTiming(analytics.time_to_response?.avg_application_to_interview_days)}</strong>
+                  </li>
+                  <li>
+                    <span>Interview → Offer</span>
+                    <strong>{formatTiming(analytics.time_to_response?.avg_interview_to_offer_days)}</strong>
+                  </li>
+                </ul>
+              </div>
+              <div className="mentorship-analytic-card">
+                <p className="mentorship-card__eyebrow">Practice engagement</p>
+                <div className="mentorship-practice-stats">
+                  <div>
+                    <p className="muted">Sessions (30d)</p>
+                    <h4>{analytics.practice_engagement?.total_sessions || 0}</h4>
                   </div>
-                ))}
-              </div>
-              <div className="mentorship-funnel-rates">
-                <span>Response {analytics.funnel_analytics?.response_rate || 0}%</span>
-                <span>Interview {analytics.funnel_analytics?.interview_rate || 0}%</span>
-                <span>Offer {analytics.funnel_analytics?.offer_rate || 0}%</span>
+                  <div>
+                    <p className="muted">Last 7d</p>
+                    <h4>{analytics.practice_engagement?.last_7_days || 0}</h4>
+                  </div>
+                  <div>
+                    <p className="muted">Avg score</p>
+                    <h4>{analytics.practice_engagement?.average_score ?? '—'}</h4>
+                  </div>
+                </div>
+                {analytics.practice_engagement?.focus_categories?.length > 0 && (
+                  <div className="mentorship-practice-focus">
+                    <p className="muted">Focus areas</p>
+                    <ul>
+                      {analytics.practice_engagement.focus_categories.map((cat) => (
+                        <li key={cat.category}>
+                          {formatStageLabel(cat.category)} — {cat.average_score ?? '—'} avg ({cat.count} sessions)
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
-            <div className="mentorship-analytic-card">
-              <p className="mentorship-card__eyebrow">Stage timing</p>
-              <ul className="mentorship-timing-list">
-                <li>
-                  <span>Application → Response</span>
-                  <strong>{formatTiming(analytics.time_to_response?.avg_application_to_response_days)}</strong>
-                </li>
-                <li>
-                  <span>Application → Interview</span>
-                  <strong>{formatTiming(analytics.time_to_response?.avg_application_to_interview_days)}</strong>
-                </li>
-                <li>
-                  <span>Interview → Offer</span>
-                  <strong>{formatTiming(analytics.time_to_response?.avg_interview_to_offer_days)}</strong>
-                </li>
-              </ul>
-            </div>
-            <div className="mentorship-analytic-card">
-              <p className="mentorship-card__eyebrow">Practice engagement</p>
-              <div className="mentorship-practice-stats">
-                <div>
-                  <p className="muted">Sessions (30d)</p>
-                  <h4>{analytics.practice_engagement?.total_sessions || 0}</h4>
-                </div>
-                <div>
-                  <p className="muted">Last 7d</p>
-                  <h4>{analytics.practice_engagement?.last_7_days || 0}</h4>
-                </div>
-                <div>
-                  <p className="muted">Avg score</p>
-                  <h4>{analytics.practice_engagement?.average_score ?? '—'}</h4>
-                </div>
+            {analytics.practice_recommendations?.length > 0 && (
+              <div className="mentorship-analytic-card mentorship-analytic-card--full">
+                <p className="mentorship-card__eyebrow">Practice recommendations</p>
+                <ul className="mentorship-recommendations">
+                  {analytics.practice_recommendations.map((rec, idx) => (
+                    <li key={idx}>{rec}</li>
+                  ))}
+                </ul>
               </div>
-              {analytics.practice_engagement?.focus_categories?.length > 0 && (
-                <div className="mentorship-practice-focus">
-                  <p className="muted">Focus areas</p>
-                  <ul>
-                    {analytics.practice_engagement.focus_categories.map((cat) => (
-                      <li key={cat.category}>
-                        {formatStageLabel(cat.category)} — {cat.average_score ?? '—'} avg ({cat.count} sessions)
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </div>
+            )}
+          </>
         )}
       </section>
 
