@@ -341,7 +341,7 @@ describe('AiCoverLetterGenerator - Version Restore', () => {
     // After restoring, newer versions should be discarded
   });
 
-  it('discards future versions when restoring an earlier version', () => {
+  it('discards future versions when restoring an earlier version', async () => {
     const mockVersions = {
       versions: [
         { timestamp: 1, content: { opening_paragraph: 'V1' }, label: 'Version 1' },

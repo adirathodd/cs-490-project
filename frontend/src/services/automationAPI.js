@@ -55,11 +55,11 @@ class AutomationAPI {
       return {};
     } catch (error) {
       console.error(`API request failed: ${endpoint}`, error);
-      if (error?.message === 'Network error' || error?.name === 'TypeError') {
-        throw new Error('Network error');
-      }
       if (error?.status) {
         throw new Error(error.message || `HTTP ${error.status}`);
+      }
+      if (error?.message === 'Network error' || error?.name === 'TypeError') {
+        throw new Error('Network error');
       }
       throw error;
     }
