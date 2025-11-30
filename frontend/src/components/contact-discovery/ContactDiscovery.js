@@ -23,21 +23,32 @@ const ContactDiscovery = () => {
   const loadSuggestions = async () => {
     try {
       setLoading(true);
+      setError(null);
       const params = {};
       if (filterType !== 'all') params.type = filterType;
       if (filterStatus !== 'all') params.status = filterStatus;
       
       const response = await api.get('/contact-suggestions', { params });
       setSuggestions(Array.isArray(response.data) ? response.data : []);
-      setError(null);
     } catch (err) {
       console.error('Error loading suggestions:', err);
-      // Don't show error for empty results
+      console.error('Error details:', {
+        status: err?.response?.status,
+        statusText: err?.response?.statusText,
+        data: err?.response?.data,
+        message: err?.message
+      });
+      
+      // Handle authentication errors
       if (err?.response?.status === 401) {
         setError('Please log in to view suggestions');
-      } else if (err?.response?.status !== 404) {
-        setError('Failed to load suggestions. Please try again.');
+      } 
+      // Handle other errors (but not 404 which means empty results)
+      else if (err?.response?.status && err?.response?.status !== 404) {
+        const errorMsg = err?.response?.data?.error?.message || err?.response?.data?.message || 'Failed to load suggestions. Please try again.';
+        setError(errorMsg);
       }
+      
       setSuggestions([]);
     } finally {
       setLoading(false);
