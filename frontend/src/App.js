@@ -21,6 +21,7 @@ import Jobs from './components/jobs/Jobs';
 import JobsPipeline from './components/jobs/JobsPipeline';
 import JobStats from './components/jobs/JobStats';
 import Analytics from './components/analytics/Analytics';
+import ApplicationSuccessAnalysis from './components/analytics/ApplicationSuccessAnalysis';
 import JobDetailView from './components/jobs/JobDetailView';
 import JobTimelineView from './components/jobs/JobTimelineView';
 import SalaryResearch from './components/jobs/SalaryResearch';
@@ -28,10 +29,13 @@ import SalaryNegotiation from './components/jobs/SalaryNegotiation';
 import Goals from './components/goals/Goals';
 import ContactsPage from './components/contacts/ContactsPage';
 import NetworkingEvents from './components/networking/NetworkingEvents';
+import InformationalInterviews from './components/informational-interviews/InformationalInterviews';
 import ReferencesPage from './components/references/ReferencesPage';
 import MentorshipDashboard from './components/mentorship/MentorshipDashboard';
 import ReferralManagement from './components/referrals/ReferralManagement';
 import MentorshipMenteeDashboard from './components/mentorship/MenteeDashboard';
+import MarketIntelligence from './components/tools/MarketIntelligence';
+import SalaryProgression from './components/tools/SalaryProgression';
 import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
 import { AiCoverLetterGenerator } from './features/cover-letter';
@@ -43,6 +47,7 @@ import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
 import NavBar from './components/common/NavBar';
 import Breadcrumbs from './components/common/Breadcrumbs';
+import { MockInterviewContainer, QuestionBankBrowser, ResponseCoach, InterviewResearchBrief } from './components/interview';
 import './App.css';
 
 function App() {
@@ -253,6 +258,17 @@ function App() {
           />
 
           <Route
+            path="/analytics/success"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ApplicationSuccessAnalysis />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
             path="/jobs/:id"
             element={
               <PrivateRoute>
@@ -356,6 +372,16 @@ function App() {
             }
           />
           <Route
+            path="/informational-interviews"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <InformationalInterviews />
+              </PrivateRoute>
+            }
+          />
+          <Route
             path="/mentorship"
             element={
               <PrivateRoute>
@@ -400,7 +426,72 @@ function App() {
           />
 
           <Route
+            path="/tools/market-intelligence"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <MarketIntelligence />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/tools/salary-progression"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <SalaryProgression />
+              </PrivateRoute>
+            }
+          />
 
+          {/* Mock Interview and related interview tooling routes (from origin/main) */}
+          <Route
+            path="/mock-interview"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <MockInterviewContainer jobs={[]} />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/question-bank/:jobId"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <QuestionBankBrowser />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/response-coach/:jobId/:questionId"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ResponseCoach />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/interview-research/:jobId"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <InterviewResearchBrief />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
             path="/resume/versions"
             element={
               <PrivateRoute>

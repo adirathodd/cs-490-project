@@ -5,16 +5,32 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from core.models import CandidateProfile, JobEntry, Document
+from core.models import CandidateProfile, JobEntry, Document, JobStatusChange
 from django.db import models
-from django.db.models import Count, Q, F, Case, When, Value, IntegerField, Avg
+from django.db.models import Count, Q, F, Case, When, Value, IntegerField, Avg, FloatField, ExpressionWrapper
 from django.db.models.functions import TruncMonth, TruncDate, Coalesce
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 import logging
 import statistics
 from datetime import datetime, timedelta, date
 
 logger = logging.getLogger(__name__)
+
+JOB_TYPE_PARAM_MAP = {
+    'ft': 'ft',
+    'full_time': 'ft',
+    'full-time': 'ft',
+    'pt': 'pt',
+    'part_time': 'pt',
+    'part-time': 'pt',
+    'contract': 'contract',
+    'contractor': 'contract',
+    'intern': 'intern',
+    'internship': 'intern',
+    'temp': 'temp',
+    'temporary': 'temp',
+}
 
 
 @api_view(['GET'])
@@ -23,32 +39,21 @@ def cover_letter_analytics_view(request):
     """Enhanced analytics endpoint with comprehensive job analytics AND cover letter performance."""
     try:
         profile = CandidateProfile.objects.get(user=request.user)
-        qs = JobEntry.objects.filter(candidate=profile)
-        
-        # 
-# 
-# =
-        # 1. GENERAL ANALYTICS (from original jobs_stats)
-        # 
-# 
-# =
+        qs, filters_applied = _build_filtered_queryset(profile, request.query_params)
+
+        # 1. GENERAL ANALYTICS
         funnel_stats = _calculate_funnel_analytics(qs)
         industry_benchmarks = _calculate_industry_benchmarks(qs)
         response_trends = _calculate_response_trends(qs)
         volume_patterns = _calculate_volume_patterns(qs)
-        goal_progress = _calculate_goal_progress(qs)
+        goal_progress = _calculate_goal_progress(profile)
         insights_recommendations = _calculate_insights_recommendations(qs)
-        
-        # 
-# 
-# =
-        # 2. COVER LETTER ANALYTICS (new)
-        # 
-# 
-# =
+        time_to_response = _calculate_time_to_response(profile, qs)
+        salary_insights = _calculate_salary_insights(qs)
+
+        # 2. COVER LETTER ANALYTICS
         cover_letter_performance = _calculate_cover_letter_analytics(qs)
-        
-        # Return comprehensive response
+
         return Response({
             'funnel_analytics': funnel_stats,
             'industry_benchmarks': industry_benchmarks,
@@ -56,9 +61,12 @@ def cover_letter_analytics_view(request):
             'volume_patterns': volume_patterns,
             'goal_progress': goal_progress,
             'insights_recommendations': insights_recommendations,
-            'cover_letter_performance': cover_letter_performance
+            'cover_letter_performance': cover_letter_performance,
+            'time_to_response': time_to_response,
+            'salary_insights': salary_insights,
+            'filters': filters_applied,
         })
-        
+
     except CandidateProfile.DoesNotExist:
         return Response({
             'funnel_analytics': _empty_funnel_stats(),
@@ -67,7 +75,10 @@ def cover_letter_analytics_view(request):
             'volume_patterns': _empty_volume_patterns(),
             'goal_progress': _empty_goal_progress(),
             'insights_recommendations': [],
-            'cover_letter_performance': _empty_cover_letter_analytics()
+            'cover_letter_performance': _empty_cover_letter_analytics(),
+            'time_to_response': _empty_time_to_response(),
+            'salary_insights': _empty_salary_insights(),
+            'filters': {},
         })
     except Exception as e:
         logger.error(f"Analytics error: {e}")
@@ -75,6 +86,61 @@ def cover_letter_analytics_view(request):
             {'error': {'code': 'analytics_error', 'message': 'Failed to load analytics data'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_application_targets_view(request):
+    """Allow users to customize weekly/monthly application targets used in analytics."""
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Candidate profile not found'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    weekly_target = request.data.get('weekly_target')
+    monthly_target = request.data.get('monthly_target')
+    if weekly_target is None and monthly_target is None:
+        return Response(
+            {'error': {'message': 'Provide at least one target to update.'}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    errors = {}
+    update_fields = []
+
+    if weekly_target is not None:
+        try:
+            weekly_value = int(weekly_target)
+            if weekly_value <= 0:
+                raise ValueError
+            profile.weekly_application_target = weekly_value
+            update_fields.append('weekly_application_target')
+        except (TypeError, ValueError):
+            errors['weekly_target'] = 'Weekly target must be a positive integer.'
+
+    if monthly_target is not None:
+        try:
+            monthly_value = int(monthly_target)
+            if monthly_value <= 0:
+                raise ValueError
+            profile.monthly_application_target = monthly_value
+            update_fields.append('monthly_application_target')
+        except (TypeError, ValueError):
+            errors['monthly_target'] = 'Monthly target must be a positive integer.'
+
+    if errors:
+        return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    if update_fields:
+        profile.save(update_fields=update_fields)
+
+    return Response({
+        'weekly_target': profile.weekly_application_target,
+        'monthly_target': profile.monthly_application_target,
+    })
 
 
 def _calculate_cover_letter_analytics(qs):
@@ -156,6 +222,68 @@ def _calculate_cover_letter_analytics(qs):
     except Exception as e:
         logger.error(f"Error calculating cover letter analytics: {e}")
         return _empty_cover_letter_analytics()
+
+
+def _calculate_time_to_response(profile, qs):
+    """Calculate average time between stages using status change history."""
+    job_ids = list(qs.values_list('id', flat=True))
+    if not job_ids:
+        return _empty_time_to_response()
+
+    changes = (
+        JobStatusChange.objects.filter(job_id__in=job_ids)
+        .values('job_id', 'new_status', 'changed_at')
+        .order_by('job_id', 'changed_at')
+    )
+
+    job_map = {}
+    for job_id in job_ids:
+        job_map[job_id] = {'application': qs.filter(id=job_id).values_list('created_at', flat=True).first()}
+
+    for change in changes:
+        info = job_map.get(change['job_id'])
+        if not info:
+            continue
+        ts = change['changed_at']
+        status = change['new_status']
+        if status == 'applied' and 'applied' not in info:
+            info['applied'] = ts
+        elif status == 'phone_screen' and 'phone_screen' not in info:
+            info['phone_screen'] = ts
+        elif status == 'interview' and 'interview' not in info:
+            info['interview'] = ts
+        elif status == 'offer' and 'offer' not in info:
+            info['offer'] = ts
+
+    app_to_response = []
+    app_to_interview = []
+    interview_to_offer = []
+
+    for info in job_map.values():
+        applied_time = info.get('applied', info.get('application'))
+        first_response = info.get('phone_screen') or info.get('interview') or info.get('offer')
+        if applied_time and first_response:
+            app_to_response.append((first_response - applied_time).total_seconds() / 86400.0)
+
+        if applied_time and info.get('interview'):
+            app_to_interview.append((info['interview'] - applied_time).total_seconds() / 86400.0)
+
+        if info.get('interview') and info.get('offer'):
+            interview_to_offer.append((info['offer'] - info['interview']).total_seconds() / 86400.0)
+
+    def _avg(values):
+        return round(sum(values) / len(values), 1) if values else None
+
+    return {
+        'avg_application_to_response_days': _avg(app_to_response),
+        'avg_application_to_interview_days': _avg(app_to_interview),
+        'avg_interview_to_offer_days': _avg(interview_to_offer),
+        'samples': {
+            'application_to_response': len(app_to_response),
+            'application_to_interview': len(app_to_interview),
+            'interview_to_offer': len(interview_to_offer),
+        },
+    }
 
 
 def _calculate_funnel_analytics(qs):
@@ -260,17 +388,18 @@ def _calculate_goal_progress(qs):
     today = timezone.now().date()
     week_start = today - timedelta(days=today.weekday())
     month_start = today.replace(day=1)
-    
-    # Weekly goal (example: 5 applications per week)
-    weekly_target = 5
-    weekly_current = qs.filter(created_at__date__gte=week_start).count()
-    weekly_progress = round((weekly_current / weekly_target) * 100, 1)
-    
-    # Monthly goal (example: 20 applications per month)
-    monthly_target = 20
-    monthly_current = qs.filter(created_at__date__gte=month_start).count()
-    monthly_progress = round((monthly_current / monthly_target) * 100, 1)
-    
+
+    # qs may be queryset or profile; handle both
+    entries = qs.job_entries.all() if hasattr(qs, 'job_entries') else qs
+    weekly_target = getattr(qs, 'weekly_application_target', None) or 5
+    monthly_target = getattr(qs, 'monthly_application_target', None) or 20
+
+    weekly_current = entries.filter(created_at__date__gte=week_start).count()
+    weekly_progress = round((weekly_current / weekly_target) * 100, 1) if weekly_target else 0
+
+    monthly_current = entries.filter(created_at__date__gte=month_start).count()
+    monthly_progress = round((monthly_current / monthly_target) * 100, 1) if monthly_target else 0
+
     return {
         'weekly_goal': {
             'target': weekly_target,
@@ -367,6 +496,125 @@ def _calculate_insights_recommendations(qs):
     }
 
 
+def _calculate_salary_insights(qs):
+    annotated_qs = qs.annotate(avg_salary=_avg_salary_expression()).filter(avg_salary__isnull=False)
+    total = annotated_qs.count()
+    if not total:
+        return _empty_salary_insights()
+
+    average_salary = annotated_qs.aggregate(avg=Avg('avg_salary'))['avg'] or 0
+    interviews = annotated_qs.filter(status__in=['interview', 'offer']).count()
+    offers = annotated_qs.filter(status='offer').count()
+    interview_rate = round((interviews / total) * 100, 1) if total else 0
+    offer_rate = round((offers / total) * 100, 1) if total else 0
+
+    return {
+        'average_salary': round(average_salary, 2) if average_salary else 0,
+        'applications': total,
+        'interview_rate': interview_rate,
+        'offer_rate': offer_rate,
+    }
+
+
+def _build_filtered_queryset(profile, params):
+    qs = JobEntry.objects.filter(candidate=profile)
+    filters_applied = {}
+    params = params or {}
+
+    start_date = _parse_date_param(params.get('start_date'))
+    if start_date:
+        qs = qs.filter(created_at__date__gte=start_date)
+        filters_applied['start_date'] = start_date.isoformat()
+
+    end_date = _parse_date_param(params.get('end_date'))
+    if end_date:
+        qs = qs.filter(created_at__date__lte=end_date)
+        filters_applied['end_date'] = end_date.isoformat()
+
+    job_type_codes = _normalize_job_type_filters(params)
+    if job_type_codes:
+        qs = qs.filter(job_type__in=job_type_codes)
+        filters_applied['job_types'] = job_type_codes
+
+    salary_min = _parse_float_param(params.get('salary_min'))
+    salary_max = _parse_float_param(params.get('salary_max'))
+    avg_salary_expr = _avg_salary_expression()
+
+    if salary_min is not None or salary_max is not None:
+        qs = qs.annotate(avg_salary=avg_salary_expr)
+        if salary_min is not None:
+            qs = qs.filter(avg_salary__gte=salary_min)
+            filters_applied['salary_min'] = salary_min
+        if salary_max is not None:
+            qs = qs.filter(avg_salary__lte=salary_max)
+            filters_applied['salary_max'] = salary_max
+
+    return qs, filters_applied
+
+
+def _parse_date_param(value):
+    if not value:
+        return None
+    parsed = parse_date(value)
+    if parsed:
+        return parsed
+    try:
+        value = value.replace('Z', '+00:00')
+        return datetime.fromisoformat(value).date()
+    except ValueError:
+        return None
+
+
+def _parse_float_param(value):
+    if value in (None, ''):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_job_type_filters(params):
+    raw_values = []
+    if hasattr(params, 'getlist'):
+        raw_values = params.getlist('job_types')
+    if not raw_values:
+        single_value = params.get('job_types') if hasattr(params, 'get') else None
+        if isinstance(single_value, (list, tuple)):
+            raw_values = list(single_value)
+        elif isinstance(single_value, str):
+            raw_values = [v.strip() for v in single_value.split(',') if v.strip()]
+    normalized = []
+    for value in raw_values:
+        key = value.lower()
+        code = JOB_TYPE_PARAM_MAP.get(key)
+        if code:
+            normalized.append(code)
+    return list(dict.fromkeys(normalized))
+
+
+def _avg_salary_expression():
+    return Case(
+        When(
+            salary_min__isnull=False,
+            salary_max__isnull=False,
+            then=ExpressionWrapper((F('salary_min') + F('salary_max')) / 2.0, output_field=FloatField()),
+        ),
+        When(
+            salary_min__isnull=False,
+            salary_max__isnull=True,
+            then=ExpressionWrapper(F('salary_min'), output_field=FloatField()),
+        ),
+        When(
+            salary_max__isnull=False,
+            salary_min__isnull=True,
+            then=ExpressionWrapper(F('salary_max'), output_field=FloatField()),
+        ),
+        default=Value(None),
+        output_field=FloatField(),
+    )
+
+
 # Empty state functions
 def _empty_cover_letter_analytics():
     return {
@@ -375,6 +623,26 @@ def _empty_cover_letter_analytics():
         'best_performing_tone': None,
         'worst_performing_tone': None,
         'insights': ['No cover letters with analytics data found']
+    }
+
+def _empty_time_to_response():
+    return {
+        'avg_application_to_response_days': None,
+        'avg_application_to_interview_days': None,
+        'avg_interview_to_offer_days': None,
+        'samples': {
+            'application_to_response': 0,
+            'application_to_interview': 0,
+            'interview_to_offer': 0,
+        },
+    }
+
+def _empty_salary_insights():
+    return {
+        'average_salary': 0,
+        'applications': 0,
+        'interview_rate': 0,
+        'offer_rate': 0,
     }
 
 def _empty_funnel_stats():

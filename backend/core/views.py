@@ -26,7 +26,6 @@ from django.conf import settings
 from django.utils.text import slugify
 from django.conf import settings
 from core.authentication import FirebaseAuthentication
-from core.interview_performance import InterviewPerformanceAnalyticsService
 from core.serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
@@ -89,6 +88,16 @@ from core.serializers import (
     ReferencePortfolioSerializer,
     ReferencePortfolioListSerializer,
 
+    ReferralSerializer,
+    ProfessionalReferenceSerializer,
+    ProfessionalReferenceListSerializer,
+    ReferenceRequestSerializer,
+    ReferenceRequestCreateSerializer,
+    ReferenceTemplateSerializer,
+    ReferenceAppreciationSerializer,
+    ReferencePortfolioSerializer,
+    ReferencePortfolioListSerializer,
+
 )
 from core.models import (
     CandidateProfile,
@@ -133,6 +142,7 @@ from core.models import (
     MutualConnection,
     ContactCompanyLink,
     ContactJobLink,
+    InformationalInterview,
     NetworkingEvent,
     EventGoal,
     EventConnection,
@@ -273,7 +283,10 @@ def referrals_list_create(request):
                 first_name=data.get('referral_source_first_name', ''),
                 last_name=data.get('referral_source_last_name', ''),
                 title=data.get('referral_source_title', ''),
-                email=data.get('referral_source_email', '')
+                company_name=data.get('referral_source_company', ''),
+                email=data.get('referral_source_email', ''),
+                phone=data.get('referral_source_phone', ''),
+                linkedin_url=data.get('referral_source_linkedin', '')
             )
 
     if not contact:
@@ -4729,6 +4742,44 @@ def jobs_stats(request):
         return Response({'error': {'code': 'internal_error', 'message': 'Failed to compute job stats.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def application_success_analysis(request):
+    """
+    UC-097: Application Success Rate Analysis
+    
+    Provides comprehensive analysis of job application success patterns including:
+    - Overall metrics (response rate, interview rate, offer rate)
+    - Success rates by industry, company size, role type
+    - Comparison of application sources and methods
+    - Impact of resume/cover letter customization
+    - Timing pattern analysis (best days/times to apply)
+    - Actionable recommendations for improvement
+    """
+    try:
+        from core.application_analytics import ApplicationSuccessAnalyzer
+        
+        profile = CandidateProfile.objects.get(user=request.user)
+        analyzer = ApplicationSuccessAnalyzer(profile)
+        
+        # Get complete analysis
+        analysis = analyzer.get_complete_analysis()
+        
+        return Response(analysis, status=status.HTTP_200_OK)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Candidate profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.exception(f"Error in application_success_analysis: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to compute success analysis.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def jobs_bulk_status(request):
@@ -8116,7 +8167,18 @@ def salary_negotiation_outcomes(request, job_id):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    if not any([company_offer, counter_amount, final_result]):
+    # Base components (optional)
+    try:
+        base_salary = Decimal(payload.get('base_salary')) if payload.get('base_salary') not in (None, '', 'null') else None
+        bonus = Decimal(payload.get('bonus')) if payload.get('bonus') not in (None, '', 'null') else None
+        equity = Decimal(payload.get('equity')) if payload.get('equity') not in (None, '', 'null') else None
+    except (InvalidOperation, TypeError):
+        return Response(
+            {'error': {'code': 'invalid_payload', 'message': 'Base, bonus, and equity must be valid numbers.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not any([company_offer, counter_amount, final_result, base_salary, bonus, equity]):
         return Response(
             {'error': {'code': 'missing_amount', 'message': 'Provide at least one compensation amount.'}},
             status=status.HTTP_400_BAD_REQUEST
@@ -8131,15 +8193,24 @@ def salary_negotiation_outcomes(request, job_id):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    computed_total = None
+    if total_comp is None:
+        # Prefer explicit base salary; fall back to final/counter/company offers
+        base_for_total = base_salary or final_result or counter_amount or company_offer
+        components = [base_for_total, bonus, equity]
+        computed_total = sum([val for val in components if val is not None]) if any(components) else None
     outcome = SalaryNegotiationOutcome.objects.create(
         job=job,
         plan=plan,
         stage=stage,
         status=status_value,
+        base_salary=base_salary,
+        bonus=bonus,
+        equity=equity,
         company_offer=company_offer,
         counter_amount=counter_amount,
         final_result=final_result,
-        total_comp_value=total_comp,
+        total_comp_value=total_comp if total_comp is not None else computed_total,
         leverage_used=payload.get('leverage_used', ''),
         confidence_score=confidence_score,
         notes=payload.get('notes', ''),
@@ -8149,19 +8220,59 @@ def salary_negotiation_outcomes(request, job_id):
 
 
 def _serialize_outcome(outcome):
+    def positive_or_none(val):
+        try:
+            num = float(val)
+        except (TypeError, ValueError):
+            return None
+        return num if num > 0 else None
+
     return {
         'id': outcome.id,
         'stage': outcome.stage,
         'status': outcome.status,
-        'company_offer': float(outcome.company_offer) if outcome.company_offer is not None else None,
-        'counter_amount': float(outcome.counter_amount) if outcome.counter_amount is not None else None,
-        'final_result': float(outcome.final_result) if outcome.final_result is not None else None,
-        'total_comp_value': float(outcome.total_comp_value) if outcome.total_comp_value is not None else None,
+        'base_salary': positive_or_none(outcome.base_salary),
+        'bonus': positive_or_none(outcome.bonus),
+        'equity': positive_or_none(outcome.equity),
+        'company_offer': positive_or_none(outcome.company_offer),
+        'counter_amount': positive_or_none(outcome.counter_amount),
+        'final_result': positive_or_none(outcome.final_result),
+        'total_comp_value': positive_or_none(outcome.total_comp_value),
         'leverage_used': outcome.leverage_used,
         'confidence_score': outcome.confidence_score,
         'notes': outcome.notes,
         'created_at': outcome.created_at.isoformat(),
     }
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def salary_negotiation_outcome_detail(request, job_id, outcome_id):
+    """Delete a specific negotiation outcome."""
+    from core.models import CandidateProfile, JobEntry, SalaryNegotiationOutcome
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_required', 'message': 'Candidate profile required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    outcome = SalaryNegotiationOutcome.objects.filter(id=outcome_id, job=job).first()
+    if not outcome:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Outcome not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    outcome.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # 
@@ -10942,26 +11053,42 @@ def interview_success_forecast(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def interview_performance_analytics(request):
-    """UC-080: Interview performance analytics dashboard."""
+def interview_performance_tracking(request):
+    """
+    UC-098: Interview Performance Tracking
+    
+    Provides detailed analytics on interview performance including:
+    - Interview-to-offer conversion rates over time
+    - Performance by interview format and type
+    - Improvement trends from mock to real interviews
+    - Industry and company culture comparisons
+    - Feedback themes and improvement areas
+    - Confidence progression and anxiety management
+    - Personalized coaching recommendations
+    - Benchmarking against successful patterns
+    """
     try:
+        from core.interview_performance_tracking import InterviewPerformanceTracker
+        
         candidate = request.user.profile
+        tracker = InterviewPerformanceTracker(candidate)
+        
+        # Get complete performance analysis
+        analysis = tracker.get_complete_analysis()
+        
+        return Response(analysis, status=status.HTTP_200_OK)
+        
     except CandidateProfile.DoesNotExist:
         return Response(
-            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
-            status=status.HTTP_404_NOT_FOUND,
+            {'error': {'code': 'profile_not_found', 'message': 'Candidate profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
         )
-
-    service = InterviewPerformanceAnalyticsService(candidate)
-    try:
-        payload = service.build()
-    except Exception as exc:  # pragma: no cover - safety net
-        logger.exception('Interview performance analytics failed: %s', exc)
+    except Exception as e:
+        logger.exception(f"Error in interview_performance_tracking: {e}")
         return Response(
-            {'error': {'code': 'analytics_error', 'message': 'Unable to build interview analytics.'}},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            {'error': {'code': 'internal_error', 'message': 'Failed to generate performance tracking analysis.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-    return Response(payload, status=status.HTTP_200_OK)
 
 
 def generate_preparation_tasks(interview):
@@ -14784,4 +14911,1188 @@ def linkedin_integration_status(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+
+# ================================================================================
+# UC-077: Mock Interview Practice Sessions
+# ================================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def start_mock_interview(request):
+    """
+    UC-077: Start a new mock interview session.
+    
+    Expected payload:
+    {
+        "job_id": <optional job entry id>,
+        "interview_type": "behavioral|technical|case_study|mixed",
+        "difficulty_level": "entry|mid|senior|executive",
+        "question_count": 5,
+        "focus_areas": ["leadership", "problem-solving"]
+    }
+    """
+    from core.mock_interview import MockInterviewGenerator
+    from core.models import MockInterviewSession, MockInterviewQuestion, JobEntry
+    from core.serializers import MockInterviewSessionSerializer
+    
+    user = request.user
+    data = request.data
+    
+    # Validate and get job if specified
+    job = None
+    job_title = None
+    job_description = None
+    if 'job_id' in data and data['job_id']:
+        try:
+            job = JobEntry.objects.get(id=data['job_id'], candidate=user.profile)
+            job_title = job.position_title
+            job_description = job.description
+        except JobEntry.DoesNotExist:
+            return Response(
+                {'error': 'Job not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    # Extract parameters with defaults
+    interview_type = data.get('interview_type', 'behavioral')
+    difficulty_level = data.get('difficulty_level', 'mid')
+    question_count = int(data.get('question_count', 5))
+    focus_areas = data.get('focus_areas', [])
+    
+    # Validate interview_type
+    valid_types = ['behavioral', 'technical', 'case_study', 'mixed']
+    if interview_type not in valid_types:
+        return Response(
+            {'error': f'Invalid interview_type. Must be one of: {", ".join(valid_types)}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Create the session
+    session = MockInterviewSession.objects.create(
+        user=user,
+        job=job,
+        interview_type=interview_type,
+        status='in_progress',
+        question_count=question_count,
+        difficulty_level=difficulty_level,
+        focus_areas=focus_areas
+    )
+    
+    try:
+        # Generate questions using AI
+        generator = MockInterviewGenerator()
+        questions_data = generator.generate_questions(
+            interview_type=interview_type,
+            difficulty_level=difficulty_level,
+            focus_areas=focus_areas,
+            job_title=job_title,
+            job_description=job_description,
+            count=question_count
+        )
+        
+        # Create question objects
+        for i, q_data in enumerate(questions_data, 1):
+            MockInterviewQuestion.objects.create(
+                session=session,
+                question_number=i,
+                question_text=q_data['question'],
+                question_category=q_data.get('category', 'general'),
+                suggested_framework=q_data.get('framework', 'STAR'),
+                ideal_answer_points=q_data.get('ideal_points', [])
+            )
+        
+        # Return session with all questions
+        serializer = MockInterviewSessionSerializer(session)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    except Exception as e:
+        # If question generation fails, delete the session
+        session.delete()
+        return Response(
+            {'error': f'Failed to generate interview questions: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def submit_mock_interview_answer(request):
+    """
+    UC-077: Submit an answer to a mock interview question.
+    
+    Expected payload:
+    {
+        "session_id": <uuid>,
+        "question_number": 1,
+        "answer": "In my previous role..."
+    }
+    """
+    from core.mock_interview import MockInterviewCoach
+    from core.models import MockInterviewSession, MockInterviewQuestion
+    from core.serializers import MockInterviewQuestionSerializer
+    
+    user = request.user
+    data = request.data
+    
+    session_id = data.get('session_id')
+    question_number = data.get('question_number')
+    answer = data.get('answer', '').strip()
+    
+    if not session_id or not question_number:
+        return Response(
+            {'error': 'session_id and question_number are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if not answer:
+        return Response(
+            {'error': 'Answer cannot be empty'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        # Get session and verify ownership
+        session = MockInterviewSession.objects.get(id=session_id, user=user)
+        
+        if session.status != 'in_progress':
+            return Response(
+                {'error': 'This interview session is not active'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get the question
+        question = MockInterviewQuestion.objects.get(
+            session=session,
+            question_number=question_number
+        )
+        
+        # Submit the answer
+        question.submit_answer(answer)
+        
+        # Evaluate the answer using AI
+        coach = MockInterviewCoach()
+        evaluation = coach.evaluate_answer(
+            question=question.question_text,
+            answer=answer,
+            ideal_points=question.ideal_answer_points,
+            framework=question.suggested_framework,
+            category=question.question_category
+        )
+        
+        # Save evaluation results
+        question.answer_score = evaluation['score']
+        question.ai_feedback = evaluation['feedback']
+        question.strengths = evaluation['strengths']
+        question.improvements = evaluation['improvements']
+        question.keyword_coverage = evaluation['keyword_coverage']
+        question.save()
+        
+        # Return updated question with evaluation
+        serializer = MockInterviewQuestionSerializer(question)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    except MockInterviewSession.DoesNotExist:
+        return Response(
+            {'error': 'Session not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    except MockInterviewQuestion.DoesNotExist:
+        return Response(
+            {'error': 'Question not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to evaluate answer: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# -------------------------
+# Mentorship analytics (per mentee)
+# -------------------------
+
+
+def _calculate_candidate_funnel(candidate):
+    from core.models import JobEntry
+    qs = JobEntry.objects.filter(candidate=candidate)
+    total = qs.count()
+    status_counts = {
+        'interested': qs.filter(status='interested').count(),
+        'applied': qs.filter(status='applied').count(),
+        'phone_screen': qs.filter(status='phone_screen').count(),
+        'interview': qs.filter(status='interview').count(),
+        'offer': qs.filter(status='offer').count(),
+        'rejected': qs.filter(status='rejected').count(),
+    }
+    applied_plus = status_counts['applied'] + status_counts['phone_screen'] + status_counts['interview'] + status_counts['offer']
+    responded = status_counts['phone_screen'] + status_counts['interview'] + status_counts['offer']
+    response_rate = round((responded / applied_plus) * 100, 1) if applied_plus else 0
+    interview_rate = round(((status_counts['interview'] + status_counts['offer']) / applied_plus) * 100, 1) if applied_plus else 0
+    offer_rate = round((status_counts['offer'] / applied_plus) * 100, 1) if applied_plus else 0
+    success_rate = round((status_counts['offer'] / total) * 100, 1) if total else 0
+    return {
+        'total_applications': total,
+        'status_breakdown': status_counts,
+        'response_rate': response_rate,
+        'interview_rate': interview_rate,
+        'offer_rate': offer_rate,
+        'success_rate': success_rate,
+    }
+
+
+def _calculate_candidate_time_to_response(candidate):
+    from core.models import JobEntry, JobStatusChange
+    job_ids = list(JobEntry.objects.filter(candidate=candidate).values_list('id', flat=True))
+    if not job_ids:
+        return {
+            'avg_application_to_response_days': None,
+            'avg_application_to_interview_days': None,
+            'avg_interview_to_offer_days': None,
+            'samples': {'application_to_response': 0, 'application_to_interview': 0, 'interview_to_offer': 0},
+        }
+    changes = (
+        JobStatusChange.objects.filter(job_id__in=job_ids)
+        .values('job_id', 'new_status', 'changed_at')
+        .order_by('job_id', 'changed_at')
+    )
+    job_map = {job_id: {'application': JobEntry.objects.filter(id=job_id).values_list('created_at', flat=True).first()} for job_id in job_ids}
+    for change in changes:
+        info = job_map.get(change['job_id'])
+        if not info:
+            continue
+        ts = change['changed_at']
+        status = change['new_status']
+        if status == 'applied' and 'applied' not in info:
+            info['applied'] = ts
+        elif status == 'phone_screen' and 'phone_screen' not in info:
+            info['phone_screen'] = ts
+        elif status == 'interview' and 'interview' not in info:
+            info['interview'] = ts
+        elif status == 'offer' and 'offer' not in info:
+            info['offer'] = ts
+    app_to_response = []
+    app_to_interview = []
+    interview_to_offer = []
+    for info in job_map.values():
+        applied_time = info.get('applied', info.get('application'))
+        first_response = info.get('phone_screen') or info.get('interview') or info.get('offer')
+        if applied_time and first_response:
+            app_to_response.append((first_response - applied_time).total_seconds() / 86400.0)
+        if applied_time and info.get('interview'):
+            app_to_interview.append((info['interview'] - applied_time).total_seconds() / 86400.0)
+        if info.get('interview') and info.get('offer'):
+            interview_to_offer.append((info['offer'] - info['interview']).total_seconds() / 86400.0)
+    def _avg(values):
+        return round(sum(values) / len(values), 1) if values else None
+    return {
+        'avg_application_to_response_days': _avg(app_to_response),
+        'avg_application_to_interview_days': _avg(app_to_interview),
+        'avg_interview_to_offer_days': _avg(interview_to_offer),
+        'samples': {
+            'application_to_response': len(app_to_response),
+            'application_to_interview': len(app_to_interview),
+            'interview_to_offer': len(interview_to_offer),
+        },
+    }
+
+
+def _calculate_candidate_weekly_volume(candidate):
+    from django.db.models import Count
+    from django.db.models.functions import TruncDate
+    weekly = (
+        JobEntry.objects.filter(candidate=candidate)
+        .annotate(week=TruncDate('created_at'))
+        .values('week')
+        .annotate(count=Count('id'))
+        .order_by('-week')[:8]
+    )
+    weekly_volume = [
+        {'week': row['week'].isoformat() if row['week'] else '', 'count': row['count']}
+        for row in weekly
+    ]
+    avg_weekly = round(sum(row['count'] for row in weekly_volume) / len(weekly_volume), 1) if weekly_volume else 0
+    return {'weekly_volume': weekly_volume[::-1], 'avg_weekly': avg_weekly, 'total_applications': sum(row['count'] for row in weekly_volume)}
+
+
+def _calculate_practice_engagement(candidate, days=30):
+    from core.models import QuestionResponseCoaching
+    from django.db.models import Count
+    from django.db.models.functions import TruncDate
+    since = timezone.now() - timedelta(days=days)
+    qs = QuestionResponseCoaching.objects.filter(job__candidate=candidate, created_at__gte=since)
+    total = qs.count()
+    last7 = qs.filter(created_at__gte=timezone.now() - timedelta(days=7)).count()
+    scores = []
+    category_map = {}
+    for entry in qs:
+        category = getattr(entry, 'question_category', '') or 'general'
+        bucket = category_map.setdefault(category, {'count': 0, 'scores': []})
+        bucket['count'] += 1
+        if isinstance(entry.scores, dict):
+            val = entry.scores.get('overall')
+            if isinstance(val, (int, float)):
+                scores.append(float(val))
+                bucket['scores'].append(float(val))
+    avg_score = round(sum(scores) / len(scores), 1) if scores else None
+    category_stats = []
+    for cat, payload in category_map.items():
+        avg = round(sum(payload['scores']) / len(payload['scores']), 1) if payload['scores'] else None
+        category_stats.append({'category': cat, 'count': payload['count'], 'average_score': avg})
+    category_stats.sort(key=lambda x: (x['average_score'] if x['average_score'] is not None else 999, -x['count']))
+    focus_categories = [c for c in category_stats if c.get('average_score') is not None][:3]
+    per_day = (
+        qs.annotate(day=TruncDate('created_at'))
+        .values('day')
+        .annotate(count=Count('id'))
+        .order_by('day')
+    )
+    activity = [{'date': row['day'].isoformat() if row['day'] else '', 'count': row['count']} for row in per_day]
+    return {
+        'total_sessions': total,
+        'last_7_days': last7,
+        'average_score': avg_score,
+        'activity': activity,
+        'categories': category_stats,
+        'focus_categories': focus_categories,
+    }
+
+
+def _build_practice_recommendations(practice_stats):
+    """Generate simple coaching suggestions based on practice mix and scores."""
+    recs = []
+    categories = practice_stats.get('categories') or []
+    for cat in categories:
+        label = cat.get('category') or 'General'
+        count = cat.get('count') or 0
+        avg = cat.get('average_score')
+        if count < 3:
+            recs.append(f"Add more {label.lower()} practice (only {count} recent sessions). Aim for 3-5 reps this week.")
+        elif avg is not None and avg < 70:
+            recs.append(f"Focus on {label.lower()} answers; average score {avg}. Review frameworks and practice 3 targeted questions.")
+    if not recs:
+        recs.append("Keep a balanced mix of practice. Maintain streaks and revisit weakest topics weekly.")
+    return recs
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def mentorship_relationship_analytics(request, team_member_id):
+    """Per-mentee analytics for mentors (funnel, timing, practice engagement)."""
+    try:
+        team_member = TeamMember.objects.select_related('candidate__user', 'user').get(id=team_member_id)
+    except TeamMember.DoesNotExist:
+        return Response({"error": "Mentorship relationship not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    allowed_user_ids = {team_member.user_id, team_member.candidate.user_id}
+    if request.user.id not in allowed_user_ids:
+        return Response({"error": "You do not have access to this mentorship data."}, status=status.HTTP_403_FORBIDDEN)
+
+    candidate = team_member.candidate
+    funnel = _calculate_candidate_funnel(candidate)
+    timing = _calculate_candidate_time_to_response(candidate)
+    volume = _calculate_candidate_weekly_volume(candidate)
+    practice = _calculate_practice_engagement(candidate)
+    practice_recs = _build_practice_recommendations(practice)
+
+    return Response({
+        'funnel_analytics': funnel,
+        'time_to_response': timing,
+        'volume_patterns': volume,
+        'practice_engagement': practice,
+        'practice_recommendations': practice_recs,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def complete_mock_interview(request):
+    """
+    UC-077: Complete a mock interview session and generate summary.
+    
+    Expected payload:
+    {
+        "session_id": <integer>
+    }
+    """
+    from core.mock_interview import MockInterviewCoach
+    from core.models import MockInterviewSession, MockInterviewSummary
+    from core.serializers import MockInterviewSummarySerializer
+    from django.db.models import Avg
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    user = request.user
+    session_id = request.data.get('session_id')
+    
+    if not session_id:
+        return Response(
+            {'error': 'session_id is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        # Get session and verify ownership
+        try:
+            session = MockInterviewSession.objects.get(id=session_id, user=user)
+        except MockInterviewSession.DoesNotExist:
+            return Response(
+                {'error': 'Session not found or you do not have permission to access it'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # If already completed, return existing summary
+        if session.status == 'completed':
+            try:
+                summary = MockInterviewSummary.objects.get(session=session)
+                serializer = MockInterviewSummarySerializer(summary)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            except MockInterviewSummary.DoesNotExist:
+                # Summary doesn't exist, regenerate it
+                logger.warning(f"Session {session_id} marked completed but no summary found. Regenerating.")
+        elif session.status not in ['in_progress', 'completed']:
+            return Response(
+                {'error': f'This interview session cannot be completed (status: {session.status})'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if all questions have been answered
+        total_questions = session.questions.count()
+        answered_questions = session.questions.filter(
+            user_answer__isnull=False
+        ).exclude(user_answer='').count()
+        
+        logger.info(f"Completing session {session_id}: {answered_questions}/{total_questions} answered")
+        
+        if answered_questions < total_questions:
+            return Response(
+                {
+                    'error': 'Not all questions have been answered',
+                    'answered': answered_questions,
+                    'total': total_questions
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Calculate overall score
+        try:
+            overall_score = session.calculate_overall_score()
+            if overall_score is not None:
+                session.overall_score = overall_score
+                logger.info(f"Calculated overall score: {overall_score}")
+        except Exception as e:
+            logger.error(f"Error calculating overall score: {str(e)}")
+            overall_score = 0
+        
+        # Mark session as completed
+        try:
+            session.mark_completed()
+            logger.info(f"Session {session_id} marked as completed")
+        except Exception as e:
+            logger.error(f"Error marking session complete: {str(e)}")
+            raise
+        
+        # Prepare data for summary generation
+        questions = session.questions.all().order_by('question_number')
+        questions_and_answers = [
+            {
+                'question': q.question_text,
+                'category': q.question_category,
+                'answer': q.user_answer,
+                'score': float(q.answer_score or 0),
+                'feedback': q.ai_feedback,
+                'strengths': q.strengths,
+                'improvements': q.improvements
+            }
+            for q in questions
+        ]
+        
+        # Generate comprehensive summary using AI
+        summary_data = {}
+        try:
+            coach = MockInterviewCoach()
+            summary_data = coach.generate_session_summary(
+                questions_and_answers=questions_and_answers,
+                overall_score=float(overall_score or 0),
+                interview_type=session.interview_type
+            )
+            logger.info(f"Successfully generated AI summary for session {session_id}")
+        except Exception as e:
+            logger.error(f"Error generating AI summary: {str(e)}")
+            # Provide fallback summary data
+            summary_data = {
+                'top_strengths': ['Completed all questions', 'Good participation'],
+                'critical_areas': ['Practice more to improve'],
+                'recommended_practice_topics': [session.interview_type],
+                'next_steps': ['Continue practicing', 'Review feedback'],
+                'overall_assessment': f'You completed a {session.interview_type} interview with {answered_questions} questions.',
+                'readiness_level': 'needs_practice' if (overall_score or 0) < 70 else 'nearly_ready',
+                'estimated_interview_readiness': int(overall_score or 0),
+                'improvement_trend': 'stable'
+            }
+        
+        # Calculate performance by category
+        performance_by_category = {}
+        for q in questions:
+            cat = q.question_category or 'general'
+            if cat not in performance_by_category:
+                performance_by_category[cat] = []
+            if q.answer_score:
+                performance_by_category[cat].append(float(q.answer_score))
+        
+        # Average scores per category
+        for cat in performance_by_category:
+            scores = performance_by_category[cat]
+            performance_by_category[cat] = round(sum(scores) / len(scores), 2)
+        
+        # Calculate component scores (simplified)
+        response_quality = float(overall_score) if overall_score else 0
+        communication_score = float(overall_score) * 0.95 if overall_score else 0
+        structure_score = float(overall_score) * 1.05 if overall_score else 0
+        structure_score = min(structure_score, 100)
+        
+        # Compare to previous sessions
+        previous_sessions = MockInterviewSession.objects.filter(
+            user=user,
+            status='completed',
+            interview_type=session.interview_type
+        ).exclude(id=session.id).order_by('-completed_at')[:3]
+        
+        compared_to_previous = {}
+        if previous_sessions.exists():
+            prev_scores = [
+                float(s.overall_score) for s in previous_sessions 
+                if s.overall_score is not None
+            ]
+            if prev_scores:
+                avg_previous = sum(prev_scores) / len(prev_scores)
+                compared_to_previous = {
+                    'average_previous_score': round(avg_previous, 2),
+                    'current_score': float(overall_score or 0),
+                    'improvement': round(float(overall_score or 0) - avg_previous, 2)
+                }
+        
+        # Create summary
+        try:
+            summary = MockInterviewSummary.objects.create(
+                session=session,
+                performance_by_category=performance_by_category,
+                response_quality_score=response_quality,
+                communication_score=communication_score,
+                structure_score=structure_score,
+                top_strengths=summary_data.get('top_strengths', []),
+                critical_areas=summary_data.get('critical_areas', []),
+                recommended_practice_topics=summary_data.get('recommended_practice_topics', []),
+                next_steps=summary_data.get('next_steps', []),
+                overall_assessment=summary_data.get('overall_assessment', ''),
+                readiness_level=summary_data.get('readiness_level', 'needs_practice'),
+                estimated_interview_readiness=summary_data.get('estimated_interview_readiness', int(overall_score or 0)),
+                compared_to_previous_sessions=compared_to_previous,
+                improvement_trend=summary_data.get('improvement_trend', 'stable')
+            )
+            logger.info(f"Successfully created summary for session {session_id}")
+        except Exception as e:
+            logger.error(f"Error creating summary: {str(e)}")
+            raise
+        
+        # Update session with summary insights
+        try:
+            session.strengths = summary_data.get('top_strengths', [])[:3]
+            session.areas_for_improvement = summary_data.get('critical_areas', [])[:3]
+            session.ai_summary = summary_data.get('overall_assessment', '')[:500]
+            session.save()
+        except Exception as e:
+            logger.error(f"Error updating session with insights: {str(e)}")
+            # Non-critical, continue anyway
+        
+        # Return complete summary
+        serializer = MockInterviewSummarySerializer(summary)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.error(f"Unexpected error completing interview {session_id}: {str(e)}", exc_info=True)
+        return Response(
+            {'error': f'Failed to complete interview: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_mock_interviews(request):
+    """
+    UC-077: List all mock interview sessions for the user.
+    
+    Query params:
+    - status: Filter by status (in_progress, completed, abandoned)
+    - interview_type: Filter by type
+    - limit: Number of results (default 20)
+    """
+    from core.models import MockInterviewSession
+    from core.serializers import MockInterviewSessionListSerializer
+    
+    user = request.user
+    
+    # Build query
+    sessions = MockInterviewSession.objects.filter(user=user)
+    
+    # Apply filters
+    status_filter = request.query_params.get('status')
+    if status_filter:
+        sessions = sessions.filter(status=status_filter)
+    
+    type_filter = request.query_params.get('interview_type')
+    if type_filter:
+        sessions = sessions.filter(interview_type=type_filter)
+    
+    # Limit results
+    limit = int(request.query_params.get('limit', 20))
+    sessions = sessions.order_by('-started_at')[:limit]
+    
+    serializer = MockInterviewSessionListSerializer(sessions, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_mock_interview_session(request, session_id):
+    """
+    UC-077: Get details of a specific mock interview session.
+    """
+    from core.models import MockInterviewSession
+    from core.serializers import MockInterviewSessionSerializer
+    
+    user = request.user
+    
+    try:
+        session = MockInterviewSession.objects.get(id=session_id, user=user)
+        serializer = MockInterviewSessionSerializer(session)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except MockInterviewSession.DoesNotExist:
+        return Response(
+            {'error': 'Session not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_mock_interview_summary(request, session_id):
+    """
+    UC-077: Get summary for a completed mock interview session.
+    Auto-generates summary if missing for completed sessions.
+    """
+    from core.models import MockInterviewSession, MockInterviewSummary
+    from core.serializers import MockInterviewSummarySerializer
+    from core.mock_interview import MockInterviewCoach
+    
+    logger = logging.getLogger(__name__)
+    user = request.user
+    
+    try:
+        session = MockInterviewSession.objects.get(id=session_id, user=user)
+        
+        if session.status != 'completed':
+            return Response(
+                {'error': 'Session must be completed to view summary'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            summary = MockInterviewSummary.objects.get(session=session)
+            serializer = MockInterviewSummarySerializer(summary)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except MockInterviewSummary.DoesNotExist:
+            # Summary doesn't exist - generate it now
+            logger.info(f"Generating missing summary for completed session {session_id}")
+            
+            try:
+                # Calculate overall score
+                try:
+                    overall_score = session.calculate_overall_score()
+                except Exception as score_err:
+                    logger.error(f"Failed to calculate score for session {session_id}: {score_err}")
+                    overall_score = 0
+                
+                # Generate AI summary using MockInterviewCoach
+                try:
+                    coach = MockInterviewCoach()
+                    ai_summary = coach.generate_session_summary(session)
+                    logger.info(f"Successfully generated AI summary for session {session_id}")
+                except Exception as ai_err:
+                    logger.error(f"Failed to generate AI summary for session {session_id}: {ai_err}")
+                    # Fallback summary if AI fails
+                    ai_summary = {
+                        'top_strengths': ['Completed all questions', 'Good participation'],
+                        'critical_areas': ['Practice more to improve your skills'],
+                        'recommended_practice_topics': ['Technical concepts', 'Communication skills'],
+                        'next_steps': ['Keep practicing regularly'],
+                        'overall_assessment': 'You completed the interview session.'
+                    }
+                
+                # Create summary with generated data
+                try:
+                    summary = MockInterviewSummary.objects.create(
+                        session=session,
+                        overall_score=overall_score,
+                        top_strengths=ai_summary.get('top_strengths', []),
+                        critical_areas=ai_summary.get('critical_areas', []),
+                        recommended_practice_topics=ai_summary.get('recommended_practice_topics', []),
+                        next_steps=ai_summary.get('next_steps', []),
+                        overall_assessment=ai_summary.get('overall_assessment', '')
+                    )
+                    logger.info(f"Successfully created summary for session {session_id}")
+                    
+                    serializer = MockInterviewSummarySerializer(summary)
+                    return Response(serializer.data, status=status.HTTP_200_OK)
+                    
+                except Exception as create_err:
+                    logger.error(f"Failed to create summary for session {session_id}: {create_err}")
+                    return Response(
+                        {'error': 'Failed to generate summary. Please try again.'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                    
+            except Exception as gen_err:
+                logger.error(f"Failed to generate missing summary for session {session_id}: {gen_err}")
+                return Response(
+                    {'error': 'Failed to generate summary. Please try again.'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+    
+    except MockInterviewSession.DoesNotExist:
+        return Response(
+            {'error': 'Session not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_mock_interview_session(request, session_id):
+    """
+    UC-077: Delete a mock interview session.
+    """
+    from core.models import MockInterviewSession
+    
+    logger = logging.getLogger(__name__)
+    user = request.user
+    
+    try:
+        session = MockInterviewSession.objects.get(id=session_id, user=user)
+        
+        # Log the deletion
+        logger.info(f"Deleting mock interview session {session_id} for user {user.id}")
+        
+        # Delete the session (cascade will delete related questions, answers, and summary)
+        session.delete()
+        
+        return Response(
+            {'message': 'Session deleted successfully'},
+            status=status.HTTP_200_OK
+        )
+    
+    except MockInterviewSession.DoesNotExist:
+        return Response(
+            {'error': 'Session not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+# UC-090: Informational Interview Management Views
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_list_create(request):
+    """
+    GET: List all informational interviews for the authenticated user
+    POST: Create a new informational interview
+    """
+    from core.models import InformationalInterview
+    from core.serializers import InformationalInterviewSerializer, InformationalInterviewListSerializer
+    
+    if request.method == 'GET':
+        # List with filtering
+        qs = InformationalInterview.objects.filter(user=request.user).select_related(
+            'contact', 'user'
+        ).prefetch_related('tags', 'connected_jobs')
+        
+        # Filter by status
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        
+        # Filter by contact
+        contact_id = request.query_params.get('contact')
+        if contact_id:
+            qs = qs.filter(contact_id=contact_id)
+        
+        # Filter by outcome
+        outcome_filter = request.query_params.get('outcome')
+        if outcome_filter:
+            qs = qs.filter(outcome=outcome_filter)
+        
+        # Filter by date range
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        if start_date:
+            qs = qs.filter(scheduled_at__gte=start_date)
+        if end_date:
+            qs = qs.filter(scheduled_at__lte=end_date)
+        
+        # Use list serializer for efficiency
+        serializer = InformationalInterviewListSerializer(
+            qs.order_by('-scheduled_at', '-created_at'),
+            many=True
+        )
+        return Response(serializer.data)
+    
+    # POST: Create new interview
+    serializer = InformationalInterviewSerializer(
+        data=request.data,
+        context={'request': request}
+    )
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["GET", "PUT", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_detail(request, pk):
+    """
+    GET: Retrieve a specific informational interview
+    PUT/PATCH: Update an informational interview
+    DELETE: Delete an informational interview
+    """
+    from core.models import InformationalInterview
+    from core.serializers import InformationalInterviewSerializer
+    
+    try:
+        interview = InformationalInterview.objects.select_related(
+            'contact', 'user'
+        ).prefetch_related('tags', 'connected_jobs').get(
+            pk=pk,
+            user=request.user
+        )
+    except InformationalInterview.DoesNotExist:
+        return Response(
+            {'detail': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == 'GET':
+        serializer = InformationalInterviewSerializer(interview)
+        return Response(serializer.data)
+    
+    elif request.method in ['PUT', 'PATCH']:
+        partial = request.method == 'PATCH'
+        serializer = InformationalInterviewSerializer(
+            interview,
+            data=request.data,
+            partial=partial,
+            context={'request': request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        interview.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_mark_outreach_sent(request, pk):
+    """Mark an interview as having outreach sent"""
+    from core.models import InformationalInterview
+    from core.serializers import InformationalInterviewSerializer
+    
+    try:
+        interview = InformationalInterview.objects.get(pk=pk, user=request.user)
+    except InformationalInterview.DoesNotExist:
+        return Response(
+            {'detail': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Use the model helper method
+    interview.mark_outreach_sent()
+    
+    serializer = InformationalInterviewSerializer(interview)
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_mark_scheduled(request, pk):
+    """Mark an interview as scheduled"""
+    from core.models import InformationalInterview
+    from core.serializers import InformationalInterviewSerializer
+    
+    try:
+        interview = InformationalInterview.objects.get(pk=pk, user=request.user)
+    except InformationalInterview.DoesNotExist:
+        return Response(
+            {'detail': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    scheduled_time = request.data.get('scheduled_at')
+    if not scheduled_time:
+        return Response(
+            {'detail': 'scheduled_at is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Use the model helper method
+    interview.mark_scheduled(scheduled_time)
+    
+    serializer = InformationalInterviewSerializer(interview)
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_mark_completed(request, pk):
+    """Mark an interview as completed"""
+    from core.models import InformationalInterview
+    from core.serializers import InformationalInterviewSerializer
+    
+    try:
+        interview = InformationalInterview.objects.get(pk=pk, user=request.user)
+    except InformationalInterview.DoesNotExist:
+        return Response(
+            {'detail': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Get all completion data from request
+    outcome = request.data.get('outcome', 'good')
+    key_insights = request.data.get('key_insights', [])
+    led_to_job_application = request.data.get('led_to_job_application', False)
+    led_to_referral = request.data.get('led_to_referral', False)
+    led_to_introduction = request.data.get('led_to_introduction', False)
+    
+    # Use the model helper method for status and outcome
+    interview.mark_completed(outcome)
+    
+    # Update additional fields
+    interview.key_insights = key_insights if isinstance(key_insights, list) else []
+    interview.led_to_job_application = led_to_job_application
+    interview.led_to_referral = led_to_referral
+    interview.led_to_introduction = led_to_introduction
+    interview.save(update_fields=[
+        'key_insights',
+        'led_to_job_application', 'led_to_referral', 'led_to_introduction',
+        'updated_at'
+    ])
+    
+    serializer = InformationalInterviewSerializer(interview)
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_generate_outreach(request, pk):
+    """Generate an outreach message template for an interview"""
+    from core.models import InformationalInterview
+    
+    try:
+        interview = InformationalInterview.objects.select_related('contact').get(
+            pk=pk,
+            user=request.user
+        )
+    except InformationalInterview.DoesNotExist:
+        return Response(
+            {'detail': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    contact = interview.contact
+    template_style = request.data.get('style', 'professional')
+    
+    # Generate templates based on style
+    templates = {
+        'professional': f"""Subject: Informational Interview Request
+
+Dear {contact.first_name or contact.display_name},
+
+I hope this message finds you well. I came across your profile and was impressed by your experience at {contact.company_name or '[Company]'} as {contact.title or '[Title]'}.
+
+I am currently exploring opportunities in {contact.industry or 'your industry'} and would greatly value the chance to learn from your insights and experience. Would you be open to a brief 20-30 minute conversation at your convenience?
+
+I'm particularly interested in learning about:
+• Your career path and key decisions that shaped it
+• The current landscape and trends in {contact.industry or 'the industry'}
+• Advice you might have for someone looking to grow in this field
+
+I'm happy to work around your schedule and can meet via phone, video call, or in person if you're in the {contact.location or 'area'}.
+
+Thank you for considering my request. I look forward to hearing from you.
+
+Best regards,
+{request.user.first_name} {request.user.last_name}""",
+        
+        'casual': f"""Hi {contact.first_name or contact.display_name},
+
+I've been following your work at {contact.company_name or '[Company]'} and am really impressed by what you've been doing in {contact.industry or 'your field'}.
+
+I'm exploring career opportunities in this space and would love to pick your brain over coffee (or a virtual chat) if you have time. I'd be grateful for any insights you could share about your experience and the industry.
+
+Would you be open to a quick 20-30 minute chat sometime in the next few weeks?
+
+Thanks so much for considering!
+
+{request.user.first_name}""",
+        
+        'mutual_connection': f"""Hi {contact.first_name or contact.display_name},
+
+[Mutual connection name] suggested I reach out to you. They spoke highly of your work at {contact.company_name or '[Company]'} and thought you might be a great person for me to connect with.
+
+I'm currently exploring opportunities in {contact.industry or 'your industry'} and would love to learn from your experience. Would you be open to a brief informational interview?
+
+I'm happy to work around your schedule for a 20-30 minute conversation.
+
+Thank you for considering!
+
+Best,
+{request.user.first_name} {request.user.last_name}"""
+    }
+    
+    template = templates.get(template_style, templates['professional'])
+    
+    return Response({
+        'template': template,
+        'style': template_style,
+        'contact_name': contact.display_name,
+        'contact_company': contact.company_name
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_generate_preparation(request, pk):
+    """Generate preparation framework for an interview"""
+    from core.models import InformationalInterview
+    
+    try:
+        interview = InformationalInterview.objects.select_related('contact').get(
+            pk=pk,
+            user=request.user
+        )
+    except InformationalInterview.DoesNotExist:
+        return Response(
+            {'detail': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    contact = interview.contact
+    
+    # Generate suggested questions based on contact's background
+    suggested_questions = [
+        f"What does a typical day look like in your role as {contact.title or 'your position'}?",
+        f"How did you get started in {contact.industry or 'your industry'}?",
+        "What skills do you think are most important for success in this field?",
+        f"What do you enjoy most about working at {contact.company_name or 'your company'}?",
+        "What challenges do you face in your role?",
+        "What trends are you seeing in the industry right now?",
+        "What advice would you give to someone looking to break into this field?",
+        "Are there any resources (books, courses, communities) you'd recommend?",
+        "How do you stay current with industry developments?",
+        "Is there anyone else you'd recommend I speak with?"
+    ]
+    
+    # Generate research checklist
+    research_checklist = [
+        f"Review {contact.display_name}'s LinkedIn profile and recent activity",
+        f"Research {contact.company_name or 'their company'} - mission, products, recent news",
+        f"Understand key trends in {contact.industry or 'their industry'}",
+        "Prepare thoughtful questions based on their background",
+        "Review your own background and goals to articulate them clearly",
+        "Prepare a brief 30-second introduction about yourself",
+        "Have specific examples ready if they ask about your experience"
+    ]
+    
+    # Generate goals framework
+    suggested_goals = [
+        "Learn about the day-to-day reality of their role",
+        f"Understand career paths in {contact.industry or 'the industry'}",
+        "Gain insights into skills and qualifications needed",
+        "Build a genuine professional relationship",
+        "Get recommendations for other people to speak with",
+        "Learn about industry trends and challenges",
+        "Understand company culture and work environment"
+    ]
+    
+    return Response({
+        'suggested_questions': suggested_questions,
+        'research_checklist': research_checklist,
+        'suggested_goals': suggested_goals,
+        'contact_name': contact.display_name,
+        'contact_title': contact.title,
+        'contact_company': contact.company_name,
+        'contact_industry': contact.industry
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_analytics(request):
+    """Get analytics for informational interviews"""
+    from core.models import InformationalInterview
+    from django.db.models import Count, Q, Avg
+    
+    qs = InformationalInterview.objects.filter(user=request.user)
+    
+    total = qs.count()
+    by_status = dict(qs.values_list('status').annotate(count=Count('id')))
+    by_outcome = dict(qs.exclude(outcome='').values_list('outcome').annotate(count=Count('id')))
+    
+    completed = qs.filter(status='completed')
+    
+    impact_stats = {
+        'led_to_job_application': completed.filter(led_to_job_application=True).count(),
+        'led_to_referral': completed.filter(led_to_referral=True).count(),
+        'led_to_introduction': completed.filter(led_to_introduction=True).count()
+    }
+    
+    # Calculate success metrics
+    outreach_sent = qs.filter(status__in=['outreach_sent', 'scheduled', 'completed']).count()
+    scheduled = qs.filter(status__in=['scheduled', 'completed']).count()
+    completed_count = completed.count()
+    
+    response_rate = (scheduled / outreach_sent * 100) if outreach_sent > 0 else 0
+    completion_rate = (completed_count / scheduled * 100) if scheduled > 0 else 0
+    
+    # Relationship strength changes
+    relationship_changes = completed.exclude(
+        relationship_strength_change__isnull=True
+    ).values_list('relationship_strength_change', flat=True)
+    
+    avg_relationship_change = sum(relationship_changes) / len(relationship_changes) if relationship_changes else 0
+    
+    return Response({
+        'overview': {
+            'total': total,
+            'by_status': by_status,
+            'by_outcome': by_outcome
+        },
+        'success_metrics': {
+            'outreach_sent': outreach_sent,
+            'scheduled': scheduled,
+            'completed': completed_count,
+            'response_rate': round(response_rate, 1),
+            'completion_rate': round(completion_rate, 1)
+        },
+        'impact': impact_stats,
+        'relationship_building': {
+            'avg_strength_change': round(avg_relationship_change, 2),
+            'total_tracked': len(relationship_changes)
+        }
+    })
 

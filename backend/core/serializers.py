@@ -16,12 +16,16 @@ from core.models import (
     ResumeFeedback, FeedbackComment, FeedbackNotification,
     TeamMember, MentorshipRequest, MentorshipSharingPreference, MentorshipSharedApplication,
     MentorshipGoal, MentorshipMessage,
+    MarketIntelligence, MockInterviewSession, MockInterviewQuestion, MockInterviewSummary,
 )
 from core.models import (
     Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink,
     NetworkingEvent, EventGoal, EventConnection, EventFollowUp, CareerGoal, GoalMilestone,
-    ProfessionalReference, ReferenceRequest, ReferenceTemplate, ReferenceAppreciation, ReferencePortfolio
+    ProfessionalReference, ReferenceRequest, ReferenceTemplate, ReferenceAppreciation, ReferencePortfolio,
+    InformationalInterview
 )
+
+from core.models import Referral, Application, JobOpportunity
 
 from core.models import Referral, Application, JobOpportunity
 
@@ -111,6 +115,7 @@ class ReferralSerializer(serializers.ModelSerializer):
     referral_source_display_name = serializers.SerializerMethodField()
     request_message = serializers.SerializerMethodField()
     relationship_strength = serializers.SerializerMethodField()
+    notes = serializers.SerializerMethodField()
 
     class Meta:
         model = Referral
@@ -155,10 +160,11 @@ class ReferralSerializer(serializers.ModelSerializer):
             import json
             parsed = json.loads(notes)
             if isinstance(parsed, dict) and 'request_message' in parsed:
-                return parsed.get('request_message')
+                return parsed.get('request_message', '')
         except Exception:
             pass
-        return notes
+        # Don't return raw notes if they're JSON - return empty string
+        return ''
 
     def get_relationship_strength(self, obj):
         # Relationship strength is not a field on Referral; attempt to parse from notes JSON.
@@ -171,6 +177,20 @@ class ReferralSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return 'moderate'
+
+    def get_notes(self, obj):
+        # Return clean notes: if notes contain JSON with request_message/relationship_strength,
+        # don't return them (they're exposed as separate fields). Otherwise return as-is.
+        notes = obj.notes or ''
+        try:
+            import json
+            parsed = json.loads(notes)
+            if isinstance(parsed, dict) and ('request_message' in parsed or 'relationship_strength' in parsed):
+                # This is our internal JSON storage, don't expose raw
+                return ''
+        except Exception:
+            pass
+        return notes
 
     def create(self, validated_data):
         # Creation is handled in the view where we have access to request.user
@@ -3613,5 +3633,426 @@ class ReferencePortfolioListSerializer(serializers.ModelSerializer):
     def get_references_count(self, obj):
         if obj.pk:
             return obj.references.count()
+        return 0
+class MarketIntelligenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MarketIntelligence
+        fields = [
+            'id',
+            'job_title',
+            'location',
+            'experience_level',
+            'industry',
+            'median_salary',
+            'percentile_25',
+            'percentile_75',
+            'sample_size',
+            'demand_score',
+            'growth_trend',
+            'top_skills',
+            'data_source',
+            'last_updated',
+        ]
+        read_only_fields = fields
+
+
+# Mock Interview Serializers (UC-077)
+
+class MockInterviewQuestionSerializer(serializers.ModelSerializer):
+    """Serializer for individual mock interview questions"""
+    class Meta:
+        model = MockInterviewQuestion
+        fields = [
+            'id', 'session', 'question_number', 'question_text', 'question_category',
+            'suggested_framework', 'ideal_answer_points', 'user_answer', 'answer_timestamp',
+            'time_taken_seconds', 'answer_score', 'ai_feedback', 'strengths', 
+            'improvements', 'keyword_coverage', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'answer_timestamp', 'time_taken_seconds']
+
+
+class MockInterviewSessionSerializer(serializers.ModelSerializer):
+    """Serializer for mock interview sessions"""
+    questions = MockInterviewQuestionSerializer(many=True, read_only=True)
+    questions_count = serializers.SerializerMethodField()
+    answered_count = serializers.SerializerMethodField()
+    job_title = serializers.CharField(source='job.position_title', read_only=True)
+    
+    class Meta:
+        model = MockInterviewSession
+        fields = [
+            'id', 'user', 'job', 'job_title', 'interview_type', 'status',
+            'question_count', 'difficulty_level', 'focus_areas', 'started_at',
+            'completed_at', 'total_duration_seconds', 'overall_score', 'strengths',
+            'areas_for_improvement', 'ai_summary', 'questions', 'questions_count', 'answered_count'
+        ]
+        read_only_fields = [
+            'id', 'user', 'started_at', 'completed_at', 'total_duration_seconds',
+            'overall_score', 'strengths', 'areas_for_improvement', 'ai_summary'
+        ]
+    
+    def get_questions_count(self, obj):
+        if obj.pk:
+            return obj.questions.count()
+        return 0
+    
+    def get_answered_count(self, obj):
+        if obj.pk:
+            return obj.questions.filter(user_answer__isnull=False).exclude(user_answer='').count()
+        return 0
+
+
+class MockInterviewSummarySerializer(serializers.ModelSerializer):
+    """Serializer for mock interview session summaries"""
+    session_details = MockInterviewSessionSerializer(source='session', read_only=True)
+    
+    class Meta:
+        model = MockInterviewSummary
+        fields = [
+            'id', 'session', 'session_details', 'performance_by_category',
+            'response_quality_score', 'communication_score', 'structure_score',
+            'top_strengths', 'critical_areas', 'recommended_practice_topics',
+            'next_steps', 'overall_assessment', 'readiness_level',
+            'estimated_interview_readiness', 'compared_to_previous_sessions',
+            'improvement_trend', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+
+
+class MockInterviewSessionListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for session list views"""
+    job_title = serializers.CharField(source='job.position_title', read_only=True)
+    questions_count = serializers.SerializerMethodField()
+    answered_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MockInterviewSession
+        fields = [
+            'id', 'job_title', 'interview_type', 'status', 'difficulty_level',
+            'started_at', 'completed_at', 'overall_score', 'questions_count', 'answered_count'
+        ]
+    
+    def get_questions_count(self, obj):
+        if obj.pk:
+            return obj.questions.count()
+        return 0
+    
+    def get_answered_count(self, obj):
+        if obj.pk:
+            return obj.questions.filter(user_answer__isnull=False).exclude(user_answer='').count()
+        return 0
+
+
+# ============================
+# UC-095: Professional Reference Management Serializers
+# ============================
+
+class ProfessionalReferenceSerializer(serializers.ModelSerializer):
+    """Serializer for professional references"""
+    portfolios_count = serializers.SerializerMethodField()
+    pending_requests_count = serializers.SerializerMethodField()
+    recent_appreciations = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ProfessionalReference
+        fields = [
+            'id', 'user', 'name', 'title', 'company', 'email', 'phone', 'linkedin_url',
+            'relationship_type', 'relationship_description', 'years_known',
+            'availability_status', 'permission_granted_date', 'last_used_date',
+            'preferred_contact_method', 'best_for_roles', 'best_for_industries',
+            'key_strengths_to_highlight', 'projects_worked_together', 'talking_points',
+            'last_contacted_date', 'next_check_in_date', 'notes',
+            'times_used', 'is_active', 'created_at', 'updated_at',
+            'portfolios_count', 'pending_requests_count', 'recent_appreciations'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'times_used']
+    
+    def get_portfolios_count(self, obj):
+        if obj.pk:
+            return obj.portfolios.count()
+        return 0
+    
+    def get_pending_requests_count(self, obj):
+        if obj.pk:
+            return obj.requests.filter(request_status__in=['pending', 'sent']).count()
+        return 0
+    
+    def get_recent_appreciations(self, obj):
+        if obj.pk:
+            recent = obj.appreciations.all()[:3]
+            return ReferenceAppreciationSerializer(recent, many=True).data
+        return []
+
+
+class ProfessionalReferenceListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for reference list views"""
+    pending_requests_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ProfessionalReference
+        fields = [
+            'id', 'name', 'title', 'company', 'email', 'relationship_type',
+            'availability_status', 'last_used_date', 'times_used', 'is_active',
+            'pending_requests_count'
+        ]
+        read_only_fields = ['id', 'times_used']
+    
+    def get_pending_requests_count(self, obj):
+        if obj.pk:
+            return obj.requests.filter(request_status__in=['pending', 'sent']).count()
+        return 0
+
+
+class ReferenceRequestSerializer(serializers.ModelSerializer):
+    """Serializer for reference requests"""
+    reference_name = serializers.CharField(source='reference.name', read_only=True)
+    reference_company = serializers.CharField(source='reference.company', read_only=True)
+    application_status = serializers.CharField(source='application.status', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = ReferenceRequest
+        fields = [
+            'id', 'user', 'reference', 'reference_name', 'reference_company',
+            'application', 'application_status', 'job_opportunity',
+            'company_name', 'position_title', 'request_status',
+            'request_sent_date', 'due_date', 'completed_date',
+            'custom_message', 'preparation_materials_sent',
+            'feedback_received', 'reference_rating',
+            'contributed_to_success', 'outcome_notes',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+
+
+class ReferenceRequestCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating reference requests with template support"""
+    use_template = serializers.UUIDField(required=False, write_only=True)
+    
+    class Meta:
+        model = ReferenceRequest
+        fields = [
+            'reference', 'application', 'job_opportunity',
+            'company_name', 'position_title', 'due_date',
+            'custom_message', 'preparation_materials_sent', 'use_template'
+        ]
+    
+    def create(self, validated_data):
+        template_id = validated_data.pop('use_template', None)
+        user = self.context['request'].user
+        
+        # If template specified, generate custom message
+        if template_id:
+            try:
+                template = ReferenceTemplate.objects.get(id=template_id, user=user)
+                reference = validated_data['reference']
+                
+                # Replace placeholders in template
+                message = template.content
+                message = message.replace('{reference_name}', reference.name)
+                message = message.replace('{company_name}', validated_data.get('company_name', ''))
+                message = message.replace('{position_title}', validated_data.get('position_title', ''))
+                message = message.replace('{user_name}', f"{user.first_name} {user.last_name}")
+                
+                validated_data['custom_message'] = message
+                template.times_used += 1
+                template.save()
+            except ReferenceTemplate.DoesNotExist:
+                pass
+        
+        validated_data['user'] = user
+        return super().create(validated_data)
+
+
+class ReferenceTemplateSerializer(serializers.ModelSerializer):
+    """Serializer for reference templates"""
+    class Meta:
+        model = ReferenceTemplate
+        fields = [
+            'id', 'user', 'name', 'template_type', 'subject_line', 'content',
+            'for_relationship_types', 'for_role_types', 'is_default', 'times_used',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'times_used']
+
+
+class ReferenceAppreciationSerializer(serializers.ModelSerializer):
+    """Serializer for reference appreciation tracking"""
+    reference_name = serializers.CharField(source='reference.name', read_only=True)
+    
+    class Meta:
+        model = ReferenceAppreciation
+        fields = [
+            'id', 'user', 'reference', 'reference_name',
+            'appreciation_type', 'date', 'description', 'notes', 'created_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at']
+
+
+class ReferencePortfolioSerializer(serializers.ModelSerializer):
+    """Serializer for reference portfolios"""
+    references_details = ProfessionalReferenceListSerializer(source='references', many=True, read_only=True)
+    references_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ReferencePortfolio
+        fields = [
+            'id', 'user', 'name', 'description', 'references', 'references_details',
+            'target_role_types', 'target_industries', 'target_companies',
+            'is_default', 'times_used', 'references_count', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'times_used']
+    
+    def get_references_count(self, obj):
+        if obj.pk:
+            return obj.references.count()
+        return 0
+
+
+class ReferencePortfolioListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for portfolio list views"""
+    references_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ReferencePortfolio
+        fields = [
+            'id', 'name', 'description', 'is_default', 'times_used', 'references_count', 'created_at'
+        ]
+        read_only_fields = ['id', 'times_used']
+    
+    def get_references_count(self, obj):
+        if obj.pk:
+            return obj.references.count()
+        return 0
+
+
+# UC-090: Informational Interview Management Serializers
+
+class InformationalInterviewSerializer(serializers.ModelSerializer):
+    """
+    Serializer for UC-090: Informational Interview Management
+    Handles the complete lifecycle of informational interviews
+    """
+    contact_details = ContactSerializer(source='contact', read_only=True)
+    connected_jobs_details = serializers.SerializerMethodField()
+    tags_details = TagSerializer(many=True, source='tags', read_only=True)
+    
+    # Writable fields for relationships
+    contact = serializers.PrimaryKeyRelatedField(
+        queryset=Contact.objects.all(),
+        required=True
+    )
+    connected_jobs = serializers.PrimaryKeyRelatedField(
+        queryset=JobEntry.objects.all(),
+        many=True,
+        required=False
+    )
+    tags_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Tag.objects.all(),
+        many=True,
+        required=False,
+        write_only=True,
+        source='tags'
+    )
+    
+    class Meta:
+        model = InformationalInterview
+        fields = [
+            'id', 'user', 'contact', 'contact_details',
+            'status', 'outcome',
+            'outreach_template_used', 'outreach_sent_at', 'outreach_message',
+            'scheduled_at', 'meeting_location', 'duration_minutes',
+            'preparation_notes', 'questions_to_ask', 'research_notes', 'goals',
+            'completed_at', 'interview_notes', 'key_insights', 'industry_intelligence',
+            'follow_up_sent_at', 'follow_up_message', 'relationship_strength_change',
+            'led_to_job_application', 'led_to_referral', 'led_to_introduction',
+            'connected_jobs', 'connected_jobs_details', 'tags_ids', 'tags_details',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'outreach_sent_at', 'completed_at']
+    
+    def get_connected_jobs_details(self, obj):
+        """Return basic job details for connected jobs"""
+        from core.serializers import JobEntrySummarySerializer
+        if obj.pk:
+            jobs = obj.connected_jobs.all()
+            return JobEntrySummarySerializer(jobs, many=True).data
+        return []
+    
+    def validate_contact(self, value):
+        """Ensure contact belongs to the requesting user"""
+        request = self.context.get('request')
+        if request and value.owner != request.user:
+            raise serializers.ValidationError("You can only create interviews with your own contacts.")
+        return value
+    
+    def validate_connected_jobs(self, value):
+        """Ensure all jobs belong to the requesting user"""
+        request = self.context.get('request')
+        if request:
+            for job in value:
+                if job.user != request.user:
+                    raise serializers.ValidationError("You can only connect interviews to your own job entries.")
+        return value
+    
+    def validate_relationship_strength_change(self, value):
+        """Validate relationship strength change is within valid range"""
+        if value is not None and not (-5 <= value <= 5):
+            raise serializers.ValidationError("Relationship strength change must be between -5 and +5.")
+        return value
+    
+    def validate_status(self, value):
+        """Validate status transitions"""
+        if self.instance:
+            current_status = self.instance.status
+            # Define valid transitions
+            valid_transitions = {
+                'identified': ['outreach_sent', 'declined', 'no_response'],
+                'outreach_sent': ['scheduled', 'declined', 'no_response'],
+                'scheduled': ['completed', 'declined', 'no_response'],
+                'completed': [],  # Terminal state
+                'declined': [],  # Terminal state
+                'no_response': ['outreach_sent', 'declined']  # Can retry
+            }
+            
+            if value != current_status and value not in valid_transitions.get(current_status, []):
+                raise serializers.ValidationError(
+                    f"Invalid status transition from '{current_status}' to '{value}'."
+                )
+        return value
+    
+    def create(self, validated_data):
+        """Create new informational interview with user set from request"""
+        request = self.context.get('request')
+        if request:
+            validated_data['user'] = request.user
+        return super().create(validated_data)
+
+
+class InformationalInterviewListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for list views"""
+    contact_name = serializers.CharField(source='contact.display_name', read_only=True)
+    contact_company = serializers.CharField(source='contact.company_name', read_only=True)
+    contact_title = serializers.CharField(source='contact.title', read_only=True)
+    tags_count = serializers.SerializerMethodField()
+    connected_jobs_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = InformationalInterview
+        fields = [
+            'id', 'contact', 'contact_name', 'contact_company', 'contact_title',
+            'status', 'outcome', 'scheduled_at', 'completed_at',
+            'tags_count', 'connected_jobs_count',
+            'led_to_job_application', 'led_to_referral', 'led_to_introduction',
+            'created_at'
+        ]
+    
+    def get_tags_count(self, obj):
+        if obj.pk:
+            return obj.tags.count()
+        return 0
+    
+    def get_connected_jobs_count(self, obj):
+        if obj.pk:
+            return obj.connected_jobs.count()
         return 0
 

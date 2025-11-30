@@ -68,6 +68,7 @@ const jobsAPI = {
 	getUpcomingDeadlines: jestFn(),
 	getJobStats: jestFn(),
 	getAnalytics: jestFn(),
+	updateAnalyticsGoals: jestFn(),
 	bulkUpdateStatus: jestFn(),
 	archiveJob: jestFn(),
 	unarchiveJob: jestFn(),
@@ -123,6 +124,7 @@ const interviewsAPI = {
 	getPreparationChecklist: jestFn(),
 	toggleChecklistItem: jestFn(),
 	getPerformanceAnalytics: jestFn(),
+	getPerformanceTracking: jestFn(),
 };
 
 const networkingAPI = {
@@ -185,6 +187,7 @@ const mentorshipAPI = {
 	getShareSettings: jestFn(),
 	updateShareSettings: jestFn(),
 	getSharedData: jestFn(),
+	getAnalytics: jestFn(),
 	getProgressReport: jestFn(),
 	getMessages: jestFn(),
 	getGoals: jestFn(),
@@ -213,6 +216,28 @@ const referralAPI = {
 	suggestFollowUp: jestFn(),
 };
 
+const informationalInterviewsAPI = {
+	getInterviews: jestFn(),
+	getInterview: jestFn(),
+	createInterview: jestFn(),
+	updateInterview: jestFn(),
+	deleteInterview: jestFn(),
+	markOutreachSent: jestFn(),
+	markScheduled: jestFn(),
+	markCompleted: jestFn(),
+	generateOutreach: jestFn(),
+	generatePreparation: jestFn(),
+	getAnalytics: jestFn(),
+};
+
+const contactsAPI = {
+	list: jestFn(),
+	get: jestFn(),
+	create: jestFn(),
+	update: jestFn(),
+	delete: jestFn(),
+};
+
 module.exports = {
 	__esModule: true,
 	default: {},
@@ -235,4 +260,6 @@ module.exports = {
 	mentorshipAPI,
 	goalsAPI,
 	referralAPI,
+	informationalInterviewsAPI,
+	contactsAPI,
 };

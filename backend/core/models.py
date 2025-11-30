@@ -81,6 +81,14 @@ class CandidateProfile(models.Model):
     default_cover_letter_doc = models.ForeignKey(
         'Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='default_cover_letter_for'
     )
+    weekly_application_target = models.PositiveSmallIntegerField(
+        default=5,
+        help_text='User-defined goal for applications per week',
+    )
+    monthly_application_target = models.PositiveSmallIntegerField(
+        default=20,
+        help_text='User-defined goal for applications per month',
+    )
 
     class Meta:
         indexes = [models.Index(fields=["user"])]
@@ -329,6 +337,111 @@ class ContactJobLink(models.Model):
     contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='job_links')
     job = models.ForeignKey(JobOpportunity, on_delete=models.CASCADE, related_name='contact_links')
     relationship_to_job = models.CharField(max_length=120, blank=True)
+
+
+class InformationalInterview(models.Model):
+    """UC-090: Informational Interview Management - Track and manage informational interviews."""
+    
+    STATUS_CHOICES = [
+        ('identified', 'Candidate Identified'),
+        ('outreach_sent', 'Outreach Sent'),
+        ('scheduled', 'Scheduled'),
+        ('completed', 'Completed'),
+        ('declined', 'Declined'),
+        ('no_response', 'No Response'),
+    ]
+    
+    OUTCOME_CHOICES = [
+        ('', 'Not Yet Recorded'),
+        ('excellent', 'Excellent'),
+        ('good', 'Good'),
+        ('average', 'Average'),
+        ('poor', 'Poor'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='informational_interviews'
+    )
+    contact = models.ForeignKey(
+        Contact,
+        on_delete=models.CASCADE,
+        related_name='informational_interviews',
+        help_text='The contact being interviewed'
+    )
+    
+    # Request details
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='identified')
+    outreach_template_used = models.CharField(max_length=50, blank=True, help_text='Template type used for outreach')
+    outreach_sent_at = models.DateTimeField(null=True, blank=True)
+    outreach_message = models.TextField(blank=True, help_text='Actual outreach message sent')
+    
+    # Scheduling
+    scheduled_at = models.DateTimeField(null=True, blank=True, help_text='Interview date and time')
+    meeting_location = models.CharField(max_length=500, blank=True, help_text='Physical location or video link')
+    duration_minutes = models.PositiveIntegerField(default=30, help_text='Expected duration')
+    
+    # Preparation
+    preparation_notes = models.TextField(blank=True, help_text='User preparation notes')
+    questions_to_ask = models.JSONField(default=list, blank=True, help_text='List of prepared questions')
+    research_notes = models.TextField(blank=True, help_text='Research about the contact/company')
+    goals = models.JSONField(default=list, blank=True, help_text='What user wants to learn/achieve')
+    
+    # Completion and outcomes
+    completed_at = models.DateTimeField(null=True, blank=True)
+    outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES, blank=True, default='')
+    interview_notes = models.TextField(blank=True, help_text='Notes taken during/after interview')
+    key_insights = models.JSONField(default=list, blank=True, help_text='Key takeaways and insights')
+    industry_intelligence = models.TextField(blank=True, help_text='Industry trends and intelligence gathered')
+    
+    # Follow-up and relationship
+    follow_up_sent_at = models.DateTimeField(null=True, blank=True)
+    follow_up_message = models.TextField(blank=True)
+    relationship_strength_change = models.IntegerField(default=0, help_text='Change in relationship strength (-5 to +5)')
+    future_opportunities = models.JSONField(default=list, blank=True, help_text='Potential opportunities identified')
+    
+    # Impact tracking
+    led_to_job_application = models.BooleanField(default=False)
+    led_to_referral = models.BooleanField(default=False)
+    led_to_introduction = models.BooleanField(default=False)
+    connected_jobs = models.ManyToManyField('JobEntry', blank=True, related_name='from_informational_interviews')
+    
+    # Metadata
+    tags = models.ManyToManyField(Tag, blank=True, related_name='informational_interviews')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-scheduled_at', '-created_at']
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['user', '-scheduled_at']),
+            models.Index(fields=['contact', 'status']),
+        ]
+    
+    def __str__(self):
+        return f"Informational Interview with {self.contact.display_name} - {self.status}"
+    
+    def mark_outreach_sent(self):
+        """Mark outreach as sent and update status."""
+        self.status = 'outreach_sent'
+        self.outreach_sent_at = timezone.now()
+        self.save(update_fields=['status', 'outreach_sent_at', 'updated_at'])
+    
+    def mark_scheduled(self, scheduled_time):
+        """Mark interview as scheduled."""
+        self.status = 'scheduled'
+        self.scheduled_at = scheduled_time
+        self.save(update_fields=['status', 'scheduled_at', 'updated_at'])
+    
+    def mark_completed(self, outcome='good'):
+        """Mark interview as completed."""
+        self.status = 'completed'
+        self.completed_at = timezone.now()
+        self.outcome = outcome
+        self.save(update_fields=['status', 'completed_at', 'outcome', 'updated_at'])
 
 
 class Document(models.Model):
@@ -944,6 +1057,150 @@ class QuestionResponseCoaching(models.Model):
         return f"CoachingSession(job={self.job_id}, question={self.question_id}, created={timestamp})"
 
 
+class MockInterviewSession(models.Model):
+    """UC-077: Full mock interview practice sessions with AI-generated questions."""
+    
+    STATUS_CHOICES = [
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+        ('abandoned', 'Abandoned'),
+    ]
+    
+    INTERVIEW_TYPE_CHOICES = [
+        ('behavioral', 'Behavioral'),
+        ('technical', 'Technical'),
+        ('case_study', 'Case Study'),
+        ('mixed', 'Mixed'),
+    ]
+    
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='mock_interview_sessions')
+    job = models.ForeignKey('JobEntry', on_delete=models.SET_NULL, null=True, blank=True, related_name='mock_sessions')
+    interview_type = models.CharField(max_length=20, choices=INTERVIEW_TYPE_CHOICES, default='behavioral')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_progress')
+    
+    # Configuration
+    question_count = models.PositiveIntegerField(default=5)
+    difficulty_level = models.CharField(max_length=20, default='mid')
+    focus_areas = models.JSONField(default=list, blank=True)  # e.g., ['leadership', 'conflict resolution']
+    
+    # Session metadata
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    total_duration_seconds = models.PositiveIntegerField(default=0)
+    
+    # Overall performance
+    overall_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)  # 0-100
+    strengths = models.JSONField(default=list, blank=True)
+    areas_for_improvement = models.JSONField(default=list, blank=True)
+    ai_summary = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-started_at']
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['user', '-started_at']),
+        ]
+    
+    def __str__(self):
+        return f"MockInterviewSession({self.id}, {self.user.email}, {self.interview_type})"
+    
+    def mark_completed(self):
+        """Mark session as completed and calculate duration."""
+        self.status = 'completed'
+        self.completed_at = timezone.now()
+        if self.started_at:
+            self.total_duration_seconds = int((self.completed_at - self.started_at).total_seconds())
+        self.save()
+    
+    def calculate_overall_score(self):
+        """Calculate overall score from all question responses."""
+        questions = self.questions.filter(answer_score__isnull=False)
+        if not questions.exists():
+            return None
+        avg_score = questions.aggregate(models.Avg('answer_score'))['answer_score__avg']
+        return round(avg_score, 2) if avg_score else None
+
+
+class MockInterviewQuestion(models.Model):
+    """Individual questions within a mock interview session (UC-077)."""
+    
+    session = models.ForeignKey(MockInterviewSession, on_delete=models.CASCADE, related_name='questions')
+    question_number = models.PositiveIntegerField()
+    
+    # Question details
+    question_text = models.TextField()
+    question_category = models.CharField(max_length=50, blank=True)  # e.g., 'teamwork', 'problem-solving'
+    suggested_framework = models.CharField(max_length=50, blank=True)  # e.g., 'STAR', 'CAR'
+    ideal_answer_points = models.JSONField(default=list, blank=True)  # Key points to cover
+    
+    # User's response
+    user_answer = models.TextField(blank=True)
+    answer_timestamp = models.DateTimeField(null=True, blank=True)
+    time_taken_seconds = models.PositiveIntegerField(null=True, blank=True)
+    
+    # AI evaluation
+    answer_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)  # 0-100
+    ai_feedback = models.TextField(blank=True)
+    strengths = models.JSONField(default=list, blank=True)
+    improvements = models.JSONField(default=list, blank=True)
+    keyword_coverage = models.JSONField(default=dict, blank=True)  # Track which key points were mentioned
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['session', 'question_number']
+        unique_together = [('session', 'question_number')]
+        indexes = [
+            models.Index(fields=['session', 'question_number']),
+        ]
+    
+    def __str__(self):
+        return f"Question {self.question_number} - {self.session_id}"
+    
+    def submit_answer(self, answer_text):
+        """Record user's answer with timestamp."""
+        self.user_answer = answer_text
+        self.answer_timestamp = timezone.now()
+        if self.created_at:
+            self.time_taken_seconds = int((self.answer_timestamp - self.created_at).total_seconds())
+        self.save()
+
+
+class MockInterviewSummary(models.Model):
+    """Post-session summary and recommendations (UC-077)."""
+    
+    session = models.OneToOneField(MockInterviewSession, on_delete=models.CASCADE, related_name='summary')
+    
+    # Performance breakdown
+    performance_by_category = models.JSONField(default=dict, blank=True)  # {'teamwork': 85, 'leadership': 72}
+    response_quality_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    communication_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    structure_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    
+    # Detailed feedback
+    top_strengths = models.JSONField(default=list, blank=True)
+    critical_areas = models.JSONField(default=list, blank=True)
+    recommended_practice_topics = models.JSONField(default=list, blank=True)
+    next_steps = models.JSONField(default=list, blank=True)
+    
+    # AI-generated insights
+    overall_assessment = models.TextField(blank=True)
+    readiness_level = models.CharField(max_length=20, blank=True)  # e.g., 'ready', 'needs_practice', 'not_ready'
+    estimated_interview_readiness = models.PositiveIntegerField(null=True, blank=True)  # 0-100%
+    
+    # Comparison metrics
+    compared_to_previous_sessions = models.JSONField(default=dict, blank=True)
+    improvement_trend = models.CharField(max_length=20, blank=True)  # 'improving', 'stable', 'declining'
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name_plural = "Mock interview summaries"
+    
+    def __str__(self):
+        return f"Summary for {self.session}"
+
+
 class QuestionBankCache(models.Model):
     """Cache generated question bank data per job."""
 
@@ -1435,6 +1692,49 @@ class JobEntry(models.Model):
     resume_doc = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='used_as_resume_in')
     cover_letter_doc = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='used_as_cover_letter_in')
 
+    # UC-097: Application Success Rate Analysis tracking
+    APPLICATION_SOURCES = [
+        ('company_website', 'Company Website'),
+        ('linkedin', 'LinkedIn'),
+        ('indeed', 'Indeed'),
+        ('glassdoor', 'Glassdoor'),
+        ('referral', 'Referral'),
+        ('recruiter', 'Recruiter'),
+        ('job_board', 'Job Board'),
+        ('networking', 'Networking Event'),
+        ('other', 'Other'),
+    ]
+    
+    APPLICATION_METHODS = [
+        ('online_form', 'Online Application Form'),
+        ('email', 'Email'),
+        ('referral', 'Internal Referral'),
+        ('recruiter', 'Through Recruiter'),
+        ('direct_contact', 'Direct Contact'),
+        ('other', 'Other'),
+    ]
+    
+    COMPANY_SIZES = [
+        ('startup', 'Startup (1-50)'),
+        ('small', 'Small (51-200)'),
+        ('medium', 'Medium (201-1000)'),
+        ('large', 'Large (1001-5000)'),
+        ('enterprise', 'Enterprise (5000+)'),
+    ]
+    
+    application_source = models.CharField(max_length=50, choices=APPLICATION_SOURCES, blank=True, db_index=True)
+    application_method = models.CharField(max_length=50, choices=APPLICATION_METHODS, blank=True, db_index=True)
+    company_size = models.CharField(max_length=20, choices=COMPANY_SIZES, blank=True, db_index=True)
+    
+    # Track if resume/cover letter were customized for this application
+    resume_customized = models.BooleanField(default=False, help_text="Was the resume customized for this application?")
+    cover_letter_customized = models.BooleanField(default=False, help_text="Was the cover letter customized for this application?")
+    
+    # Application submission tracking
+    application_submitted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    first_response_at = models.DateTimeField(null=True, blank=True)  # When we first heard back
+    days_to_response = models.IntegerField(null=True, blank=True, help_text="Days from application to first response")
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -1679,6 +1979,9 @@ class SalaryNegotiationOutcome(models.Model):
     job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='negotiation_outcomes')
     plan = models.ForeignKey(SalaryNegotiationPlan, on_delete=models.SET_NULL, null=True, blank=True, related_name='outcomes')
     stage = models.CharField(max_length=20, choices=STAGE_CHOICES, default='offer')
+    base_salary = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    bonus = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    equity = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     company_offer = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     counter_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     final_result = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)

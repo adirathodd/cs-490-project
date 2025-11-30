@@ -92,7 +92,7 @@ const NavBar = () => {
   {/* Tools dropdown - groups resume, cover letters, documents, contacts */}
   <div className="nav-dropdown" ref={toolsDropdownRef}>
     <button
-      className={`nav-link nav-dropdown-toggle ${(window.location.pathname.startsWith('/resume') || window.location.pathname.startsWith('/documents') || window.location.pathname.startsWith('/cover-letter') || window.location.pathname.startsWith('/contacts')) ? 'active' : ''}`}
+      className={`nav-link nav-dropdown-toggle ${(window.location.pathname.startsWith('/resume') || window.location.pathname.startsWith('/documents') || window.location.pathname.startsWith('/cover-letter') || window.location.pathname.startsWith('/contacts') || window.location.pathname.startsWith('/informational-interviews')) ? 'active' : ''}`}
       type="button"
       aria-haspopup="menu"
       aria-expanded={toolsDropdownOpen}
@@ -138,6 +138,13 @@ const NavBar = () => {
           Contacts
         </NavLink>
         <NavLink
+          to="/informational-interviews"
+          className="nav-dropdown-item"
+          onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
+        >
+          Informational Interviews
+        </NavLink>
+        <NavLink
           to="/references"
           className="nav-dropdown-item"
           onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
@@ -150,6 +157,13 @@ const NavBar = () => {
           onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
         >
           Referrals
+        </NavLink>
+        <NavLink
+          to="/mock-interview"
+          className="nav-dropdown-item"
+          onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
+        >
+          Mock Interview Practice
         </NavLink>
 
       </div>

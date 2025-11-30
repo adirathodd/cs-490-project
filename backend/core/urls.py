@@ -4,6 +4,7 @@ URL configuration for core app authentication endpoints.
 from django.urls import path, re_path
 from core import views
 from core import analytics_views
+from core import market_views
 
 app_name = 'core'
 
@@ -88,6 +89,7 @@ urlpatterns = [
     path('mentorship/relationships/<int:team_member_id>/sharing', views.mentorship_sharing_preferences_view, name='mentorship-sharing-preferences'),
     path('mentorship/relationships/<int:team_member_id>/shared-data', views.mentorship_shared_data, name='mentorship-shared-data'),
     path('mentorship/relationships/<int:team_member_id>/goals', views.mentorship_goals, name='mentorship-goals'),
+    path('mentorship/relationships/<int:team_member_id>/analytics', views.mentorship_relationship_analytics, name='mentorship-relationship-analytics'),
     path('mentorship/goals/<uuid:goal_id>', views.mentorship_goal_detail, name='mentorship-goal-detail'),
     path('mentorship/relationships/<int:team_member_id>/progress-report', views.mentorship_progress_report, name='mentorship-progress-report'),
     path('mentorship/relationships/<int:team_member_id>/messages', views.mentorship_messages, name='mentorship-messages'),
@@ -141,6 +143,8 @@ urlpatterns = [
     path('jobs/import-from-url', views.import_job_from_url, name='import-job-from-url'),
     path('jobs/stats', views.jobs_stats, name='jobs-stats'),
     path('jobs/analytics', analytics_views.cover_letter_analytics_view, name='cover-letter-analytics'),
+    path('jobs/success-analysis', views.application_success_analysis, name='application-success-analysis'),  # UC-097
+    path('jobs/analytics/goals', analytics_views.update_application_targets_view, name='analytics-goals'),
     path('jobs/bulk-status', views.jobs_bulk_status, name='jobs-bulk-status'),
     path('jobs/bulk-deadline', views.jobs_bulk_deadline, name='jobs-bulk-deadline'),
     path('jobs/upcoming-deadlines', views.jobs_upcoming_deadlines, name='jobs-upcoming-deadlines'),
@@ -205,6 +209,7 @@ urlpatterns = [
     path('jobs/<int:job_id>/salary-research/export/', views.salary_research_export, name='salary-research-export'),
     path('jobs/<int:job_id>/salary-negotiation/', views.salary_negotiation_prep, name='salary-negotiation-prep'),
     path('jobs/<int:job_id>/salary-negotiation/outcomes/', views.salary_negotiation_outcomes, name='salary-negotiation-outcomes'),
+    path('jobs/<int:job_id>/salary-negotiation/outcomes/<int:outcome_id>/', views.salary_negotiation_outcome_detail, name='salary-negotiation-outcome-detail'),
     
     # UC-060: Grammar and Spell Checking endpoints
     path('cover-letter/check-grammar/', views.check_grammar, name='check-grammar'),
@@ -240,7 +245,7 @@ urlpatterns = [
     path('interviews/events/', views.interview_events_list_create, name='interview-events-list-create'),
     path('interviews/events/<int:pk>/', views.interview_event_detail, name='interview-event-detail'),
     path('interviews/success-forecast/', views.interview_success_forecast, name='interview-success-forecast'),
-    path('interviews/performance-analytics/', views.interview_performance_analytics, name='interview-performance-analytics'),
+    path('interviews/performance-tracking/', views.interview_performance_tracking, name='interview-performance-tracking'),  # UC-098
 
     # UC-081: Pre-Interview Preparation Checklist endpoints
     path('interviews/<int:pk>/checklist/', views.preparation_checklist_for_interview, name='preparation-checklist'),
@@ -319,6 +324,58 @@ urlpatterns = [
     path('referrals/<str:referral_id>/express-gratitude', views.referral_express_gratitude, name='referral-express-gratitude'),
     path('referrals/<str:referral_id>/suggest-follow-up', views.referral_suggest_follow_up, name='referral-suggest-follow-up'),
     path('referrals/<str:referral_id>/outcome', views.referral_update_outcome, name='referral-update-outcome'),
+
+    # UC-102: Market Intelligence
+    path('market-intelligence/', market_views.market_intelligence_view, name='market-intelligence'),
+
+    
+    # UC-095: Professional Reference Management endpoints
+    path('references/', views.references_list_create, name='references-list-create'),
+    path('references/<uuid:reference_id>/', views.reference_detail, name='reference-detail'),
+    path('references/<uuid:reference_id>/check-in/', views.reference_check_in, name='reference-check-in'),
+    path('references/requests/', views.reference_requests_list_create, name='reference-requests-list-create'),
+    path('references/requests/<uuid:request_id>/', views.reference_request_detail, name='reference-request-detail'),
+    path('references/requests/<uuid:request_id>/mark-sent/', views.reference_request_mark_sent, name='reference-request-mark-sent'),
+    path('references/requests/<uuid:request_id>/mark-completed/', views.reference_request_mark_completed, name='reference-request-mark-completed'),
+    path('references/templates/', views.reference_templates_list_create, name='reference-templates-list-create'),
+    path('references/templates/<uuid:template_id>/', views.reference_template_detail, name='reference-template-detail'),
+    path('references/appreciations/', views.reference_appreciations_list_create, name='reference-appreciations-list-create'),
+    path('references/appreciations/<uuid:appreciation_id>/', views.reference_appreciation_detail, name='reference-appreciation-detail'),
+    path('references/portfolios/', views.reference_portfolios_list_create, name='reference-portfolios-list-create'),
+    path('references/portfolios/<uuid:portfolio_id>/', views.reference_portfolio_detail, name='reference-portfolio-detail'),
+    path('references/analytics/', views.reference_analytics, name='reference-analytics'),
+    path('references/preparation-guide/', views.generate_reference_preparation_guide, name='reference-preparation-guide'),
+    # UC-087: Referral management (minimal dev stubs)
+    path('referrals', views.referrals_list_create, name='referrals-list-create'),
+    path('referrals/analytics', views.referrals_analytics, name='referrals-analytics'),
+    path('referrals/generate-message', views.referrals_generate_message, name='referrals-generate-message'),
+    path('referrals/<str:referral_id>', views.referral_detail, name='referral-detail'),
+    path('referrals/<str:referral_id>/mark-sent', views.referral_mark_sent, name='referral-mark-sent'),
+    path('referrals/<str:referral_id>/response', views.referral_mark_response, name='referral-response'),
+    path('referrals/<str:referral_id>/complete', views.referral_mark_completed, name='referral-complete'),
+    path('referrals/<str:referral_id>/uncomplete', views.referral_unmark_completed, name='referral-uncomplete'),
+    path('referrals/<str:referral_id>/express-gratitude', views.referral_express_gratitude, name='referral-express-gratitude'),
+    path('referrals/<str:referral_id>/suggest-follow-up', views.referral_suggest_follow_up, name='referral-suggest-follow-up'),
+    path('referrals/<str:referral_id>/outcome', views.referral_update_outcome, name='referral-update-outcome'),
+
+    # UC-077: Mock Interview Practice Sessions
+    path('mock-interviews/start', views.start_mock_interview, name='mock-interview-start'),
+    path('mock-interviews/answer', views.submit_mock_interview_answer, name='mock-interview-answer'),
+    path('mock-interviews/complete', views.complete_mock_interview, name='mock-interview-complete'),
+    path('mock-interviews', views.list_mock_interviews, name='mock-interviews-list'),
+    path('mock-interviews/<int:session_id>', views.get_mock_interview_session, name='mock-interview-detail'),
+    path('mock-interviews/<int:session_id>/summary', views.get_mock_interview_summary, name='mock-interview-summary'),
+    path('mock-interviews/<int:session_id>/delete', views.delete_mock_interview_session, name='mock-interview-delete'),
+
+    # UC-090: Informational Interview Management
+    path('informational-interviews/analytics', views.informational_interviews_analytics, name='informational-interviews-analytics'),
+    path('informational-interviews', views.informational_interviews_list_create, name='informational-interviews-list-create'),
+    path('informational-interviews/<uuid:pk>', views.informational_interviews_detail, name='informational-interviews-detail'),
+    path('informational-interviews/<uuid:pk>/mark-outreach-sent', views.informational_interviews_mark_outreach_sent, name='informational-interviews-mark-outreach-sent'),
+    path('informational-interviews/<uuid:pk>/mark-scheduled', views.informational_interviews_mark_scheduled, name='informational-interviews-mark-scheduled'),
+    path('informational-interviews/<uuid:pk>/mark-completed', views.informational_interviews_mark_completed, name='informational-interviews-mark-completed'),
+    path('informational-interviews/<uuid:pk>/generate-outreach', views.informational_interviews_generate_outreach, name='informational-interviews-generate-outreach'),
+    path('informational-interviews/<uuid:pk>/generate-preparation', views.informational_interviews_generate_preparation, name='informational-interviews-generate-preparation'),
 
     # UC-089: LinkedIn Integration and Guidance
     path('auth/oauth/linkedin/initiate', views.linkedin_oauth_initiate, name='linkedin-oauth-initiate'),
