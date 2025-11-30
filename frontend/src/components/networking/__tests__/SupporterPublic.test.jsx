@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import SupporterPublic from '../SupporterPublic';
 
 jest.mock('../../../services/api', () => ({
@@ -42,7 +43,11 @@ describe('SupporterPublic', () => {
   });
 
   test('renders funnel, achievements, mood, and AI guidance', async () => {
-    render(<SupporterPublic />);
+    render(
+      <MemoryRouter initialEntries={['/supporter?token=tok123']}>
+        <SupporterPublic />
+      </MemoryRouter>
+    );
     await waitFor(() => expect(supportersAPI.fetchDashboard).toHaveBeenCalled());
 
     expect(screen.getByText(/Application funnel/i)).toBeInTheDocument();

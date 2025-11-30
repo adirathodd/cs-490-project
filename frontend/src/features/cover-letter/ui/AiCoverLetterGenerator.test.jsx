@@ -34,9 +34,13 @@ Object.defineProperty(window, 'localStorage', {
   value: localStorageMock,
 });
 
-// Helper to render component with router
-const renderWithRouter = (component) => {
-  return render(<BrowserRouter>{component}</BrowserRouter>);
+// Helper to render component with router wrapped in async act to flush effects
+const renderWithRouter = async (component) => {
+  let utils;
+  await act(async () => {
+    utils = render(<BrowserRouter>{component}</BrowserRouter>);
+  });
+  return utils;
 };
 
 describe('AiCoverLetterGenerator - Version History', () => {
@@ -46,19 +50,14 @@ describe('AiCoverLetterGenerator - Version History', () => {
     
     // Mock API responses
     api.jobAPI = {
-      getJobs: jest.fn().mockResolvedValue({
-        status: 200,
-        data: {
-          results: [
-            {
-              id: 1,
-              title: 'Software Engineer',
-              company: 'Test Corp',
-              status: 'Applied',
-            },
-          ],
+      getJobs: jest.fn().mockResolvedValue([
+        {
+          id: 1,
+          title: 'Software Engineer',
+          company: 'Test Corp',
+          status: 'Applied',
         },
-      }),
+      ]),
     };
 
     api.profileAPI = {
@@ -89,13 +88,15 @@ describe('AiCoverLetterGenerator - Version History', () => {
     };
   });
 
-  it('renders the cover letter generator page', () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+  it('renders the cover letter generator page', async () => {
+    await renderWithRouter(<AiCoverLetterGenerator />);
+    await waitFor(() => expect(api.jobAPI.getJobs).toHaveBeenCalled());
     expect(screen.getByText(/Tailored Cover Letter Generator/i)).toBeInTheDocument();
   });
 
-  it('initializes with empty version history', () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+  it('initializes with empty version history', async () => {
+    await renderWithRouter(<AiCoverLetterGenerator />);
+    await waitFor(() => expect(api.jobAPI.getJobs).toHaveBeenCalled());
     // Version history should start empty
     expect(localStorageMock.getItem('resumerocket_cover_letter_versions_var-1')).toBeNull();
   });
@@ -103,7 +104,8 @@ describe('AiCoverLetterGenerator - Version History', () => {
   it('saves version to localStorage after changes', async () => {
     jest.useFakeTimers();
     
-    renderWithRouter(<AiCoverLetterGenerator />);
+    await renderWithRouter(<AiCoverLetterGenerator />);
+    await waitFor(() => expect(api.jobAPI.getJobs).toHaveBeenCalled());
     
     // Wait for component to mount and simulate changes
     act(() => {
@@ -113,7 +115,7 @@ describe('AiCoverLetterGenerator - Version History', () => {
     jest.useRealTimers();
   });
 
-  it('loads version history from localStorage on mount', () => {
+  it('loads version history from localStorage on mount', async () => {
     const mockVersions = {
       versions: [
         {
@@ -134,7 +136,8 @@ describe('AiCoverLetterGenerator - Version History', () => {
       JSON.stringify(mockVersions)
     );
 
-    renderWithRouter(<AiCoverLetterGenerator />);
+    await renderWithRouter(<AiCoverLetterGenerator />);
+    await waitFor(() => expect(api.jobAPI.getJobs).toHaveBeenCalled());
     
     // Version history should be loaded from localStorage
     const stored = localStorageMock.getItem('resumerocket_cover_letter_versions_var-1');

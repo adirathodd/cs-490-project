@@ -215,8 +215,9 @@ const Supporters = () => {
         {error && <div className="supporters-alert">{error}</div>}
         <form className="supporters-form" onSubmit={handleCreate}>
           <div className="field">
-            <label>Email</label>
+            <label htmlFor="supporter-email">Email</label>
             <input
+              id="supporter-email"
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -225,8 +226,9 @@ const Supporters = () => {
             />
           </div>
           <div className="field">
-            <label>Name (optional)</label>
+            <label htmlFor="supporter-name">Name (optional)</label>
             <input
+              id="supporter-name"
               type="text"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -234,8 +236,9 @@ const Supporters = () => {
             />
           </div>
           <div className="field">
-            <label>Link expiry</label>
+            <label htmlFor="supporter-expiry">Link expiry</label>
             <select
+              id="supporter-expiry"
               value={form.expires_in_days}
               onChange={(e) => setForm({ ...form, expires_in_days: Number(e.target.value) })}
             >
@@ -245,24 +248,27 @@ const Supporters = () => {
               <option value={0}>No expiry</option>
             </select>
           </div>
-          <label className="field checkbox-row">
+          <label className="field checkbox-row" htmlFor="supporter-show-company">
             <input
+              id="supporter-show-company"
               type="checkbox"
               checked={showCompany}
               onChange={(e) => setShowCompany(e.target.checked)}
             />
             <span>Allow company names to be visible</span>
           </label>
-          <label className="field checkbox-row">
+          <label className="field checkbox-row" htmlFor="supporter-show-practice">
             <input
+              id="supporter-show-practice"
               type="checkbox"
               checked={showPractice}
               onChange={(e) => setShowPractice(e.target.checked)}
             />
             <span>Show practice stats</span>
           </label>
-          <label className="field checkbox-row">
+          <label className="field checkbox-row" htmlFor="supporter-show-achievements">
             <input
+              id="supporter-show-achievements"
               type="checkbox"
               checked={showAchievements}
               onChange={(e) => setShowAchievements(e.target.checked)}
@@ -299,8 +305,9 @@ const Supporters = () => {
         </div>
         <form className="supporters-form" onSubmit={handleSaveMood}>
           <div className="field">
-            <label>Score (1-10, optional)</label>
+            <label htmlFor="supporter-mood-score">Score (1-10, optional)</label>
             <input
+              id="supporter-mood-score"
               type="number"
               min="1"
               max="10"
@@ -310,8 +317,9 @@ const Supporters = () => {
             />
           </div>
           <div className="field" style={{ gridColumn: '1 / -1' }}>
-            <label>How I’m feeling (optional)</label>
+            <label htmlFor="supporter-mood-note">How I’m feeling (optional)</label>
             <textarea
+              id="supporter-mood-note"
               rows={3}
               value={moodNote}
               onChange={(e) => setMoodNote(e.target.value)}
