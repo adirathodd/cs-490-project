@@ -157,7 +157,7 @@ const Supporters = () => {
     const link = `${window.location.origin}/supporter?token=${invite.token}`;
     const subject = encodeURIComponent('Join my supporter dashboard');
     const body = encodeURIComponent(
-      `Hi,\n\nI'd like to share a read-only dashboard so you can see my job search progress and send encouragement.\n\nOpen this link: ${link}\n\nThanks for supporting me!`
+      `Hi,\n\nI'd like to share a dashboard so you can see my job search progress and send encouragement.\n\nOpen this link: ${link}\n\nThanks for supporting me!`
     );
     return { link, subject, body };
   };
@@ -418,7 +418,7 @@ const Supporters = () => {
         <div className="supporters-card__header">
           <div>
             <p className="eyebrow">Supporter Chat</p>
-            <h3>Two-way messages</h3>
+            <h3>Supporter Message Feed</h3>
           </div>
           <button type="button" className="btn-ghost" onClick={loadChat} disabled={chatLoading}>
             {chatLoading ? 'Refreshing…' : 'Refresh'}

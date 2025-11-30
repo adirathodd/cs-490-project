@@ -31,11 +31,13 @@ import ContactsPage from './components/contacts/ContactsPage';
 import NetworkingEvents from './components/networking/NetworkingEvents';
 import Supporters from './components/networking/Supporters';
 import SupporterPublic from './components/networking/SupporterPublic';
+import InformationalInterviews from './components/informational-interviews/InformationalInterviews';
 import ReferencesPage from './components/references/ReferencesPage';
 import MentorshipDashboard from './components/mentorship/MentorshipDashboard';
 import ReferralManagement from './components/referrals/ReferralManagement';
 import MentorshipMenteeDashboard from './components/mentorship/MenteeDashboard';
 import MarketIntelligence from './components/tools/MarketIntelligence';
+import SalaryProgression from './components/tools/SalaryProgression';
 import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
 import { AiCoverLetterGenerator } from './features/cover-letter';
@@ -372,6 +374,16 @@ function App() {
             }
           />
           <Route
+            path="/informational-interviews"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <InformationalInterviews />
+              </PrivateRoute>
+            }
+          />
+          <Route
             path="/supporters"
             element={
               <PrivateRoute>
@@ -432,6 +444,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <MarketIntelligence />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/tools/salary-progression"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <SalaryProgression />
               </PrivateRoute>
             }
           />

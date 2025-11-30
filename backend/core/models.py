@@ -336,6 +336,111 @@ class ContactJobLink(models.Model):
     relationship_to_job = models.CharField(max_length=120, blank=True)
 
 
+class InformationalInterview(models.Model):
+    """UC-090: Informational Interview Management - Track and manage informational interviews."""
+    
+    STATUS_CHOICES = [
+        ('identified', 'Candidate Identified'),
+        ('outreach_sent', 'Outreach Sent'),
+        ('scheduled', 'Scheduled'),
+        ('completed', 'Completed'),
+        ('declined', 'Declined'),
+        ('no_response', 'No Response'),
+    ]
+    
+    OUTCOME_CHOICES = [
+        ('', 'Not Yet Recorded'),
+        ('excellent', 'Excellent'),
+        ('good', 'Good'),
+        ('average', 'Average'),
+        ('poor', 'Poor'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='informational_interviews'
+    )
+    contact = models.ForeignKey(
+        Contact,
+        on_delete=models.CASCADE,
+        related_name='informational_interviews',
+        help_text='The contact being interviewed'
+    )
+    
+    # Request details
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='identified')
+    outreach_template_used = models.CharField(max_length=50, blank=True, help_text='Template type used for outreach')
+    outreach_sent_at = models.DateTimeField(null=True, blank=True)
+    outreach_message = models.TextField(blank=True, help_text='Actual outreach message sent')
+    
+    # Scheduling
+    scheduled_at = models.DateTimeField(null=True, blank=True, help_text='Interview date and time')
+    meeting_location = models.CharField(max_length=500, blank=True, help_text='Physical location or video link')
+    duration_minutes = models.PositiveIntegerField(default=30, help_text='Expected duration')
+    
+    # Preparation
+    preparation_notes = models.TextField(blank=True, help_text='User preparation notes')
+    questions_to_ask = models.JSONField(default=list, blank=True, help_text='List of prepared questions')
+    research_notes = models.TextField(blank=True, help_text='Research about the contact/company')
+    goals = models.JSONField(default=list, blank=True, help_text='What user wants to learn/achieve')
+    
+    # Completion and outcomes
+    completed_at = models.DateTimeField(null=True, blank=True)
+    outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES, blank=True, default='')
+    interview_notes = models.TextField(blank=True, help_text='Notes taken during/after interview')
+    key_insights = models.JSONField(default=list, blank=True, help_text='Key takeaways and insights')
+    industry_intelligence = models.TextField(blank=True, help_text='Industry trends and intelligence gathered')
+    
+    # Follow-up and relationship
+    follow_up_sent_at = models.DateTimeField(null=True, blank=True)
+    follow_up_message = models.TextField(blank=True)
+    relationship_strength_change = models.IntegerField(default=0, help_text='Change in relationship strength (-5 to +5)')
+    future_opportunities = models.JSONField(default=list, blank=True, help_text='Potential opportunities identified')
+    
+    # Impact tracking
+    led_to_job_application = models.BooleanField(default=False)
+    led_to_referral = models.BooleanField(default=False)
+    led_to_introduction = models.BooleanField(default=False)
+    connected_jobs = models.ManyToManyField('JobEntry', blank=True, related_name='from_informational_interviews')
+    
+    # Metadata
+    tags = models.ManyToManyField(Tag, blank=True, related_name='informational_interviews')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-scheduled_at', '-created_at']
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['user', '-scheduled_at']),
+            models.Index(fields=['contact', 'status']),
+        ]
+    
+    def __str__(self):
+        return f"Informational Interview with {self.contact.display_name} - {self.status}"
+    
+    def mark_outreach_sent(self):
+        """Mark outreach as sent and update status."""
+        self.status = 'outreach_sent'
+        self.outreach_sent_at = timezone.now()
+        self.save(update_fields=['status', 'outreach_sent_at', 'updated_at'])
+    
+    def mark_scheduled(self, scheduled_time):
+        """Mark interview as scheduled."""
+        self.status = 'scheduled'
+        self.scheduled_at = scheduled_time
+        self.save(update_fields=['status', 'scheduled_at', 'updated_at'])
+    
+    def mark_completed(self, outcome='good'):
+        """Mark interview as completed."""
+        self.status = 'completed'
+        self.completed_at = timezone.now()
+        self.outcome = outcome
+        self.save(update_fields=['status', 'completed_at', 'outcome', 'updated_at'])
+
+
 class Document(models.Model):
     DOC_TYPES = [("resume","Resume"), ("cover_letter","Cover Letter"), ("portfolio","Portfolio"), ("cert","Certification")]
     candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="documents")
@@ -1932,6 +2037,9 @@ class SalaryNegotiationOutcome(models.Model):
     job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='negotiation_outcomes')
     plan = models.ForeignKey(SalaryNegotiationPlan, on_delete=models.SET_NULL, null=True, blank=True, related_name='outcomes')
     stage = models.CharField(max_length=20, choices=STAGE_CHOICES, default='offer')
+    base_salary = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    bonus = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    equity = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     company_offer = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     counter_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     final_result = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)

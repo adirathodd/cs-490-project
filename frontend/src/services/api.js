@@ -1102,6 +1102,15 @@ export const salaryNegotiationAPI = {
       throw error.response?.data?.error || { message: 'Failed to log negotiation outcome' };
     }
   },
+
+  deleteOutcome: async (jobId, outcomeId) => {
+    try {
+      const response = await api.delete(`/jobs/${jobId}/salary-negotiation/outcomes/${outcomeId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete negotiation outcome' };
+    }
+  },
 };
 
 // UC-047: AI Resume Generation API calls
@@ -2481,6 +2490,124 @@ export const networkingAPI = {
   },
 };
 
+// UC-090: Informational Interview Management API
+export const informationalInterviewsAPI = {
+  // List and filter informational interviews
+  getInterviews: async (filters = {}) => {
+    try {
+      const response = await api.get('/informational-interviews', { params: filters });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch informational interviews' };
+    }
+  },
+
+  // Get specific interview
+  getInterview: async (id) => {
+    try {
+      const response = await api.get(`/informational-interviews/${id}`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch interview details' };
+    }
+  },
+
+  // Create new interview
+  createInterview: async (interviewData) => {
+    try {
+      const response = await api.post('/informational-interviews', interviewData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to create informational interview' };
+    }
+  },
+
+  // Update interview
+  updateInterview: async (id, interviewData) => {
+    try {
+      const response = await api.patch(`/informational-interviews/${id}`, interviewData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update interview' };
+    }
+  },
+
+  // Delete interview
+  deleteInterview: async (id) => {
+    try {
+      await api.delete(`/informational-interviews/${id}`);
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete interview' };
+    }
+  },
+
+  // Mark outreach as sent
+  markOutreachSent: async (id) => {
+    try {
+      const response = await api.post(`/informational-interviews/${id}/mark-outreach-sent`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to mark outreach as sent' };
+    }
+  },
+
+  // Mark as scheduled
+  markScheduled: async (id, scheduledAt) => {
+    try {
+      const response = await api.post(`/informational-interviews/${id}/mark-scheduled`, {
+        scheduled_at: scheduledAt
+      });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to mark interview as scheduled' };
+    }
+  },
+
+  // Mark as completed
+  markCompleted: async (id, outcome) => {
+    try {
+      const response = await api.post(`/informational-interviews/${id}/mark-completed`, {
+        outcome
+      });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to mark interview as completed' };
+    }
+  },
+
+  // Generate outreach message template
+  generateOutreach: async (id, style = 'professional') => {
+    try {
+      const response = await api.post(`/informational-interviews/${id}/generate-outreach`, {
+        style
+      });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to generate outreach template' };
+    }
+  },
+
+  // Generate preparation framework
+  generatePreparation: async (id) => {
+    try {
+      const response = await api.post(`/informational-interviews/${id}/generate-preparation`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to generate preparation framework' };
+    }
+  },
+
+  // Get analytics
+  getAnalytics: async () => {
+    try {
+      const response = await api.get('/informational-interviews/analytics');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch analytics' };
+    }
+  },
+};
+
 export const mentorshipAPI = {
   getRequests: async () => {
     try {
@@ -3002,4 +3129,3 @@ try {
 } catch (e) {
   // ignore
 }
-
