@@ -1837,6 +1837,8 @@ export const coverLetterExportAPI = {
 // - `import { authAPI } from './services/api'` (named import)
 // and also exposes other API groups as properties for callers that expect `api.authAPI`.
 const _defaultExport = {
+  // Expose the raw axios instance for direct API calls
+  ...api,
   // spread authAPI methods to the top-level for backwards compatibility
   ...authAPI,
   // include grouped namespaces as properties

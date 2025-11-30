@@ -298,6 +298,106 @@ class Reminder(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+class ContactSuggestion(models.Model):
+    """UC-092: Industry Contact Discovery - Suggested contacts for users"""
+    SUGGESTION_TYPES = [
+        ('target_company', 'Target Company Employee'),
+        ('alumni', 'Alumni Connection'),
+        ('industry_leader', 'Industry Leader/Influencer'),
+        ('mutual_connection', '2nd/3rd Degree Connection'),
+        ('conference_speaker', 'Conference Speaker/Event Participant'),
+        ('similar_role', 'Similar Role Professional'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('suggested', 'Suggested'),
+        ('contacted', 'Contacted'),
+        ('connected', 'Connected'),
+        ('dismissed', 'Dismissed'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='contact_suggestions')
+    
+    # Suggested contact information
+    suggested_name = models.CharField(max_length=255)
+    suggested_title = models.CharField(max_length=220, blank=True)
+    suggested_company = models.CharField(max_length=180, blank=True)
+    suggested_linkedin_url = models.URLField(blank=True)
+    suggested_location = models.CharField(max_length=160, blank=True)
+    suggested_industry = models.CharField(max_length=120, blank=True)
+    
+    # Suggestion metadata
+    suggestion_type = models.CharField(max_length=30, choices=SUGGESTION_TYPES)
+    relevance_score = models.FloatField(default=0.0, help_text="0.0-1.0 relevance score")
+    reason = models.TextField(help_text="Why this contact is suggested")
+    
+    # Connection path for mutual connections
+    connection_path = models.JSONField(default=list, blank=True, help_text="List of intermediary contacts")
+    mutual_connections = models.JSONField(default=list, blank=True)
+    
+    # Related entities
+    related_job = models.ForeignKey('JobOpportunity', on_delete=models.SET_NULL, null=True, blank=True, related_name='contact_suggestions')
+    related_company = models.ForeignKey('Company', on_delete=models.SET_NULL, null=True, blank=True)
+    
+    # Alumni connection data
+    shared_institution = models.CharField(max_length=200, blank=True)
+    shared_degree = models.CharField(max_length=200, blank=True)
+    
+    # Status tracking
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='suggested')
+    contacted_at = models.DateTimeField(null=True, blank=True)
+    connected_contact = models.ForeignKey(Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='originated_from_suggestion')
+    
+    # Metadata
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', 'status', '-relevance_score']),
+            models.Index(fields=['user', 'suggestion_type', '-created_at']),
+            models.Index(fields=['-relevance_score']),
+        ]
+        ordering = ['-relevance_score', '-created_at']
+    
+    def __str__(self):
+        return f"{self.suggested_name} ({self.get_suggestion_type_display()}) - Score: {self.relevance_score}"
+
+
+class DiscoverySearch(models.Model):
+    """UC-092: Track user's contact discovery searches and preferences"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='discovery_searches')
+    
+    # Search criteria
+    target_companies = models.JSONField(default=list, blank=True)
+    target_roles = models.JSONField(default=list, blank=True)
+    target_industries = models.JSONField(default=list, blank=True)
+    target_locations = models.JSONField(default=list, blank=True)
+    
+    # Filters
+    include_alumni = models.BooleanField(default=True)
+    include_mutual_connections = models.BooleanField(default=True)
+    include_industry_leaders = models.BooleanField(default=True)
+    
+    # Results
+    results_count = models.IntegerField(default=0)
+    contacted_count = models.IntegerField(default=0)
+    connected_count = models.IntegerField(default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_refreshed = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name_plural = 'Discovery searches'
+    
+    def __str__(self):
+        return f"Discovery search by {self.user.email} - {self.results_count} results"
+
+
 class ImportJob(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='import_jobs')

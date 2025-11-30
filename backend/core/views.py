@@ -101,6 +101,8 @@ from core.serializers import (
     ReferencePortfolioSerializer,
     ReferencePortfolioListSerializer,
 
+    ContactSuggestionSerializer,
+    DiscoverySearchSerializer,
 )
 from core.models import (
     CandidateProfile,
@@ -167,6 +169,9 @@ from core.models import (
     MentorshipSharedApplication,
     MentorshipGoal,
     MentorshipMessage,
+    
+    ContactSuggestion,
+    DiscoverySearch,
 )
 from core import google_import, tasks, response_coach, interview_followup, calendar_sync
 from core.interview_checklist import build_checklist_tasks
@@ -13165,6 +13170,221 @@ def generate_interview_followup(request):
 # 
 # 
 # =
+# UC-092: Industry Contact Discovery
+# 
+# 
+# =
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def contact_suggestions_list_create(request):
+    """
+    GET: List contact suggestions for the current user
+    POST: Generate new contact suggestions based on search criteria
+    """
+    if request.method == 'GET':
+        # Filter parameters
+        suggestion_type = request.query_params.get('type')
+        status_filter = request.query_params.get('status', 'suggested')
+        
+        queryset = ContactSuggestion.objects.filter(user=request.user)
+        
+        if suggestion_type:
+            queryset = queryset.filter(suggestion_type=suggestion_type)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        queryset = queryset.select_related('related_job', 'related_company', 'connected_contact')
+        queryset = queryset.order_by('-relevance_score', '-created_at')
+        
+        serializer = ContactSuggestionSerializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        # Generate suggestions based on criteria
+        from core.contact_discovery import generate_contact_suggestions
+        
+        search_data = request.data
+        results = generate_contact_suggestions(request.user, search_data)
+        
+        return Response({
+            'suggestions_generated': len(results),
+            'suggestions': ContactSuggestionSerializer(results, many=True).data
+        }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def contact_suggestion_detail(request, pk):
+    """
+    GET: Retrieve a specific contact suggestion
+    PATCH: Update suggestion status (contacted, connected, dismissed)
+    DELETE: Remove suggestion
+    """
+    try:
+        suggestion = ContactSuggestion.objects.get(pk=pk, user=request.user)
+    except ContactSuggestion.DoesNotExist:
+        return Response({'error': 'Contact suggestion not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        serializer = ContactSuggestionSerializer(suggestion)
+        return Response(serializer.data)
+    
+    elif request.method == 'PATCH':
+        serializer = ContactSuggestionSerializer(suggestion, data=request.data, partial=True)
+        if serializer.is_valid():
+            # Update contacted_at timestamp if status changed to contacted
+            if 'status' in request.data and request.data['status'] == 'contacted':
+                suggestion.contacted_at = timezone.now()
+            
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        suggestion.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def contact_suggestion_convert_to_contact(request, pk):
+    """Convert a contact suggestion into an actual contact"""
+    try:
+        suggestion = ContactSuggestion.objects.get(pk=pk, user=request.user)
+    except ContactSuggestion.DoesNotExist:
+        return Response({'error': 'Contact suggestion not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Create contact from suggestion
+    contact = Contact.objects.create(
+        owner=request.user,
+        display_name=suggestion.suggested_name,
+        title=suggestion.suggested_title,
+        company_name=suggestion.suggested_company,
+        linkedin_url=suggestion.suggested_linkedin_url,
+        location=suggestion.suggested_location,
+        industry=suggestion.suggested_industry,
+        metadata={'created_from_suggestion': str(suggestion.id)}
+    )
+    
+    # Update suggestion
+    suggestion.status = 'connected'
+    suggestion.connected_contact = contact
+    suggestion.save(update_fields=['status', 'connected_contact'])
+    
+    return Response({
+        'contact': ContactSerializer(contact).data,
+        'suggestion': ContactSuggestionSerializer(suggestion).data
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def discovery_searches_list_create(request):
+    """
+    GET: List user's discovery searches
+    POST: Create a new discovery search
+    """
+    if request.method == 'GET':
+        searches = DiscoverySearch.objects.filter(user=request.user).order_by('-created_at')
+        serializer = DiscoverySearchSerializer(searches, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = DiscoverySearchSerializer(data=request.data)
+        if serializer.is_valid():
+            search = serializer.save(user=request.user)
+            
+            # Generate suggestions based on search
+            try:
+                from core.contact_discovery import generate_contact_suggestions
+                results = generate_contact_suggestions(request.user, serializer.validated_data, search)
+                
+                # Update search results count
+                search.results_count = len(results)
+                search.save(update_fields=['results_count'])
+                
+                return Response({
+                    'search': DiscoverySearchSerializer(search).data,
+                    'suggestions': ContactSuggestionSerializer(results, many=True).data
+                }, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error generating contact suggestions: {str(e)}", exc_info=True)
+                return Response({
+                    'error': f'Failed to generate suggestions: {str(e)}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def discovery_search_detail(request, pk):
+    """Get discovery search details with associated suggestions"""
+    try:
+        search = DiscoverySearch.objects.get(pk=pk, user=request.user)
+    except DiscoverySearch.DoesNotExist:
+        return Response({'error': 'Discovery search not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Get suggestions from this search (using metadata to track)
+    suggestions = ContactSuggestion.objects.filter(
+        user=request.user,
+        created_at__gte=search.created_at
+    ).order_by('-relevance_score')[:20]  # Limit to top 20
+    
+    return Response({
+        'search': DiscoverySearchSerializer(search).data,
+        'suggestions': ContactSuggestionSerializer(suggestions, many=True).data
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def discovery_analytics(request):
+    """Get analytics on contact discovery effectiveness"""
+    user = request.user
+    
+    # Aggregate statistics
+    total_suggestions = ContactSuggestion.objects.filter(user=user).count()
+    contacted = ContactSuggestion.objects.filter(user=user, status='contacted').count()
+    connected = ContactSuggestion.objects.filter(user=user, status='connected').count()
+    dismissed = ContactSuggestion.objects.filter(user=user, status='dismissed').count()
+    
+    # Breakdown by suggestion type
+    type_breakdown = {}
+    for choice in ContactSuggestion.SUGGESTION_TYPES:
+        type_key = choice[0]
+        type_count = ContactSuggestion.objects.filter(user=user, suggestion_type=type_key).count()
+        connected_count = ContactSuggestion.objects.filter(user=user, suggestion_type=type_key, status='connected').count()
+        type_breakdown[type_key] = {
+            'label': choice[1],
+            'total': type_count,
+            'connected': connected_count,
+            'conversion_rate': (connected_count / type_count * 100) if type_count > 0 else 0
+        }
+    
+    return Response({
+        'overview': {
+            'total_suggestions': total_suggestions,
+            'contacted': contacted,
+            'connected': connected,
+            'dismissed': dismissed,
+            'contact_rate': (contacted / total_suggestions * 100) if total_suggestions > 0 else 0,
+            'connection_rate': (connected / total_suggestions * 100) if total_suggestions > 0 else 0,
+        },
+        'by_type': type_breakdown,
+        'recent_connections': ContactSuggestionSerializer(
+            ContactSuggestion.objects.filter(user=user, status='connected').order_by('-updated_at')[:5],
+            many=True
+        ).data
+    })
+
+
+# 
+# 
+# =
 # Mentorship endpoints
 # 
 # 
@@ -15603,10 +15823,10 @@ def complete_mock_interview(request):
                 recommended_practice_topics=summary_data.get('recommended_practice_topics', []),
                 next_steps=summary_data.get('next_steps', []),
                 overall_assessment=summary_data.get('overall_assessment', ''),
-                readiness_level=summary_data.get('readiness_level', 'needs_practice'),
+                readiness_level=summary_data.get('readiness_level', 'needs_practice')[:20],
                 estimated_interview_readiness=summary_data.get('estimated_interview_readiness', int(overall_score or 0)),
                 compared_to_previous_sessions=compared_to_previous,
-                improvement_trend=summary_data.get('improvement_trend', 'stable')
+                improvement_trend=summary_data.get('improvement_trend', 'stable')[:20]
             )
             logger.info(f"Successfully created summary for session {session_id}")
         except Exception as e:
