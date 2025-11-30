@@ -33,11 +33,13 @@ class AutomationAPI {
         try {
           errorData = await response.json();
         } catch (e) {
-          errorText = await response.text().catch(() => '');
+          if (typeof response.text === 'function') {
+            errorText = await response.text().catch(() => '');
+          }
         }
         const baseMessage = errorData.error || errorData.message || errorText || '';
         const statusLabel = `HTTP ${response.status}${response.statusText ? `: ${response.statusText}` : ''}`;
-        const message = baseMessage ? `${statusLabel} - ${baseMessage}` : statusLabel;
+        const message = baseMessage || statusLabel;
         const err = new Error(message);
         err.status = response.status;
         throw err;
@@ -48,9 +50,19 @@ class AutomationAPI {
         return null;
       }
 
-      const contentType = response.headers.get('content-type') || '';
+      const headers = response.headers && typeof response.headers.get === 'function'
+        ? response.headers
+        : { get: () => '' };
+      const contentType = headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         return await response.json();
+      }
+      if (typeof response.json === 'function') {
+        try {
+          return await response.json();
+        } catch {
+          // fall through
+        }
       }
       return {};
     } catch (error) {

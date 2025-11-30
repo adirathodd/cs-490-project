@@ -70,7 +70,7 @@ describe('Supporters', () => {
     await waitFor(() => expect(supportersAPI.listInvites).toHaveBeenCalled());
 
     fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'new@example.com' } });
-    fireEvent.change(screen.getByLabelText(/Name/i), { target: { value: 'New Person' } });
+    fireEvent.change(screen.getByLabelText(/Name \(optional\)/i), { target: { value: 'New Person' } });
     fireEvent.change(screen.getByLabelText(/Link expiry/i), { target: { value: '0' } });
     fireEvent.click(screen.getByLabelText(/Allow company names/i));
     fireEvent.click(screen.getByLabelText(/Show practice stats/i));

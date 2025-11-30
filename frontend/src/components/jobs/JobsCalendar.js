@@ -11,16 +11,16 @@ export default function JobsCalendar() {
   const load = async () => {
     setLoading(true);
     try {
-      // Load deadlines
-      const deadlines = await jobsAPI.getUpcomingDeadlines(50).catch(() => []);
+      // Load deadlines (allow errors to bubble so we can surface them)
+      const deadlines = await jobsAPI.getUpcomingDeadlines(50);
       console.log('Loaded deadlines:', deadlines);
       
       // Load ALL interviews (not just upcoming) for debugging
-      const interviews = await interviewsAPI.getInterviews({}).catch(() => []);
+      const interviews = await interviewsAPI.getInterviews({});
       console.log('Loaded interviews:', interviews);
       
       // Load active reminders
-      const activeReminders = await interviewsAPI.getActiveReminders().catch(() => []);
+      const activeReminders = await interviewsAPI.getActiveReminders();
       console.log('Active reminders:', activeReminders);
       setReminders(activeReminders || []);
       
