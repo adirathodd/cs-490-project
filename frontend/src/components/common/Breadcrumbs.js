@@ -8,6 +8,7 @@ const titleMap = {
   'reset-password': 'Reset Password',
   'login': 'Login',
   'register': 'Register',
+  'informational-interviews': 'Informational Interviews',
 };
 
 const Breadcrumbs = () => {

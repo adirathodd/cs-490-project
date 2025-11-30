@@ -142,6 +142,7 @@ from core.models import (
     MutualConnection,
     ContactCompanyLink,
     ContactJobLink,
+    InformationalInterview,
     NetworkingEvent,
     EventGoal,
     EventConnection,
@@ -281,7 +282,10 @@ def referrals_list_create(request):
                 first_name=data.get('referral_source_first_name', ''),
                 last_name=data.get('referral_source_last_name', ''),
                 title=data.get('referral_source_title', ''),
-                email=data.get('referral_source_email', '')
+                company_name=data.get('referral_source_company', ''),
+                email=data.get('referral_source_email', ''),
+                phone=data.get('referral_source_phone', ''),
+                linkedin_url=data.get('referral_source_linkedin', '')
             )
 
     if not contact:
@@ -15101,3 +15105,401 @@ def delete_mock_interview_session(request, session_id):
             {'error': 'Session not found'},
             status=status.HTTP_404_NOT_FOUND
         )
+
+
+# UC-090: Informational Interview Management Views
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_list_create(request):
+    """
+    GET: List all informational interviews for the authenticated user
+    POST: Create a new informational interview
+    """
+    from core.models import InformationalInterview
+    from core.serializers import InformationalInterviewSerializer, InformationalInterviewListSerializer
+    
+    if request.method == 'GET':
+        # List with filtering
+        qs = InformationalInterview.objects.filter(user=request.user).select_related(
+            'contact', 'user'
+        ).prefetch_related('tags', 'connected_jobs')
+        
+        # Filter by status
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        
+        # Filter by contact
+        contact_id = request.query_params.get('contact')
+        if contact_id:
+            qs = qs.filter(contact_id=contact_id)
+        
+        # Filter by outcome
+        outcome_filter = request.query_params.get('outcome')
+        if outcome_filter:
+            qs = qs.filter(outcome=outcome_filter)
+        
+        # Filter by date range
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        if start_date:
+            qs = qs.filter(scheduled_at__gte=start_date)
+        if end_date:
+            qs = qs.filter(scheduled_at__lte=end_date)
+        
+        # Use list serializer for efficiency
+        serializer = InformationalInterviewListSerializer(
+            qs.order_by('-scheduled_at', '-created_at'),
+            many=True
+        )
+        return Response(serializer.data)
+    
+    # POST: Create new interview
+    serializer = InformationalInterviewSerializer(
+        data=request.data,
+        context={'request': request}
+    )
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["GET", "PUT", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_detail(request, pk):
+    """
+    GET: Retrieve a specific informational interview
+    PUT/PATCH: Update an informational interview
+    DELETE: Delete an informational interview
+    """
+    from core.models import InformationalInterview
+    from core.serializers import InformationalInterviewSerializer
+    
+    try:
+        interview = InformationalInterview.objects.select_related(
+            'contact', 'user'
+        ).prefetch_related('tags', 'connected_jobs').get(
+            pk=pk,
+            user=request.user
+        )
+    except InformationalInterview.DoesNotExist:
+        return Response(
+            {'detail': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == 'GET':
+        serializer = InformationalInterviewSerializer(interview)
+        return Response(serializer.data)
+    
+    elif request.method in ['PUT', 'PATCH']:
+        partial = request.method == 'PATCH'
+        serializer = InformationalInterviewSerializer(
+            interview,
+            data=request.data,
+            partial=partial,
+            context={'request': request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        interview.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_mark_outreach_sent(request, pk):
+    """Mark an interview as having outreach sent"""
+    from core.models import InformationalInterview
+    from core.serializers import InformationalInterviewSerializer
+    
+    try:
+        interview = InformationalInterview.objects.get(pk=pk, user=request.user)
+    except InformationalInterview.DoesNotExist:
+        return Response(
+            {'detail': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Use the model helper method
+    interview.mark_outreach_sent()
+    
+    serializer = InformationalInterviewSerializer(interview)
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_mark_scheduled(request, pk):
+    """Mark an interview as scheduled"""
+    from core.models import InformationalInterview
+    from core.serializers import InformationalInterviewSerializer
+    
+    try:
+        interview = InformationalInterview.objects.get(pk=pk, user=request.user)
+    except InformationalInterview.DoesNotExist:
+        return Response(
+            {'detail': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    scheduled_time = request.data.get('scheduled_at')
+    if not scheduled_time:
+        return Response(
+            {'detail': 'scheduled_at is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Use the model helper method
+    interview.mark_scheduled(scheduled_time)
+    
+    serializer = InformationalInterviewSerializer(interview)
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_mark_completed(request, pk):
+    """Mark an interview as completed"""
+    from core.models import InformationalInterview
+    from core.serializers import InformationalInterviewSerializer
+    
+    try:
+        interview = InformationalInterview.objects.get(pk=pk, user=request.user)
+    except InformationalInterview.DoesNotExist:
+        return Response(
+            {'detail': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Get all completion data from request
+    outcome = request.data.get('outcome', 'good')
+    key_insights = request.data.get('key_insights', [])
+    led_to_job_application = request.data.get('led_to_job_application', False)
+    led_to_referral = request.data.get('led_to_referral', False)
+    led_to_introduction = request.data.get('led_to_introduction', False)
+    
+    # Use the model helper method for status and outcome
+    interview.mark_completed(outcome)
+    
+    # Update additional fields
+    interview.key_insights = key_insights if isinstance(key_insights, list) else []
+    interview.led_to_job_application = led_to_job_application
+    interview.led_to_referral = led_to_referral
+    interview.led_to_introduction = led_to_introduction
+    interview.save(update_fields=[
+        'key_insights',
+        'led_to_job_application', 'led_to_referral', 'led_to_introduction',
+        'updated_at'
+    ])
+    
+    serializer = InformationalInterviewSerializer(interview)
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_generate_outreach(request, pk):
+    """Generate an outreach message template for an interview"""
+    from core.models import InformationalInterview
+    
+    try:
+        interview = InformationalInterview.objects.select_related('contact').get(
+            pk=pk,
+            user=request.user
+        )
+    except InformationalInterview.DoesNotExist:
+        return Response(
+            {'detail': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    contact = interview.contact
+    template_style = request.data.get('style', 'professional')
+    
+    # Generate templates based on style
+    templates = {
+        'professional': f"""Subject: Informational Interview Request
+
+Dear {contact.first_name or contact.display_name},
+
+I hope this message finds you well. I came across your profile and was impressed by your experience at {contact.company_name or '[Company]'} as {contact.title or '[Title]'}.
+
+I am currently exploring opportunities in {contact.industry or 'your industry'} and would greatly value the chance to learn from your insights and experience. Would you be open to a brief 20-30 minute conversation at your convenience?
+
+I'm particularly interested in learning about:
+• Your career path and key decisions that shaped it
+• The current landscape and trends in {contact.industry or 'the industry'}
+• Advice you might have for someone looking to grow in this field
+
+I'm happy to work around your schedule and can meet via phone, video call, or in person if you're in the {contact.location or 'area'}.
+
+Thank you for considering my request. I look forward to hearing from you.
+
+Best regards,
+{request.user.first_name} {request.user.last_name}""",
+        
+        'casual': f"""Hi {contact.first_name or contact.display_name},
+
+I've been following your work at {contact.company_name or '[Company]'} and am really impressed by what you've been doing in {contact.industry or 'your field'}.
+
+I'm exploring career opportunities in this space and would love to pick your brain over coffee (or a virtual chat) if you have time. I'd be grateful for any insights you could share about your experience and the industry.
+
+Would you be open to a quick 20-30 minute chat sometime in the next few weeks?
+
+Thanks so much for considering!
+
+{request.user.first_name}""",
+        
+        'mutual_connection': f"""Hi {contact.first_name or contact.display_name},
+
+[Mutual connection name] suggested I reach out to you. They spoke highly of your work at {contact.company_name or '[Company]'} and thought you might be a great person for me to connect with.
+
+I'm currently exploring opportunities in {contact.industry or 'your industry'} and would love to learn from your experience. Would you be open to a brief informational interview?
+
+I'm happy to work around your schedule for a 20-30 minute conversation.
+
+Thank you for considering!
+
+Best,
+{request.user.first_name} {request.user.last_name}"""
+    }
+    
+    template = templates.get(template_style, templates['professional'])
+    
+    return Response({
+        'template': template,
+        'style': template_style,
+        'contact_name': contact.display_name,
+        'contact_company': contact.company_name
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_generate_preparation(request, pk):
+    """Generate preparation framework for an interview"""
+    from core.models import InformationalInterview
+    
+    try:
+        interview = InformationalInterview.objects.select_related('contact').get(
+            pk=pk,
+            user=request.user
+        )
+    except InformationalInterview.DoesNotExist:
+        return Response(
+            {'detail': 'Interview not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    contact = interview.contact
+    
+    # Generate suggested questions based on contact's background
+    suggested_questions = [
+        f"What does a typical day look like in your role as {contact.title or 'your position'}?",
+        f"How did you get started in {contact.industry or 'your industry'}?",
+        "What skills do you think are most important for success in this field?",
+        f"What do you enjoy most about working at {contact.company_name or 'your company'}?",
+        "What challenges do you face in your role?",
+        "What trends are you seeing in the industry right now?",
+        "What advice would you give to someone looking to break into this field?",
+        "Are there any resources (books, courses, communities) you'd recommend?",
+        "How do you stay current with industry developments?",
+        "Is there anyone else you'd recommend I speak with?"
+    ]
+    
+    # Generate research checklist
+    research_checklist = [
+        f"Review {contact.display_name}'s LinkedIn profile and recent activity",
+        f"Research {contact.company_name or 'their company'} - mission, products, recent news",
+        f"Understand key trends in {contact.industry or 'their industry'}",
+        "Prepare thoughtful questions based on their background",
+        "Review your own background and goals to articulate them clearly",
+        "Prepare a brief 30-second introduction about yourself",
+        "Have specific examples ready if they ask about your experience"
+    ]
+    
+    # Generate goals framework
+    suggested_goals = [
+        "Learn about the day-to-day reality of their role",
+        f"Understand career paths in {contact.industry or 'the industry'}",
+        "Gain insights into skills and qualifications needed",
+        "Build a genuine professional relationship",
+        "Get recommendations for other people to speak with",
+        "Learn about industry trends and challenges",
+        "Understand company culture and work environment"
+    ]
+    
+    return Response({
+        'suggested_questions': suggested_questions,
+        'research_checklist': research_checklist,
+        'suggested_goals': suggested_goals,
+        'contact_name': contact.display_name,
+        'contact_title': contact.title,
+        'contact_company': contact.company_name,
+        'contact_industry': contact.industry
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def informational_interviews_analytics(request):
+    """Get analytics for informational interviews"""
+    from core.models import InformationalInterview
+    from django.db.models import Count, Q, Avg
+    
+    qs = InformationalInterview.objects.filter(user=request.user)
+    
+    total = qs.count()
+    by_status = dict(qs.values_list('status').annotate(count=Count('id')))
+    by_outcome = dict(qs.exclude(outcome='').values_list('outcome').annotate(count=Count('id')))
+    
+    completed = qs.filter(status='completed')
+    
+    impact_stats = {
+        'led_to_job_application': completed.filter(led_to_job_application=True).count(),
+        'led_to_referral': completed.filter(led_to_referral=True).count(),
+        'led_to_introduction': completed.filter(led_to_introduction=True).count()
+    }
+    
+    # Calculate success metrics
+    outreach_sent = qs.filter(status__in=['outreach_sent', 'scheduled', 'completed']).count()
+    scheduled = qs.filter(status__in=['scheduled', 'completed']).count()
+    completed_count = completed.count()
+    
+    response_rate = (scheduled / outreach_sent * 100) if outreach_sent > 0 else 0
+    completion_rate = (completed_count / scheduled * 100) if scheduled > 0 else 0
+    
+    # Relationship strength changes
+    relationship_changes = completed.exclude(
+        relationship_strength_change__isnull=True
+    ).values_list('relationship_strength_change', flat=True)
+    
+    avg_relationship_change = sum(relationship_changes) / len(relationship_changes) if relationship_changes else 0
+    
+    return Response({
+        'overview': {
+            'total': total,
+            'by_status': by_status,
+            'by_outcome': by_outcome
+        },
+        'success_metrics': {
+            'outreach_sent': outreach_sent,
+            'scheduled': scheduled,
+            'completed': completed_count,
+            'response_rate': round(response_rate, 1),
+            'completion_rate': round(completion_rate, 1)
+        },
+        'impact': impact_stats,
+        'relationship_building': {
+            'avg_strength_change': round(avg_relationship_change, 2),
+            'total_tracked': len(relationship_changes)
+        }
+    })
+

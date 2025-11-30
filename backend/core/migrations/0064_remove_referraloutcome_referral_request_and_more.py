@@ -3,25 +3,58 @@
 from django.db import migrations, models
 
 
-def drop_index_if_exists(name: str) -> migrations.RunSQL:
-    return migrations.RunSQL(
-        sql=f"DROP INDEX IF EXISTS {name};",
-        reverse_sql=migrations.RunSQL.noop,
-    )
+def drop_index_if_exists_factory(name: str):
+    """Factory function that returns a migrations operation."""
+    def forward(apps, schema_editor):
+        # Only run for PostgreSQL - SQLite handles indexes differently
+        if schema_editor.connection.vendor == 'postgresql':
+            try:
+                with schema_editor.connection.cursor() as cursor:
+                    cursor.execute(f"DROP INDEX IF EXISTS {name};")
+            except Exception:
+                pass  # Index doesn't exist, that's fine
+    
+    def backward(apps, schema_editor):
+        pass  # No-op for reverse
+    
+    return migrations.RunPython(forward, backward)
 
 
-def drop_column_if_exists(table: str, column: str) -> migrations.RunSQL:
-    return migrations.RunSQL(
-        sql=f"ALTER TABLE IF EXISTS {table} DROP COLUMN IF EXISTS {column} CASCADE;",
-        reverse_sql=migrations.RunSQL.noop,
-    )
+def drop_column_if_exists_factory(table: str, column: str):
+    """Factory function that returns a migrations operation."""
+    def forward(apps, schema_editor):
+        # Only run for PostgreSQL - SQLite migrations handle this differently
+        if schema_editor.connection.vendor == 'postgresql':
+            try:
+                with schema_editor.connection.cursor() as cursor:
+                    cursor.execute(f"ALTER TABLE IF EXISTS {table} DROP COLUMN IF EXISTS {column} CASCADE;")
+            except Exception:
+                pass  # Column doesn't exist, that's fine
+    
+    def backward(apps, schema_editor):
+        pass  # No-op for reverse
+    
+    return migrations.RunPython(forward, backward)
 
 
-def drop_table_if_exists(table: str) -> migrations.RunSQL:
-    return migrations.RunSQL(
-        sql=f"DROP TABLE IF EXISTS {table} CASCADE;",
-        reverse_sql=migrations.RunSQL.noop,
-    )
+def drop_table_if_exists_factory(table: str):
+    """Factory function that returns a migrations operation."""
+    def forward(apps, schema_editor):
+        try:
+            if schema_editor.connection.vendor == 'postgresql':
+                sql = f"DROP TABLE IF EXISTS {table} CASCADE;"
+            else:
+                sql = f"DROP TABLE IF EXISTS {table};"
+            
+            with schema_editor.connection.cursor() as cursor:
+                cursor.execute(sql)
+        except Exception:
+            pass  # Table doesn't exist, that's fine
+    
+    def backward(apps, schema_editor):
+        pass  # No-op for reverse
+    
+    return migrations.RunPython(forward, backward)
 
 
 def rename_indexes_if_exist(apps, schema_editor):
@@ -106,70 +139,60 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Remove indexes that reference fields we're about to delete
-        drop_index_if_exists('core_referr_user_id_4661e3_idx'),
-        drop_index_if_exists('core_referr_job_id_a06b61_idx'),
-        drop_index_if_exists('core_referr_contact_7879d3_idx'),
-        drop_index_if_exists('core_referr_user_id_b6ee03_idx'),
-        drop_index_if_exists('core_referr_user_id_bb95d6_idx'),
-        # Now remove the fields (database operations guarded for environments where tables never existed)
+        # First, update state to remove fields (prevents Django from trying to create indexes)
         migrations.SeparateDatabaseAndState(
-            database_operations=[drop_column_if_exists('core_referraloutcome', 'referral_request_id')],
             state_operations=[
                 migrations.RemoveField(
                     model_name='referraloutcome',
                     name='referral_request',
                 ),
-            ],
-        ),
-        migrations.SeparateDatabaseAndState(
-            database_operations=[drop_column_if_exists('core_referralrequest', 'contact_id')],
-            state_operations=[
                 migrations.RemoveField(
                     model_name='referralrequest',
                     name='contact',
                 ),
-            ],
-        ),
-        migrations.SeparateDatabaseAndState(
-            database_operations=[drop_column_if_exists('core_referralrequest', 'job_id')],
-            state_operations=[
                 migrations.RemoveField(
                     model_name='referralrequest',
                     name='job',
                 ),
-            ],
-        ),
-        migrations.SeparateDatabaseAndState(
-            database_operations=[drop_column_if_exists('core_referralrequest', 'user_id')],
-            state_operations=[
                 migrations.RemoveField(
                     model_name='referralrequest',
                     name='user',
                 ),
-            ],
-        ),
-        # Use custom function to safely rename indexes
-        migrations.RunPython(rename_indexes_if_exist, reverse_rename_indexes),
-        migrations.AddField(
-            model_name='jobopportunity',
-            name='company_name',
-            field=models.CharField(blank=True, max_length=180),
-        ),
-        migrations.SeparateDatabaseAndState(
-            database_operations=[drop_table_if_exists('core_referraloutcome')],
-            state_operations=[
                 migrations.DeleteModel(
                     name='ReferralOutcome',
                 ),
-            ],
-        ),
-        migrations.SeparateDatabaseAndState(
-            database_operations=[drop_table_if_exists('core_referralrequest')],
-            state_operations=[
                 migrations.DeleteModel(
                     name='ReferralRequest',
                 ),
             ],
+            database_operations=[
+                # Database operations that work with both PostgreSQL and SQLite
+                migrations.RunPython(migrations.RunPython.noop, migrations.RunPython.noop),
+            ],
+        ),
+        
+        # Now do the actual database cleanup (only for PostgreSQL)
+        drop_index_if_exists_factory('core_referr_user_id_4661e3_idx'),
+        drop_index_if_exists_factory('core_referr_job_id_a06b61_idx'),
+        drop_index_if_exists_factory('core_referr_contact_7879d3_idx'),
+        drop_index_if_exists_factory('core_referr_user_id_b6ee03_idx'),
+        drop_index_if_exists_factory('core_referr_user_id_bb95d6_idx'),
+        
+        drop_column_if_exists_factory('core_referraloutcome', 'referral_request_id'),
+        drop_column_if_exists_factory('core_referralrequest', 'contact_id'),
+        drop_column_if_exists_factory('core_referralrequest', 'job_id'),
+        drop_column_if_exists_factory('core_referralrequest', 'user_id'),
+        
+        drop_table_if_exists_factory('core_referraloutcome'),
+        drop_table_if_exists_factory('core_referralrequest'),
+        
+        # Rename indexes for resume feedback models
+        migrations.RunPython(rename_indexes_if_exist, reverse_rename_indexes),
+        
+        # Add new field
+        migrations.AddField(
+            model_name='jobopportunity',
+            name='company_name',
+            field=models.CharField(blank=True, max_length=180),
         ),
     ]

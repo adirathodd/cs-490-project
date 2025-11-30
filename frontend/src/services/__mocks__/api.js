@@ -215,6 +215,28 @@ const referralAPI = {
 	suggestFollowUp: jestFn(),
 };
 
+const informationalInterviewsAPI = {
+	getInterviews: jestFn(),
+	getInterview: jestFn(),
+	createInterview: jestFn(),
+	updateInterview: jestFn(),
+	deleteInterview: jestFn(),
+	markOutreachSent: jestFn(),
+	markScheduled: jestFn(),
+	markCompleted: jestFn(),
+	generateOutreach: jestFn(),
+	generatePreparation: jestFn(),
+	getAnalytics: jestFn(),
+};
+
+const contactsAPI = {
+	list: jestFn(),
+	get: jestFn(),
+	create: jestFn(),
+	update: jestFn(),
+	delete: jestFn(),
+};
+
 module.exports = {
 	__esModule: true,
 	default: {},
@@ -237,4 +259,6 @@ module.exports = {
 	mentorshipAPI,
 	goalsAPI,
 	referralAPI,
+	informationalInterviewsAPI,
+	contactsAPI,
 };

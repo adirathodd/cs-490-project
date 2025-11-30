@@ -8,6 +8,7 @@ const ContactForm = ({ onSave, onCancel, initial = {} }) => {
   const [company, setCompany] = useState(initial.company_name || '');
   const [email, setEmail] = useState(initial.email || '');
   const [phone, setPhone] = useState(initial.phone || '');
+  const [linkedinUrl, setLinkedinUrl] = useState(initial.linkedin_url || '');
   const [industry, setIndustry] = useState(initial.industry || '');
   const [relationshipType, setRelationshipType] = useState(initial.relationship_type || '');
 
@@ -21,6 +22,7 @@ const ContactForm = ({ onSave, onCancel, initial = {} }) => {
       company_name: company,
       email,
       phone,
+      linkedin_url: linkedinUrl,
       industry,
       relationship_type: relationshipType,
     };
@@ -56,6 +58,10 @@ const ContactForm = ({ onSave, onCancel, initial = {} }) => {
       <div>
         <label>Phone</label>
         <input value={phone} onChange={(e) => setPhone(e.target.value)} />
+      </div>
+      <div>
+        <label>LinkedIn URL</label>
+        <input value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} placeholder="https://linkedin.com/in/..." />
       </div>
       <div>
         <label>Industry</label>
