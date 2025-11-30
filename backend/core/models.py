@@ -76,6 +76,14 @@ class CandidateProfile(models.Model):
     default_cover_letter_doc = models.ForeignKey(
         'Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='default_cover_letter_for'
     )
+    weekly_application_target = models.PositiveSmallIntegerField(
+        default=5,
+        help_text='User-defined goal for applications per week',
+    )
+    monthly_application_target = models.PositiveSmallIntegerField(
+        default=20,
+        help_text='User-defined goal for applications per month',
+    )
 
     class Meta:
         indexes = [models.Index(fields=["user"])]
@@ -937,6 +945,150 @@ class QuestionResponseCoaching(models.Model):
     def __str__(self):
         timestamp = self.created_at.isoformat() if self.created_at else ''
         return f"CoachingSession(job={self.job_id}, question={self.question_id}, created={timestamp})"
+
+
+class MockInterviewSession(models.Model):
+    """UC-077: Full mock interview practice sessions with AI-generated questions."""
+    
+    STATUS_CHOICES = [
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+        ('abandoned', 'Abandoned'),
+    ]
+    
+    INTERVIEW_TYPE_CHOICES = [
+        ('behavioral', 'Behavioral'),
+        ('technical', 'Technical'),
+        ('case_study', 'Case Study'),
+        ('mixed', 'Mixed'),
+    ]
+    
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='mock_interview_sessions')
+    job = models.ForeignKey('JobEntry', on_delete=models.SET_NULL, null=True, blank=True, related_name='mock_sessions')
+    interview_type = models.CharField(max_length=20, choices=INTERVIEW_TYPE_CHOICES, default='behavioral')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_progress')
+    
+    # Configuration
+    question_count = models.PositiveIntegerField(default=5)
+    difficulty_level = models.CharField(max_length=20, default='mid')
+    focus_areas = models.JSONField(default=list, blank=True)  # e.g., ['leadership', 'conflict resolution']
+    
+    # Session metadata
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    total_duration_seconds = models.PositiveIntegerField(default=0)
+    
+    # Overall performance
+    overall_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)  # 0-100
+    strengths = models.JSONField(default=list, blank=True)
+    areas_for_improvement = models.JSONField(default=list, blank=True)
+    ai_summary = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-started_at']
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['user', '-started_at']),
+        ]
+    
+    def __str__(self):
+        return f"MockInterviewSession({self.id}, {self.user.email}, {self.interview_type})"
+    
+    def mark_completed(self):
+        """Mark session as completed and calculate duration."""
+        self.status = 'completed'
+        self.completed_at = timezone.now()
+        if self.started_at:
+            self.total_duration_seconds = int((self.completed_at - self.started_at).total_seconds())
+        self.save()
+    
+    def calculate_overall_score(self):
+        """Calculate overall score from all question responses."""
+        questions = self.questions.filter(answer_score__isnull=False)
+        if not questions.exists():
+            return None
+        avg_score = questions.aggregate(models.Avg('answer_score'))['answer_score__avg']
+        return round(avg_score, 2) if avg_score else None
+
+
+class MockInterviewQuestion(models.Model):
+    """Individual questions within a mock interview session (UC-077)."""
+    
+    session = models.ForeignKey(MockInterviewSession, on_delete=models.CASCADE, related_name='questions')
+    question_number = models.PositiveIntegerField()
+    
+    # Question details
+    question_text = models.TextField()
+    question_category = models.CharField(max_length=50, blank=True)  # e.g., 'teamwork', 'problem-solving'
+    suggested_framework = models.CharField(max_length=50, blank=True)  # e.g., 'STAR', 'CAR'
+    ideal_answer_points = models.JSONField(default=list, blank=True)  # Key points to cover
+    
+    # User's response
+    user_answer = models.TextField(blank=True)
+    answer_timestamp = models.DateTimeField(null=True, blank=True)
+    time_taken_seconds = models.PositiveIntegerField(null=True, blank=True)
+    
+    # AI evaluation
+    answer_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)  # 0-100
+    ai_feedback = models.TextField(blank=True)
+    strengths = models.JSONField(default=list, blank=True)
+    improvements = models.JSONField(default=list, blank=True)
+    keyword_coverage = models.JSONField(default=dict, blank=True)  # Track which key points were mentioned
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['session', 'question_number']
+        unique_together = [('session', 'question_number')]
+        indexes = [
+            models.Index(fields=['session', 'question_number']),
+        ]
+    
+    def __str__(self):
+        return f"Question {self.question_number} - {self.session_id}"
+    
+    def submit_answer(self, answer_text):
+        """Record user's answer with timestamp."""
+        self.user_answer = answer_text
+        self.answer_timestamp = timezone.now()
+        if self.created_at:
+            self.time_taken_seconds = int((self.answer_timestamp - self.created_at).total_seconds())
+        self.save()
+
+
+class MockInterviewSummary(models.Model):
+    """Post-session summary and recommendations (UC-077)."""
+    
+    session = models.OneToOneField(MockInterviewSession, on_delete=models.CASCADE, related_name='summary')
+    
+    # Performance breakdown
+    performance_by_category = models.JSONField(default=dict, blank=True)  # {'teamwork': 85, 'leadership': 72}
+    response_quality_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    communication_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    structure_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    
+    # Detailed feedback
+    top_strengths = models.JSONField(default=list, blank=True)
+    critical_areas = models.JSONField(default=list, blank=True)
+    recommended_practice_topics = models.JSONField(default=list, blank=True)
+    next_steps = models.JSONField(default=list, blank=True)
+    
+    # AI-generated insights
+    overall_assessment = models.TextField(blank=True)
+    readiness_level = models.CharField(max_length=20, blank=True)  # e.g., 'ready', 'needs_practice', 'not_ready'
+    estimated_interview_readiness = models.PositiveIntegerField(null=True, blank=True)  # 0-100%
+    
+    # Comparison metrics
+    compared_to_previous_sessions = models.JSONField(default=dict, blank=True)
+    improvement_trend = models.CharField(max_length=20, blank=True)  # 'improving', 'stable', 'declining'
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name_plural = "Mock interview summaries"
+    
+    def __str__(self):
+        return f"Summary for {self.session}"
 
 
 class QuestionBankCache(models.Model):

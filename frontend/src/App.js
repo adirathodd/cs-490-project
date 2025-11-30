@@ -42,6 +42,7 @@ import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
 import NavBar from './components/common/NavBar';
 import Breadcrumbs from './components/common/Breadcrumbs';
+import { MockInterviewContainer, QuestionBankBrowser, ResponseCoach, InterviewResearchBrief } from './components/interview';
 import './App.css';
 
 function App() {
@@ -394,6 +395,62 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <ReferencesPage />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+
+            path="/references"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ReferencesPage />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/mock-interview"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <MockInterviewContainer jobs={[]} />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/question-bank/:jobId"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <QuestionBankBrowser />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/response-coach/:jobId/:questionId"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ResponseCoach />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/interview-research/:jobId"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <InterviewResearchBrief />
               </PrivateRoute>
             }
           />
