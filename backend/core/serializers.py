@@ -22,7 +22,7 @@ from core.models import (
     Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink,
     NetworkingEvent, EventGoal, EventConnection, EventFollowUp, CareerGoal, GoalMilestone,
     ProfessionalReference, ReferenceRequest, ReferenceTemplate, ReferenceAppreciation, ReferencePortfolio,
-    InformationalInterview
+    InformationalInterview, ContactSuggestion, DiscoverySearch
 )
 
 from core.models import Referral, Application, JobOpportunity
@@ -378,6 +378,40 @@ class ContactSerializer(serializers.ModelSerializer):
         instance.save()
         
         return instance
+
+
+# UC-092: Industry Contact Discovery Serializers
+
+class ContactSuggestionSerializer(serializers.ModelSerializer):
+    """Serializer for ContactSuggestion model"""
+    suggestion_type_display = serializers.CharField(source='get_suggestion_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    class Meta:
+        model = ContactSuggestion
+        fields = [
+            'id', 'user', 'suggested_name', 'suggested_title', 'suggested_company',
+            'suggested_linkedin_url', 'suggested_location', 'suggested_industry',
+            'suggestion_type', 'suggestion_type_display', 'relevance_score', 'reason',
+            'connection_path', 'mutual_connections', 'related_job', 'related_company',
+            'shared_institution', 'shared_degree', 'status', 'status_display',
+            'contacted_at', 'connected_contact', 'metadata', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+
+
+class DiscoverySearchSerializer(serializers.ModelSerializer):
+    """Serializer for DiscoverySearch model"""
+    
+    class Meta:
+        model = DiscoverySearch
+        fields = [
+            'id', 'user', 'target_companies', 'target_roles', 'target_industries',
+            'target_locations', 'include_alumni', 'include_mutual_connections',
+            'include_industry_leaders', 'results_count', 'contacted_count',
+            'connected_count', 'created_at', 'last_refreshed'
+        ]
+        read_only_fields = ['id', 'user', 'results_count', 'contacted_count', 'connected_count', 'created_at', 'last_refreshed']
 
 
 class BasicProfileSerializer(serializers.ModelSerializer):

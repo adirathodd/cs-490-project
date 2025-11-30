@@ -32,6 +32,7 @@ import NetworkingEvents from './components/networking/NetworkingEvents';
 import Supporters from './components/networking/Supporters';
 import SupporterPublic from './components/networking/SupporterPublic';
 import InformationalInterviews from './components/informational-interviews/InformationalInterviews';
+import ContactDiscovery from './components/contact-discovery/ContactDiscovery';
 import ReferencesPage from './components/references/ReferencesPage';
 import MentorshipDashboard from './components/mentorship/MentorshipDashboard';
 import ReferralManagement from './components/referrals/ReferralManagement';
@@ -380,6 +381,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <InformationalInterviews />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/contact-discovery"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ContactDiscovery />
               </PrivateRoute>
             }
           />
