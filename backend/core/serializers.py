@@ -16,7 +16,7 @@ from core.models import (
     ResumeFeedback, FeedbackComment, FeedbackNotification,
     TeamMember, MentorshipRequest, MentorshipSharingPreference, MentorshipSharedApplication,
     MentorshipGoal, MentorshipMessage,
-    MockInterviewSession, MockInterviewQuestion, MockInterviewSummary,
+    MarketIntelligence, MockInterviewSession, MockInterviewQuestion, MockInterviewSummary,
 )
 from core.models import (
     Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink,
@@ -3615,6 +3615,26 @@ class ReferencePortfolioListSerializer(serializers.ModelSerializer):
         if obj.pk:
             return obj.references.count()
         return 0
+class MarketIntelligenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MarketIntelligence
+        fields = [
+            'id',
+            'job_title',
+            'location',
+            'experience_level',
+            'industry',
+            'median_salary',
+            'percentile_25',
+            'percentile_75',
+            'sample_size',
+            'demand_score',
+            'growth_trend',
+            'top_skills',
+            'data_source',
+            'last_updated',
+        ]
+        read_only_fields = fields
 
 
 # Mock Interview Serializers (UC-077)
@@ -3702,5 +3722,3 @@ class MockInterviewSessionListSerializer(serializers.ModelSerializer):
         if obj.pk:
             return obj.questions.filter(user_answer__isnull=False).exclude(user_answer='').count()
         return 0
-
-
