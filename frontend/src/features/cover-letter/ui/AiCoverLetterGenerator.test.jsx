@@ -43,49 +43,73 @@ const renderWithRouter = async (component) => {
   return utils;
 };
 
+const defaultJobs = [
+  {
+    id: 1,
+    title: 'Software Engineer',
+    company: 'Test Corp',
+    status: 'Applied',
+  },
+];
+
+const ensureJobMock = () => {
+  if (!api.jobAPI || !api.jobAPI.getJobs) {
+    api.jobAPI = {
+      getJobs: jest.fn().mockResolvedValue(defaultJobs),
+    };
+  } else if (jest.isMockFunction(api.jobAPI.getJobs)) {
+    api.jobAPI.getJobs.mockResolvedValue(defaultJobs);
+  }
+};
+
+beforeEach(() => {
+  // Default mocks to avoid empty job state errors across describes
+  ensureJobMock();
+  api.profileAPI = api.profileAPI || {
+    getProfile: jest.fn().mockResolvedValue({
+      status: 200,
+      data: { first_name: 'John', last_name: 'Doe', email: 'john@test.com' },
+    }),
+  };
+  api.coverLetterAIAPI = api.coverLetterAIAPI || {
+    generateCoverLetter: jest.fn().mockResolvedValue({
+      status: 200,
+      data: { variations: [] },
+    }),
+  };
+});
+
 describe('AiCoverLetterGenerator - Version History', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorageMock.clear();
+    ensureJobMock();
     
     // Mock API responses
-    api.jobAPI = {
-      getJobs: jest.fn().mockResolvedValue([
-        {
-          id: 1,
-          title: 'Software Engineer',
-          company: 'Test Corp',
-          status: 'Applied',
-        },
-      ]),
-    };
+    api.jobAPI.getJobs.mockResolvedValue(defaultJobs);
 
-    api.profileAPI = {
-      getProfile: jest.fn().mockResolvedValue({
-        status: 200,
-        data: {
-          first_name: 'John',
-          last_name: 'Doe',
-          email: 'john@test.com',
-        },
-      }),
-    };
+    api.profileAPI.getProfile.mockResolvedValue({
+      status: 200,
+      data: {
+        first_name: 'John',
+        last_name: 'Doe',
+        email: 'john@test.com',
+      },
+    });
 
-    api.coverLetterAIAPI = {
-      generateCoverLetter: jest.fn().mockResolvedValue({
-        status: 200,
-        data: {
-          variations: [
-            {
-              id: 'var-1',
-              opening_paragraph: 'Test opening',
-              body_paragraphs: ['Test body 1', 'Test body 2'],
-              closing_paragraph: 'Test closing',
-            },
-          ],
-        },
-      }),
-    };
+    api.coverLetterAIAPI.generateCoverLetter.mockResolvedValue({
+      status: 200,
+      data: {
+        variations: [
+          {
+            id: 'var-1',
+            opening_paragraph: 'Test opening',
+            body_paragraphs: ['Test body 1', 'Test body 2'],
+            closing_paragraph: 'Test closing',
+          },
+        ],
+      },
+    });
   });
 
   it('renders the cover letter generator page', async () => {
@@ -150,6 +174,7 @@ describe('AiCoverLetterGenerator - Word Count & Readability', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorageMock.clear();
+    ensureJobMock();
   });
 
   it('displays word count and character count', () => {
@@ -211,6 +236,7 @@ describe('AiCoverLetterGenerator - Grammar Check', () => {
 describe('AiCoverLetterGenerator - Export Functionality', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    ensureJobMock();
     
     api.coverLetterExportAPI = {
       exportAICoverLetter: jest.fn().mockResolvedValue({
@@ -238,6 +264,7 @@ describe('AiCoverLetterGenerator - Version Control Buttons', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorageMock.clear();
+    ensureJobMock();
   });
 
   it('renders undo button', () => {

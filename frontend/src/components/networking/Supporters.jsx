@@ -252,6 +252,7 @@ const Supporters = () => {
             <input
               id="supporter-show-company"
               type="checkbox"
+              aria-label="Allow company names to be visible"
               checked={showCompany}
               onChange={(e) => setShowCompany(e.target.checked)}
             />
@@ -261,6 +262,7 @@ const Supporters = () => {
             <input
               id="supporter-show-practice"
               type="checkbox"
+              aria-label="Show practice stats"
               checked={showPractice}
               onChange={(e) => setShowPractice(e.target.checked)}
             />
@@ -270,6 +272,7 @@ const Supporters = () => {
             <input
               id="supporter-show-achievements"
               type="checkbox"
+              aria-label="Show milestones/achievements"
               checked={showAchievements}
               onChange={(e) => setShowAchievements(e.target.checked)}
             />
@@ -311,6 +314,7 @@ const Supporters = () => {
               type="number"
               min="1"
               max="10"
+              aria-label="Score (1-10, optional)"
               value={moodScore}
               onChange={(e) => setMoodScore(e.target.value)}
               placeholder="e.g., 7"
@@ -321,6 +325,7 @@ const Supporters = () => {
             <textarea
               id="supporter-mood-note"
               rows={3}
+              aria-label="How I’m feeling (optional)"
               value={moodNote}
               onChange={(e) => setMoodNote(e.target.value)}
               placeholder="Share a short update"
