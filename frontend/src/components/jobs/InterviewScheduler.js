@@ -92,8 +92,14 @@ export default function InterviewScheduler({ job, onClose, onSuccess, existingIn
       if (onClose) onClose();
     } catch (err) {
       console.error('Interview scheduling error:', err);
-      console.error('Error keys:', Object.keys(err));
-      console.error('Error structure:', JSON.stringify(err, null, 2));
+      if (err) {
+        try {
+          console.error('Error keys:', Object.keys(err));
+          console.error('Error structure:', JSON.stringify(err, null, 2));
+        } catch (e) {
+          console.error('Unable to inspect error object:', e);
+        }
+      }
       
       // Check for conflicts
       if (err.conflicts && err.conflicts.length > 0) {
@@ -112,6 +118,8 @@ export default function InterviewScheduler({ job, onClose, onSuccess, existingIn
         // Check for generic error field that backend might return
         const errorMsg = Array.isArray(err.error) ? err.error[0] : err.error;
         setError(errorMsg);
+      } else if (err?.message === 'Network error' || err?.name === 'TypeError') {
+        setError('Network error: Unable to schedule interview due to network issues. Please try again later.');
       } else {
         // Extract first available error message from any field
         let errorMsg = err.message || (existingInterview ? 'Failed to update interview' : 'Failed to create interview');

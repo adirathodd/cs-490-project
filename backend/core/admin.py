@@ -13,7 +13,7 @@ from .models import (
     # Interview prep
     InterviewQuestion,
     # Network models
-    Contact, Referral, TeamMember, SharedNote, MentorshipRequest,
+    Contact, Referral, TeamMember, SupporterInvite, SupporterEncouragement, SupporterChatMessage, SharedNote, MentorshipRequest,
     MentorshipSharingPreference, MentorshipSharedApplication, MentorshipGoal,
     MentorshipMessage,
     # Analytics models
@@ -425,3 +425,22 @@ class MentorshipMessageAdmin(admin.ModelAdmin):
         text = obj.message or ''
         return text if len(text) <= 60 else f"{text[:57]}..."
     short_message.short_description = 'Message'
+
+
+@admin.register(SupporterInvite)
+class SupporterInviteAdmin(admin.ModelAdmin):
+    list_display = ['candidate', 'email', 'name', 'is_active', 'expires_at', 'accepted_at', 'last_access_at']
+    list_filter = ['is_active']
+    search_fields = ['email', 'candidate__user__email', 'candidate__user__username']
+
+
+@admin.register(SupporterEncouragement)
+class SupporterEncouragementAdmin(admin.ModelAdmin):
+    list_display = ['candidate', 'supporter', 'supporter_name', 'created_at']
+    search_fields = ['supporter_name', 'supporter__email', 'candidate__user__email', 'message']
+
+
+@admin.register(SupporterChatMessage)
+class SupporterChatMessageAdmin(admin.ModelAdmin):
+    list_display = ['candidate', 'supporter', 'sender_role', 'sender_name', 'created_at']
+    search_fields = ['sender_name', 'supporter__email', 'candidate__user__email', 'message']

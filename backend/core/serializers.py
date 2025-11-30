@@ -13,7 +13,7 @@ from core.models import (
     Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory, 
     CoverLetterTemplate, InterviewSchedule, InterviewPreparationTask, InterviewEvent, CalendarIntegration, QuestionResponseCoaching,
     ResumeVersion, ResumeVersionChange, ResumeShare, ShareAccessLog,
-    ResumeFeedback, FeedbackComment, FeedbackNotification,
+    ResumeFeedback, FeedbackComment, FeedbackNotification, SupporterInvite, SupporterEncouragement, SupporterChatMessage,
     TeamMember, MentorshipRequest, MentorshipSharingPreference, MentorshipSharedApplication,
     MentorshipGoal, MentorshipMessage,
     MarketIntelligence, MockInterviewSession, MockInterviewQuestion, MockInterviewSummary,
@@ -2938,6 +2938,42 @@ class MentorshipMessageSerializer(serializers.ModelSerializer):
             return progress['target_value']
         return obj.target_value
 
+
+class SupporterInviteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SupporterInvite
+        fields = [
+            'id',
+            'email',
+            'name',
+            'permissions',
+            'is_active',
+            'accepted_at',
+            'expires_at',
+            'last_access_at',
+            'created_at',
+            'token',
+        ]
+        read_only_fields = ['id', 'accepted_at', 'last_access_at', 'created_at', 'token']
+
+
+class SupporterEncouragementSerializer(serializers.ModelSerializer):
+    supporter_email = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SupporterEncouragement
+        fields = ['id', 'supporter_name', 'supporter_email', 'message', 'created_at']
+        read_only_fields = ['id', 'supporter_email', 'created_at']
+
+    def get_supporter_email(self, obj):
+        return obj.supporter.email if obj.supporter else None
+
+
+class SupporterChatMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SupporterChatMessage
+        fields = ['id', 'sender_role', 'sender_name', 'message', 'created_at']
+        read_only_fields = fields
 
 class MentorshipGoalInputSerializer(serializers.ModelSerializer):
     """Validate mentor-submitted goal payloads."""

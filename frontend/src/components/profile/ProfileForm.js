@@ -95,17 +95,21 @@ const ProfileForm = () => {
     try {
       setFetchingProfile(true);
       const response = await authAPI.getBasicProfile();
+      if (!response || typeof response !== 'object') {
+        setFetchingProfile(false);
+        return;
+      }
       
       const profileData = {
-        first_name: response.first_name || '',
-        last_name: response.last_name || '',
-        phone: response.phone || '',
-        city: response.city || '',
-        state: response.state || '',
-        headline: response.headline || '',
-        summary: response.summary || '',
-        industry: response.industry || '',
-        experience_level: response.experience_level || '',
+        first_name: response?.first_name || '',
+        last_name: response?.last_name || '',
+        phone: response?.phone || '',
+        city: response?.city || '',
+        state: response?.state || '',
+        headline: response?.headline || '',
+        summary: response?.summary || '',
+        industry: response?.industry || '',
+        experience_level: response?.experience_level || '',
       };
       
       // Pre-fill form with existing data
@@ -113,7 +117,7 @@ const ProfileForm = () => {
       setOriginalData(profileData); // Store original data for comparison
       setHasUnsavedChanges(false);
       
-      setCharacterCount(response.summary ? response.summary.length : 0);
+      setCharacterCount(response?.summary ? response.summary.length : 0);
     } catch (error) {
       console.error('Error fetching profile:', error);
       if (error.response?.status === 401) {

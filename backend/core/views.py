@@ -58,6 +58,9 @@ from core.serializers import (
     MentorshipGoalSerializer,
     MentorshipGoalInputSerializer,
     MentorshipMessageSerializer,
+    SupporterInviteSerializer,
+    SupporterEncouragementSerializer,
+    SupporterChatMessageSerializer,
     DocumentSummarySerializer,
     JobEntrySummarySerializer,
     CandidatePublicProfileSerializer,
@@ -147,6 +150,7 @@ from core.models import (
     EventGoal,
     EventConnection,
     EventFollowUp,
+    SupporterChatMessage,
     CalendarIntegration,
     InterviewEvent,
     ProfessionalReference,
@@ -156,6 +160,8 @@ from core.models import (
     ReferencePortfolio,
 
     TeamMember,
+    SupporterInvite,
+    SupporterEncouragement,
     MentorshipRequest,
     MentorshipSharingPreference,
     MentorshipSharedApplication,
@@ -14940,6 +14946,95 @@ def _build_practice_recommendations(practice_stats):
     return recs
 
 
+def _get_supporter_invite_by_token(token: str) -> Optional[SupporterInvite]:
+    """Lookup an active supporter invite by token, enforcing expiry/paused flags."""
+    if not token:
+        return None
+    try:
+        invite = SupporterInvite.objects.select_related("candidate__user").get(token=token, is_active=True)
+    except SupporterInvite.DoesNotExist:
+        return None
+    now = timezone.now()
+    if invite.expires_at and invite.expires_at < now:
+        return None
+    if invite.paused_at:
+        return None
+    return invite
+
+
+def _build_supporter_achievements(candidate, window_days: int = 30, show_company: bool = False):
+    """Lightweight, privacy-safe achievements feed for supporters."""
+    from core.models import JobStatusChange, ApplicationGoal
+
+    since = timezone.now() - timedelta(days=max(window_days, 1))
+    items = []
+
+    status_changes = (
+        JobStatusChange.objects.filter(job__candidate=candidate, changed_at__gte=since, new_status__in=['phone_screen', 'interview', 'offer'])
+        .select_related("job")
+        .order_by("-changed_at")[:50]
+    )
+    status_labels = dict(JobEntry.STATUS_CHOICES)
+    stage_emojis = {
+        "phone_screen": "📞",
+        "interview": "🎙️",
+        "offer": "🎉",
+    }
+    person_name = candidate.user.get_full_name() or candidate.user.email or "Your contact"
+    for change in status_changes:
+        label = status_labels.get(change.new_status, change.new_status.title())
+        company = change.job.company_name if show_company else None
+        emoji = stage_emojis.get(change.new_status, "🚀")
+        title_company = f": {company}" if company else ""
+        items.append({
+            "type": "application",
+            "stage": change.new_status,
+            "emoji": emoji,
+            "title": f"{person_name} received a {label}{title_company}",
+            "date": change.changed_at,
+            "description": f"{person_name} advanced to {label}{' at ' + company if company else ''}.",
+            "company": company or None,
+        })
+
+    completed_goals = ApplicationGoal.objects.filter(
+        candidate=candidate,
+        is_completed=True,
+        completion_date__isnull=False,
+        completion_date__gte=since,
+    ).order_by("-completion_date")[:20]
+    for goal in completed_goals:
+        items.append({
+            "type": "goal",
+            "emoji": "✅",
+            "title": "Goal reached",
+            "date": goal.completion_date,
+            "description": f"Completed {goal.get_goal_type_display()} goal.",
+        })
+
+    practice_stats = _calculate_practice_engagement(candidate, days=min(window_days, 30))
+    if practice_stats.get("total_sessions"):
+        items.append({
+            "type": "practice",
+            "emoji": "🧠",
+            "title": "Practice momentum",
+            "date": timezone.now(),
+            "description": f"{practice_stats.get('total_sessions', 0)} practice sessions in the last {window_days} days.",
+        })
+
+    items = sorted(items, key=lambda x: x.get("date") or timezone.now(), reverse=True)
+    sanitized = []
+    for item in items[:50]:
+        payload = dict(item)
+        dt = payload.get("date")
+        if dt:
+            try:
+                payload["date"] = dt.isoformat()
+            except Exception:
+                payload["date"] = str(dt)
+        sanitized.append(payload)
+    return sanitized
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def mentorship_relationship_analytics(request, team_member_id):
@@ -14967,6 +15062,364 @@ def mentorship_relationship_analytics(request, team_member_id):
         'practice_engagement': practice,
         'practice_recommendations': practice_recs,
     })
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def supporter_invites(request):
+    """Create or list supporter invites for the authenticated candidate."""
+    candidate = _get_candidate_profile_for_request(request.user)
+    if not candidate:
+        return Response({"error": "Candidate profile not found."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if request.method == "GET":
+        qs = SupporterInvite.objects.filter(candidate=candidate).order_by("-created_at")
+        serializer = SupporterInviteSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    data = request.data or {}
+    email = data.get("email")
+    if not email:
+        return Response({"error": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    name = data.get("name", "")
+    permissions = data.get("permissions") or {}
+    expires_in_days = int(data.get("expires_in_days") or 30)
+    expires_at = None if expires_in_days <= 0 else timezone.now() + timedelta(days=expires_in_days)
+    token = uuid.uuid4().hex
+
+    invite = SupporterInvite.objects.create(
+        candidate=candidate,
+        email=email,
+        name=name,
+        permissions=permissions,
+        expires_at=expires_at,
+        token=token,
+        is_active=True,
+    )
+    # Optional: send invite email if provided
+    try:
+        if email:
+            invite_link = f"{getattr(settings, 'FRONTEND_BASE_URL', 'http://localhost:3000')}/supporter?token={token}"
+            subject = "You're invited to support a job search"
+            message = (
+                f"Hi {name or ''},\n\n"
+                f"{candidate.user.get_full_name() or 'A candidate'} invited you to view a supporter dashboard and send encouragement.\n"
+                f"Open the link to accept: {invite_link}\n\n"
+                "If you weren't expecting this, you can ignore this email."
+            )
+            send_mail(subject, message, getattr(settings, 'DEFAULT_FROM_EMAIL', None), [email], fail_silently=True)
+    except Exception:
+        pass
+    serializer = SupporterInviteSerializer(invite)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def supporter_invite_detail(request, invite_id: int):
+    """Update a supporter invite (e.g., pause/resume or update permissions)."""
+    candidate = _get_candidate_profile_for_request(request.user)
+    if not candidate:
+        return Response({"error": "Candidate profile not found."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        invite = SupporterInvite.objects.get(id=invite_id, candidate=candidate)
+    except SupporterInvite.DoesNotExist:
+        return Response({"error": "Supporter invite not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "DELETE":
+        invite.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    data = request.data or {}
+    updated = False
+    if request.method == "PATCH" and data.get("delete"):
+        invite.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    if "is_active" in data:
+        is_active = bool(data.get("is_active"))
+        invite.is_active = is_active
+        invite.paused_at = None if is_active else timezone.now()
+        updated = True
+    if "permissions" in data and isinstance(data.get("permissions"), dict):
+        invite.permissions = data.get("permissions")
+        updated = True
+    if "name" in data:
+        invite.name = data.get("name") or ""
+        updated = True
+    if updated:
+        invite.save()
+    serializer = SupporterInviteSerializer(invite)
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+def supporter_dashboard(request):
+    """Token-based supporter dashboard payload (privacy-safe)."""
+    token = request.query_params.get("token")
+    invite = _get_supporter_invite_by_token(token)
+    if not invite:
+        return Response({"error": "Invalid or expired supporter link."}, status=status.HTTP_404_NOT_FOUND)
+
+    now = timezone.now()
+    if invite.accepted_at is None:
+        invite.accepted_at = now
+    invite.last_access_at = now
+    invite.save(update_fields=["accepted_at", "last_access_at"])
+
+    candidate = invite.candidate
+    window_days = int(request.query_params.get("window_days") or 30)
+    funnel = _calculate_candidate_funnel(candidate)
+    # Redact to only core positive stages
+    funnel['status_breakdown'] = {
+        'phone_screen': funnel['status_breakdown'].get('phone_screen', 0),
+        'interview': funnel['status_breakdown'].get('interview', 0),
+        'offer': funnel['status_breakdown'].get('offer', 0),
+    }
+    show_company = bool((invite.permissions or {}).get("show_company"))
+    show_practice = (invite.permissions or {}).get("show_practice", True)
+    show_achievements = (invite.permissions or {}).get("show_achievements", True)
+    achievements = _build_supporter_achievements(candidate, window_days=window_days, show_company=show_company)
+    practice = _calculate_practice_engagement(candidate, days=min(window_days, 30))
+
+    from core.models import ApplicationGoal
+    goal_qs = ApplicationGoal.objects.filter(candidate=candidate)
+    goals_summary = {
+        "active": goal_qs.filter(is_active=True).count(),
+        "completed": goal_qs.filter(is_completed=True).count(),
+        "weekly_target": getattr(candidate, "weekly_application_target", None),
+        "monthly_target": getattr(candidate, "monthly_application_target", None),
+    }
+
+    encouragements = SupporterEncouragement.objects.filter(candidate=candidate).order_by("-created_at")[:10]
+    encouragement_data = SupporterEncouragementSerializer(encouragements, many=True).data
+    ai_recs = _build_supporter_ai_recommendations(candidate, achievements, practice)
+    mood = None
+    if candidate.supporter_mood_score or candidate.supporter_mood_note:
+        mood = {
+            "score": candidate.supporter_mood_score,
+            "note": candidate.supporter_mood_note,
+        }
+
+    return Response({
+        "mentee": {
+            "name": candidate.user.get_full_name() or candidate.user.email,
+        },
+        "permissions": invite.permissions or {},
+        "funnel_analytics": funnel,
+        "practice_engagement": practice if show_practice else {},
+        "achievements": achievements if show_achievements else [],
+        "goals_summary": goals_summary,
+        "encouragements": encouragement_data,
+        "ai_recommendations": ai_recs,
+        "mood": mood,
+    })
+
+
+@api_view(["POST"])
+def supporter_encouragement(request):
+    """Submit an encouragement from a supporter using the invite token."""
+    token = request.data.get("token") or request.query_params.get("token")
+    invite = _get_supporter_invite_by_token(token)
+    if not invite:
+        return Response({"error": "Invalid or expired supporter link."}, status=status.HTTP_404_NOT_FOUND)
+
+    message = (request.data.get("message") or "").strip()
+    if not message:
+        return Response({"error": "Message is required."}, status=status.HTTP_400_BAD_REQUEST)
+    supporter_name = (request.data.get("name") or invite.name or "").strip()
+
+    encouragement = SupporterEncouragement.objects.create(
+        candidate=invite.candidate,
+        supporter=invite,
+        supporter_name=supporter_name,
+        message=message,
+    )
+    serializer = SupporterEncouragementSerializer(encouragement)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET", "POST"])
+def supporter_chat(request):
+    """Token-based supporter chat thread (read/write)."""
+    token = request.data.get("token") or request.query_params.get("token")
+    invite = _get_supporter_invite_by_token(token)
+    if not invite:
+        return Response({"error": "Invalid or expired supporter link."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        qs = SupporterChatMessage.objects.filter(candidate=invite.candidate).order_by("-created_at")[:50]
+        data = SupporterChatMessageSerializer(qs, many=True).data
+        return Response(data)
+
+    message = (request.data.get("message") or "").strip()
+    if not message:
+        return Response({"error": "Message is required."}, status=status.HTTP_400_BAD_REQUEST)
+    sender_name = (request.data.get("name") or invite.name or "").strip()
+    msg = SupporterChatMessage.objects.create(
+        candidate=invite.candidate,
+        supporter=invite,
+        sender_role="supporter",
+        sender_name=sender_name,
+        message=message,
+    )
+    return Response(SupporterChatMessageSerializer(msg).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def supporter_chat_candidate(request):
+    """Candidate-facing supporter chat thread."""
+    candidate = _get_candidate_profile_for_request(request.user)
+    if not candidate:
+        return Response({"error": "Candidate profile not found."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if request.method == "GET":
+        qs = SupporterChatMessage.objects.filter(candidate=candidate).order_by("-created_at")[:50]
+        return Response(SupporterChatMessageSerializer(qs, many=True).data)
+
+    message = (request.data.get("message") or "").strip()
+    name = (request.data.get("name") or candidate.user.get_full_name() or candidate.user.email or "").strip()
+    if not message:
+        return Response({"error": "Message is required."}, status=status.HTTP_400_BAD_REQUEST)
+    msg = SupporterChatMessage.objects.create(
+        candidate=candidate,
+        sender_role="candidate",
+        sender_name=name,
+        message=message,
+    )
+    return Response(SupporterChatMessageSerializer(msg).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET", "PATCH"])
+@permission_classes([IsAuthenticated])
+def supporter_mood(request):
+    """Get or update candidate supporter mood (score 1-10 and/or note)."""
+    candidate = _get_candidate_profile_for_request(request.user)
+    if not candidate:
+        return Response({"error": "Candidate profile not found."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if request.method == "GET":
+        return Response({
+            "score": candidate.supporter_mood_score,
+            "note": candidate.supporter_mood_note,
+        })
+
+    data = request.data or {}
+    score = data.get("score")
+    note = data.get("note", "")
+    if score is not None:
+        try:
+            score_int = int(score)
+            if score_int < 1 or score_int > 10:
+                return Response({"error": "Score must be between 1 and 10."}, status=status.HTTP_400_BAD_REQUEST)
+            candidate.supporter_mood_score = score_int
+        except (TypeError, ValueError):
+            return Response({"error": "Score must be an integer between 1 and 10."}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        candidate.supporter_mood_score = None
+
+    candidate.supporter_mood_note = note or ""
+    candidate.save(update_fields=["supporter_mood_score", "supporter_mood_note"])
+    return Response({"score": candidate.supporter_mood_score, "note": candidate.supporter_mood_note})
+
+
+def _build_supporter_ai_recommendations(candidate, achievements, practice_stats):
+    """
+    Lightweight, privacy-safe recommendations for supporters.
+    Tries Gemini when configured, falls back to deterministic tips.
+    """
+    fallback_recs = []
+    # Check recent achievements to tailor encouragement
+    recent_interviews = any(a.get("stage") == "interview" for a in achievements or [])
+    recent_offers = any(a.get("stage") == "offer" for a in achievements or [])
+    practice_count = practice_stats.get("total_sessions", 0) if practice_stats else 0
+    focus = practice_stats.get("focus_categories") if practice_stats else []
+
+    if recent_offers:
+        fallback_recs.append("Celebrate recent offers and ask if they need help comparing options or scheduling prep for negotiations.")
+    elif recent_interviews:
+        fallback_recs.append("Send encouragement before upcoming interviews and offer quick mock questions the day prior.")
+    else:
+        fallback_recs.append("Encourage consistent applications and check in weekly on how you can help with accountability.")
+
+    if practice_count < 3:
+        fallback_recs.append("Invite them to practice a couple of interview questions together this week to build momentum.")
+    elif focus:
+        weakest = sorted(focus, key=lambda x: (x.get("average_score", 999), -x.get("count", 0)))[0]
+        fallback_recs.append(f"Suggest extra practice on {weakest.get('category','key topics')} and give positive feedback on progress.")
+
+    fallback_recs.append("Offer practical help: review resumes/cover letters only if they ask, respect boundaries, and avoid pressuring them about companies.")
+
+    api_key = getattr(settings, "GEMINI_API_KEY", "")
+    model = getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash-latest")
+    if not api_key:
+        return fallback_recs[:3]
+
+    try:
+        stats_summary = []
+        if achievements:
+            stats_summary.append(f"Recent milestones: {len(achievements)}")
+        if practice_count:
+            stats_summary.append(f"Practice sessions last 30d: {practice_count}")
+        if focus:
+            top_focus = ", ".join([c.get("category", "topic") for c in focus[:3]])
+            stats_summary.append(f"Focus areas: {top_focus}")
+        summary_line = "; ".join(stats_summary) or "No recent milestones provided."
+
+        prompt = (
+            "You are helping a family supporter encourage a job seeker. "
+            "Given the anonymized milestones and practice stats, provide three actionable ways to support them. "
+            "Each tip should be 2-3 sentences, warm, practical, and must include a specific resource or action (e.g., a mock interview guide, a short article/video to read, or an encouragement script). "
+            "Avoid pressuring or sensitive topics.\n\n"
+            f"Snapshot: {summary_line}\n\n"
+            "Return 3 bullet points, plain text."
+        )
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        resp = requests.post(
+            endpoint,
+            json={"contents": [{"parts": [{"text": prompt}]}]},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        text = ""
+        for cand in (data.get("candidates") or []):
+            parts = cand.get("content", {}).get("parts", [])
+            if parts and parts[0].get("text"):
+                text = parts[0]["text"]
+                break
+        if not text:
+            return fallback_recs[:3]
+        tips = []
+        for line in text.splitlines():
+            cleaned = line.strip().lstrip("-*•").strip()
+            if cleaned:
+                tips.append(cleaned)
+            if len(tips) >= 3:
+                break
+        cleaned_tips = []
+        for tip in tips:
+            tip_strip = tip.strip()
+            lowered = tip_strip.lower()
+            if lowered.startswith("here are") or lowered.startswith("here's"):
+                continue
+            cleaned_tips.append(tip_strip)
+        return cleaned_tips[:3] if cleaned_tips else fallback_recs[:3]
+    except Exception:
+        return fallback_recs[:3]
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def supporter_encouragements_for_candidate(request):
+    """Candidate-facing list of supporter encouragements."""
+    candidate = _get_candidate_profile_for_request(request.user)
+    if not candidate:
+        return Response({"error": "Candidate profile not found."}, status=status.HTTP_400_BAD_REQUEST)
+    qs = SupporterEncouragement.objects.filter(candidate=candidate).order_by("-created_at")[:50]
+    serializer = SupporterEncouragementSerializer(qs, many=True)
+    return Response(serializer.data)
 
 
 @api_view(['POST'])

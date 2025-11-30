@@ -192,7 +192,7 @@ const Dashboard = () => {
                   { key: 'informational-interviews', icon: <Icon name="message-circle" size="lg" ariaLabel="Informational Interviews" />, title: 'Informational Interviews', desc: 'Request and manage informational interviews to gain industry insights', action: () => navigate('/informational-interviews'), actionText: 'Manage Interviews' },
                   { key: 'references', icon: <Icon name="award" size="lg" ariaLabel="References" />, title: 'Professional References', desc: 'Manage references, track requests, and prepare talking points', action: () => navigate('/references'), actionText: 'Manage References' },
                   { key: 'referrals', icon: <Icon name="users" size="lg" ariaLabel="Referrals" />, title: 'Referral Requests', desc: 'Track referral requests, follow-ups, and status', action: () => navigate('/referrals'), actionText: 'Manage Referrals' },
-
+                  { key: 'supporters', icon: <Icon name="heart" size="lg" ariaLabel="Supporters" />, title: 'Family & Supporters', desc: 'Invite supporters to view a redacted progress dashboard and send encouragement', action: () => navigate('/supporters'), actionText: 'Manage Supporters' },
                 ];
 
                 const cardsFor = (id) => {

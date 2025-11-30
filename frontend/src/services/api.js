@@ -2761,6 +2761,24 @@ export const mentorshipAPI = {
   },
 };
 
+export const supportersAPI = {
+  listInvites: () => api.get('/supporters').then((res) => res.data),
+  createInvite: (payload) => api.post('/supporters', payload).then((res) => res.data),
+  updateInvite: (inviteId, payload) => api.patch(`/supporters/${inviteId}`, payload).then((res) => res.data),
+  deleteInvite: (inviteId) => api.delete(`/supporters/${inviteId}`).then((res) => res.data),
+  fetchDashboard: (token, params = {}) =>
+    api.get('/supporters/dashboard', { params: { token, ...params } }).then((res) => res.data),
+  sendEncouragement: (token, payload) =>
+    api.post('/supporters/encouragements', { token, ...payload }).then((res) => res.data),
+  listEncouragements: () => api.get('/supporters/encouragements/list').then((res) => res.data),
+  fetchChat: (token) => api.get('/supporters/chat', { params: { token } }).then((res) => res.data),
+  sendChat: (token, payload) => api.post('/supporters/chat', { token, ...payload }).then((res) => res.data),
+  candidateChat: () => api.get('/supporters/chat/candidate').then((res) => res.data),
+  candidateSendChat: (payload) => api.post('/supporters/chat/candidate', payload).then((res) => res.data),
+  getMood: () => api.get('/supporters/mood').then((res) => res.data),
+  updateMood: (payload) => api.patch('/supporters/mood', payload).then((res) => res.data),
+};
+
 // UC-095: Referral / Reference requests API
 export const referralAPI = {
   list: async (params = {}) => {

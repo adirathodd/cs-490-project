@@ -28,8 +28,21 @@ class AutomationAPI {
       const response = await fetch(url, config);
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+        let errorText = '';
+        let errorData = {};
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          if (typeof response.text === 'function') {
+            errorText = await response.text().catch(() => '');
+          }
+        }
+        const baseMessage = errorData.error || errorData.message || errorText || '';
+        const statusLabel = `HTTP ${response.status}${response.statusText ? `: ${response.statusText}` : ''}`;
+        const message = baseMessage || statusLabel;
+        const err = new Error(message);
+        err.status = response.status;
+        throw err;
       }
 
       // Handle no-content responses
@@ -37,9 +50,29 @@ class AutomationAPI {
         return null;
       }
 
-      return await response.json();
+      const headers = response.headers && typeof response.headers.get === 'function'
+        ? response.headers
+        : { get: () => '' };
+      const contentType = headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        return await response.json();
+      }
+      if (typeof response.json === 'function') {
+        try {
+          return await response.json();
+        } catch {
+          // fall through
+        }
+      }
+      return {};
     } catch (error) {
       console.error(`API request failed: ${endpoint}`, error);
+      if (error?.status) {
+        throw new Error(error.message || `HTTP ${error.status}`);
+      }
+      if (error?.message === 'Network error' || error?.name === 'TypeError') {
+        throw new Error('Network error');
+      }
       throw error;
     }
   }

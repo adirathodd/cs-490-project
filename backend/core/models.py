@@ -84,6 +84,8 @@ class CandidateProfile(models.Model):
         default=20,
         help_text='User-defined goal for applications per month',
     )
+    supporter_mood_score = models.PositiveSmallIntegerField(null=True, blank=True, help_text="Optional 1-10 score for supporter visibility")
+    supporter_mood_note = models.TextField(blank=True, help_text="Optional note on how the candidate is feeling for supporters")
 
     class Meta:
         indexes = [models.Index(fields=["user"])]
@@ -912,6 +914,67 @@ class TeamMember(models.Model):
         unique_together = [("candidate", "user")]
         indexes = [models.Index(fields=["candidate", "is_active"])]
 
+
+class SupporterInvite(models.Model):
+    """Invite and lightweight access control for family/supporter dashboards."""
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="supporter_invites")
+    email = models.EmailField()
+    name = models.CharField(max_length=120, blank=True)
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    permissions = models.JSONField(default=dict, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    last_access_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    paused_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["candidate", "is_active"]),
+            models.Index(fields=["email"]),
+        ]
+
+    def __str__(self):
+        return f"Supporter {self.email} for {self.candidate.user.username}"
+
+
+class SupporterEncouragement(models.Model):
+    """Simple encouragement messages sent by supporters."""
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="supporter_encouragements")
+    supporter = models.ForeignKey(SupporterInvite, on_delete=models.SET_NULL, null=True, blank=True, related_name="encouragements")
+    supporter_name = models.CharField(max_length=120, blank=True)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["candidate", "-created_at"]),
+        ]
+
+
+class SupporterChatMessage(models.Model):
+    """Two-way chat between candidate and supporters (lightweight feed)."""
+    ROLE_CHOICES = [
+        ("supporter", "Supporter"),
+        ("candidate", "Candidate"),
+    ]
+
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="supporter_messages")
+    supporter = models.ForeignKey(SupporterInvite, on_delete=models.SET_NULL, null=True, blank=True, related_name="messages")
+    sender_role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    sender_name = models.CharField(max_length=120, blank=True)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["candidate", "-created_at"]),
+        ]
 
 class SharedNote(models.Model):
     """Collaborative notes and feedback on applications"""
