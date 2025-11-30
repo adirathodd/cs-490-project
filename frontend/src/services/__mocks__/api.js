@@ -124,6 +124,7 @@ const interviewsAPI = {
 	getPreparationChecklist: jestFn(),
 	toggleChecklistItem: jestFn(),
 	getPerformanceAnalytics: jestFn(),
+	getPerformanceTracking: jestFn(),
 };
 
 const networkingAPI = {

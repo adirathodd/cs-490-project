@@ -26,7 +26,6 @@ from django.conf import settings
 from django.utils.text import slugify
 from django.conf import settings
 from core.authentication import FirebaseAuthentication
-from core.interview_performance import InterviewPerformanceAnalyticsService
 from core.serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
@@ -10989,26 +10988,42 @@ def interview_success_forecast(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def interview_performance_analytics(request):
-    """UC-080: Interview performance analytics dashboard."""
+def interview_performance_tracking(request):
+    """
+    UC-098: Interview Performance Tracking
+    
+    Provides detailed analytics on interview performance including:
+    - Interview-to-offer conversion rates over time
+    - Performance by interview format and type
+    - Improvement trends from mock to real interviews
+    - Industry and company culture comparisons
+    - Feedback themes and improvement areas
+    - Confidence progression and anxiety management
+    - Personalized coaching recommendations
+    - Benchmarking against successful patterns
+    """
     try:
+        from core.interview_performance_tracking import InterviewPerformanceTracker
+        
         candidate = request.user.profile
+        tracker = InterviewPerformanceTracker(candidate)
+        
+        # Get complete performance analysis
+        analysis = tracker.get_complete_analysis()
+        
+        return Response(analysis, status=status.HTTP_200_OK)
+        
     except CandidateProfile.DoesNotExist:
         return Response(
-            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
-            status=status.HTTP_404_NOT_FOUND,
+            {'error': {'code': 'profile_not_found', 'message': 'Candidate profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
         )
-
-    service = InterviewPerformanceAnalyticsService(candidate)
-    try:
-        payload = service.build()
-    except Exception as exc:  # pragma: no cover - safety net
-        logger.exception('Interview performance analytics failed: %s', exc)
+    except Exception as e:
+        logger.exception(f"Error in interview_performance_tracking: {e}")
         return Response(
-            {'error': {'code': 'analytics_error', 'message': 'Unable to build interview analytics.'}},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            {'error': {'code': 'internal_error', 'message': 'Failed to generate performance tracking analysis.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-    return Response(payload, status=status.HTTP_200_OK)
 
 
 def generate_preparation_tasks(interview):

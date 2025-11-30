@@ -75,6 +75,7 @@ beforeEach(() => {
 	interviewsAPI.getPreparationChecklist.mockResolvedValue(null);
 	interviewsAPI.toggleChecklistItem.mockResolvedValue({});
 	interviewsAPI.getPerformanceAnalytics.mockResolvedValue({});
+	interviewsAPI.getPerformanceTracking.mockResolvedValue({});
 	networkingAPI.getEvents.mockResolvedValue([]);
 	networkingAPI.getAnalytics.mockResolvedValue({ overview: {} });
 	resumeExportAPI.getThemes.mockResolvedValue({ themes: [] });

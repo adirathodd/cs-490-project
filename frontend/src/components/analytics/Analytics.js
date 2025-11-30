@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { jobsAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import Icon from '../common/Icon';
-import InterviewPerformanceAnalytics from './InterviewPerformanceAnalytics';
+import InterviewPerformanceTracking from './InterviewPerformanceTracking';
 import ApplicationSuccessAnalysis from './ApplicationSuccessAnalysis';
 
 const card = { padding: 16, borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb', marginBottom: 16 };
@@ -60,7 +60,7 @@ export default function Analytics() {
       <div style={{ marginTop: 24 }}>
         {activeTab === 'applications' && <ApplicationAnalyticsPanel />}
         {activeTab === 'success' && <ApplicationSuccessAnalysis />}
-        {activeTab === 'interviews' && <InterviewPerformanceAnalytics />}
+        {activeTab === 'interviews' && <InterviewPerformanceTracking />}
       </div>
     </div>
   );
