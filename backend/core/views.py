@@ -79,6 +79,16 @@ from core.serializers import (
     EventGoalSerializer,
     EventConnectionSerializer,
     EventFollowUpSerializer,
+    ReferralSerializer,
+    ProfessionalReferenceSerializer,
+    ProfessionalReferenceListSerializer,
+    ReferenceRequestSerializer,
+    ReferenceRequestCreateSerializer,
+    ReferenceTemplateSerializer,
+    ReferenceAppreciationSerializer,
+    ReferencePortfolioSerializer,
+    ReferencePortfolioListSerializer,
+
 )
 from core.models import (
     CandidateProfile,
@@ -93,6 +103,9 @@ from core.models import (
     UserAccount,
     JobEntry,
     JobOpportunity,
+    Application,
+    Referral,
+
     Document,
     JobMaterialsHistory,
     CoverLetterTemplate,
@@ -126,6 +139,12 @@ from core.models import (
     EventFollowUp,
     CalendarIntegration,
     InterviewEvent,
+    ProfessionalReference,
+    ReferenceRequest,
+    ReferenceTemplate,
+    ReferenceAppreciation,
+    ReferencePortfolio,
+
     TeamMember,
     MentorshipRequest,
     MentorshipSharingPreference,
@@ -147,6 +166,378 @@ from core.technical_prep import (
 from django.shortcuts import redirect
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 from core import google_import
+
+import uuid
+from rest_framework.permissions import AllowAny
+
+import json
+import os
+import tempfile
+
+# ------------------------------
+# Minimal Referral API stubs (development helper)
+# These provide a lightweight, permissive API surface so the frontend
+# static build can load during local development and demos. They are
+# intentionally simple and should be replaced with full implementations
+# that enforce authentication and perform real DB operations.
+# ------------------------------
+
+
+REFERRAL_STORE: Dict[str, Dict[str, Any]] = {}
+
+# File-backed dev store so multiple workers see the same data.
+STORE_FILENAME = os.path.join(settings.BASE_DIR, 'dev_referrals_store.json')
+
+
+def _load_store() -> Dict[str, Dict[str, Any]]:
+    try:
+        with open(STORE_FILENAME, 'r') as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+def _save_store(store: Dict[str, Dict[str, Any]]):
+    # Write atomically
+    dirpath = os.path.dirname(STORE_FILENAME) or '/tmp'
+    fd, tmpname = tempfile.mkstemp(dir=dirpath)
+    try:
+        with os.fdopen(fd, 'w') as fh:
+            json.dump(store, fh)
+        os.replace(tmpname, STORE_FILENAME)
+    finally:
+        if os.path.exists(tmpname):
+            try:
+                os.remove(tmpname)
+            except Exception:
+                pass
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def referrals_list_create(request):
+    """DB-backed referrals list/create.
+
+    GET: return referrals for the authenticated user's candidate profile.
+    POST: create a Referral by mapping the provided `job` (JobOpportunity id)
+    to an Application for the candidate and associating a Contact.
+    """
+    # GET: list referrals belonging to the requesting candidate
+    if request.method == 'GET':
+        candidate = _get_candidate_profile_for_request(request.user)
+        if not candidate:
+            return Response([], status=status.HTTP_200_OK)
+
+        qs = Referral.objects.filter(application__candidate=candidate).select_related(
+            'contact', 'application__job', 'application__job__company'
+        )
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+
+        serializer = ReferralSerializer(qs.order_by('-requested_date'), many=True, context={'request': request})
+        return Response(serializer.data)
+
+    # POST: create referral
+    data = request.data or {}
+    candidate = _get_candidate_profile_for_request(request.user)
+    if not candidate:
+        return Response({'detail': 'Candidate profile not found'}, status=status.HTTP_400_BAD_REQUEST)
+
+    job_id = data.get('job') or data.get('job_id')
+    if not job_id:
+        return Response({'detail': 'job is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        job = JobOpportunity.objects.get(pk=job_id)
+    except JobOpportunity.DoesNotExist:
+        return Response({'detail': 'Job opportunity not found'}, status=status.HTTP_400_BAD_REQUEST)
+
+    application, _ = Application.objects.get_or_create(candidate=candidate, job=job)
+
+    # Resolve or create contact
+    contact = None
+    contact_id = data.get('contact')
+    if contact_id:
+        try:
+            contact = Contact.objects.get(pk=contact_id)
+        except Contact.DoesNotExist:
+            contact = None
+    else:
+        name = data.get('referral_source_name') or data.get('referral_source_display_name')
+        if name:
+            contact = Contact.objects.create(
+                owner=request.user,
+                display_name=name,
+                first_name=data.get('referral_source_first_name', ''),
+                last_name=data.get('referral_source_last_name', ''),
+                title=data.get('referral_source_title', ''),
+                email=data.get('referral_source_email', '')
+            )
+
+    if not contact:
+        return Response({'detail': 'Contact or referral_source_name is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Pack request_message and relationship_strength into notes JSON to avoid schema changes
+    notes = ''
+    try:
+        notes_obj = {}
+        if data.get('request_message'):
+            notes_obj['request_message'] = data.get('request_message')
+        if data.get('relationship_strength'):
+            notes_obj['relationship_strength'] = data.get('relationship_strength')
+        if notes_obj:
+            import json as _json
+
+            notes = _json.dumps(notes_obj)
+        else:
+            notes = data.get('notes', '') or ''
+    except Exception:
+        notes = data.get('notes', '') or ''
+
+    referral = Referral.objects.create(
+        application=application,
+        contact=contact,
+        notes=notes,
+        status=data.get('status', 'requested'),
+        requested_date=timezone.now().date(),
+    )
+
+    serializer = ReferralSerializer(referral, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def referrals_analytics(request):
+    """Return analytics for referrals for the authenticated candidate."""
+    candidate = _get_candidate_profile_for_request(request.user)
+    if not candidate:
+        return Response({
+            'overview': {'total_requests': 0, 'success_rate': 0, 'accepted_requests': 0},
+            'follow_ups': {'pending': 0},
+            'gratitude_tracking': {'pending': 0},
+        })
+
+    qs = Referral.objects.filter(application__candidate=candidate)
+    total = qs.count()
+    # Map model statuses to frontend concepts: accepted ~ received/used
+    accepted = qs.filter(status__in=['received', 'used']).count()
+    completed = qs.filter(status='used').count()
+    follow_ups_pending = qs.filter(requested_date__isnull=False).exclude(completed_date__isnull=False).count()
+    # gratitude tracked inside notes JSON; parse notes for gratitude_expressed flag
+    gratitude_pending = 0
+    for r in qs:
+        try:
+            note = r.notes or ''
+            parsed = json.loads(note) if note else {}
+            if r.status in ['received', 'used'] and not parsed.get('gratitude_expressed'):
+                gratitude_pending += 1
+        except Exception:
+            continue
+
+    payload = {
+        'overview': {
+            'total_requests': total,
+            'success_rate': (accepted / total * 100) if total else 0,
+            'accepted_requests': accepted,
+        },
+        'follow_ups': {'pending': follow_ups_pending},
+        'gratitude_tracking': {'pending': gratitude_pending},
+    }
+    return Response(payload)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def referrals_generate_message(request):
+    # Return a richer AI suggestion payload used by the frontend so
+    # components can safely read nested fields without crashing.
+    name = request.data.get('referral_source_name', 'Friend')
+    job = request.data.get('job_title') or request.data.get('job_id') or 'this role'
+    tone = request.data.get('tone', 'professional')
+    message = f"Hi {name},\n\nI'm exploring opportunities for {job} and wondered if you'd be willing to introduce me or pass my resume along. I appreciate any help you can provide.\n\nThanks!"
+
+    suggestion = {
+        'subject_line': f'Referral request for {job}',
+        'message': message,
+        'tone': tone,
+        'timing_guidance': {
+            'guidance_text': 'Best to send on a weekday morning (Tuesday-Thursday). Avoid late Fridays and weekends.',
+            'optimal_date': None,
+        },
+        'etiquette_guidance': 'Be concise, reference your connection briefly, and offer context about the role.',
+        'suggested_follow_up_days': 7,
+    }
+
+    return Response(suggestion)
+
+
+@api_view(["GET", "PATCH", "DELETE"]) 
+@permission_classes([IsAuthenticated])
+def referral_detail(request, referral_id):
+    """Retrieve, update, or delete a referral belonging to the authenticated candidate."""
+    candidate = _get_candidate_profile_for_request(request.user)
+    try:
+        referral = Referral.objects.select_related('application__job', 'contact').get(pk=referral_id)
+    except Referral.DoesNotExist:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if referral.application.candidate != candidate:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        serializer = ReferralSerializer(referral, context={'request': request})
+        return Response(serializer.data)
+
+    if request.method == 'PATCH':
+        data = request.data or {}
+        allowed = ['status', 'notes', 'requested_date', 'completed_date']
+        for k, v in data.items():
+            if k in allowed:
+                setattr(referral, k, v)
+        referral.save()
+        serializer = ReferralSerializer(referral, context={'request': request})
+        return Response(serializer.data)
+
+    # DELETE
+    referral.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"]) 
+@permission_classes([IsAuthenticated])
+def referral_mark_sent(request, referral_id):
+    candidate = _get_candidate_profile_for_request(request.user)
+    try:
+        referral = Referral.objects.get(pk=referral_id)
+    except Referral.DoesNotExist:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+    if referral.application.candidate != candidate:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    referral.status = 'requested'
+    referral.requested_date = timezone.now().date()
+    referral.save()
+    serializer = ReferralSerializer(referral, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(["POST"]) 
+@permission_classes([IsAuthenticated])
+def referral_mark_response(request, referral_id):
+    candidate = _get_candidate_profile_for_request(request.user)
+    try:
+        referral = Referral.objects.get(pk=referral_id)
+    except Referral.DoesNotExist:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+    if referral.application.candidate != candidate:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    accepted = bool(request.data.get('accepted', False))
+    referral.status = 'received' if accepted else 'declined'
+    referral.save()
+    serializer = ReferralSerializer(referral, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(["POST"]) 
+@permission_classes([IsAuthenticated])
+def referral_mark_completed(request, referral_id):
+    candidate = _get_candidate_profile_for_request(request.user)
+    try:
+        referral = Referral.objects.get(pk=referral_id)
+    except Referral.DoesNotExist:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+    if referral.application.candidate != candidate:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    referral.status = 'used'
+    referral.completed_date = timezone.now().date()
+    referral.save()
+    serializer = ReferralSerializer(referral, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(["POST"]) 
+@permission_classes([IsAuthenticated])
+def referral_unmark_completed(request, referral_id):
+    candidate = _get_candidate_profile_for_request(request.user)
+    try:
+        referral = Referral.objects.get(pk=referral_id)
+    except Referral.DoesNotExist:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+    if referral.application.candidate != candidate:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    referral.status = 'requested'
+    referral.completed_date = None
+    referral.save()
+    serializer = ReferralSerializer(referral, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(["POST"]) 
+@permission_classes([IsAuthenticated])
+def referral_express_gratitude(request, referral_id):
+    candidate = _get_candidate_profile_for_request(request.user)
+    try:
+        referral = Referral.objects.get(pk=referral_id)
+    except Referral.DoesNotExist:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+    if referral.application.candidate != candidate:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Store gratitude flag inside notes JSON
+    notes = referral.notes or ''
+    try:
+        parsed = json.loads(notes) if notes else {}
+    except Exception:
+        parsed = {}
+    parsed['gratitude_expressed'] = True
+    referral.notes = json.dumps(parsed)
+    referral.save()
+    serializer = ReferralSerializer(referral, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(["GET"]) 
+@permission_classes([IsAuthenticated])
+def referral_suggest_follow_up(request, referral_id):
+    candidate = _get_candidate_profile_for_request(request.user)
+    try:
+        referral = Referral.objects.get(pk=referral_id)
+    except Referral.DoesNotExist:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+    if referral.application.candidate != candidate:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Minimal suggestion for now
+    return Response({'suggested_message': 'Hi — just checking in on my referral request. Thank you!'})
+
+
+@api_view(["POST"]) 
+@permission_classes([IsAuthenticated])
+def referral_update_outcome(request, referral_id):
+    candidate = _get_candidate_profile_for_request(request.user)
+    try:
+        referral = Referral.objects.get(pk=referral_id)
+    except Referral.DoesNotExist:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+    if referral.application.candidate != candidate:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    outcome = request.data or {}
+    notes = referral.notes or ''
+    try:
+        parsed = json.loads(notes) if notes else {}
+    except Exception:
+        parsed = {}
+    parsed['outcome'] = outcome
+    referral.notes = json.dumps(parsed)
+    referral.save()
+    serializer = ReferralSerializer(referral, context={'request': request})
+    return Response(serializer.data)
 
 logger = logging.getLogger(__name__)
 
@@ -973,10 +1364,14 @@ def _delete_user_and_data(user):
         logger.warning(f"Failed to send account deletion email to {email}: {e}")
 
 
-# ======================
+# 
+# 
+# =
 # Contacts / Network API (UC-086)
 # Module-level API views for contact management
-# ======================
+# 
+# 
+# =
 
 
 @api_view(["GET", "POST"])
@@ -3091,9 +3486,13 @@ def get_profile_picture(request):
         )
 
 
-# ======================
+# 
+# 
+# =
 # UC-026: SKILLS VIEWS
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -3343,9 +3742,13 @@ def skills_categories(request):
     return Response(categories, status=status.HTTP_200_OK)
 
 
-# ======================
+# 
+# 
+# =
 # UC-027: SKILLS CATEGORY ORGANIZATION VIEWS
-# ======================
+# 
+# 
+# =
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -3619,9 +4022,13 @@ def skills_export(request):
         )
 
 
-# ======================
+# 
+# 
+# =
 # Education views
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -3750,9 +4157,13 @@ def education_detail(request, education_id):
         )
 
 
-# ======================
+# 
+# 
+# =
 # UC-036: JOB ENTRIES
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -4643,9 +5054,13 @@ def import_job_from_url(request):
         )
 
 
-# ======================
+# 
+# 
+# =
 # UC-042: Application Materials
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -4944,9 +5359,13 @@ def materials_defaults(request):
         return Response({'error': {'code': 'internal_error', 'message': 'Failed to update defaults'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# ======================
+# 
+# 
+# =
 # UC-045: JOB ARCHIVING
-# ======================
+# 
+# 
+# =
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -5142,9 +5561,13 @@ def job_delete(request, job_id):
         )
 
 
-# ======================
+# 
+# 
+# =
 # UC-030: CERTIFICATIONS VIEWS
-# ======================
+# 
+# 
+# =
 
 # Predefined categories (can be expanded later or driven from data)
 CERTIFICATION_CATEGORIES = [
@@ -5362,9 +5785,13 @@ def certification_detail(request, certification_id):
         )
 
     
-# ======================
+# 
+# 
+# =
 # UC-031: PROJECTS VIEWS
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -5629,9 +6056,13 @@ def project_media_delete(request, project_id, media_id):
         return Response({'error': {'code': 'internal_error', 'message': 'Failed to delete media.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# ======================
+# 
+# 
+# =
 # UC-023, UC-024, UC-025: EMPLOYMENT HISTORY VIEWS
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -5943,9 +6374,13 @@ def employment_timeline(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# ======================
+# 
+# 
+# =
 # UC-043: COMPANY INFORMATION DISPLAY
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -6166,9 +6601,13 @@ def job_company_info(request, job_id):
         )
 
 
-# ======================
+# 
+# 
+# =
 # UC-047: AI RESUME CONTENT GENERATION
-# ======================
+# 
+# 
+# =
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -6291,9 +6730,13 @@ def compile_latex_to_pdf(request):
         )
 
 
-# ======================
+# 
+# 
+# =
 # UC-056: AI COVER LETTER CONTENT GENERATION
-# ======================
+# 
+# 
+# =
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -6829,9 +7272,13 @@ def export_ai_cover_letter(request):
         )
 
 
-# ======================
+# 
+# 
+# =
 # Cover Letter Document Saving
-# ======================
+# 
+# 
+# =
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -6959,9 +7406,13 @@ def save_ai_cover_letter_document(request):
     return Response({'message': 'Cover letter saved to Documents.', 'document': payload}, status=status.HTTP_201_CREATED)
 
 
-# ======================
+# 
+# 
+# =
 # UC-063: AUTOMATED COMPANY RESEARCH
-# ======================
+# 
+# 
+# =
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -7207,9 +7658,13 @@ def refresh_company_research(request, company_name):
         )
 
 
-# ==============================================
+# 
+# 
+# =
 # UC-067: SALARY RESEARCH AND BENCHMARKING
-# ==============================================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -7708,9 +8163,13 @@ def _serialize_outcome(outcome):
     }
 
 
-# ============================================================================
+# 
+# 
+# =
 # UC-060: Grammar and Spell Checking
-# ============================================================================
+# 
+# 
+# =
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -9363,9 +9822,13 @@ def job_match_score(request, job_id):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-# ======================
+# 
+# 
+# =
 # UC-051: RESUME EXPORT ENDPOINTS
-# ======================
+# 
+# 
+# =
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -10064,9 +10527,13 @@ def extract_profile_from_latex(latex_content):
     return profile
 
 
-# ============================================
+# 
+# 
+# =
 # UC-071: Interview Scheduling Views
-# ============================================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -11802,12 +12269,18 @@ def export_feedback_summary(request):
 
 
 
-# ============================================================================
+# 
+# 
+# =
 
 
-# ============================================================================
+# 
+# 
+# =
 # UC-069: Application Workflow Automation Views
-# ============================================================================
+# 
+# 
+# =
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -12183,9 +12656,13 @@ def generate_application_package(request, job_id):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# ======================
+# 
+# 
+# =
 # Networking Event Management API (UC-088)
-# ======================
+# 
+# 
+# =
 
 
 @api_view(['GET', 'POST'])
@@ -12552,9 +13029,13 @@ def generate_interview_followup(request):
         )
 
 
-# ======================
+# 
+# 
+# =
 # Mentorship endpoints
-# ======================
+# 
+# 
+# =
 
 
 @api_view(["GET", "POST"])
@@ -13078,7 +13559,7 @@ def mentorship_messages(request, team_member_id):
     return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-# ==================== UC-101: Career Goals ====================
+# UC-101: Career Goals
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
@@ -13110,7 +13591,535 @@ def career_goals_list_create(request):
         serializer = CareerGoalSerializer(data=request.data)
         if serializer.is_valid():
             goal = serializer.save(user=request.user)
+            references = references.filter(availability_status=availability)
+        
+        serializer = ProfessionalReferenceListSerializer(references, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = ProfessionalReferenceSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def reference_detail(request, reference_id):
+    """Retrieve, update, or delete a specific reference"""
+    try:
+        reference = ProfessionalReference.objects.get(id=reference_id, user=request.user)
+    except ProfessionalReference.DoesNotExist:
+        return Response({"error": "Reference not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        serializer = ProfessionalReferenceSerializer(reference)
+        return Response(serializer.data)
+    
+    elif request.method in ['PUT', 'PATCH']:
+        partial = request.method == 'PATCH'
+        serializer = ProfessionalReferenceSerializer(reference, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        reference.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reference_check_in(request, reference_id):
+    """Record a check-in with a reference"""
+    try:
+        reference = ProfessionalReference.objects.get(id=reference_id, user=request.user)
+    except ProfessionalReference.DoesNotExist:
+        return Response({"error": "Reference not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Update last contacted date
+    reference.last_contacted_date = timezone.now().date()
+    
+    # Set next check-in date (default 6 months from now)
+    months_ahead = request.data.get('months_ahead', 6)
+    reference.next_check_in_date = timezone.now().date() + timedelta(days=30 * months_ahead)
+    
+    reference.save()
+    
+    serializer = ProfessionalReferenceSerializer(reference)
+    return Response(serializer.data)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def reference_requests_list_create(request):
+    """List all reference requests or create a new one"""
+    if request.method == 'GET':
+        requests_qs = ReferenceRequest.objects.filter(user=request.user)
+        
+        # Filter by status
+        req_status = request.query_params.get('status')
+        if req_status:
+            requests_qs = requests_qs.filter(request_status=req_status)
+        
+        # Filter by reference
+        reference_id = request.query_params.get('reference_id')
+        if reference_id:
+            requests_qs = requests_qs.filter(reference_id=reference_id)
+        
+        serializer = ReferenceRequestSerializer(requests_qs, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = ReferenceRequestCreateSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            ref_request = serializer.save(user=request.user)
             
+            # Update reference tracking
+            reference = ref_request.reference
+            reference.times_used += 1
+            reference.last_used_date = timezone.now().date()
+            reference.save()
+            
+            response_serializer = ReferenceRequestSerializer(ref_request)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def reference_request_detail(request, request_id):
+    """Retrieve, update, or delete a specific reference request"""
+    try:
+        ref_request = ReferenceRequest.objects.get(id=request_id, user=request.user)
+    except ReferenceRequest.DoesNotExist:
+        return Response({"error": "Reference request not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        serializer = ReferenceRequestSerializer(ref_request)
+        return Response(serializer.data)
+    
+    elif request.method in ['PUT', 'PATCH']:
+        partial = request.method == 'PATCH'
+        serializer = ReferenceRequestSerializer(ref_request, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        ref_request.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reference_request_mark_sent(request, request_id):
+    """Mark a reference request as sent"""
+    try:
+        ref_request = ReferenceRequest.objects.get(id=request_id, user=request.user)
+    except ReferenceRequest.DoesNotExist:
+        return Response({"error": "Reference request not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    ref_request.request_status = 'sent'
+    ref_request.request_sent_date = timezone.now().date()
+    ref_request.save()
+    
+    serializer = ReferenceRequestSerializer(ref_request)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reference_request_mark_completed(request, request_id):
+    """Mark a reference request as completed"""
+    try:
+        ref_request = ReferenceRequest.objects.get(id=request_id, user=request.user)
+    except ReferenceRequest.DoesNotExist:
+        return Response({"error": "Reference request not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    ref_request.request_status = 'completed'
+    ref_request.completed_date = timezone.now().date()
+    
+    # Optional: Add feedback/rating
+    if 'feedback_received' in request.data:
+        ref_request.feedback_received = request.data['feedback_received']
+    if 'reference_rating' in request.data:
+        ref_request.reference_rating = request.data['reference_rating']
+    
+    ref_request.save()
+    
+    serializer = ReferenceRequestSerializer(ref_request)
+    return Response(serializer.data)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def reference_templates_list_create(request):
+    """List all reference templates or create a new one"""
+    if request.method == 'GET':
+        templates = ReferenceTemplate.objects.filter(user=request.user)
+        
+        # Filter by type
+        template_type = request.query_params.get('type')
+        if template_type:
+            templates = templates.filter(template_type=template_type)
+        
+        serializer = ReferenceTemplateSerializer(templates, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = ReferenceTemplateSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def reference_template_detail(request, template_id):
+    """Retrieve, update, or delete a specific template"""
+    try:
+        template = ReferenceTemplate.objects.get(id=template_id, user=request.user)
+    except ReferenceTemplate.DoesNotExist:
+        return Response({"error": "Template not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        serializer = ReferenceTemplateSerializer(template)
+        return Response(serializer.data)
+    
+    elif request.method in ['PUT', 'PATCH']:
+        partial = request.method == 'PATCH'
+        serializer = ReferenceTemplateSerializer(template, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        template.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def reference_appreciations_list_create(request):
+    """List all appreciation records or create a new one"""
+    if request.method == 'GET':
+        appreciations = ReferenceAppreciation.objects.filter(user=request.user)
+        
+        # Filter by reference
+        reference_id = request.query_params.get('reference_id')
+        if reference_id:
+            appreciations = appreciations.filter(reference_id=reference_id)
+        
+        serializer = ReferenceAppreciationSerializer(appreciations, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = ReferenceAppreciationSerializer(data=request.data)
+        if serializer.is_valid():
+            appreciation = serializer.save(user=request.user)
+            
+            # Update reference last_contacted_date
+            reference = appreciation.reference
+            if not reference.last_contacted_date or appreciation.date > reference.last_contacted_date:
+                reference.last_contacted_date = appreciation.date
+                reference.save()
+            
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def reference_appreciation_detail(request, appreciation_id):
+    """Retrieve, update, or delete a specific appreciation record"""
+    try:
+        appreciation = ReferenceAppreciation.objects.get(id=appreciation_id, user=request.user)
+    except ReferenceAppreciation.DoesNotExist:
+        return Response({"error": "Appreciation record not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        serializer = ReferenceAppreciationSerializer(appreciation)
+        return Response(serializer.data)
+    
+    elif request.method in ['PUT', 'PATCH']:
+        partial = request.method == 'PATCH'
+        serializer = ReferenceAppreciationSerializer(appreciation, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        appreciation.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def reference_portfolios_list_create(request):
+    """List all reference portfolios or create a new one"""
+    if request.method == 'GET':
+        portfolios = ReferencePortfolio.objects.filter(user=request.user)
+        serializer = ReferencePortfolioListSerializer(portfolios, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = ReferencePortfolioSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def reference_portfolio_detail(request, portfolio_id):
+    """Retrieve, update, or delete a specific portfolio"""
+    try:
+        portfolio = ReferencePortfolio.objects.get(id=portfolio_id, user=request.user)
+    except ReferencePortfolio.DoesNotExist:
+        return Response({"error": "Portfolio not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        serializer = ReferencePortfolioSerializer(portfolio)
+        return Response(serializer.data)
+    
+    elif request.method in ['PUT', 'PATCH']:
+        partial = request.method == 'PATCH'
+        serializer = ReferencePortfolioSerializer(portfolio, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        portfolio.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def reference_analytics(request):
+    """Get analytics about reference usage and success rates"""
+    user = request.user
+    
+    # Get all references and requests
+    references = ProfessionalReference.objects.filter(user=user)
+    requests = ReferenceRequest.objects.filter(user=user)
+    
+    # Calculate analytics
+    analytics = {
+        'total_references': references.count(),
+        'active_references': references.filter(is_active=True).count(),
+        'available_references': references.filter(availability_status='available', is_active=True).count(),
+        'total_requests': requests.count(),
+        'pending_requests': requests.filter(request_status__in=['pending', 'sent']).count(),
+        'completed_requests': requests.filter(request_status='completed').count(),
+        'success_rate': 0,
+        'most_used_references': [],
+        'references_by_relationship': {},
+        'requests_by_status': {},
+        'upcoming_check_ins': [],
+    }
+    
+    # Calculate success rate
+    completed = requests.filter(request_status='completed').count()
+    successful = requests.filter(contributed_to_success=True).count()
+    if completed > 0:
+        analytics['success_rate'] = round((successful / completed) * 100, 2)
+    
+    # Most used references
+    top_refs = references.filter(is_active=True).order_by('-times_used')[:5]
+    analytics['most_used_references'] = [
+        {
+            'id': str(ref.id),
+            'name': ref.name,
+            'company': ref.company,
+            'times_used': ref.times_used,
+            'last_used_date': ref.last_used_date
+        }
+        for ref in top_refs
+    ]
+    
+    # References by relationship type
+    from django.db.models import Count
+    by_relationship = references.values('relationship_type').annotate(count=Count('id'))
+    analytics['references_by_relationship'] = {
+        item['relationship_type']: item['count'] for item in by_relationship
+    }
+    
+    # Requests by status
+    by_status = requests.values('request_status').annotate(count=Count('id'))
+    analytics['requests_by_status'] = {
+        item['request_status']: item['count'] for item in by_status
+    }
+    
+    # Upcoming check-ins (next 30 days)
+    today = timezone.now().date()
+    thirty_days = today + timedelta(days=30)
+    upcoming = references.filter(
+        next_check_in_date__gte=today,
+        next_check_in_date__lte=thirty_days,
+        is_active=True
+    ).order_by('next_check_in_date')
+    
+    analytics['upcoming_check_ins'] = [
+        {
+            'id': str(ref.id),
+            'name': ref.name,
+            'company': ref.company,
+            'next_check_in_date': ref.next_check_in_date,
+            'last_contacted_date': ref.last_contacted_date
+        }
+        for ref in upcoming
+    ]
+    
+    return Response(analytics)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_reference_preparation_guide(request):
+    """Generate AI-powered preparation guide for a reference"""
+    try:
+        reference_id = request.data.get('reference_id')
+        company_name = request.data.get('company_name')
+        position_title = request.data.get('position_title')
+        job_description = request.data.get('job_description', '')
+        
+        if not all([reference_id, company_name, position_title]):
+            return Response(
+                {"error": "reference_id, company_name, and position_title are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get reference
+        try:
+            reference = ProfessionalReference.objects.get(id=reference_id, user=request.user)
+        except ProfessionalReference.DoesNotExist:
+            return Response({"error": "Reference not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Build preparation guide content
+        guide = {
+            'reference_name': reference.name,
+            'position_applied': f"{position_title} at {company_name}",
+            'relationship_context': {
+                'relationship_type': reference.get_relationship_type_display(),
+                'relationship_description': reference.relationship_description,
+                'years_known': reference.years_known,
+                'projects_worked_together': reference.projects_worked_together,
+            },
+            'key_talking_points': reference.talking_points if reference.talking_points else [],
+            'strengths_to_highlight': reference.key_strengths_to_highlight,
+            'suggested_preparation': [
+                "Review the job description and company information",
+                "Refresh your memory on specific projects you worked on together",
+                "Prepare specific examples of the candidate's achievements",
+                "Think about the candidate's growth and development over time",
+                "Be ready to discuss the candidate's teamwork and communication skills",
+            ],
+            'recommended_structure': {
+                'introduction': "Explain your relationship and how long you've known the candidate",
+                'key_strengths': "Highlight 2-3 specific strengths with concrete examples",
+                'relevant_experience': "Discuss projects or achievements relevant to the role",
+                'growth_potential': "Speak to the candidate's ability to learn and grow",
+                'recommendation': "Provide a clear and enthusiastic recommendation",
+            },
+            'questions_to_expect': [
+                "How long have you known the candidate and in what capacity?",
+                "What are the candidate's greatest strengths?",
+                "Can you provide an example of a challenging situation they handled well?",
+                "How does the candidate work in a team?",
+                "Would you hire this candidate again? Why or why not?",
+            ],
+        }
+        
+        return Response(guide)
+        
+    except Exception as e:
+        logging.error(f"Error generating preparation guide: {str(e)}")
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# 
+
+# 
+# 
+# =
+# UC-095: Professional Reference Management Views
+# 
+# 
+# =
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def references_list_create(request):
+    """List all references or create a new reference"""
+    if request.method == 'GET':
+        references = ProfessionalReference.objects.filter(user=request.user)
+        
+        # Filter by status
+        is_active = request.query_params.get('is_active')
+        if is_active is not None:
+            references = references.filter(is_active=is_active.lower() == 'true')
+        
+        # Filter by availability
+        availability = request.query_params.get('availability_status')
+        if availability:
+            references = references.filter(availability_status=availability)
+        
+        serializer = ProfessionalReferenceListSerializer(references, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = ProfessionalReferenceSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# UC-101: Career Goals
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def career_goals_list_create(request):
+    """
+    GET: List all career goals for the authenticated user
+    POST: Create a new career goal
+    """
+    from core.models import CareerGoal
+    from core.serializers import CareerGoalSerializer, CareerGoalListSerializer
+    
+    if request.method == "GET":
+        goals = CareerGoal.objects.filter(user=request.user)
+        
+        # Filter by status if provided
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            goals = goals.filter(status=status_filter)
+        
+        # Filter by type if provided
+        type_filter = request.query_params.get('goal_type')
+        if type_filter:
+            goals = goals.filter(goal_type=type_filter)
+        
+        serializer = CareerGoalSerializer(goals, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == "POST":
+        serializer = CareerGoalSerializer(data=request.data)
+        if serializer.is_valid():
+            goal = serializer.save(user=request.user)
             # Auto-set started_at if status is in_progress
             if goal.status == 'in_progress' and not goal.started_at:
                 goal.started_at = timezone.now()
@@ -13438,3 +14447,5 @@ def _generate_goal_recommendations(user, goals):
         })
     
     return recommendations
+
+

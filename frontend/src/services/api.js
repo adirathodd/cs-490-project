@@ -79,6 +79,56 @@ const extractErrorMessage = (error, fallback) => {
   return fallback;
 };
 
+// Contacts API (minimal surface used by referrals components)
+export const contactsAPI = {
+  list: async (params = {}) => {
+    try {
+      const usp = new URLSearchParams(params).toString();
+      const path = usp ? `/contacts?${usp}` : '/contacts';
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch contacts' };
+    }
+  },
+
+  get: async (id) => {
+    try {
+      const response = await api.get(`/contacts/${id}`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch contact' };
+    }
+  },
+
+  create: async (payload) => {
+    try {
+      const response = await api.post('/contacts', payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to create contact' };
+    }
+  },
+
+  update: async (id, payload) => {
+    try {
+      const response = await api.patch(`/contacts/${id}`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update contact' };
+    }
+  },
+
+  remove: async (id) => {
+    try {
+      const response = await api.delete(`/contacts/${id}`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete contact' };
+    }
+  },
+};
+
 // Profile API calls
 export const profileAPI = {
   getUserProfile: async (userId) => {
@@ -742,9 +792,13 @@ export const jobsAPI = {
     return response.data; // { interested: n, applied: n, ... }
   },
 
-  getAnalytics: async () => {
-    const response = await api.get('/jobs/analytics');
+  getAnalytics: async (params = {}) => {
+    const response = await api.get('/jobs/analytics', { params });
     return response.data; // Enhanced analytics data
+  },
+  updateAnalyticsGoals: async (payload) => {
+    const response = await api.patch('/jobs/analytics/goals', payload);
+    return response.data;
   },
 
   bulkUpdateStatus: async (ids, status) => {
@@ -2539,6 +2593,132 @@ export const mentorshipAPI = {
       return response.data;
     } catch (error) {
       throw error.error || error.response?.data || { message: 'Failed to send message' };
+    }
+  },
+};
+
+// UC-095: Referral / Reference requests API
+export const referralAPI = {
+  list: async (params = {}) => {
+    try {
+      const usp = new URLSearchParams();
+      Object.entries(params || {}).forEach(([k, v]) => {
+        if (v === undefined || v === null || v === '') return;
+        usp.append(k, v);
+      });
+      const path = usp.toString() ? `/referrals?${usp.toString()}` : '/referrals';
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch referrals' };
+    }
+  },
+
+  getAnalytics: async () => {
+    try {
+      const response = await api.get('/referrals/analytics');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch referral analytics' };
+    }
+  },
+
+  create: async (payload) => {
+    try {
+      const response = await api.post('/referrals', payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to create referral' };
+    }
+  },
+
+  update: async (id, payload) => {
+    try {
+      const response = await api.patch(`/referrals/${id}`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update referral' };
+    }
+  },
+
+  remove: async (id) => {
+    try {
+      const response = await api.delete(`/referrals/${id}`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete referral' };
+    }
+  },
+
+  generateMessage: async (payload) => {
+    try {
+      const response = await api.post('/referrals/generate-message', payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to generate referral message' };
+    }
+  },
+
+  markSent: async (id) => {
+    try {
+      const response = await api.post(`/referrals/${id}/mark-sent`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to mark referral as sent' };
+    }
+  },
+
+  markResponse: async (id, payload) => {
+    try {
+      const response = await api.post(`/referrals/${id}/response`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to record referral response' };
+    }
+  },
+
+  markCompleted: async (id) => {
+    try {
+      const response = await api.post(`/referrals/${id}/complete`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to mark referral completed' };
+    }
+  },
+
+  unmarkCompleted: async (id) => {
+    try {
+      const response = await api.post(`/referrals/${id}/uncomplete`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to unmark referral completed' };
+    }
+  },
+
+  expressGratitude: async (id, payload = {}) => {
+    try {
+      const response = await api.post(`/referrals/${id}/express-gratitude`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to record gratitude' };
+    }
+  },
+
+  suggestFollowUp: async (id) => {
+    try {
+      const response = await api.get(`/referrals/${id}/suggest-follow-up`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to suggest follow-up' };
+    }
+  },
+
+  updateOutcome: async (id, payload) => {
+    try {
+      const response = await api.post(`/referrals/${id}/outcome`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update outcome' };
     }
   },
 };

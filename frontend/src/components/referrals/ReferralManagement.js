@@ -15,6 +15,8 @@ const ReferralManagement = () => {
   const [activeTab, setActiveTab] = useState('active'); // active, completed, all
   const [selectedReferral, setSelectedReferral] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [cardLoading, setCardLoading] = useState({});
+
 
   useEffect(() => {
     fetchReferrals();
@@ -54,6 +56,67 @@ const ReferralManagement = () => {
   const handleViewDetails = (referral) => {
     setSelectedReferral(referral);
     setShowDetailModal(true);
+  };
+
+  const cardActionMarkSent = async (id) => {
+    if (!window.confirm('Mark this referral as sent?')) return;
+    setCardLoading((s) => ({ ...s, [id]: true }));
+    try {
+      await referralAPI.markSent(id);
+      await fetchReferrals();
+      setSuccess('Marked as sent!');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (err) {
+      setError('Failed to update status: ' + err.message);
+    } finally {
+      setCardLoading((s) => ({ ...s, [id]: false }));
+    }
+  };
+
+  const cardActionMarkResponse = async (id, accepted) => {
+    const verb = accepted ? 'accept' : 'decline';
+    if (!window.confirm(`Mark this referral as ${verb}?`)) return;
+    setCardLoading((s) => ({ ...s, [id]: true }));
+    try {
+      await referralAPI.markResponse(id, { accepted });
+      await fetchReferrals();
+      setSuccess(accepted ? 'Marked as accepted!' : 'Marked as declined!');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (err) {
+      setError('Failed to update status: ' + err.message);
+    } finally {
+      setCardLoading((s) => ({ ...s, [id]: false }));
+    }
+  };
+
+  const cardActionMarkCompleted = async (id) => {
+    if (!window.confirm('Mark this referral as completed?')) return;
+    setCardLoading((s) => ({ ...s, [id]: true }));
+    try {
+      await referralAPI.markCompleted(id);
+      await fetchReferrals();
+      setSuccess('Marked as completed!');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (err) {
+      setError('Failed to update status: ' + err.message);
+    } finally {
+      setCardLoading((s) => ({ ...s, [id]: false }));
+    }
+  };
+
+  const cardActionUnmarkCompleted = async (id) => {
+    if (!window.confirm('Revert this referral to active status?')) return;
+    setCardLoading((s) => ({ ...s, [id]: true }));
+    try {
+      await referralAPI.unmarkCompleted(id);
+      await fetchReferrals();
+      setSuccess('Marked as active!');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (err) {
+      setError('Failed to update status: ' + err.message);
+    } finally {
+      setCardLoading((s) => ({ ...s, [id]: false }));
+    }
   };
 
   const handleCreateNew = () => {
@@ -222,6 +285,37 @@ const ReferralManagement = () => {
                   >
                     View Details
                   </button>
+
+                  {/* Quick actions on the card for convenience */}
+                  {referral.status === 'draft' && (
+                    <button className="btn btn-sm btn-primary" onClick={() => cardActionMarkSent(referral.id)} disabled={cardLoading[referral.id]}>
+                      {cardLoading[referral.id] ? 'Working...' : 'Mark Sent'}
+                    </button>
+                  )}
+
+                  {referral.status === 'sent' && (
+                    <>
+                      <button className="btn btn-sm btn-success" onClick={() => cardActionMarkResponse(referral.id, true)} disabled={cardLoading[referral.id]}>
+                        {cardLoading[referral.id] ? 'Working...' : 'Accept'}
+                      </button>
+                      <button className="btn btn-sm btn-danger" onClick={() => cardActionMarkResponse(referral.id, false)} disabled={cardLoading[referral.id]}>
+                        {cardLoading[referral.id] ? 'Working...' : 'Decline'}
+                      </button>
+                    </>
+                  )}
+
+                  {referral.status === 'accepted' && (
+                    <button className="btn btn-sm btn-primary" onClick={() => cardActionMarkCompleted(referral.id)} disabled={cardLoading[referral.id]}>
+                      {cardLoading[referral.id] ? 'Working...' : 'Complete'}
+                    </button>
+                  )}
+
+                  {referral.status === 'completed' && (
+                    <button className="btn btn-sm btn-secondary" onClick={() => cardActionUnmarkCompleted(referral.id)} disabled={cardLoading[referral.id]}>
+                      {cardLoading[referral.id] ? 'Working...' : 'Make Active'}
+                    </button>
+                  )}
+
                 </div>
               </div>
             ))}

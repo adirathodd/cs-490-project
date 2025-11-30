@@ -7,6 +7,8 @@ import {
   FaBriefcase,
   FaGraduationCap,
   FaMedal,
+  FaAward,
+
   FaPuzzlePiece,
   FaFolderOpen,
   FaCamera,
@@ -91,6 +93,8 @@ const iconMap = {
   briefcase: FaBriefcase,
   education: FaGraduationCap,
   cert: FaMedal,
+  award: FaAward,
+
   project: FaPuzzlePiece,
   folder: FaFolderOpen,
   camera: FaCamera,
