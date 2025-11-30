@@ -18,9 +18,9 @@ import re
 class MockInterviewGenerator:
     """Generate tailored mock interview questions using Gemini AI."""
     
-    def __init__(self):
-        """Initialize generator without creating client yet."""
-        self._client = None
+    def __init__(self, client=None):
+        """Initialize generator with optional client for testing."""
+        self._client = client
     
     @property
     def client(self):
@@ -282,9 +282,9 @@ Return ONLY the JSON array, no additional text."""
 class MockInterviewCoach:
     """Provide AI-powered coaching and feedback on interview responses."""
     
-    def __init__(self):
-        """Initialize coach without creating client yet."""
-        self._client = None
+    def __init__(self, client=None):
+        """Initialize coach with optional client for testing."""
+        self._client = client
     
     @property
     def client(self):

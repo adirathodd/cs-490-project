@@ -363,7 +363,8 @@ class TestMockInterviewService:
         mock_client.models = mock_models
         mock_client_class.return_value = mock_client
 
-        generator = MockInterviewGenerator()
+        # Pass mocked client directly to avoid API key check
+        generator = MockInterviewGenerator(client=mock_client)
         questions = generator.generate_questions(
             interview_type='behavioral',
             difficulty_level='mid',
@@ -398,7 +399,8 @@ class TestMockInterviewService:
         mock_client.models = mock_models
         mock_client_class.return_value = mock_client
 
-        coach = MockInterviewCoach()
+        # Pass mocked client directly to avoid API key check
+        coach = MockInterviewCoach(client=mock_client)
         evaluation = coach.evaluate_answer(
             question='Tell me about a time...',
             answer='In my previous role...',
