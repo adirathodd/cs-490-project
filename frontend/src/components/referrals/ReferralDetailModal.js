@@ -252,7 +252,7 @@ const ReferralDetailModal = ({ referral, onClose, onUpdate }) => {
             <div className="detail-section">
               <h3>Request Message</h3>
               <div className="message-box">
-                <pre>{referral.request_message}</pre>
+                <p style={{ whiteSpace: 'pre-wrap' }}>{referral.request_message}</p>
               </div>
             </div>
           )}

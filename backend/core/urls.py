@@ -366,4 +366,14 @@ urlpatterns = [
     path('mock-interviews/<int:session_id>/summary', views.get_mock_interview_summary, name='mock-interview-summary'),
     path('mock-interviews/<int:session_id>/delete', views.delete_mock_interview_session, name='mock-interview-delete'),
 
+    # UC-090: Informational Interview Management
+    path('informational-interviews/analytics', views.informational_interviews_analytics, name='informational-interviews-analytics'),
+    path('informational-interviews', views.informational_interviews_list_create, name='informational-interviews-list-create'),
+    path('informational-interviews/<uuid:pk>', views.informational_interviews_detail, name='informational-interviews-detail'),
+    path('informational-interviews/<uuid:pk>/mark-outreach-sent', views.informational_interviews_mark_outreach_sent, name='informational-interviews-mark-outreach-sent'),
+    path('informational-interviews/<uuid:pk>/mark-scheduled', views.informational_interviews_mark_scheduled, name='informational-interviews-mark-scheduled'),
+    path('informational-interviews/<uuid:pk>/mark-completed', views.informational_interviews_mark_completed, name='informational-interviews-mark-completed'),
+    path('informational-interviews/<uuid:pk>/generate-outreach', views.informational_interviews_generate_outreach, name='informational-interviews-generate-outreach'),
+    path('informational-interviews/<uuid:pk>/generate-preparation', views.informational_interviews_generate_preparation, name='informational-interviews-generate-preparation'),
+
 ]

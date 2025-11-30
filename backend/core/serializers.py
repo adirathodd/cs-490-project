@@ -21,7 +21,8 @@ from core.models import (
 from core.models import (
     Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink,
     NetworkingEvent, EventGoal, EventConnection, EventFollowUp, CareerGoal, GoalMilestone,
-    ProfessionalReference, ReferenceRequest, ReferenceTemplate, ReferenceAppreciation, ReferencePortfolio
+    ProfessionalReference, ReferenceRequest, ReferenceTemplate, ReferenceAppreciation, ReferencePortfolio,
+    InformationalInterview
 )
 
 from core.models import Referral, Application, JobOpportunity
@@ -114,6 +115,7 @@ class ReferralSerializer(serializers.ModelSerializer):
     referral_source_display_name = serializers.SerializerMethodField()
     request_message = serializers.SerializerMethodField()
     relationship_strength = serializers.SerializerMethodField()
+    notes = serializers.SerializerMethodField()
 
     class Meta:
         model = Referral
@@ -158,10 +160,11 @@ class ReferralSerializer(serializers.ModelSerializer):
             import json
             parsed = json.loads(notes)
             if isinstance(parsed, dict) and 'request_message' in parsed:
-                return parsed.get('request_message')
+                return parsed.get('request_message', '')
         except Exception:
             pass
-        return notes
+        # Don't return raw notes if they're JSON - return empty string
+        return ''
 
     def get_relationship_strength(self, obj):
         # Relationship strength is not a field on Referral; attempt to parse from notes JSON.
@@ -174,6 +177,20 @@ class ReferralSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return 'moderate'
+
+    def get_notes(self, obj):
+        # Return clean notes: if notes contain JSON with request_message/relationship_strength,
+        # don't return them (they're exposed as separate fields). Otherwise return as-is.
+        notes = obj.notes or ''
+        try:
+            import json
+            parsed = json.loads(notes)
+            if isinstance(parsed, dict) and ('request_message' in parsed or 'relationship_strength' in parsed):
+                # This is our internal JSON storage, don't expose raw
+                return ''
+        except Exception:
+            pass
+        return notes
 
     def create(self, validated_data):
         # Creation is handled in the view where we have access to request.user
@@ -3905,5 +3922,137 @@ class ReferencePortfolioListSerializer(serializers.ModelSerializer):
     def get_references_count(self, obj):
         if obj.pk:
             return obj.references.count()
+        return 0
+
+
+# UC-090: Informational Interview Management Serializers
+
+class InformationalInterviewSerializer(serializers.ModelSerializer):
+    """
+    Serializer for UC-090: Informational Interview Management
+    Handles the complete lifecycle of informational interviews
+    """
+    contact_details = ContactSerializer(source='contact', read_only=True)
+    connected_jobs_details = serializers.SerializerMethodField()
+    tags_details = TagSerializer(many=True, source='tags', read_only=True)
+    
+    # Writable fields for relationships
+    contact = serializers.PrimaryKeyRelatedField(
+        queryset=Contact.objects.all(),
+        required=True
+    )
+    connected_jobs = serializers.PrimaryKeyRelatedField(
+        queryset=JobEntry.objects.all(),
+        many=True,
+        required=False
+    )
+    tags_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Tag.objects.all(),
+        many=True,
+        required=False,
+        write_only=True,
+        source='tags'
+    )
+    
+    class Meta:
+        model = InformationalInterview
+        fields = [
+            'id', 'user', 'contact', 'contact_details',
+            'status', 'outcome',
+            'outreach_template_used', 'outreach_sent_at', 'outreach_message',
+            'scheduled_at', 'meeting_location', 'duration_minutes',
+            'preparation_notes', 'questions_to_ask', 'research_notes', 'goals',
+            'completed_at', 'interview_notes', 'key_insights', 'industry_intelligence',
+            'follow_up_sent_at', 'follow_up_message', 'relationship_strength_change',
+            'led_to_job_application', 'led_to_referral', 'led_to_introduction',
+            'connected_jobs', 'connected_jobs_details', 'tags_ids', 'tags_details',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'outreach_sent_at', 'completed_at']
+    
+    def get_connected_jobs_details(self, obj):
+        """Return basic job details for connected jobs"""
+        from core.serializers import JobEntrySummarySerializer
+        if obj.pk:
+            jobs = obj.connected_jobs.all()
+            return JobEntrySummarySerializer(jobs, many=True).data
+        return []
+    
+    def validate_contact(self, value):
+        """Ensure contact belongs to the requesting user"""
+        request = self.context.get('request')
+        if request and value.owner != request.user:
+            raise serializers.ValidationError("You can only create interviews with your own contacts.")
+        return value
+    
+    def validate_connected_jobs(self, value):
+        """Ensure all jobs belong to the requesting user"""
+        request = self.context.get('request')
+        if request:
+            for job in value:
+                if job.user != request.user:
+                    raise serializers.ValidationError("You can only connect interviews to your own job entries.")
+        return value
+    
+    def validate_relationship_strength_change(self, value):
+        """Validate relationship strength change is within valid range"""
+        if value is not None and not (-5 <= value <= 5):
+            raise serializers.ValidationError("Relationship strength change must be between -5 and +5.")
+        return value
+    
+    def validate_status(self, value):
+        """Validate status transitions"""
+        if self.instance:
+            current_status = self.instance.status
+            # Define valid transitions
+            valid_transitions = {
+                'identified': ['outreach_sent', 'declined', 'no_response'],
+                'outreach_sent': ['scheduled', 'declined', 'no_response'],
+                'scheduled': ['completed', 'declined', 'no_response'],
+                'completed': [],  # Terminal state
+                'declined': [],  # Terminal state
+                'no_response': ['outreach_sent', 'declined']  # Can retry
+            }
+            
+            if value != current_status and value not in valid_transitions.get(current_status, []):
+                raise serializers.ValidationError(
+                    f"Invalid status transition from '{current_status}' to '{value}'."
+                )
+        return value
+    
+    def create(self, validated_data):
+        """Create new informational interview with user set from request"""
+        request = self.context.get('request')
+        if request:
+            validated_data['user'] = request.user
+        return super().create(validated_data)
+
+
+class InformationalInterviewListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for list views"""
+    contact_name = serializers.CharField(source='contact.display_name', read_only=True)
+    contact_company = serializers.CharField(source='contact.company_name', read_only=True)
+    contact_title = serializers.CharField(source='contact.title', read_only=True)
+    tags_count = serializers.SerializerMethodField()
+    connected_jobs_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = InformationalInterview
+        fields = [
+            'id', 'contact', 'contact_name', 'contact_company', 'contact_title',
+            'status', 'outcome', 'scheduled_at', 'completed_at',
+            'tags_count', 'connected_jobs_count',
+            'led_to_job_application', 'led_to_referral', 'led_to_introduction',
+            'created_at'
+        ]
+    
+    def get_tags_count(self, obj):
+        if obj.pk:
+            return obj.tags.count()
+        return 0
+    
+    def get_connected_jobs_count(self, obj):
+        if obj.pk:
+            return obj.connected_jobs.count()
         return 0
 

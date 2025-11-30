@@ -10,7 +10,9 @@ const ReferralForm = ({ onClose, onSuccess, editingReferral = null }) => {
     contact: '',
     referral_source_name: '',
     referral_source_title: '',
+    referral_source_company: '',
     referral_source_email: '',
+    referral_source_phone: '',
     referral_source_linkedin: '',
     relationship_strength: 'moderate',
     status: 'draft',
@@ -81,7 +83,9 @@ const ReferralForm = ({ onClose, onSuccess, editingReferral = null }) => {
           ...prev,
           referral_source_name: contact.display_name || `${contact.first_name} ${contact.last_name}`,
           referral_source_title: contact.title || '',
+          referral_source_company: contact.company_name || '',
           referral_source_email: contact.email || '',
+          referral_source_phone: contact.phone || '',
           referral_source_linkedin: contact.linkedin_url || ''
         }));
       }
@@ -228,7 +232,7 @@ const ReferralForm = ({ onClose, onSuccess, editingReferral = null }) => {
                   <button
                     type="button"
                     className="btn btn-sm btn-secondary manual-entry-btn"
-                    onClick={() => { setUseContactMode(true); setFormData(prev => ({ ...prev, referral_source_name: '', referral_source_title: '', referral_source_email: '', referral_source_linkedin: '' })); }}
+                    onClick={() => { setUseContactMode(true); setFormData(prev => ({ ...prev, referral_source_name: '', referral_source_title: '', referral_source_company: '', referral_source_email: '', referral_source_phone: '', referral_source_linkedin: '' })); }}
                   >
                     <Icon name="users" size="14" />
                     <span className="btn-text">Select from contacts</span>
@@ -285,12 +289,37 @@ const ReferralForm = ({ onClose, onSuccess, editingReferral = null }) => {
 
                   <div className="form-row">
                     <div className="form-group">
+                      <label htmlFor="referral_source_company">Company</label>
+                      <input
+                        type="text"
+                        id="referral_source_company"
+                        name="referral_source_company"
+                        value={formData.referral_source_company}
+                        onChange={handleChange}
+                        className="form-control"
+                      />
+                    </div>
+                    <div className="form-group">
                       <label htmlFor="referral_source_email">Email</label>
                       <input
                         type="email"
                         id="referral_source_email"
                         name="referral_source_email"
                         value={formData.referral_source_email}
+                        onChange={handleChange}
+                        className="form-control"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label htmlFor="referral_source_phone">Phone</label>
+                      <input
+                        type="tel"
+                        id="referral_source_phone"
+                        name="referral_source_phone"
+                        value={formData.referral_source_phone}
                         onChange={handleChange}
                         className="form-control"
                       />
