@@ -33,6 +33,13 @@ def _safe_number(value: Optional[Decimal | int | float]) -> Optional[float]:
         return None
 
 
+def _positive_number(value: Optional[Decimal | int | float]) -> Optional[float]:
+    num = _safe_number(value)
+    if num is None or num <= 0:
+        return None
+    return num
+
+
 class SalaryNegotiationPlanner:
     """Generate structured guidance for salary negotiations."""
 
@@ -372,8 +379,8 @@ def build_progression_snapshot(outcomes: List[SalaryNegotiationOutcome]) -> Dict
     timeline = []
     lifts = []
     for outcome in sorted(outcomes, key=lambda o: o.created_at):
-        company_offer = _safe_number(outcome.company_offer)
-        final_result = _safe_number(outcome.final_result) or _safe_number(outcome.counter_amount)
+        company_offer = _positive_number(outcome.company_offer)
+        final_result = _positive_number(outcome.final_result) or _positive_number(outcome.counter_amount)
         lift_percent = 0
         if company_offer and final_result:
             lift_percent = ((final_result - company_offer) / company_offer) * 100

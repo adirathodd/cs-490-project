@@ -19,6 +19,9 @@ const defaultOutcomeForm = {
 	company_offer: '',
 	counter_amount: '',
 	final_result: '',
+	base_salary: '',
+	bonus: '',
+	equity: '',
 	total_comp_value: '',
 	leverage_used: '',
 	confidence_score: '',
@@ -94,6 +97,24 @@ const SalaryNegotiation = ({ jobId: propJobId, embedded = false }) => {
 	const [progression, setProgression] = useState(defaultProgression);
 	const [outcomeForm, setOutcomeForm] = useState(defaultOutcomeForm);
 	const [savingOutcome, setSavingOutcome] = useState(false);
+	const [deletingOutcomeId, setDeletingOutcomeId] = useState(null);
+	const sanitizeOutcome = (item) => {
+		const toPositive = (val) => {
+			const num = Number(val);
+			if (!Number.isFinite(num) || num <= 0) return null;
+			return num;
+		};
+		return {
+			...item,
+			company_offer: toPositive(item.company_offer),
+			counter_amount: toPositive(item.counter_amount),
+			final_result: toPositive(item.final_result),
+			total_comp_value: toPositive(item.total_comp_value),
+			base_salary: toPositive(item.base_salary),
+			bonus: toPositive(item.bonus),
+			equity: toPositive(item.equity),
+		};
+	};
 
 	useEffect(() => {
 		loadData();
@@ -113,6 +134,9 @@ const SalaryNegotiation = ({ jobId: propJobId, embedded = false }) => {
 			]);
 			setJob(jobData);
 			hydratePlan(planData);
+			if (planData?.outcomes) {
+				setOutcomes(planData.outcomes.map(sanitizeOutcome));
+			}
 		} catch (err) {
 			setError(getErrorMessage(err, 'Failed to load negotiation workspace.'));
 		} finally {
@@ -130,7 +154,7 @@ const SalaryNegotiation = ({ jobId: propJobId, embedded = false }) => {
 			respond_by: payload.offer_details?.respond_by ?? '',
 			notes: payload.offer_details?.notes ?? '',
 		});
-		setOutcomes(payload.outcomes || []);
+		setOutcomes((payload.outcomes || []).map(sanitizeOutcome));
 		setProgression(payload.progression || defaultProgression);
 	};
 
@@ -175,7 +199,7 @@ const SalaryNegotiation = ({ jobId: propJobId, embedded = false }) => {
 	const refreshOutcomes = async () => {
 		try {
 			const data = await salaryNegotiationAPI.getOutcomes(jobId);
-			setOutcomes(data.results || []);
+			setOutcomes((data.results || []).map(sanitizeOutcome));
 			setProgression(data.stats || defaultProgression);
 		} catch (err) {
 			setError(getErrorMessage(err, 'Failed to refresh outcomes.'));
@@ -191,9 +215,9 @@ const SalaryNegotiation = ({ jobId: propJobId, embedded = false }) => {
 				stage: outcomeForm.stage,
 				status: outcomeForm.status,
 				company_offer: toNumberOrNull(outcomeForm.company_offer),
-				counter_amount: toNumberOrNull(outcomeForm.counter_amount),
-				final_result: toNumberOrNull(outcomeForm.final_result),
-				total_comp_value: toNumberOrNull(outcomeForm.total_comp_value),
+				base_salary: toNumberOrNull(outcomeForm.base_salary),
+				bonus: toNumberOrNull(outcomeForm.bonus),
+				equity: toNumberOrNull(outcomeForm.equity),
 				leverage_used: outcomeForm.leverage_used?.trim() || '',
 				confidence_score: outcomeForm.confidence_score ? Number(outcomeForm.confidence_score) : null,
 				notes: outcomeForm.notes?.trim() || '',
@@ -205,6 +229,19 @@ const SalaryNegotiation = ({ jobId: propJobId, embedded = false }) => {
 			setError(getErrorMessage(err, 'Failed to log outcome.'));
 		} finally {
 			setSavingOutcome(false);
+		}
+	};
+
+	const handleDeleteOutcome = async (id) => {
+		setDeletingOutcomeId(id);
+		setError('');
+		try {
+			await salaryNegotiationAPI.deleteOutcome(jobId, id);
+			await refreshOutcomes();
+		} catch (err) {
+			setError(getErrorMessage(err, 'Failed to delete outcome.'));
+		} finally {
+			setDeletingOutcomeId(null);
 		}
 	};
 
@@ -567,11 +604,19 @@ const SalaryNegotiation = ({ jobId: propJobId, embedded = false }) => {
 										</div>
 										<div className="outcome-stats">
 											{item.company_offer && <span>Offer {formatCurrency(item.company_offer)}</span>}
+											{item.base_salary && <span>Base {formatCurrency(item.base_salary)}</span>}
+											{item.bonus && <span>Bonus {formatCurrency(item.bonus)}</span>}
+											{item.equity && <span>Equity {formatCurrency(item.equity)}</span>}
 											{item.counter_amount && <span>Counter {formatCurrency(item.counter_amount)}</span>}
 											{item.final_result && <span>Result {formatCurrency(item.final_result)}</span>}
 											{item.total_comp_value && <span>Total {formatCurrency(item.total_comp_value)}</span>}
 										</div>
 										{item.notes && <p>{item.notes}</p>}
+										<div className="card-actions" style={{ justifyContent: 'flex-start', gap: 8 }}>
+											<button type="button" className="btn-secondary" onClick={() => handleDeleteOutcome(item.id)} disabled={deletingOutcomeId === item.id}>
+												{deletingOutcomeId === item.id ? 'Deleting…' : 'Delete'}
+											</button>
+										</div>
 									</div>
 								))
 							) : (
@@ -602,16 +647,16 @@ const SalaryNegotiation = ({ jobId: propJobId, embedded = false }) => {
 									<input name="company_offer" type="number" value={outcomeForm.company_offer} onChange={handleOutcomeChange} placeholder="e.g. 120000" />
 								</label>
 								<label>
-									Counter Amount
-									<input name="counter_amount" type="number" value={outcomeForm.counter_amount} onChange={handleOutcomeChange} placeholder="e.g. 140000" />
+									Base Salary
+									<input name="base_salary" type="number" value={outcomeForm.base_salary} onChange={handleOutcomeChange} placeholder="e.g. 130000" />
 								</label>
 								<label>
-									Final Result
-									<input name="final_result" type="number" value={outcomeForm.final_result} onChange={handleOutcomeChange} placeholder="e.g. 138000" />
+									Bonus
+									<input name="bonus" type="number" value={outcomeForm.bonus} onChange={handleOutcomeChange} placeholder="e.g. 15000" />
 								</label>
 								<label>
-									Total Comp Value
-									<input name="total_comp_value" type="number" value={outcomeForm.total_comp_value} onChange={handleOutcomeChange} placeholder="e.g. 165000" />
+									Equity
+									<input name="equity" type="number" value={outcomeForm.equity} onChange={handleOutcomeChange} placeholder="e.g. 20000" />
 								</label>
 								<label>
 									Confidence (1-5)
