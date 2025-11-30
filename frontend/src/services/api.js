@@ -1354,6 +1354,16 @@ export const interviewsAPI = {
       throw error.response?.data?.error || { message: 'Failed to load interview analytics' };
     }
   },
+
+  // UC-098: Interview performance tracking
+  getPerformanceTracking: async () => {
+    try {
+      const response = await api.get('/interviews/performance-tracking/');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to load performance tracking' };
+    }
+  },
 };
 
 // UC-079: Calendar integrations (Google, Outlook, etc.)
