@@ -35,8 +35,12 @@ class AutomationAPI {
         } catch (e) {
           errorText = await response.text().catch(() => '');
         }
-        const message = errorData.error || errorData.message || errorText || `HTTP ${response.status}`;
-        throw new Error(message);
+        const baseMessage = errorData.error || errorData.message || errorText || '';
+        const statusLabel = `HTTP ${response.status}${response.statusText ? `: ${response.statusText}` : ''}`;
+        const message = baseMessage ? `${statusLabel} - ${baseMessage}` : statusLabel;
+        const err = new Error(message);
+        err.status = response.status;
+        throw err;
       }
 
       // Handle no-content responses
@@ -53,6 +57,9 @@ class AutomationAPI {
       console.error(`API request failed: ${endpoint}`, error);
       if (error?.message === 'Network error' || error?.name === 'TypeError') {
         throw new Error('Network error');
+      }
+      if (error?.status) {
+        throw new Error(error.message || `HTTP ${error.status}`);
       }
       throw error;
     }

@@ -50,7 +50,7 @@ describe('SupporterPublic', () => {
     );
     await waitFor(() => expect(supportersAPI.fetchDashboard).toHaveBeenCalled());
 
-    expect(screen.getByText(/Application funnel/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Application funnel/i)).toBeInTheDocument());
     expect(screen.getByText(/phone screen/i)).toBeInTheDocument();
     expect(screen.getByText(/Alex received a Interview/i)).toBeInTheDocument();
     expect(screen.getByText(/How they're feeling/i)).toBeInTheDocument();

@@ -90,7 +90,7 @@ describe('Supporters', () => {
   test('saves mood and renders encouragements/chat', async () => {
     render(<Supporters />);
     await waitFor(() => expect(supportersAPI.listEncouragements).toHaveBeenCalled());
-    expect(screen.getByText(/You got this/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/You got this/i)).toBeInTheDocument());
 
     // Mood
     fireEvent.change(screen.getByLabelText(/Score/i), { target: { value: '9' } });
