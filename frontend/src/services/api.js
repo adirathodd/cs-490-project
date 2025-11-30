@@ -1102,6 +1102,15 @@ export const salaryNegotiationAPI = {
       throw error.response?.data?.error || { message: 'Failed to log negotiation outcome' };
     }
   },
+
+  deleteOutcome: async (jobId, outcomeId) => {
+    try {
+      const response = await api.delete(`/jobs/${jobId}/salary-negotiation/outcomes/${outcomeId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete negotiation outcome' };
+    }
+  },
 };
 
 // UC-047: AI Resume Generation API calls
@@ -3102,4 +3111,3 @@ try {
 } catch (e) {
   // ignore
 }
-

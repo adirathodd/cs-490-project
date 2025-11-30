@@ -114,7 +114,11 @@ describe('SalaryNegotiation (UC-083)', () => {
   test('saves offer details and refreshes plan', async () => {
     renderComponent();
 
-    const baseInput = await screen.findByLabelText(/base salary/i);
+    // There are two 'Base Salary' inputs (offer capture and outcome form).
+    // Target the offer-capture input which is prefilled from the plan (120000).
+    const baseInputs = await screen.findAllByLabelText(/base salary/i);
+    const baseInput = baseInputs.find((el) => el.value === '120000') || baseInputs[0];
+    expect(baseInput).toBeDefined();
     await userEvent.clear(baseInput);
     await userEvent.type(baseInput, '130000');
 
