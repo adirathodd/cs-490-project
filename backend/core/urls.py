@@ -324,4 +324,13 @@ urlpatterns = [
     # UC-102: Market Intelligence
     path('market-intelligence/', market_views.market_intelligence_view, name='market-intelligence'),
 
+    # UC-077: Mock Interview Practice Sessions
+    path('mock-interviews/start', views.start_mock_interview, name='mock-interview-start'),
+    path('mock-interviews/answer', views.submit_mock_interview_answer, name='mock-interview-answer'),
+    path('mock-interviews/complete', views.complete_mock_interview, name='mock-interview-complete'),
+    path('mock-interviews', views.list_mock_interviews, name='mock-interviews-list'),
+    path('mock-interviews/<int:session_id>', views.get_mock_interview_session, name='mock-interview-detail'),
+    path('mock-interviews/<int:session_id>/summary', views.get_mock_interview_summary, name='mock-interview-summary'),
+    path('mock-interviews/<int:session_id>/delete', views.delete_mock_interview_session, name='mock-interview-delete'),
+
 ]

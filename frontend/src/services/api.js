@@ -670,42 +670,6 @@ export const jobsAPI = {
       throw error.response?.data?.error || { message: 'Failed to fetch interview insights' };
     }
   },
-  
-  getJobQuestionBank: async (id) => {
-    try {
-      const response = await api.get(`/jobs/${id}/question-bank/`);
-      return response.data;
-    } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to fetch question bank' };
-    }
-  },
-
-  logQuestionPractice: async (id, data) => {
-    try {
-      const response = await api.post(`/jobs/${id}/question-bank/practice/`, data);
-      return response.data;
-    } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to log practice' };
-    }
-  },
-
-  getQuestionPracticeHistory: async (jobId, questionId) => {
-    try {
-      const response = await api.get(`/jobs/${jobId}/question-bank/practice/${questionId}/`);
-      return response.data;
-    } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to fetch practice history' };
-    }
-  },
-
-  coachQuestionResponse: async (jobId, data) => {
-    try {
-      const response = await api.post(`/jobs/${jobId}/question-bank/coach/`, data);
-      return response.data;
-    } catch (error) {
-      throw error.response?.data?.error || { message: 'Failed to generate coaching feedback' };
-    }
-  },
 
   getJobTechnicalPrep: async (id, options = {}) => {
     try {
@@ -896,6 +860,54 @@ export const companyAPI = {
       return response.data?.results || [];
     } catch (error) {
       throw error.error || error.response?.data?.error || { message: 'Failed to search companies' };
+    }
+  },
+};
+
+// UC-075 & UC-076: Question Bank and Response Coaching API
+export const questionBankAPI = {
+  // Get question bank for a job
+  getQuestionBank: async (jobId, refresh = false) => {
+    try {
+      const params = new URLSearchParams();
+      if (refresh) params.append('refresh', 'true');
+      const path = params.toString() 
+        ? `/jobs/${jobId}/question-bank/?${params.toString()}` 
+        : `/jobs/${jobId}/question-bank/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch question bank' };
+    }
+  },
+
+  // Log practice session for a question
+  logQuestionPractice: async (jobId, data) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/question-bank/practice/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to log practice' };
+    }
+  },
+
+  // Get practice history for a specific question
+  getQuestionPracticeHistory: async (jobId, questionId) => {
+    try {
+      const response = await api.get(`/jobs/${jobId}/question-bank/practice/${questionId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch practice history' };
+    }
+  },
+
+  // Get AI coaching for a response
+  coachQuestionResponse: async (jobId, data) => {
+    try {
+      const response = await api.post(`/jobs/${jobId}/question-bank/coach/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to generate coaching feedback' };
     }
   },
 };
@@ -2847,6 +2859,85 @@ export const goalsAPI = {
   },
 };
 
+// UC-077: Mock Interview API
+export const mockInterviewAPI = {
+  // Start a new mock interview session
+  startSession: async (sessionData) => {
+    try {
+      const response = await api.post('/mock-interviews/start', sessionData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to start mock interview' };
+    }
+  },
+
+  // Submit an answer to a question
+  submitAnswer: async (answerData) => {
+    try {
+      const response = await api.post('/mock-interviews/answer', answerData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to submit answer' };
+    }
+  },
+
+  // Complete a mock interview session
+  completeSession: async (sessionId) => {
+    try {
+      const response = await api.post('/mock-interviews/complete', { session_id: sessionId });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to complete interview' };
+    }
+  },
+
+  // List all mock interview sessions
+  listSessions: async (params = {}) => {
+    try {
+      const queryString = new URLSearchParams(params).toString();
+      const url = queryString ? `/mock-interviews?${queryString}` : '/mock-interviews';
+      const response = await api.get(url);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch sessions' };
+    }
+  },
+
+  // Get details of a specific session
+  getSession: async (sessionId) => {
+    try {
+      const response = await api.get(`/mock-interviews/${sessionId}`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch session' };
+    }
+  },
+
+  // Get summary of a completed session
+  getSummary: async (sessionId) => {
+    try {
+      const response = await api.get(`/mock-interviews/${sessionId}/summary`);
+      return response.data;
+    } catch (error) {
+      const errorData = error.error || error.response?.data?.error || { message: 'Failed to fetch summary' };
+      if (error.response?.status === 404) {
+        errorData.code = 'not_found';
+      }
+      throw errorData;
+    }
+  },
+
+  // Delete a mock interview session
+  deleteSession: async (sessionId) => {
+    try {
+      const response = await api.delete(`/mock-interviews/${sessionId}/delete`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete session' };
+    }
+  },
+};
+
 // Export for module compatibility
 try {
   if (typeof module !== 'undefined' && module.exports) {
@@ -2858,7 +2949,10 @@ try {
     module.exports.networkingAPI = networkingAPI;
     module.exports.mentorshipAPI = mentorshipAPI;
     module.exports.goalsAPI = goalsAPI;
+    module.exports.mockInterviewAPI = mockInterviewAPI;
+    module.exports.questionBankAPI = questionBankAPI;
   }
 } catch (e) {
   // ignore
 }
+

@@ -2,6 +2,8 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { mentorshipAPI } from '../../services/api';
 import LoadingSpinner from '../common/LoadingSpinner';
+import ConfirmDialog from '../common/ConfirmDialog';
+import Toast from '../common/Toast';
 import './MentorshipDashboard.css';
 
 const goalTypeOptions = [
@@ -148,6 +150,8 @@ const MentorshipMenteeDashboard = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null, title: '', variant: 'danger' });
+  const [toast, setToast] = useState({ isOpen: false, message: '', type: 'info' });
   const [goalForm, setGoalForm] = useState(defaultGoalForm);
   const [goalSubmitting, setGoalSubmitting] = useState(false);
   const [goalError, setGoalError] = useState('');
@@ -352,18 +356,25 @@ const MentorshipMenteeDashboard = () => {
   };
 
   const handleGoalDelete = (goalId) => {
-    const confirmed = window.confirm('Delete this mentorship goal?');
-    if (!confirmed) return;
-    setGoalError('');
-    mentorshipAPI
-      .deleteGoal(goalId)
-      .then(() => {
-        refreshGoals();
-      })
-      .catch((err) => {
-        const fallback = err?.error?.message || err?.message || 'Unable to delete goal.';
-        setGoalError(fallback);
-      });
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Goal',
+      message: 'Delete this mentorship goal?',
+      variant: 'danger',
+      onConfirm: () => {
+        setGoalError('');
+        mentorshipAPI
+          .deleteGoal(goalId)
+          .then(() => {
+            refreshGoals();
+            setToast({ isOpen: true, message: 'Goal deleted successfully', type: 'success' });
+          })
+          .catch((err) => {
+            const fallback = err?.error?.message || err?.message || 'Unable to delete goal.';
+            setGoalError(fallback);
+          });
+      }
+    });
   };
 
   const handleSendMessage = (event) => {
@@ -1033,6 +1044,27 @@ const MentorshipMenteeDashboard = () => {
           )}
         </section>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onConfirm={() => {
+          if (confirmDialog.onConfirm) {
+            confirmDialog.onConfirm();
+          }
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+        }}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant={confirmDialog.variant}
+      />
+
+      <Toast
+        isOpen={toast.isOpen}
+        onClose={() => setToast({ ...toast, isOpen: false })}
+        message={toast.message}
+        type={toast.type}
+      />
     </div>
   );
 };

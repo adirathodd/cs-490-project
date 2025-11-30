@@ -138,7 +138,6 @@ describe('MentorshipMenteeDashboard', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     window.open = jest.fn();
-    window.confirm = jest.fn(() => true);
     jest.spyOn(window, 'setInterval').mockImplementation(() => 0);
     jest.spyOn(window, 'clearInterval').mockImplementation(() => {});
     mentorshipAPI.getSharedData.mockResolvedValue(sampleSharedData);
@@ -217,8 +216,18 @@ describe('MentorshipMenteeDashboard', () => {
     expect(mentorshipAPI.updateGoal).toHaveBeenCalledWith('goal-1', { status: 'completed' });
 
     fireEvent.click(screen.getByRole('button', { name: /Delete/i }));
-    expect(window.confirm).toHaveBeenCalled();
-    expect(mentorshipAPI.deleteGoal).toHaveBeenCalledWith('goal-1');
+    
+    // Wait for confirmation dialog to appear and confirm deletion
+    await waitFor(() => {
+      expect(screen.getByText('Delete this mentorship goal?')).toBeInTheDocument();
+    });
+    
+    const confirmButton = screen.getByRole('button', { name: /Confirm/i });
+    fireEvent.click(confirmButton);
+    
+    await waitFor(() => {
+      expect(mentorshipAPI.deleteGoal).toHaveBeenCalledWith('goal-1');
+    });
   });
 
   it('sends chat messages and appends them to the log', async () => {

@@ -16,7 +16,7 @@ from core.models import (
     ResumeFeedback, FeedbackComment, FeedbackNotification,
     TeamMember, MentorshipRequest, MentorshipSharingPreference, MentorshipSharedApplication,
     MentorshipGoal, MentorshipMessage,
-    MarketIntelligence,
+    MarketIntelligence, MockInterviewSession, MockInterviewQuestion, MockInterviewSummary,
 )
 from core.models import (
     Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink,
@@ -3615,11 +3615,96 @@ class ReferencePortfolioListSerializer(serializers.ModelSerializer):
         if obj.pk:
             return obj.references.count()
         return 0
-
-
 class MarketIntelligenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = MarketIntelligence
         fields = ['id', 'user', 'industry', 'role', 'location', 'salary_range_min', 'salary_range_max', 'demand_level', 'skills_in_demand', 'market_trends', 'created_at', 'updated_at']
         read_only_fields = ['user', 'created_at', 'updated_at']
+
+
+# Mock Interview Serializers (UC-077)
+
+class MockInterviewQuestionSerializer(serializers.ModelSerializer):
+    """Serializer for individual mock interview questions"""
+    class Meta:
+        model = MockInterviewQuestion
+        fields = [
+            'id', 'session', 'question_number', 'question_text', 'question_category',
+            'suggested_framework', 'ideal_answer_points', 'user_answer', 'answer_timestamp',
+            'time_taken_seconds', 'answer_score', 'ai_feedback', 'strengths', 
+            'improvements', 'keyword_coverage', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'answer_timestamp', 'time_taken_seconds']
+
+
+class MockInterviewSessionSerializer(serializers.ModelSerializer):
+    """Serializer for mock interview sessions"""
+    questions = MockInterviewQuestionSerializer(many=True, read_only=True)
+    questions_count = serializers.SerializerMethodField()
+    answered_count = serializers.SerializerMethodField()
+    job_title = serializers.CharField(source='job.position_title', read_only=True)
+    
+    class Meta:
+        model = MockInterviewSession
+        fields = [
+            'id', 'user', 'job', 'job_title', 'interview_type', 'status',
+            'question_count', 'difficulty_level', 'focus_areas', 'started_at',
+            'completed_at', 'total_duration_seconds', 'overall_score', 'strengths',
+            'areas_for_improvement', 'ai_summary', 'questions', 'questions_count', 'answered_count'
+        ]
+        read_only_fields = [
+            'id', 'user', 'started_at', 'completed_at', 'total_duration_seconds',
+            'overall_score', 'strengths', 'areas_for_improvement', 'ai_summary'
+        ]
+    
+    def get_questions_count(self, obj):
+        if obj.pk:
+            return obj.questions.count()
+        return 0
+    
+    def get_answered_count(self, obj):
+        if obj.pk:
+            return obj.questions.filter(user_answer__isnull=False).exclude(user_answer='').count()
+        return 0
+
+
+class MockInterviewSummarySerializer(serializers.ModelSerializer):
+    """Serializer for mock interview session summaries"""
+    session_details = MockInterviewSessionSerializer(source='session', read_only=True)
+    
+    class Meta:
+        model = MockInterviewSummary
+        fields = [
+            'id', 'session', 'session_details', 'performance_by_category',
+            'response_quality_score', 'communication_score', 'structure_score',
+            'top_strengths', 'critical_areas', 'recommended_practice_topics',
+            'next_steps', 'overall_assessment', 'readiness_level',
+            'estimated_interview_readiness', 'compared_to_previous_sessions',
+            'improvement_trend', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+
+
+class MockInterviewSessionListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for session list views"""
+    job_title = serializers.CharField(source='job.position_title', read_only=True)
+    questions_count = serializers.SerializerMethodField()
+    answered_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MockInterviewSession
+        fields = [
+            'id', 'job_title', 'interview_type', 'status', 'difficulty_level',
+            'started_at', 'completed_at', 'overall_score', 'questions_count', 'answered_count'
+        ]
+    
+    def get_questions_count(self, obj):
+        if obj.pk:
+            return obj.questions.count()
+        return 0
+    
+    def get_answered_count(self, obj):
+        if obj.pk:
+            return obj.questions.filter(user_answer__isnull=False).exclude(user_answer='').count()
+        return 0
 
