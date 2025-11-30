@@ -28,11 +28,17 @@ const ContactDiscovery = () => {
       if (filterStatus !== 'all') params.status = filterStatus;
       
       const response = await api.get('/contact-suggestions', { params });
-      setSuggestions(response.data);
+      setSuggestions(Array.isArray(response.data) ? response.data : []);
       setError(null);
     } catch (err) {
-      setError('Failed to load suggestions');
-      console.error(err);
+      console.error('Error loading suggestions:', err);
+      // Don't show error for empty results
+      if (err?.response?.status === 401) {
+        setError('Please log in to view suggestions');
+      } else if (err?.response?.status !== 404) {
+        setError('Failed to load suggestions. Please try again.');
+      }
+      setSuggestions([]);
     } finally {
       setLoading(false);
     }
@@ -41,9 +47,10 @@ const ContactDiscovery = () => {
   const loadSearches = async () => {
     try {
       const response = await api.get('/discovery-searches');
-      setSearches(response.data);
+      setSearches(Array.isArray(response.data) ? response.data : []);
     } catch (err) {
       console.error('Failed to load searches:', err);
+      setSearches([]);
     }
   };
 
@@ -53,6 +60,7 @@ const ContactDiscovery = () => {
       setAnalytics(response.data);
     } catch (err) {
       console.error('Failed to load analytics:', err);
+      setAnalytics(null);
     }
   };
 
