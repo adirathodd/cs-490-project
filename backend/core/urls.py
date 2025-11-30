@@ -4,6 +4,7 @@ URL configuration for core app authentication endpoints.
 from django.urls import path, re_path
 from core import views
 from core import analytics_views
+from core import market_views
 
 app_name = 'core'
 
@@ -319,5 +320,8 @@ urlpatterns = [
     path('referrals/<str:referral_id>/express-gratitude', views.referral_express_gratitude, name='referral-express-gratitude'),
     path('referrals/<str:referral_id>/suggest-follow-up', views.referral_suggest_follow_up, name='referral-suggest-follow-up'),
     path('referrals/<str:referral_id>/outcome', views.referral_update_outcome, name='referral-update-outcome'),
+
+    # UC-102: Market Intelligence
+    path('market-intelligence/', market_views.market_intelligence_view, name='market-intelligence'),
 
 ]

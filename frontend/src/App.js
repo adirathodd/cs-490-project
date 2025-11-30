@@ -32,6 +32,7 @@ import ReferencesPage from './components/references/ReferencesPage';
 import MentorshipDashboard from './components/mentorship/MentorshipDashboard';
 import ReferralManagement from './components/referrals/ReferralManagement';
 import MentorshipMenteeDashboard from './components/mentorship/MenteeDashboard';
+import MarketIntelligence from './components/tools/MarketIntelligence';
 import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
 import { AiCoverLetterGenerator } from './features/cover-letter';
@@ -399,7 +400,17 @@ function App() {
           />
 
           <Route
+            path="/tools/market-intelligence"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <MarketIntelligence />
+              </PrivateRoute>
+            }
+          />
 
+          <Route
             path="/resume/versions"
             element={
               <PrivateRoute>

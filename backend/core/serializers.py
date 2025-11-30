@@ -16,6 +16,7 @@ from core.models import (
     ResumeFeedback, FeedbackComment, FeedbackNotification,
     TeamMember, MentorshipRequest, MentorshipSharingPreference, MentorshipSharedApplication,
     MentorshipGoal, MentorshipMessage,
+    MarketIntelligence,
 )
 from core.models import (
     Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink,
@@ -3614,4 +3615,11 @@ class ReferencePortfolioListSerializer(serializers.ModelSerializer):
         if obj.pk:
             return obj.references.count()
         return 0
+
+
+class MarketIntelligenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MarketIntelligence
+        fields = ['id', 'user', 'industry', 'role', 'location', 'salary_range_min', 'salary_range_max', 'demand_level', 'skills_in_demand', 'market_trends', 'created_at', 'updated_at']
+        read_only_fields = ['user', 'created_at', 'updated_at']
 
