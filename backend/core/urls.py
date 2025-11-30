@@ -81,6 +81,14 @@ urlpatterns = [
     path('networking-events/<uuid:event_id>/follow-ups/<uuid:follow_up_id>/complete', views.event_follow_up_complete, name='event-follow-up-complete'),
     path('networking-events/analytics', views.networking_analytics, name='networking-analytics'),
 
+    # UC-092: Industry Contact Discovery
+    path('contact-suggestions', views.contact_suggestions_list_create, name='contact-suggestions-list-create'),
+    path('contact-suggestions/<uuid:pk>', views.contact_suggestion_detail, name='contact-suggestion-detail'),
+    path('contact-suggestions/<uuid:pk>/convert', views.contact_suggestion_convert_to_contact, name='contact-suggestion-convert'),
+    path('discovery-searches', views.discovery_searches_list_create, name='discovery-searches-list-create'),
+    path('discovery-searches/<uuid:pk>', views.discovery_search_detail, name='discovery-search-detail'),
+    path('discovery/analytics', views.discovery_analytics, name='discovery-analytics'),
+
     # Mentorship & collaboration
     path('mentorship/requests', views.mentorship_requests_view, name='mentorship-requests'),
     path('mentorship/requests/<uuid:request_id>/respond', views.respond_to_mentorship_request, name='mentorship-request-respond'),
