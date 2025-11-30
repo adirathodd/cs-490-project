@@ -4,6 +4,7 @@ URL configuration for core app authentication endpoints.
 from django.urls import path, re_path
 from core import views
 from core import analytics_views
+from core import market_views
 
 app_name = 'core'
 
@@ -141,6 +142,7 @@ urlpatterns = [
     path('jobs/import-from-url', views.import_job_from_url, name='import-job-from-url'),
     path('jobs/stats', views.jobs_stats, name='jobs-stats'),
     path('jobs/analytics', analytics_views.cover_letter_analytics_view, name='cover-letter-analytics'),
+    path('jobs/success-analysis', views.application_success_analysis, name='application-success-analysis'),  # UC-097
     path('jobs/analytics/goals', analytics_views.update_application_targets_view, name='analytics-goals'),
     path('jobs/bulk-status', views.jobs_bulk_status, name='jobs-bulk-status'),
     path('jobs/bulk-deadline', views.jobs_bulk_deadline, name='jobs-bulk-deadline'),
@@ -320,6 +322,9 @@ urlpatterns = [
     path('referrals/<str:referral_id>/express-gratitude', views.referral_express_gratitude, name='referral-express-gratitude'),
     path('referrals/<str:referral_id>/suggest-follow-up', views.referral_suggest_follow_up, name='referral-suggest-follow-up'),
     path('referrals/<str:referral_id>/outcome', views.referral_update_outcome, name='referral-update-outcome'),
+
+    # UC-102: Market Intelligence
+    path('market-intelligence/', market_views.market_intelligence_view, name='market-intelligence'),
 
     
     # UC-095: Professional Reference Management endpoints

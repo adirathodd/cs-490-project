@@ -21,6 +21,7 @@ import Jobs from './components/jobs/Jobs';
 import JobsPipeline from './components/jobs/JobsPipeline';
 import JobStats from './components/jobs/JobStats';
 import Analytics from './components/analytics/Analytics';
+import ApplicationSuccessAnalysis from './components/analytics/ApplicationSuccessAnalysis';
 import JobDetailView from './components/jobs/JobDetailView';
 import JobTimelineView from './components/jobs/JobTimelineView';
 import SalaryResearch from './components/jobs/SalaryResearch';
@@ -32,6 +33,7 @@ import ReferencesPage from './components/references/ReferencesPage';
 import MentorshipDashboard from './components/mentorship/MentorshipDashboard';
 import ReferralManagement from './components/referrals/ReferralManagement';
 import MentorshipMenteeDashboard from './components/mentorship/MenteeDashboard';
+import MarketIntelligence from './components/tools/MarketIntelligence';
 import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
 import { AiCoverLetterGenerator } from './features/cover-letter';
@@ -253,6 +255,17 @@ function App() {
           />
 
           <Route
+            path="/analytics/success"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ApplicationSuccessAnalysis />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
             path="/jobs/:id"
             element={
               <PrivateRoute>
@@ -400,17 +413,17 @@ function App() {
           />
 
           <Route
-
-            path="/references"
+            path="/tools/market-intelligence"
             element={
               <PrivateRoute>
                 <NavBar />
                 <Breadcrumbs />
-                <ReferencesPage />
+                <MarketIntelligence />
               </PrivateRoute>
             }
           />
 
+          {/* Mock Interview and related interview tooling routes (from origin/main) */}
           <Route
             path="/mock-interview"
             element={
@@ -456,7 +469,6 @@ function App() {
           />
 
           <Route
-
             path="/resume/versions"
             element={
               <PrivateRoute>

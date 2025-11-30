@@ -1582,6 +1582,49 @@ class JobEntry(models.Model):
     resume_doc = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='used_as_resume_in')
     cover_letter_doc = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='used_as_cover_letter_in')
 
+    # UC-097: Application Success Rate Analysis tracking
+    APPLICATION_SOURCES = [
+        ('company_website', 'Company Website'),
+        ('linkedin', 'LinkedIn'),
+        ('indeed', 'Indeed'),
+        ('glassdoor', 'Glassdoor'),
+        ('referral', 'Referral'),
+        ('recruiter', 'Recruiter'),
+        ('job_board', 'Job Board'),
+        ('networking', 'Networking Event'),
+        ('other', 'Other'),
+    ]
+    
+    APPLICATION_METHODS = [
+        ('online_form', 'Online Application Form'),
+        ('email', 'Email'),
+        ('referral', 'Internal Referral'),
+        ('recruiter', 'Through Recruiter'),
+        ('direct_contact', 'Direct Contact'),
+        ('other', 'Other'),
+    ]
+    
+    COMPANY_SIZES = [
+        ('startup', 'Startup (1-50)'),
+        ('small', 'Small (51-200)'),
+        ('medium', 'Medium (201-1000)'),
+        ('large', 'Large (1001-5000)'),
+        ('enterprise', 'Enterprise (5000+)'),
+    ]
+    
+    application_source = models.CharField(max_length=50, choices=APPLICATION_SOURCES, blank=True, db_index=True)
+    application_method = models.CharField(max_length=50, choices=APPLICATION_METHODS, blank=True, db_index=True)
+    company_size = models.CharField(max_length=20, choices=COMPANY_SIZES, blank=True, db_index=True)
+    
+    # Track if resume/cover letter were customized for this application
+    resume_customized = models.BooleanField(default=False, help_text="Was the resume customized for this application?")
+    cover_letter_customized = models.BooleanField(default=False, help_text="Was the cover letter customized for this application?")
+    
+    # Application submission tracking
+    application_submitted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    first_response_at = models.DateTimeField(null=True, blank=True)  # When we first heard back
+    days_to_response = models.IntegerField(null=True, blank=True, help_text="Days from application to first response")
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

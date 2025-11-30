@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
     """
 
     dependencies = [
-        ('core', '0065_mock_interview_sessions'),
+        ('core', '0066_add_uc097_success_tracking_fields'),
     ]
 
     operations = [

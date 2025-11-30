@@ -3,6 +3,7 @@ import { jobsAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import Icon from '../common/Icon';
 import InterviewPerformanceAnalytics from './InterviewPerformanceAnalytics';
+import ApplicationSuccessAnalysis from './ApplicationSuccessAnalysis';
 
 const card = { padding: 16, borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb', marginBottom: 16 };
 const sectionTitle = { fontSize: 18, fontWeight: 700, marginBottom: 12, color: '#1f2937' };
@@ -23,6 +24,7 @@ export default function Analytics() {
   const [activeTab, setActiveTab] = useState('applications');
   const tabs = [
     { id: 'applications', label: 'Application Analytics' },
+    { id: 'success', label: 'Success Analysis' },
     { id: 'interviews', label: 'Interview Performance' },
   ];
 
@@ -31,7 +33,7 @@ export default function Analytics() {
       <div style={{ maxWidth: 1200, margin: '0 auto', marginBottom: 12 }}>
         <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700 }}>Analytics Command Center</h1>
         <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
-          Toggle between application metrics and AI-assisted interview performance insights.
+          Track application metrics, analyze success patterns, and review interview performance insights.
         </p>
       </div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', maxWidth: 1200, margin: '0 auto' }}>
@@ -56,7 +58,9 @@ export default function Analytics() {
         ))}
       </div>
       <div style={{ marginTop: 24 }}>
-        {activeTab === 'applications' ? <ApplicationAnalyticsPanel /> : <InterviewPerformanceAnalytics />}
+        {activeTab === 'applications' && <ApplicationAnalyticsPanel />}
+        {activeTab === 'success' && <ApplicationSuccessAnalysis />}
+        {activeTab === 'interviews' && <InterviewPerformanceAnalytics />}
       </div>
     </div>
   );

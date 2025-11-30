@@ -765,6 +765,12 @@ export const jobsAPI = {
     return response.data;
   },
 
+  // UC-097: Application Success Rate Analysis
+  getSuccessAnalysis: async () => {
+    const response = await api.get('/jobs/success-analysis');
+    return response.data;
+  },
+
   bulkUpdateStatus: async (ids, status) => {
     const response = await api.post('/jobs/bulk-status', { ids, status });
     return response.data; // { updated: n }
