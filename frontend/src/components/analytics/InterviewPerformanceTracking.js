@@ -117,16 +117,16 @@ export default function InterviewPerformanceTracking() {
   } = analysis;
 
   // Prepare chart data
-  const conversionChartData = conversion_rates_over_time?.map((item) => ({
+  const conversionChartData = conversion_rates_over_time?.filter(item => item.period).map((item) => ({
     period: new Date(item.period).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
     'Conversion Rate': item.conversion_rate,
-    'Rejection Rate': item.rejection_rate,
+    'Rejection Rate': item.rejection_rate || 0,
   })) || [];
 
   const formatChartData = performance_by_format?.map((item) => ({
     format: item.format_label,
     'Conversion Rate': item.conversion_rate,
-    'Avg Confidence': item.avg_confidence * 20, // Scale to 100 for visual comparison
+    'Avg Confidence': (item.avg_confidence || 0) * 20, // Scale to 100 for visual comparison
   })) || [];
 
   return (
@@ -179,14 +179,21 @@ export default function InterviewPerformanceTracking() {
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase' }}>
-                      {rec.category.replace('_', ' ')} • {rec.priority} priority
+                      {rec.area} • {rec.priority} priority
                     </div>
                     <div style={{ fontSize: 15, fontWeight: 600, color: '#1f2937', marginBottom: 6 }}>
                       {rec.recommendation}
                     </div>
-                    <div style={{ fontSize: 14, color: '#4b5563' }}>
-                      <strong>Action:</strong> {rec.action}
-                    </div>
+                    {rec.action_items && rec.action_items.length > 0 && (
+                      <div style={{ fontSize: 14, color: '#4b5563', marginTop: 8 }}>
+                        <strong>Action Items:</strong>
+                        <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
+                          {rec.action_items.map((item, i) => (
+                            <li key={i} style={{ marginBottom: 4 }}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -203,14 +210,25 @@ export default function InterviewPerformanceTracking() {
             Performance Benchmarking
           </h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 16 }}>
-            {Object.entries(benchmark_comparison.comparison || {}).map(([metric, data]) => {
-              const statusColors = {
-                excellent: '#10b981',
-                good: '#3b82f6',
-                fair: '#f59e0b',
-                needs_improvement: '#ef4444',
-              };
-              const color = statusColors[data.status] || '#6b7280';
+            {Object.entries(benchmark_comparison).map(([metric, data]) => {
+              const userValue = data.user || 0;
+              const average = data.average || 0;
+              const topPerformers = data.top_performers || 0;
+              
+              let color = '#6b7280';
+              let status = 'needs improvement';
+              if (userValue >= topPerformers) {
+                color = '#10b981';
+                status = 'excellent';
+              } else if (userValue >= average) {
+                color = '#3b82f6';
+                status = 'good';
+              } else if (userValue >= average * 0.7) {
+                color = '#f59e0b';
+                status = 'fair';
+              } else {
+                color = '#ef4444';
+              }
 
               return (
                 <div key={metric} style={{ ...statCard, border: `2px solid ${color}` }}>
@@ -218,13 +236,13 @@ export default function InterviewPerformanceTracking() {
                     {metric.replace(/_/g, ' ')}
                   </div>
                   <div style={{ ...statValue, color, fontSize: 28 }}>
-                    {data.user_value}
+                    {userValue}{metric === 'conversion_rate' ? '%' : ''}
                   </div>
                   <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 8 }}>
-                    Benchmark: {data.benchmark_range}
+                    Avg: {average}{metric === 'conversion_rate' ? '%' : ''} | Top: {topPerformers}{metric === 'conversion_rate' ? '%' : ''}
                   </div>
-                  <div style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
-                    {data.message}
+                  <div style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, textTransform: 'capitalize' }}>
+                    {status}
                   </div>
                 </div>
               );

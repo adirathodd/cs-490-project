@@ -12,10 +12,9 @@ from collections import defaultdict
 from typing import Dict, List, Any
 
 from core.models import (
-    InterviewEvent,
+    InterviewSchedule,
     JobEntry,
     MockInterviewSession,
-    QuestionResponseCoaching,
 )
 
 
@@ -24,16 +23,15 @@ class InterviewPerformanceTracker:
     
     def __init__(self, candidate_profile):
         self.candidate = candidate_profile
-        self.interviews = InterviewEvent.objects.filter(
-            job__candidate=candidate_profile
+        self.interviews = InterviewSchedule.objects.filter(
+            candidate=candidate_profile
         ).select_related('job')
         self.mock_sessions = MockInterviewSession.objects.filter(
-            candidate=candidate_profile
+            user=candidate_profile.user
         )
     
     def get_conversion_rates_over_time(self, period='month'):
         """Calculate interview-to-offer conversion rates over time."""
-        # Group interviews by time period
         if period == 'week':
             trunc_func = TruncWeek
         elif period == 'month':
@@ -60,22 +58,23 @@ class InterviewPerformanceTracker:
         results = []
         for data in interview_data:
             total = data['total_interviews']
-            if total > 0:
-                results.append({
-                    'period': data['period'].isoformat(),
-                    'total_interviews': total,
-                    'offers': data['offers'],
-                    'rejections': data['rejections'],
-                    'pending': data['pending'],
-                    'conversion_rate': round((data['offers'] / total * 100), 2),
-                    'rejection_rate': round((data['rejections'] / total * 100), 2),
-                })
+            offers = data['offers']
+            conversion_rate = round((offers / total * 100), 2) if total > 0 else 0
+            
+            results.append({
+                'period': data['period'].isoformat() if data['period'] else None,
+                'total_interviews': total,
+                'offers': offers,
+                'rejections': data['rejections'],
+                'pending': data['pending'],
+                'conversion_rate': conversion_rate,
+            })
         
         return results
     
     def analyze_by_interview_format(self):
-        """Analyze performance across different interview formats."""
-        formats = ['phone', 'video', 'in_person', 'panel', 'technical', 'behavioral']
+        """Analyze performance by interview format."""
+        formats = ['phone_screen', 'video', 'in_person', 'panel', 'technical', 'behavioral']
         results = []
         
         for format_type in formats:
@@ -87,9 +86,6 @@ class InterviewPerformanceTracker:
             
             offers = interviews.filter(outcome='offer_received').count()
             rejections = interviews.filter(outcome__in=['rejected', 'no_response']).count()
-            avg_confidence = interviews.filter(
-                confidence_level__isnull=False
-            ).aggregate(avg=Avg('confidence_level'))['avg'] or 0
             
             results.append({
                 'format': format_type,
@@ -98,10 +94,8 @@ class InterviewPerformanceTracker:
                 'offers': offers,
                 'rejections': rejections,
                 'conversion_rate': round((offers / total * 100), 2) if total > 0 else 0,
-                'avg_confidence': round(avg_confidence, 1),
             })
         
-        # Sort by conversion rate
         results.sort(key=lambda x: x['conversion_rate'], reverse=True)
         return results
     
@@ -110,29 +104,35 @@ class InterviewPerformanceTracker:
         # Get mock interview scores over time
         mock_sessions = self.mock_sessions.filter(
             status='completed'
-        ).order_by('created_at')
+        ).order_by('started_at')
         
         mock_progress = []
         for session in mock_sessions[:20]:  # Last 20 sessions
             mock_progress.append({
-                'date': session.created_at.date().isoformat(),
+                'date': session.started_at.date().isoformat() if session.started_at else None,
                 'score': session.overall_score or 0,
                 'type': 'mock',
                 'interview_type': session.interview_type,
             })
         
-        # Get real interview confidence levels
-        real_interviews = self.interviews.filter(
-            confidence_level__isnull=False
-        ).order_by('scheduled_at')
+        # Get real interview outcomes
+        real_interviews = self.interviews.order_by('scheduled_at')
         
         real_progress = []
         for interview in real_interviews[:20]:  # Last 20 interviews
-            # Map confidence (1-5) to percentage
-            score = (interview.confidence_level / 5.0) * 100
+            # Map outcome to score
+            outcome_scores = {
+                'offer_received': 100,
+                'advanced_to_next_round': 75,
+                'pending': 50,
+                'rejected': 25,
+                'no_response': 10,
+            }
+            score = outcome_scores.get(interview.outcome, 50)
+            
             real_progress.append({
                 'date': interview.scheduled_at.date().isoformat(),
-                'score': round(score, 1),
+                'score': score,
                 'type': 'real',
                 'interview_type': interview.interview_type,
                 'outcome': interview.outcome,
@@ -174,16 +174,12 @@ class InterviewPerformanceTracker:
                 continue
             
             offers = interviews.filter(outcome='offer_received').count()
-            avg_confidence = interviews.filter(
-                confidence_level__isnull=False
-            ).aggregate(avg=Avg('confidence_level'))['avg'] or 0
             
             results.append({
                 'industry': industry,
                 'total_interviews': total,
                 'offers': offers,
                 'conversion_rate': round((offers / total * 100), 2),
-                'avg_confidence': round(avg_confidence, 1),
             })
         
         results.sort(key=lambda x: x['conversion_rate'], reverse=True)
@@ -191,274 +187,197 @@ class InterviewPerformanceTracker:
     
     def track_feedback_themes(self):
         """Track feedback themes and common improvement areas."""
-        # Analyze coaching feedback from mock interviews
-        coaching_sessions = QuestionResponseCoaching.objects.filter(
-            job__candidate=self.candidate
-        ).order_by('-created_at')[:50]
+        # Analyze feedback notes from interviews
+        interviews_with_feedback = self.interviews.exclude(
+            feedback_notes=''
+        ).values_list('feedback_notes', flat=True)[:50]
         
-        # Common improvement areas from feedback
-        improvement_areas = defaultdict(int)
-        positive_themes = defaultdict(int)
+        # Count common keywords in feedback
+        improvement_areas = {
+            'technical_skills': 0,
+            'communication': 0,
+            'problem_solving': 0,
+            'leadership': 0,
+            'cultural_fit': 0,
+        }
         
-        for session in coaching_sessions:
-            feedback = session.feedback_text.lower() if session.feedback_text else ''
-            
-            # Track improvement areas
-            if 'unclear' in feedback or 'vague' in feedback:
-                improvement_areas['clarity'] += 1
-            if 'length' in feedback or 'too long' in feedback or 'too short' in feedback:
-                improvement_areas['response_length'] += 1
-            if 'specific' in feedback or 'concrete' in feedback:
-                improvement_areas['specificity'] += 1
-            if 'star' in feedback.lower() or 'structure' in feedback:
-                improvement_areas['structure'] += 1
-            if 'confident' in feedback or 'hesitant' in feedback:
-                improvement_areas['confidence'] += 1
-            
-            # Track positive themes
-            if 'good' in feedback or 'excellent' in feedback or 'strong' in feedback:
-                positive_themes['strong_response'] += 1
-            if 'clear' in feedback and 'unclear' not in feedback:
-                positive_themes['clarity'] += 1
-            if 'detailed' in feedback or 'thorough' in feedback:
-                positive_themes['detail'] += 1
+        positive_themes = {
+            'strong_technical': 0,
+            'good_communication': 0,
+            'team_player': 0,
+            'enthusiastic': 0,
+        }
         
-        # Convert to list format
-        improvement_list = [
-            {
-                'area': area.replace('_', ' ').title(),
-                'frequency': count,
-                'percentage': round((count / len(coaching_sessions) * 100), 1) if coaching_sessions else 0
-            }
-            for area, count in sorted(improvement_areas.items(), key=lambda x: x[1], reverse=True)
-        ]
-        
-        positive_list = [
-            {
-                'theme': theme.replace('_', ' ').title(),
-                'frequency': count,
-            }
-            for theme, count in sorted(positive_themes.items(), key=lambda x: x[1], reverse=True)
-        ]
+        for feedback in interviews_with_feedback:
+            feedback_lower = feedback.lower()
+            # Simple keyword matching
+            if 'technical' in feedback_lower:
+                if 'strong' in feedback_lower or 'good' in feedback_lower:
+                    positive_themes['strong_technical'] += 1
+                else:
+                    improvement_areas['technical_skills'] += 1
+            if 'communication' in feedback_lower:
+                if 'good' in feedback_lower or 'clear' in feedback_lower:
+                    positive_themes['good_communication'] += 1
+                else:
+                    improvement_areas['communication'] += 1
         
         return {
-            'improvement_areas': improvement_list[:5],
-            'positive_themes': positive_list[:5],
-            'total_feedback_sessions': coaching_sessions.count(),
+            'improvement_areas': [
+                {'theme': k.replace('_', ' ').title(), 'count': v}
+                for k, v in sorted(improvement_areas.items(), key=lambda x: x[1], reverse=True)
+                if v > 0
+            ],
+            'positive_themes': [
+                {'theme': k.replace('_', ' ').title(), 'count': v}
+                for k, v in sorted(positive_themes.items(), key=lambda x: x[1], reverse=True)
+                if v > 0
+            ],
+            'total_feedback_analyzed': len(interviews_with_feedback),
         }
     
     def monitor_confidence_progression(self):
-        """Monitor confidence levels and anxiety management over time."""
-        # Get confidence levels over time
-        confidence_data = self.interviews.filter(
-            confidence_level__isnull=False
-        ).order_by('scheduled_at').values(
-            'scheduled_at', 'confidence_level', 'outcome', 'interview_type'
+        """Monitor confidence progression over time."""
+        # Since InterviewSchedule doesn't have confidence_level,
+        # we'll use mock session scores as a proxy
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+        sixty_days_ago = timezone.now() - timedelta(days=60)
+        
+        last_30_days = self.mock_sessions.filter(
+            started_at__gte=thirty_days_ago,
+            status='completed'
         )
         
-        confidence_progression = []
-        for interview in confidence_data:
-            confidence_progression.append({
-                'date': interview['scheduled_at'].date().isoformat(),
-                'confidence_level': interview['confidence_level'],
-                'outcome': interview['outcome'],
-                'interview_type': interview['interview_type'],
+        previous_30_days = self.mock_sessions.filter(
+            started_at__gte=sixty_days_ago,
+            started_at__lt=thirty_days_ago,
+            status='completed'
+        )
+        
+        current_avg = last_30_days.aggregate(avg=Avg('overall_score'))['avg'] or 0
+        previous_avg = previous_30_days.aggregate(avg=Avg('overall_score'))['avg'] or 0
+        
+        # Calculate trend
+        trend = 'stable'
+        change_percent = 0
+        if previous_avg > 0:
+            change_percent = round(((current_avg - previous_avg) / previous_avg * 100), 1)
+            if change_percent > 10:
+                trend = 'improving'
+            elif change_percent < -10:
+                trend = 'declining'
+        
+        # Get progression data points
+        progression_data = []
+        for session in self.mock_sessions.filter(status='completed').order_by('started_at')[:30]:
+            progression_data.append({
+                'date': session.started_at.date().isoformat() if session.started_at else None,
+                'score': session.overall_score or 0,
             })
         
-        # Calculate averages by time period
-        now = timezone.now()
-        last_30_days = self.interviews.filter(
-            scheduled_at__gte=now - timedelta(days=30),
-            confidence_level__isnull=False
-        )
-        
-        previous_30_days = self.interviews.filter(
-            scheduled_at__gte=now - timedelta(days=60),
-            scheduled_at__lt=now - timedelta(days=30),
-            confidence_level__isnull=False
-        )
-        
-        current_avg = last_30_days.aggregate(avg=Avg('confidence_level'))['avg'] or 0
-        previous_avg = previous_30_days.aggregate(avg=Avg('confidence_level'))['avg'] or 0
-        
-        trend = 0
-        if previous_avg > 0:
-            trend = round(((current_avg - previous_avg) / previous_avg * 100), 1)
-        
         return {
-            'confidence_progression': confidence_progression,
-            'current_avg_confidence': round(current_avg, 1),
-            'previous_avg_confidence': round(previous_avg, 1),
-            'trend_percentage': trend,
-            'total_interviews_tracked': len(confidence_progression),
+            'current_period_average': round(current_avg, 1),
+            'previous_period_average': round(previous_avg, 1),
+            'change_percent': change_percent,
+            'trend': trend,
+            'progression_data': progression_data,
         }
     
     def generate_coaching_recommendations(self):
-        """Generate personalized interview coaching recommendations."""
+        """Generate personalized coaching recommendations."""
         recommendations = []
         
-        # Analyze recent performance
-        recent_interviews = self.interviews.filter(
-            scheduled_at__gte=timezone.now() - timedelta(days=90)
-        )
-        
-        total_recent = recent_interviews.count()
-        if total_recent == 0:
-            return [{
-                'category': 'practice',
-                'priority': 'high',
-                'recommendation': 'Start scheduling practice interviews to build your skills',
-                'action': 'Complete at least 3 mock interview sessions this month',
-            }]
-        
         # Check conversion rate
-        offers = recent_interviews.filter(outcome='offer_received').count()
-        conversion_rate = (offers / total_recent * 100) if total_recent > 0 else 0
-        
-        if conversion_rate < 20:
-            recommendations.append({
-                'category': 'conversion',
-                'priority': 'high',
-                'recommendation': f'Your interview-to-offer rate is {conversion_rate:.1f}%, below the 20-30% benchmark',
-                'action': 'Focus on practicing common interview questions and refining your STAR method responses',
-            })
-        
-        # Check confidence levels
-        avg_confidence = recent_interviews.filter(
-            confidence_level__isnull=False
-        ).aggregate(avg=Avg('confidence_level'))['avg'] or 0
-        
-        if avg_confidence < 3.5:
-            recommendations.append({
-                'category': 'confidence',
-                'priority': 'high',
-                'recommendation': f'Your average confidence level is {avg_confidence:.1f}/5, indicating room for improvement',
-                'action': 'Complete more mock interviews and practice with our question bank to build confidence',
-            })
-        
-        # Check format performance
-        format_analysis = self.analyze_by_interview_format()
-        if format_analysis:
-            weakest_format = min(format_analysis, key=lambda x: x['conversion_rate'])
-            if weakest_format['conversion_rate'] < 15 and weakest_format['total_interviews'] >= 3:
+        total_interviews = self.interviews.count()
+        if total_interviews > 0:
+            offers = self.interviews.filter(outcome='offer_received').count()
+            conversion_rate = (offers / total_interviews * 100)
+            
+            if conversion_rate < 20:
                 recommendations.append({
-                    'category': 'format_specific',
-                    'priority': 'medium',
-                    'recommendation': f'{weakest_format["format_label"]} interviews show lower success rate ({weakest_format["conversion_rate"]}%)',
-                    'action': f'Practice {weakest_format["format_label"]} interview scenarios to improve performance',
+                    'priority': 'high',
+                    'area': 'Interview Skills',
+                    'recommendation': 'Your interview conversion rate is below average. Consider practicing more mock interviews and working on common interview questions.',
+                    'action_items': [
+                        'Complete 3-5 mock interviews per week',
+                        'Review and learn from past interview feedback',
+                        'Research the STAR method for behavioral questions',
+                    ]
                 })
+            
+        # Check mock interview performance
+        mock_avg = self.mock_sessions.filter(status='completed').aggregate(
+            avg=Avg('overall_score')
+        )['avg'] or 0
         
-        # Check practice frequency
-        mock_count = self.mock_sessions.filter(
-            created_at__gte=timezone.now() - timedelta(days=30)
+        if mock_avg < 60:
+            recommendations.append({
+                'priority': 'medium',
+                'area': 'Practice Sessions',
+                'recommendation': 'Your mock interview scores suggest room for improvement. Focus on specific weak areas.',
+                'action_items': [
+                    'Identify 2-3 specific areas to improve',
+                    'Practice with a partner or mentor',
+                    'Record yourself answering questions',
+                ]
+            })
+        
+        # Check interview activity
+        recent_interviews = self.interviews.filter(
+            scheduled_at__gte=timezone.now() - timedelta(days=30)
         ).count()
         
-        if mock_count < 2:
+        if recent_interviews == 0:
             recommendations.append({
-                'category': 'practice',
-                'priority': 'medium',
-                'recommendation': f'Only {mock_count} mock interview(s) completed in the last 30 days',
-                'action': 'Aim for 2-3 mock interviews per week to maintain sharp skills',
+                'priority': 'low',
+                'area': 'Interview Activity',
+                'recommendation': 'Stay interview-ready by maintaining regular practice, even when not actively interviewing.',
+                'action_items': [
+                    'Schedule weekly mock interviews',
+                    'Keep your interview skills sharp',
+                    'Review industry trends and common questions',
+                ]
             })
         
-        # Check feedback incorporation
-        feedback_themes = self.track_feedback_themes()
-        if feedback_themes['improvement_areas']:
-            top_area = feedback_themes['improvement_areas'][0]
-            recommendations.append({
-                'category': 'skill_development',
-                'priority': 'medium',
-                'recommendation': f'{top_area["area"]} appears in {top_area["percentage"]}% of your feedback',
-                'action': f'Focus on improving {top_area["area"].lower()} in your next practice sessions',
-            })
-        
-        # Sort by priority
-        priority_order = {'high': 0, 'medium': 1, 'low': 2}
-        recommendations.sort(key=lambda x: priority_order.get(x['priority'], 3))
-        
-        return recommendations[:5]  # Return top 5
+        return recommendations
     
     def benchmark_against_patterns(self):
-        """Benchmark performance against successful interview patterns."""
+        """Benchmark performance against successful patterns."""
         # Calculate user's metrics
         total_interviews = self.interviews.count()
-        if total_interviews == 0:
-            return {
-                'user_metrics': {},
-                'benchmark_metrics': {},
-                'comparison': {},
-            }
-        
         offers = self.interviews.filter(outcome='offer_received').count()
-        user_conversion = (offers / total_interviews * 100) if total_interviews > 0 else 0
+        conversion_rate = (offers / total_interviews * 100) if total_interviews > 0 else 0
         
-        avg_confidence = self.interviews.filter(
-            confidence_level__isnull=False
-        ).aggregate(avg=Avg('confidence_level'))['avg'] or 0
+        mock_count = self.mock_sessions.filter(status='completed').count()
+        mock_avg = self.mock_sessions.filter(status='completed').aggregate(
+            avg=Avg('overall_score')
+        )['avg'] or 0
         
-        mock_sessions_count = self.mock_sessions.filter(status='completed').count()
-        
-        # Industry benchmarks (typical ranges)
+        # Industry benchmarks (hypothetical averages)
         benchmarks = {
-            'conversion_rate': {'min': 20, 'max': 30, 'optimal': 25},
-            'avg_confidence': {'min': 3.5, 'max': 4.5, 'optimal': 4.0},
-            'mock_practice': {'min': 10, 'max': 20, 'optimal': 15},
-            'interviews_per_month': {'min': 4, 'max': 8, 'optimal': 6},
+            'conversion_rate': {
+                'user': round(conversion_rate, 1),
+                'average': 25.0,
+                'top_performers': 40.0,
+            },
+            'mock_sessions_completed': {
+                'user': mock_count,
+                'average': 8,
+                'top_performers': 15,
+            },
+            'mock_average_score': {
+                'user': round(mock_avg, 1),
+                'average': 65.0,
+                'top_performers': 80.0,
+            },
         }
         
-        # Calculate user's interviews per month
-        first_interview = self.interviews.order_by('scheduled_at').first()
-        if first_interview:
-            days_active = (timezone.now() - first_interview.scheduled_at).days
-            months_active = max(days_active / 30, 1)
-            interviews_per_month = total_interviews / months_active
-        else:
-            interviews_per_month = 0
-        
-        user_metrics = {
-            'conversion_rate': round(user_conversion, 1),
-            'avg_confidence': round(avg_confidence, 1),
-            'mock_sessions': mock_sessions_count,
-            'interviews_per_month': round(interviews_per_month, 1),
-        }
-        
-        # Compare against benchmarks
-        comparison = {}
-        for metric, values in benchmarks.items():
-            user_value = user_metrics.get(metric, 0)
-            optimal = values['optimal']
-            
-            if user_value >= values['max']:
-                status = 'excellent'
-                message = f'Exceeds benchmark ({user_value} vs {optimal} optimal)'
-            elif user_value >= optimal:
-                status = 'good'
-                message = f'Meets benchmark ({user_value} vs {optimal} optimal)'
-            elif user_value >= values['min']:
-                status = 'fair'
-                message = f'Below optimal ({user_value} vs {optimal} optimal)'
-            else:
-                status = 'needs_improvement'
-                message = f'Below benchmark ({user_value} vs {values["min"]} minimum)'
-            
-            comparison[metric] = {
-                'status': status,
-                'message': message,
-                'user_value': user_value,
-                'benchmark_range': f'{values["min"]}-{values["max"]}',
-                'optimal': optimal,
-            }
-        
-        return {
-            'user_metrics': user_metrics,
-            'benchmark_metrics': benchmarks,
-            'comparison': comparison,
-        }
+        return benchmarks
     
     def get_complete_analysis(self):
-        """Get comprehensive interview performance analysis."""
+        """Get complete interview performance analysis."""
         return {
-            'conversion_rates_over_time': self.get_conversion_rates_over_time(period='month'),
+            'conversion_rates_over_time': self.get_conversion_rates_over_time(),
             'performance_by_format': self.analyze_by_interview_format(),
             'mock_to_real_improvement': self.track_mock_to_real_improvement(),
             'performance_by_industry': self.analyze_by_industry(),
