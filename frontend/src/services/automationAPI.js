@@ -36,8 +36,7 @@ class AutomationAPI {
           errorText = await response.text().catch(() => '');
         }
         const message = errorData.error || errorData.message || errorText || `HTTP ${response.status}`;
-        console.warn(`API request failed: ${endpoint} (${response.status})`, message);
-        return { error: message, status: response.status };
+        throw new Error(message);
       }
 
       // Handle no-content responses
@@ -53,9 +52,9 @@ class AutomationAPI {
     } catch (error) {
       console.error(`API request failed: ${endpoint}`, error);
       if (error?.message === 'Network error' || error?.name === 'TypeError') {
-        return { error: 'Network error' };
+        throw new Error('Network error');
       }
-      return { error: error?.message || 'Request failed' };
+      throw error;
     }
   }
 

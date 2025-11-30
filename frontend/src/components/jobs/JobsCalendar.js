@@ -149,7 +149,11 @@ export default function JobsCalendar() {
       )}
       
       {loading && <p>Loading...</p>}
-      {error && <div style={{ color: 'red' }}>{error}</div>}
+      {error && (
+        <div role="alert" style={{ color: 'red' }}>
+          Failed to load calendar items
+        </div>
+      )}
       {!loading && items.length === 0 && <p>No upcoming deadlines or interviews</p>}
       
       <div>
