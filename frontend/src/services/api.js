@@ -2602,6 +2602,15 @@ export const mentorshipAPI = {
     }
   },
 
+  getAnalytics: async (teamMemberId) => {
+    try {
+      const response = await api.get(`/mentorship/relationships/${teamMemberId}/analytics`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to load mentee analytics' };
+    }
+  },
+
   getMessages: async (teamMemberId, params = {}) => {
     try {
       const query = new URLSearchParams(params).toString();

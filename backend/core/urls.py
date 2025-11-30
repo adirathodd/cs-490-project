@@ -89,6 +89,7 @@ urlpatterns = [
     path('mentorship/relationships/<int:team_member_id>/sharing', views.mentorship_sharing_preferences_view, name='mentorship-sharing-preferences'),
     path('mentorship/relationships/<int:team_member_id>/shared-data', views.mentorship_shared_data, name='mentorship-shared-data'),
     path('mentorship/relationships/<int:team_member_id>/goals', views.mentorship_goals, name='mentorship-goals'),
+    path('mentorship/relationships/<int:team_member_id>/analytics', views.mentorship_relationship_analytics, name='mentorship-relationship-analytics'),
     path('mentorship/goals/<uuid:goal_id>', views.mentorship_goal_detail, name='mentorship-goal-detail'),
     path('mentorship/relationships/<int:team_member_id>/progress-report', views.mentorship_progress_report, name='mentorship-progress-report'),
     path('mentorship/relationships/<int:team_member_id>/messages', views.mentorship_messages, name='mentorship-messages'),

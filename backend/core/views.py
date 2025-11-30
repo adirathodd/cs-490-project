@@ -14696,6 +14696,7 @@ def submit_mock_interview_answer(request):
             {'error': 'Session not found'},
             status=status.HTTP_404_NOT_FOUND
         )
+
     except MockInterviewQuestion.DoesNotExist:
         return Response(
             {'error': 'Question not found'},
@@ -14706,6 +14707,202 @@ def submit_mock_interview_answer(request):
             {'error': f'Failed to evaluate answer: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# -------------------------
+# Mentorship analytics (per mentee)
+# -------------------------
+
+
+def _calculate_candidate_funnel(candidate):
+    from core.models import JobEntry
+    qs = JobEntry.objects.filter(candidate=candidate)
+    total = qs.count()
+    status_counts = {
+        'interested': qs.filter(status='interested').count(),
+        'applied': qs.filter(status='applied').count(),
+        'phone_screen': qs.filter(status='phone_screen').count(),
+        'interview': qs.filter(status='interview').count(),
+        'offer': qs.filter(status='offer').count(),
+        'rejected': qs.filter(status='rejected').count(),
+    }
+    applied_plus = status_counts['applied'] + status_counts['phone_screen'] + status_counts['interview'] + status_counts['offer']
+    responded = status_counts['phone_screen'] + status_counts['interview'] + status_counts['offer']
+    response_rate = round((responded / applied_plus) * 100, 1) if applied_plus else 0
+    interview_rate = round(((status_counts['interview'] + status_counts['offer']) / applied_plus) * 100, 1) if applied_plus else 0
+    offer_rate = round((status_counts['offer'] / applied_plus) * 100, 1) if applied_plus else 0
+    success_rate = round((status_counts['offer'] / total) * 100, 1) if total else 0
+    return {
+        'total_applications': total,
+        'status_breakdown': status_counts,
+        'response_rate': response_rate,
+        'interview_rate': interview_rate,
+        'offer_rate': offer_rate,
+        'success_rate': success_rate,
+    }
+
+
+def _calculate_candidate_time_to_response(candidate):
+    from core.models import JobEntry, JobStatusChange
+    job_ids = list(JobEntry.objects.filter(candidate=candidate).values_list('id', flat=True))
+    if not job_ids:
+        return {
+            'avg_application_to_response_days': None,
+            'avg_application_to_interview_days': None,
+            'avg_interview_to_offer_days': None,
+            'samples': {'application_to_response': 0, 'application_to_interview': 0, 'interview_to_offer': 0},
+        }
+    changes = (
+        JobStatusChange.objects.filter(job_id__in=job_ids)
+        .values('job_id', 'new_status', 'changed_at')
+        .order_by('job_id', 'changed_at')
+    )
+    job_map = {job_id: {'application': JobEntry.objects.filter(id=job_id).values_list('created_at', flat=True).first()} for job_id in job_ids}
+    for change in changes:
+        info = job_map.get(change['job_id'])
+        if not info:
+            continue
+        ts = change['changed_at']
+        status = change['new_status']
+        if status == 'applied' and 'applied' not in info:
+            info['applied'] = ts
+        elif status == 'phone_screen' and 'phone_screen' not in info:
+            info['phone_screen'] = ts
+        elif status == 'interview' and 'interview' not in info:
+            info['interview'] = ts
+        elif status == 'offer' and 'offer' not in info:
+            info['offer'] = ts
+    app_to_response = []
+    app_to_interview = []
+    interview_to_offer = []
+    for info in job_map.values():
+        applied_time = info.get('applied', info.get('application'))
+        first_response = info.get('phone_screen') or info.get('interview') or info.get('offer')
+        if applied_time and first_response:
+            app_to_response.append((first_response - applied_time).total_seconds() / 86400.0)
+        if applied_time and info.get('interview'):
+            app_to_interview.append((info['interview'] - applied_time).total_seconds() / 86400.0)
+        if info.get('interview') and info.get('offer'):
+            interview_to_offer.append((info['offer'] - info['interview']).total_seconds() / 86400.0)
+    def _avg(values):
+        return round(sum(values) / len(values), 1) if values else None
+    return {
+        'avg_application_to_response_days': _avg(app_to_response),
+        'avg_application_to_interview_days': _avg(app_to_interview),
+        'avg_interview_to_offer_days': _avg(interview_to_offer),
+        'samples': {
+            'application_to_response': len(app_to_response),
+            'application_to_interview': len(app_to_interview),
+            'interview_to_offer': len(interview_to_offer),
+        },
+    }
+
+
+def _calculate_candidate_weekly_volume(candidate):
+    from django.db.models import Count
+    from django.db.models.functions import TruncDate
+    weekly = (
+        JobEntry.objects.filter(candidate=candidate)
+        .annotate(week=TruncDate('created_at'))
+        .values('week')
+        .annotate(count=Count('id'))
+        .order_by('-week')[:8]
+    )
+    weekly_volume = [
+        {'week': row['week'].isoformat() if row['week'] else '', 'count': row['count']}
+        for row in weekly
+    ]
+    avg_weekly = round(sum(row['count'] for row in weekly_volume) / len(weekly_volume), 1) if weekly_volume else 0
+    return {'weekly_volume': weekly_volume[::-1], 'avg_weekly': avg_weekly, 'total_applications': sum(row['count'] for row in weekly_volume)}
+
+
+def _calculate_practice_engagement(candidate, days=30):
+    from core.models import QuestionResponseCoaching
+    from django.db.models import Count
+    from django.db.models.functions import TruncDate
+    since = timezone.now() - timedelta(days=days)
+    qs = QuestionResponseCoaching.objects.filter(job__candidate=candidate, created_at__gte=since)
+    total = qs.count()
+    last7 = qs.filter(created_at__gte=timezone.now() - timedelta(days=7)).count()
+    scores = []
+    category_map = {}
+    for entry in qs:
+        category = getattr(entry, 'question_category', '') or 'general'
+        bucket = category_map.setdefault(category, {'count': 0, 'scores': []})
+        bucket['count'] += 1
+        if isinstance(entry.scores, dict):
+            val = entry.scores.get('overall')
+            if isinstance(val, (int, float)):
+                scores.append(float(val))
+                bucket['scores'].append(float(val))
+    avg_score = round(sum(scores) / len(scores), 1) if scores else None
+    category_stats = []
+    for cat, payload in category_map.items():
+        avg = round(sum(payload['scores']) / len(payload['scores']), 1) if payload['scores'] else None
+        category_stats.append({'category': cat, 'count': payload['count'], 'average_score': avg})
+    category_stats.sort(key=lambda x: (x['average_score'] if x['average_score'] is not None else 999, -x['count']))
+    focus_categories = [c for c in category_stats if c.get('average_score') is not None][:3]
+    per_day = (
+        qs.annotate(day=TruncDate('created_at'))
+        .values('day')
+        .annotate(count=Count('id'))
+        .order_by('day')
+    )
+    activity = [{'date': row['day'].isoformat() if row['day'] else '', 'count': row['count']} for row in per_day]
+    return {
+        'total_sessions': total,
+        'last_7_days': last7,
+        'average_score': avg_score,
+        'activity': activity,
+        'categories': category_stats,
+        'focus_categories': focus_categories,
+    }
+
+
+def _build_practice_recommendations(practice_stats):
+    """Generate simple coaching suggestions based on practice mix and scores."""
+    recs = []
+    categories = practice_stats.get('categories') or []
+    for cat in categories:
+        label = cat.get('category') or 'General'
+        count = cat.get('count') or 0
+        avg = cat.get('average_score')
+        if count < 3:
+            recs.append(f"Add more {label.lower()} practice (only {count} recent sessions). Aim for 3-5 reps this week.")
+        elif avg is not None and avg < 70:
+            recs.append(f"Focus on {label.lower()} answers; average score {avg}. Review frameworks and practice 3 targeted questions.")
+    if not recs:
+        recs.append("Keep a balanced mix of practice. Maintain streaks and revisit weakest topics weekly.")
+    return recs
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def mentorship_relationship_analytics(request, team_member_id):
+    """Per-mentee analytics for mentors (funnel, timing, practice engagement)."""
+    try:
+        team_member = TeamMember.objects.select_related('candidate__user', 'user').get(id=team_member_id)
+    except TeamMember.DoesNotExist:
+        return Response({"error": "Mentorship relationship not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    allowed_user_ids = {team_member.user_id, team_member.candidate.user_id}
+    if request.user.id not in allowed_user_ids:
+        return Response({"error": "You do not have access to this mentorship data."}, status=status.HTTP_403_FORBIDDEN)
+
+    candidate = team_member.candidate
+    funnel = _calculate_candidate_funnel(candidate)
+    timing = _calculate_candidate_time_to_response(candidate)
+    volume = _calculate_candidate_weekly_volume(candidate)
+    practice = _calculate_practice_engagement(candidate)
+    practice_recs = _build_practice_recommendations(practice)
+
+    return Response({
+        'funnel_analytics': funnel,
+        'time_to_response': timing,
+        'volume_patterns': volume,
+        'practice_engagement': practice,
+        'practice_recommendations': practice_recs,
+    })
 
 
 @api_view(['POST'])
