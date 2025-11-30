@@ -32,22 +32,20 @@ const ContactDiscovery = () => {
       setSuggestions(Array.isArray(response.data) ? response.data : []);
     } catch (err) {
       console.error('Error loading suggestions:', err);
-      console.error('Error details:', {
-        status: err?.response?.status,
-        statusText: err?.response?.statusText,
-        data: err?.response?.data,
-        message: err?.message
-      });
       
-      // Handle authentication errors
-      if (err?.response?.status === 401) {
+      // Check if it's an authentication error
+      if (err?.error?.code === 'authentication_failed' || err?.response?.status === 401) {
         setError('Please log in to view suggestions');
-      } 
-      // Handle other errors (but not 404 which means empty results)
-      else if (err?.response?.status && err?.response?.status !== 404) {
-        const errorMsg = err?.response?.data?.error?.message || err?.response?.data?.message || 'Failed to load suggestions. Please try again.';
-        setError(errorMsg);
       }
+      // For other errors, show the backend message or generic message
+      else if (err?.error) {
+        setError(err.error.message || 'Failed to load suggestions. Please try again.');
+      }
+      // Don't show error for network issues that might be transient
+      else if (err?.response?.status >= 500) {
+        setError('Server error. Please try again later.');
+      }
+      // For 404 and empty responses, don't show an error
       
       setSuggestions([]);
     } finally {
