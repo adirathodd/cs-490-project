@@ -384,8 +384,7 @@
 }
 
 .input-with-button input {
-  flex: 1;
-  min-width: 500px;
+  flex: 0 1 90%;
   padding: 10px 12px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
@@ -399,7 +398,12 @@
 }
 
 .input-with-button button {
-  padding: 10px 20px;
+  flex: 0 0 10%;
+  padding: 10px 8px;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tag-input-container {
