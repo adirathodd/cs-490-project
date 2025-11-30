@@ -21,6 +21,7 @@ import Jobs from './components/jobs/Jobs';
 import JobsPipeline from './components/jobs/JobsPipeline';
 import JobStats from './components/jobs/JobStats';
 import Analytics from './components/analytics/Analytics';
+import ApplicationSuccessAnalysis from './components/analytics/ApplicationSuccessAnalysis';
 import JobDetailView from './components/jobs/JobDetailView';
 import JobTimelineView from './components/jobs/JobTimelineView';
 import SalaryResearch from './components/jobs/SalaryResearch';
@@ -249,6 +250,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <Analytics />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/analytics/success"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ApplicationSuccessAnalysis />
               </PrivateRoute>
             }
           />

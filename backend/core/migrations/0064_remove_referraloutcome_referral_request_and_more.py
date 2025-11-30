@@ -7,6 +7,10 @@ def rename_indexes_if_exist(apps, schema_editor):
     """Safely rename indexes only if they exist."""
     from django.db import connection
     
+    # Skip for SQLite (used in tests)
+    if connection.vendor == 'sqlite':
+        return
+    
     # Get existing indexes
     with connection.cursor() as cursor:
         cursor.execute("""
@@ -43,6 +47,10 @@ def reverse_rename_indexes(apps, schema_editor):
     """Reverse the index renames."""
     from django.db import connection
     
+    # Skip for SQLite (used in tests)
+    if connection.vendor == 'sqlite':
+        return
+    
     index_renames = [
         ('core_feedbackcomment', 'core_feedba_feedbac_f44d81_idx', 'core_feedba_feedbac_cmt_idx'),
         ('core_feedbackcomment', 'core_feedba_parent__4adac6_idx', 'core_feedba_parent__cmt_idx'),
@@ -77,6 +85,28 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Remove indexes that reference fields we're about to delete
+        migrations.RemoveIndex(
+            model_name='referralrequest',
+            name='core_referr_user_id_4661e3_idx',
+        ),
+        migrations.RemoveIndex(
+            model_name='referralrequest',
+            name='core_referr_job_id_a06b61_idx',
+        ),
+        migrations.RemoveIndex(
+            model_name='referralrequest',
+            name='core_referr_contact_7879d3_idx',
+        ),
+        migrations.RemoveIndex(
+            model_name='referralrequest',
+            name='core_referr_user_id_b6ee03_idx',
+        ),
+        migrations.RemoveIndex(
+            model_name='referralrequest',
+            name='core_referr_user_id_bb95d6_idx',
+        ),
+        # Now remove the fields
         migrations.RemoveField(
             model_name='referraloutcome',
             name='referral_request',
