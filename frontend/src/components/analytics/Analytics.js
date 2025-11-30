@@ -7,6 +7,18 @@ import ApplicationSuccessAnalysis from './ApplicationSuccessAnalysis';
 
 const card = { padding: 16, borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb', marginBottom: 16 };
 const sectionTitle = { fontSize: 18, fontWeight: 700, marginBottom: 12, color: '#1f2937' };
+const jobTypeOptions = [
+  { id: 'ft', label: 'Full-time' },
+  { id: 'pt', label: 'Part-time' },
+  { id: 'contract', label: 'Contract' },
+  { id: 'temp', label: 'Temporary' },
+  { id: 'intern', label: 'Internship' },
+];
+const createDefaultJobTypeState = () =>
+  jobTypeOptions.reduce((acc, option) => {
+    acc[option.id] = true;
+    return acc;
+  }, {});
 
 export default function Analytics() {
   const [activeTab, setActiveTab] = useState('applications');
@@ -58,14 +70,47 @@ function ApplicationAnalyticsPanel() {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [filters, setFilters] = useState(() => ({
+    startDate: '',
+    endDate: '',
+    salaryMin: '',
+    salaryMax: '',
+    jobTypes: createDefaultJobTypeState(),
+  }));
+  const [goalInputs, setGoalInputs] = useState({ weekly: '', monthly: '' });
+  const [savingGoals, setSavingGoals] = useState(false);
 
   const { loading: authLoading } = useAuth();
 
-  const loadAnalytics = async () => {
+  const buildParams = (currentFilters) => {
+    const params = {};
+    if (currentFilters.startDate) params.start_date = currentFilters.startDate;
+    if (currentFilters.endDate) params.end_date = currentFilters.endDate;
+    const selectedJobTypes = Object.entries(currentFilters.jobTypes)
+      .filter(([, checked]) => checked)
+      .map(([key]) => key);
+    if (selectedJobTypes.length) params.job_types = selectedJobTypes;
+    if (currentFilters.salaryMin !== '') {
+      const min = parseFloat(currentFilters.salaryMin);
+      if (!Number.isNaN(min)) params.salary_min = min;
+    }
+    if (currentFilters.salaryMax !== '') {
+      const max = parseFloat(currentFilters.salaryMax);
+      if (!Number.isNaN(max)) params.salary_max = max;
+    }
+    return params;
+  };
+
+  const loadAnalytics = async (activeFilters = filters) => {
     setLoading(true);
     try {
-      const data = await jobsAPI.getAnalytics();
+      const params = buildParams(activeFilters);
+      const data = await jobsAPI.getAnalytics(params);
       setAnalytics(data);
+      setGoalInputs({
+        weekly: data.goal_progress?.weekly_goal?.target?.toString() || '',
+        monthly: data.goal_progress?.monthly_goal?.target?.toString() || '',
+      });
       setError('');
     } catch (e) {
       setError('Failed to load analytics data');
@@ -80,6 +125,53 @@ function ApplicationAnalyticsPanel() {
       loadAnalytics();
     }
   }, [authLoading]);
+
+  const handleFilterChange = (field, value) => {
+    setFilters((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleJobTypeToggle = (id) => {
+    setFilters((prev) => ({
+      ...prev,
+      jobTypes: { ...prev.jobTypes, [id]: !prev.jobTypes[id] },
+    }));
+  };
+
+  const handleResetFilters = () => {
+    const resetState = {
+      startDate: '',
+      endDate: '',
+      salaryMin: '',
+      salaryMax: '',
+      jobTypes: createDefaultJobTypeState(),
+    };
+    setFilters(resetState);
+    loadAnalytics(resetState);
+  };
+
+  const handleGoalInputChange = (field, value) => {
+    setGoalInputs((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveGoals = async () => {
+    const payload = {};
+    if (goalInputs.weekly) payload.weekly_target = parseInt(goalInputs.weekly, 10);
+    if (goalInputs.monthly) payload.monthly_target = parseInt(goalInputs.monthly, 10);
+    if (!payload.weekly_target && !payload.monthly_target) {
+      setError('Please provide at least one goal target to update.');
+      return;
+    }
+    try {
+      setSavingGoals(true);
+      await jobsAPI.updateAnalyticsGoals(payload);
+      await loadAnalytics();
+      setError('');
+    } catch (e) {
+      setError('Failed to save application targets');
+    } finally {
+      setSavingGoals(false);
+    }
+  };
 
   const exportAnalytics = async () => {
     try {
@@ -107,7 +199,20 @@ function ApplicationAnalyticsPanel() {
   if (error) return <div style={{ padding: 20, color: '#b91c1c' }}>{error}</div>;
   if (!analytics) return null;
 
-  const { funnel_analytics, industry_benchmarks, response_trends, volume_patterns, goal_progress, insights_recommendations } = analytics;
+  const {
+    funnel_analytics,
+    industry_benchmarks,
+    response_trends,
+    volume_patterns,
+    goal_progress,
+    insights_recommendations,
+    time_to_response,
+    salary_insights,
+    filters: appliedFilters = {},
+  } = analytics;
+
+  const timeMetrics = time_to_response || {};
+  const salaryMetrics = salary_insights || {};
 
   return (
     <div style={{ display: 'grid', gap: 16, padding: 16, maxWidth: 1200, margin: '0 auto' }}>
@@ -127,6 +232,100 @@ function ApplicationAnalyticsPanel() {
           <Icon name="download" />
           Export Report
         </button>
+      </div>
+
+      <div style={card}>
+        <h2 style={sectionTitle}>Filter Analytics</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+          <div>
+            <label htmlFor="start-date" style={{ fontSize: 12, color: '#6b7280' }}>
+              Start date
+            </label>
+            <input
+              id="start-date"
+              type="date"
+              value={filters.startDate}
+              onChange={(e) => handleFilterChange('startDate', e.target.value)}
+              style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #d1d5db' }}
+            />
+          </div>
+          <div>
+            <label htmlFor="end-date" style={{ fontSize: 12, color: '#6b7280' }}>
+              End date
+            </label>
+            <input
+              id="end-date"
+              type="date"
+              value={filters.endDate}
+              onChange={(e) => handleFilterChange('endDate', e.target.value)}
+              style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #d1d5db' }}
+            />
+          </div>
+          <div>
+            <label htmlFor="salary-min" style={{ fontSize: 12, color: '#6b7280' }}>
+              Salary minimum
+            </label>
+            <input
+              id="salary-min"
+              type="number"
+              placeholder="e.g., 70000"
+              value={filters.salaryMin}
+              onChange={(e) => handleFilterChange('salaryMin', e.target.value)}
+              style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #d1d5db' }}
+            />
+          </div>
+          <div>
+            <label htmlFor="salary-max" style={{ fontSize: 12, color: '#6b7280' }}>
+              Salary maximum
+            </label>
+            <input
+              id="salary-max"
+              type="number"
+              placeholder="e.g., 120000"
+              value={filters.salaryMax}
+              onChange={(e) => handleFilterChange('salaryMax', e.target.value)}
+              style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #d1d5db' }}
+            />
+          </div>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
+            Job types
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {jobTypeOptions.map((option) => (
+              <label key={option.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={filters.jobTypes[option.id]}
+                  onChange={() => handleJobTypeToggle(option.id)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => loadAnalytics(filters)}
+            style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #2563eb', background: '#2563eb', color: '#fff', fontWeight: 600 }}
+          >
+            Apply filters
+          </button>
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontWeight: 600 }}
+          >
+            Reset
+          </button>
+          {appliedFilters.start_date && (
+            <span style={{ fontSize: 12, color: '#6b7280', alignSelf: 'center' }}>
+              Active: {appliedFilters.start_date} - {appliedFilters.end_date || 'today'}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Key Metrics Cards */}
@@ -158,6 +357,16 @@ function ApplicationAnalyticsPanel() {
         </div>
       </div>
 
+      {/* Stage Timing */}
+      <div style={card}>
+        <h2 style={sectionTitle}>Stage Timing</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+          <StageTimingCard label="Application -> Response" value={timeMetrics.avg_application_to_response_days} samples={timeMetrics.samples?.application_to_response} />
+          <StageTimingCard label="Application -> Interview" value={timeMetrics.avg_application_to_interview_days} samples={timeMetrics.samples?.application_to_interview} />
+          <StageTimingCard label="Interview -> Offer" value={timeMetrics.avg_interview_to_offer_days} samples={timeMetrics.samples?.interview_to_offer} />
+        </div>
+      </div>
+
       {/* Application Funnel */}
       <div style={card}>
         <h2 style={sectionTitle}>Application Funnel Analytics</h2>
@@ -176,6 +385,74 @@ function ApplicationAnalyticsPanel() {
             <GoalProgress goal={goal_progress?.monthly_goal} />
           </div>
         )}
+      </div>
+
+      {/* Customize Targets */}
+      <div style={card}>
+        <h2 style={sectionTitle}>Customize Targets</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <label style={{ fontSize: 12, color: '#6b7280' }}>
+            Weekly applications target
+            <input
+              type="number"
+              min="1"
+              value={goalInputs.weekly}
+              onChange={(e) => handleGoalInputChange('weekly', e.target.value)}
+              style={{ width: '100%', marginTop: 4, padding: 8, borderRadius: 6, border: '1px solid #d1d5db' }}
+            />
+          </label>
+          <label style={{ fontSize: 12, color: '#6b7280' }}>
+            Monthly applications target
+            <input
+              type="number"
+              min="1"
+              value={goalInputs.monthly}
+              onChange={(e) => handleGoalInputChange('monthly', e.target.value)}
+              style={{ width: '100%', marginTop: 4, padding: 8, borderRadius: 6, border: '1px solid #d1d5db' }}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={handleSaveGoals}
+            disabled={savingGoals}
+            style={{
+              padding: '8px 16px',
+              borderRadius: 6,
+              border: 'none',
+              background: savingGoals ? '#93c5fd' : '#2563eb',
+              color: '#fff',
+              fontWeight: 600,
+              cursor: savingGoals ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {savingGoals ? 'Saving targets...' : 'Save targets'}
+          </button>
+        </div>
+      </div>
+
+      {/* Salary Insights */}
+      <div style={card}>
+        <h2 style={sectionTitle}>Salary Insights</h2>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>Average salary applied</div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>
+              {salaryMetrics.average_salary ? `$${salaryMetrics.average_salary.toLocaleString()}` : 'N/A'}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>Interview rate in this range</div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>
+              {salaryMetrics.interview_rate ? `${salaryMetrics.interview_rate}%` : 'N/A'}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>Offer rate in this range</div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>
+              {salaryMetrics.offer_rate ? `${salaryMetrics.offer_rate}%` : 'N/A'}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Industry Benchmarks */}
@@ -218,9 +495,16 @@ function ApplicationAnalyticsPanel() {
 
 // Application Funnel Component
 function ApplicationFunnel({ funnel }) {
-  if (!funnel) return <div>No funnel data available</div>;
-
-  const counts = funnel.status_breakdown || {};
+  const defaultStages = {
+    interested: 0,
+    applied: 0,
+    phone_screen: 0,
+    interview: 0,
+    offer: 0,
+    rejected: 0,
+  };
+  const counts = { ...defaultStages, ...(funnel?.status_breakdown || {}) };
+  const total = Object.values(counts).reduce((sum, val) => sum + (val || 0), 0);
   
   // Use the same structure as JobStats - iterate over actual keys
   const stages = Object.keys(counts).map(key => ({
@@ -232,11 +516,12 @@ function ApplicationFunnel({ funnel }) {
   // Helper function to assign colors to stages
   function getStageColor(stageName) {
     const colorMap = {
-      'interested': '#e5e7eb',
+      'interested': '#c084fc', // brighter violet for clear contrast
       'applied': '#60a5fa',
       'phone_screen': '#34d399',
       'interview': '#fbbf24',
-      'offer': '#10b981'
+      'offer': '#10b981',
+      'rejected': '#ef4444'
     };
     return colorMap[stageName] || '#9ca3af';
   }
@@ -269,6 +554,27 @@ function ApplicationFunnel({ funnel }) {
             <div style={{ fontSize: 12, marginTop: 4, color: '#6b7280' }}>{stage.name}</div>
           </div>
         ))}
+      </div>
+      {total === 0 && (
+        <div style={{ fontSize: 12, color: '#6b7280' }}>No applications yet. Start adding jobs to see your funnel.</div>
+      )}
+    </div>
+  );
+}
+
+function StageTimingCard({ label, value, samples }) {
+  return (
+    <div style={{ padding: 12, borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb' }}>
+      <div style={{ fontSize: 12, color: '#6b7280' }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>
+        {value == null
+          ? 'No data'
+          : value >= 1
+            ? `${value} days`
+            : `${(value * 24).toFixed(1)} hrs`}
+      </div>
+      <div style={{ fontSize: 11, color: '#6b7280' }}>
+        {samples ? `${samples} samples` : 'No recent samples'}
       </div>
     </div>
   );

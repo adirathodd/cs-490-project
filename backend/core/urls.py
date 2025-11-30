@@ -143,6 +143,7 @@ urlpatterns = [
     path('jobs/stats', views.jobs_stats, name='jobs-stats'),
     path('jobs/analytics', analytics_views.cover_letter_analytics_view, name='cover-letter-analytics'),
     path('jobs/success-analysis', views.application_success_analysis, name='application-success-analysis'),  # UC-097
+    path('jobs/analytics/goals', analytics_views.update_application_targets_view, name='analytics-goals'),
     path('jobs/bulk-status', views.jobs_bulk_status, name='jobs-bulk-status'),
     path('jobs/bulk-deadline', views.jobs_bulk_deadline, name='jobs-bulk-deadline'),
     path('jobs/upcoming-deadlines', views.jobs_upcoming_deadlines, name='jobs-upcoming-deadlines'),
@@ -324,6 +325,36 @@ urlpatterns = [
 
     # UC-102: Market Intelligence
     path('market-intelligence/', market_views.market_intelligence_view, name='market-intelligence'),
+
+    
+    # UC-095: Professional Reference Management endpoints
+    path('references/', views.references_list_create, name='references-list-create'),
+    path('references/<uuid:reference_id>/', views.reference_detail, name='reference-detail'),
+    path('references/<uuid:reference_id>/check-in/', views.reference_check_in, name='reference-check-in'),
+    path('references/requests/', views.reference_requests_list_create, name='reference-requests-list-create'),
+    path('references/requests/<uuid:request_id>/', views.reference_request_detail, name='reference-request-detail'),
+    path('references/requests/<uuid:request_id>/mark-sent/', views.reference_request_mark_sent, name='reference-request-mark-sent'),
+    path('references/requests/<uuid:request_id>/mark-completed/', views.reference_request_mark_completed, name='reference-request-mark-completed'),
+    path('references/templates/', views.reference_templates_list_create, name='reference-templates-list-create'),
+    path('references/templates/<uuid:template_id>/', views.reference_template_detail, name='reference-template-detail'),
+    path('references/appreciations/', views.reference_appreciations_list_create, name='reference-appreciations-list-create'),
+    path('references/appreciations/<uuid:appreciation_id>/', views.reference_appreciation_detail, name='reference-appreciation-detail'),
+    path('references/portfolios/', views.reference_portfolios_list_create, name='reference-portfolios-list-create'),
+    path('references/portfolios/<uuid:portfolio_id>/', views.reference_portfolio_detail, name='reference-portfolio-detail'),
+    path('references/analytics/', views.reference_analytics, name='reference-analytics'),
+    path('references/preparation-guide/', views.generate_reference_preparation_guide, name='reference-preparation-guide'),
+    # UC-087: Referral management (minimal dev stubs)
+    path('referrals', views.referrals_list_create, name='referrals-list-create'),
+    path('referrals/analytics', views.referrals_analytics, name='referrals-analytics'),
+    path('referrals/generate-message', views.referrals_generate_message, name='referrals-generate-message'),
+    path('referrals/<str:referral_id>', views.referral_detail, name='referral-detail'),
+    path('referrals/<str:referral_id>/mark-sent', views.referral_mark_sent, name='referral-mark-sent'),
+    path('referrals/<str:referral_id>/response', views.referral_mark_response, name='referral-response'),
+    path('referrals/<str:referral_id>/complete', views.referral_mark_completed, name='referral-complete'),
+    path('referrals/<str:referral_id>/uncomplete', views.referral_unmark_completed, name='referral-uncomplete'),
+    path('referrals/<str:referral_id>/express-gratitude', views.referral_express_gratitude, name='referral-express-gratitude'),
+    path('referrals/<str:referral_id>/suggest-follow-up', views.referral_suggest_follow_up, name='referral-suggest-follow-up'),
+    path('referrals/<str:referral_id>/outcome', views.referral_update_outcome, name='referral-update-outcome'),
 
     # UC-077: Mock Interview Practice Sessions
     path('mock-interviews/start', views.start_mock_interview, name='mock-interview-start'),

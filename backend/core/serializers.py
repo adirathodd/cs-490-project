@@ -26,6 +26,8 @@ from core.models import (
 
 from core.models import Referral, Application, JobOpportunity
 
+from core.models import Referral, Application, JobOpportunity
+
 class CoverLetterTemplateSerializer(serializers.ModelSerializer):
     class Meta:
         model = CoverLetterTemplate
@@ -3722,3 +3724,186 @@ class MockInterviewSessionListSerializer(serializers.ModelSerializer):
         if obj.pk:
             return obj.questions.filter(user_answer__isnull=False).exclude(user_answer='').count()
         return 0
+
+
+# ============================
+# UC-095: Professional Reference Management Serializers
+# ============================
+
+class ProfessionalReferenceSerializer(serializers.ModelSerializer):
+    """Serializer for professional references"""
+    portfolios_count = serializers.SerializerMethodField()
+    pending_requests_count = serializers.SerializerMethodField()
+    recent_appreciations = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ProfessionalReference
+        fields = [
+            'id', 'user', 'name', 'title', 'company', 'email', 'phone', 'linkedin_url',
+            'relationship_type', 'relationship_description', 'years_known',
+            'availability_status', 'permission_granted_date', 'last_used_date',
+            'preferred_contact_method', 'best_for_roles', 'best_for_industries',
+            'key_strengths_to_highlight', 'projects_worked_together', 'talking_points',
+            'last_contacted_date', 'next_check_in_date', 'notes',
+            'times_used', 'is_active', 'created_at', 'updated_at',
+            'portfolios_count', 'pending_requests_count', 'recent_appreciations'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'times_used']
+    
+    def get_portfolios_count(self, obj):
+        if obj.pk:
+            return obj.portfolios.count()
+        return 0
+    
+    def get_pending_requests_count(self, obj):
+        if obj.pk:
+            return obj.requests.filter(request_status__in=['pending', 'sent']).count()
+        return 0
+    
+    def get_recent_appreciations(self, obj):
+        if obj.pk:
+            recent = obj.appreciations.all()[:3]
+            return ReferenceAppreciationSerializer(recent, many=True).data
+        return []
+
+
+class ProfessionalReferenceListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for reference list views"""
+    pending_requests_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ProfessionalReference
+        fields = [
+            'id', 'name', 'title', 'company', 'email', 'relationship_type',
+            'availability_status', 'last_used_date', 'times_used', 'is_active',
+            'pending_requests_count'
+        ]
+        read_only_fields = ['id', 'times_used']
+    
+    def get_pending_requests_count(self, obj):
+        if obj.pk:
+            return obj.requests.filter(request_status__in=['pending', 'sent']).count()
+        return 0
+
+
+class ReferenceRequestSerializer(serializers.ModelSerializer):
+    """Serializer for reference requests"""
+    reference_name = serializers.CharField(source='reference.name', read_only=True)
+    reference_company = serializers.CharField(source='reference.company', read_only=True)
+    application_status = serializers.CharField(source='application.status', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = ReferenceRequest
+        fields = [
+            'id', 'user', 'reference', 'reference_name', 'reference_company',
+            'application', 'application_status', 'job_opportunity',
+            'company_name', 'position_title', 'request_status',
+            'request_sent_date', 'due_date', 'completed_date',
+            'custom_message', 'preparation_materials_sent',
+            'feedback_received', 'reference_rating',
+            'contributed_to_success', 'outcome_notes',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+
+
+class ReferenceRequestCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating reference requests with template support"""
+    use_template = serializers.UUIDField(required=False, write_only=True)
+    
+    class Meta:
+        model = ReferenceRequest
+        fields = [
+            'reference', 'application', 'job_opportunity',
+            'company_name', 'position_title', 'due_date',
+            'custom_message', 'preparation_materials_sent', 'use_template'
+        ]
+    
+    def create(self, validated_data):
+        template_id = validated_data.pop('use_template', None)
+        user = self.context['request'].user
+        
+        # If template specified, generate custom message
+        if template_id:
+            try:
+                template = ReferenceTemplate.objects.get(id=template_id, user=user)
+                reference = validated_data['reference']
+                
+                # Replace placeholders in template
+                message = template.content
+                message = message.replace('{reference_name}', reference.name)
+                message = message.replace('{company_name}', validated_data.get('company_name', ''))
+                message = message.replace('{position_title}', validated_data.get('position_title', ''))
+                message = message.replace('{user_name}', f"{user.first_name} {user.last_name}")
+                
+                validated_data['custom_message'] = message
+                template.times_used += 1
+                template.save()
+            except ReferenceTemplate.DoesNotExist:
+                pass
+        
+        validated_data['user'] = user
+        return super().create(validated_data)
+
+
+class ReferenceTemplateSerializer(serializers.ModelSerializer):
+    """Serializer for reference templates"""
+    class Meta:
+        model = ReferenceTemplate
+        fields = [
+            'id', 'user', 'name', 'template_type', 'subject_line', 'content',
+            'for_relationship_types', 'for_role_types', 'is_default', 'times_used',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'times_used']
+
+
+class ReferenceAppreciationSerializer(serializers.ModelSerializer):
+    """Serializer for reference appreciation tracking"""
+    reference_name = serializers.CharField(source='reference.name', read_only=True)
+    
+    class Meta:
+        model = ReferenceAppreciation
+        fields = [
+            'id', 'user', 'reference', 'reference_name',
+            'appreciation_type', 'date', 'description', 'notes', 'created_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at']
+
+
+class ReferencePortfolioSerializer(serializers.ModelSerializer):
+    """Serializer for reference portfolios"""
+    references_details = ProfessionalReferenceListSerializer(source='references', many=True, read_only=True)
+    references_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ReferencePortfolio
+        fields = [
+            'id', 'user', 'name', 'description', 'references', 'references_details',
+            'target_role_types', 'target_industries', 'target_companies',
+            'is_default', 'times_used', 'references_count', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'times_used']
+    
+    def get_references_count(self, obj):
+        if obj.pk:
+            return obj.references.count()
+        return 0
+
+
+class ReferencePortfolioListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for portfolio list views"""
+    references_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ReferencePortfolio
+        fields = [
+            'id', 'name', 'description', 'is_default', 'times_used', 'references_count', 'created_at'
+        ]
+        read_only_fields = ['id', 'times_used']
+    
+    def get_references_count(self, obj):
+        if obj.pk:
+            return obj.references.count()
+        return 0
+

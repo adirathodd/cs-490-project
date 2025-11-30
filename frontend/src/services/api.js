@@ -756,9 +756,13 @@ export const jobsAPI = {
     return response.data; // { interested: n, applied: n, ... }
   },
 
-  getAnalytics: async () => {
-    const response = await api.get('/jobs/analytics');
+  getAnalytics: async (params = {}) => {
+    const response = await api.get('/jobs/analytics', { params });
     return response.data; // Enhanced analytics data
+  },
+  updateAnalyticsGoals: async (payload) => {
+    const response = await api.patch('/jobs/analytics/goals', payload);
+    return response.data;
   },
 
   // UC-097: Application Success Rate Analysis

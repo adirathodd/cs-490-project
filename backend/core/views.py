@@ -89,6 +89,16 @@ from core.serializers import (
     ReferencePortfolioSerializer,
     ReferencePortfolioListSerializer,
 
+    ReferralSerializer,
+    ProfessionalReferenceSerializer,
+    ProfessionalReferenceListSerializer,
+    ReferenceRequestSerializer,
+    ReferenceRequestCreateSerializer,
+    ReferenceTemplateSerializer,
+    ReferenceAppreciationSerializer,
+    ReferencePortfolioSerializer,
+    ReferencePortfolioListSerializer,
+
 )
 from core.models import (
     CandidateProfile,

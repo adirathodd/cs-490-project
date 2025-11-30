@@ -76,6 +76,14 @@ class CandidateProfile(models.Model):
     default_cover_letter_doc = models.ForeignKey(
         'Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='default_cover_letter_for'
     )
+    weekly_application_target = models.PositiveSmallIntegerField(
+        default=5,
+        help_text='User-defined goal for applications per week',
+    )
+    monthly_application_target = models.PositiveSmallIntegerField(
+        default=20,
+        help_text='User-defined goal for applications per month',
+    )
 
     class Meta:
         indexes = [models.Index(fields=["user"])]

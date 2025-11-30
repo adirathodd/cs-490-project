@@ -68,6 +68,7 @@ const jobsAPI = {
 	getUpcomingDeadlines: jestFn(),
 	getJobStats: jestFn(),
 	getAnalytics: jestFn(),
+	updateAnalyticsGoals: jestFn(),
 	bulkUpdateStatus: jestFn(),
 	archiveJob: jestFn(),
 	unarchiveJob: jestFn(),
