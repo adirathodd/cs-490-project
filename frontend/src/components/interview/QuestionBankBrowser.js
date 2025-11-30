@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import Toast from '../common/Toast';
 import api from '../../services/api';
 import './QuestionBank.css';
 
@@ -27,6 +28,7 @@ export const QuestionBankBrowser = () => {
   const [submitting, setSubmitting] = useState(false);
   const [practiceHistory, setPracticeHistory] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [toast, setToast] = useState({ isOpen: false, message: '', type: 'info' });
 
   useEffect(() => {
     loadQuestionBank();
@@ -77,7 +79,7 @@ export const QuestionBankBrowser = () => {
 
   const handleSubmitPractice = async () => {
     if (!writtenResponse.trim()) {
-      alert('Please write a response before submitting.');
+      setToast({ isOpen: true, message: 'Please write a response before submitting.', type: 'warning' });
       return;
     }
 
@@ -94,7 +96,7 @@ export const QuestionBankBrowser = () => {
 
       await api.questionBankAPI.logQuestionPractice(jobId, payload);
       
-      alert('Practice response saved successfully!');
+      setToast({ isOpen: true, message: 'Practice response saved successfully!', type: 'success' });
       setWrittenResponse('');
       setStarResponse({ situation: '', task: '', action: '', result: '' });
       setPracticeMode(false);
@@ -102,7 +104,7 @@ export const QuestionBankBrowser = () => {
       // Load practice history
       await loadPracticeHistory(selectedQuestion.id);
     } catch (err) {
-      alert(err.message || 'Failed to save practice response');
+      setToast({ isOpen: true, message: err.message || 'Failed to save practice response', type: 'error' });
     } finally {
       setSubmitting(false);
     }
@@ -146,6 +148,12 @@ export const QuestionBankBrowser = () => {
   if (loading) {
     return (
       <div className="question-bank-container">
+        <Toast
+          isOpen={toast.isOpen}
+          onClose={() => setToast({ ...toast, isOpen: false })}
+          message={toast.message}
+          type={toast.type}
+        />
         <div className="loading-state">
           <div className="spinner"></div>
           <p>Loading question bank...</p>
@@ -157,6 +165,12 @@ export const QuestionBankBrowser = () => {
   if (error) {
     return (
       <div className="question-bank-container">
+        <Toast
+          isOpen={toast.isOpen}
+          onClose={() => setToast({ ...toast, isOpen: false })}
+          message={toast.message}
+          type={toast.type}
+        />
         <div className="error-state">
           <h2>Error Loading Question Bank</h2>
           <p>{error}</p>
@@ -179,6 +193,12 @@ export const QuestionBankBrowser = () => {
 
   return (
     <div className="question-bank-container">
+      <Toast
+        isOpen={toast.isOpen}
+        onClose={() => setToast({ ...toast, isOpen: false })}
+        message={toast.message}
+        type={toast.type}
+      />
       <div className="question-bank-header">
         <div className="header-content">
           <h1>Interview Question Bank</h1>

@@ -14653,14 +14653,16 @@ def complete_mock_interview(request):
     
     Expected payload:
     {
-        "session_id": <uuid>
+        "session_id": <integer>
     }
     """
     from core.mock_interview import MockInterviewCoach
     from core.models import MockInterviewSession, MockInterviewSummary
     from core.serializers import MockInterviewSummarySerializer
     from django.db.models import Avg
+    import logging
     
+    logger = logging.getLogger(__name__)
     user = request.user
     session_id = request.data.get('session_id')
     
@@ -14672,11 +14674,26 @@ def complete_mock_interview(request):
     
     try:
         # Get session and verify ownership
-        session = MockInterviewSession.objects.get(id=session_id, user=user)
-        
-        if session.status != 'in_progress':
+        try:
+            session = MockInterviewSession.objects.get(id=session_id, user=user)
+        except MockInterviewSession.DoesNotExist:
             return Response(
-                {'error': 'This interview session is not active'},
+                {'error': 'Session not found or you do not have permission to access it'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # If already completed, return existing summary
+        if session.status == 'completed':
+            try:
+                summary = MockInterviewSummary.objects.get(session=session)
+                serializer = MockInterviewSummarySerializer(summary)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            except MockInterviewSummary.DoesNotExist:
+                # Summary doesn't exist, regenerate it
+                logger.warning(f"Session {session_id} marked completed but no summary found. Regenerating.")
+        elif session.status not in ['in_progress', 'completed']:
+            return Response(
+                {'error': f'This interview session cannot be completed (status: {session.status})'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -14685,6 +14702,8 @@ def complete_mock_interview(request):
         answered_questions = session.questions.filter(
             user_answer__isnull=False
         ).exclude(user_answer='').count()
+        
+        logger.info(f"Completing session {session_id}: {answered_questions}/{total_questions} answered")
         
         if answered_questions < total_questions:
             return Response(
@@ -14697,12 +14716,22 @@ def complete_mock_interview(request):
             )
         
         # Calculate overall score
-        overall_score = session.calculate_overall_score()
-        if overall_score is not None:
-            session.overall_score = overall_score
+        try:
+            overall_score = session.calculate_overall_score()
+            if overall_score is not None:
+                session.overall_score = overall_score
+                logger.info(f"Calculated overall score: {overall_score}")
+        except Exception as e:
+            logger.error(f"Error calculating overall score: {str(e)}")
+            overall_score = 0
         
         # Mark session as completed
-        session.mark_completed()
+        try:
+            session.mark_completed()
+            logger.info(f"Session {session_id} marked as completed")
+        except Exception as e:
+            logger.error(f"Error marking session complete: {str(e)}")
+            raise
         
         # Prepare data for summary generation
         questions = session.questions.all().order_by('question_number')
@@ -14720,12 +14749,28 @@ def complete_mock_interview(request):
         ]
         
         # Generate comprehensive summary using AI
-        coach = MockInterviewCoach()
-        summary_data = coach.generate_session_summary(
-            questions_and_answers=questions_and_answers,
-            overall_score=float(overall_score or 0),
-            interview_type=session.interview_type
-        )
+        summary_data = {}
+        try:
+            coach = MockInterviewCoach()
+            summary_data = coach.generate_session_summary(
+                questions_and_answers=questions_and_answers,
+                overall_score=float(overall_score or 0),
+                interview_type=session.interview_type
+            )
+            logger.info(f"Successfully generated AI summary for session {session_id}")
+        except Exception as e:
+            logger.error(f"Error generating AI summary: {str(e)}")
+            # Provide fallback summary data
+            summary_data = {
+                'top_strengths': ['Completed all questions', 'Good participation'],
+                'critical_areas': ['Practice more to improve'],
+                'recommended_practice_topics': [session.interview_type],
+                'next_steps': ['Continue practicing', 'Review feedback'],
+                'overall_assessment': f'You completed a {session.interview_type} interview with {answered_questions} questions.',
+                'readiness_level': 'needs_practice' if (overall_score or 0) < 70 else 'nearly_ready',
+                'estimated_interview_readiness': int(overall_score or 0),
+                'improvement_trend': 'stable'
+            }
         
         # Calculate performance by category
         performance_by_category = {}
@@ -14769,39 +14814,44 @@ def complete_mock_interview(request):
                 }
         
         # Create summary
-        summary = MockInterviewSummary.objects.create(
-            session=session,
-            performance_by_category=performance_by_category,
-            response_quality_score=response_quality,
-            communication_score=communication_score,
-            structure_score=structure_score,
-            top_strengths=summary_data.get('top_strengths', []),
-            critical_areas=summary_data.get('critical_areas', []),
-            recommended_practice_topics=summary_data.get('recommended_practice_topics', []),
-            next_steps=summary_data.get('next_steps', []),
-            overall_assessment=summary_data.get('overall_assessment', ''),
-            readiness_level=summary_data.get('readiness_level', 'needs_practice'),
-            estimated_interview_readiness=summary_data.get('estimated_interview_readiness', int(overall_score or 0)),
-            compared_to_previous_sessions=compared_to_previous,
-            improvement_trend=summary_data.get('improvement_trend', 'stable')
-        )
+        try:
+            summary = MockInterviewSummary.objects.create(
+                session=session,
+                performance_by_category=performance_by_category,
+                response_quality_score=response_quality,
+                communication_score=communication_score,
+                structure_score=structure_score,
+                top_strengths=summary_data.get('top_strengths', []),
+                critical_areas=summary_data.get('critical_areas', []),
+                recommended_practice_topics=summary_data.get('recommended_practice_topics', []),
+                next_steps=summary_data.get('next_steps', []),
+                overall_assessment=summary_data.get('overall_assessment', ''),
+                readiness_level=summary_data.get('readiness_level', 'needs_practice'),
+                estimated_interview_readiness=summary_data.get('estimated_interview_readiness', int(overall_score or 0)),
+                compared_to_previous_sessions=compared_to_previous,
+                improvement_trend=summary_data.get('improvement_trend', 'stable')
+            )
+            logger.info(f"Successfully created summary for session {session_id}")
+        except Exception as e:
+            logger.error(f"Error creating summary: {str(e)}")
+            raise
         
         # Update session with summary insights
-        session.strengths = summary_data.get('top_strengths', [])[:3]
-        session.areas_for_improvement = summary_data.get('critical_areas', [])[:3]
-        session.ai_summary = summary_data.get('overall_assessment', '')[:500]
-        session.save()
+        try:
+            session.strengths = summary_data.get('top_strengths', [])[:3]
+            session.areas_for_improvement = summary_data.get('critical_areas', [])[:3]
+            session.ai_summary = summary_data.get('overall_assessment', '')[:500]
+            session.save()
+        except Exception as e:
+            logger.error(f"Error updating session with insights: {str(e)}")
+            # Non-critical, continue anyway
         
         # Return complete summary
         serializer = MockInterviewSummarySerializer(summary)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
-    except MockInterviewSession.DoesNotExist:
-        return Response(
-            {'error': 'Session not found'},
-            status=status.HTTP_404_NOT_FOUND
-        )
     except Exception as e:
+        logger.error(f"Unexpected error completing interview {session_id}: {str(e)}", exc_info=True)
         return Response(
             {'error': f'Failed to complete interview: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -14871,10 +14921,13 @@ def get_mock_interview_session(request, session_id):
 def get_mock_interview_summary(request, session_id):
     """
     UC-077: Get summary for a completed mock interview session.
+    Auto-generates summary if missing for completed sessions.
     """
     from core.models import MockInterviewSession, MockInterviewSummary
     from core.serializers import MockInterviewSummarySerializer
+    from core.mock_interview import MockInterviewCoach
     
+    logger = logging.getLogger(__name__)
     user = request.user
     
     try:
@@ -14891,10 +14944,94 @@ def get_mock_interview_summary(request, session_id):
             serializer = MockInterviewSummarySerializer(summary)
             return Response(serializer.data, status=status.HTTP_200_OK)
         except MockInterviewSummary.DoesNotExist:
-            return Response(
-                {'error': 'Summary not found. Please try completing the interview again.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            # Summary doesn't exist - generate it now
+            logger.info(f"Generating missing summary for completed session {session_id}")
+            
+            try:
+                # Calculate overall score
+                try:
+                    overall_score = session.calculate_overall_score()
+                except Exception as score_err:
+                    logger.error(f"Failed to calculate score for session {session_id}: {score_err}")
+                    overall_score = 0
+                
+                # Generate AI summary using MockInterviewCoach
+                try:
+                    coach = MockInterviewCoach()
+                    ai_summary = coach.generate_session_summary(session)
+                    logger.info(f"Successfully generated AI summary for session {session_id}")
+                except Exception as ai_err:
+                    logger.error(f"Failed to generate AI summary for session {session_id}: {ai_err}")
+                    # Fallback summary if AI fails
+                    ai_summary = {
+                        'top_strengths': ['Completed all questions', 'Good participation'],
+                        'critical_areas': ['Practice more to improve your skills'],
+                        'recommended_practice_topics': ['Technical concepts', 'Communication skills'],
+                        'next_steps': ['Keep practicing regularly'],
+                        'overall_assessment': 'You completed the interview session.'
+                    }
+                
+                # Create summary with generated data
+                try:
+                    summary = MockInterviewSummary.objects.create(
+                        session=session,
+                        overall_score=overall_score,
+                        top_strengths=ai_summary.get('top_strengths', []),
+                        critical_areas=ai_summary.get('critical_areas', []),
+                        recommended_practice_topics=ai_summary.get('recommended_practice_topics', []),
+                        next_steps=ai_summary.get('next_steps', []),
+                        overall_assessment=ai_summary.get('overall_assessment', '')
+                    )
+                    logger.info(f"Successfully created summary for session {session_id}")
+                    
+                    serializer = MockInterviewSummarySerializer(summary)
+                    return Response(serializer.data, status=status.HTTP_200_OK)
+                    
+                except Exception as create_err:
+                    logger.error(f"Failed to create summary for session {session_id}: {create_err}")
+                    return Response(
+                        {'error': 'Failed to generate summary. Please try again.'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                    
+            except Exception as gen_err:
+                logger.error(f"Failed to generate missing summary for session {session_id}: {gen_err}")
+                return Response(
+                    {'error': 'Failed to generate summary. Please try again.'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+    
+    except MockInterviewSession.DoesNotExist:
+        return Response(
+            {'error': 'Session not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_mock_interview_session(request, session_id):
+    """
+    UC-077: Delete a mock interview session.
+    """
+    from core.models import MockInterviewSession
+    
+    logger = logging.getLogger(__name__)
+    user = request.user
+    
+    try:
+        session = MockInterviewSession.objects.get(id=session_id, user=user)
+        
+        # Log the deletion
+        logger.info(f"Deleting mock interview session {session_id} for user {user.id}")
+        
+        # Delete the session (cascade will delete related questions, answers, and summary)
+        session.delete()
+        
+        return Response(
+            {'message': 'Session deleted successfully'},
+            status=status.HTTP_200_OK
+        )
     
     except MockInterviewSession.DoesNotExist:
         return Response(

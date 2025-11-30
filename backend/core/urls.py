@@ -327,5 +327,6 @@ urlpatterns = [
     path('mock-interviews', views.list_mock_interviews, name='mock-interviews-list'),
     path('mock-interviews/<int:session_id>', views.get_mock_interview_session, name='mock-interview-detail'),
     path('mock-interviews/<int:session_id>/summary', views.get_mock_interview_summary, name='mock-interview-summary'),
+    path('mock-interviews/<int:session_id>/delete', views.delete_mock_interview_session, name='mock-interview-delete'),
 
 ]

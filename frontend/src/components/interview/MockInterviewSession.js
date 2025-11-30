@@ -203,8 +203,12 @@ const MockInterviewSession = ({ session, onComplete }) => {
       ) : (
         <div className="feedback-section">
           <div className="submitted-answer">
-            <h4>Your Answer:</h4>
-            <p>{currentQuestion.user_answer}</p>
+            <h4>📝 Your Answer</h4>
+            <div className="answer-text">
+              {currentQuestion.user_answer.split('\n').map((para, idx) => (
+                <p key={idx}>{para}</p>
+              ))}
+            </div>
           </div>
 
           <div className="ai-evaluation">
@@ -217,17 +221,22 @@ const MockInterviewSession = ({ session, onComplete }) => {
 
             {currentQuestion.ai_feedback && (
               <div className="feedback-text">
-                <h4>Feedback:</h4>
-                <p>{currentQuestion.ai_feedback}</p>
+                <h4>💬 AI Feedback</h4>
+                <div className="feedback-content">
+                  {formatFeedback(currentQuestion.ai_feedback)}
+                </div>
               </div>
             )}
 
             {currentQuestion.strengths && currentQuestion.strengths.length > 0 && (
               <div className="feedback-strengths">
-                <h4>Strengths:</h4>
+                <h4>✨ What You Did Well</h4>
                 <ul>
                   {currentQuestion.strengths.map((strength, idx) => (
-                    <li key={idx}>✅ {strength}</li>
+                    <li key={idx}>
+                      <span className="strength-icon">✓</span>
+                      <span className="strength-text">{strength}</span>
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -235,10 +244,13 @@ const MockInterviewSession = ({ session, onComplete }) => {
 
             {currentQuestion.improvements && currentQuestion.improvements.length > 0 && (
               <div className="feedback-improvements">
-                <h4>Areas for Improvement:</h4>
+                <h4>🎯 Areas for Improvement</h4>
                 <ul>
                   {currentQuestion.improvements.map((improvement, idx) => (
-                    <li key={idx}>💡 {improvement}</li>
+                    <li key={idx}>
+                      <span className="improvement-icon">→</span>
+                      <span className="improvement-text">{improvement}</span>
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -292,6 +304,43 @@ const getScoreClass = (score) => {
   if (score >= 70) return 'score-good';
   if (score >= 50) return 'score-fair';
   return 'score-low';
+};
+
+// Format feedback text with proper line breaks and structure
+const formatFeedback = (text) => {
+  if (!text) return null;
+  
+  // Split by double line breaks for paragraphs
+  const paragraphs = text.split(/\n\n+/);
+  
+  return paragraphs.map((para, idx) => {
+    // Check if it's a bullet list
+    if (para.match(/^[-•*]\s/m)) {
+      const items = para.split(/\n/).filter(line => line.trim());
+      return (
+        <ul key={idx} className="feedback-list">
+          {items.map((item, i) => (
+            <li key={i}>{item.replace(/^[-•*]\s/, '')}</li>
+          ))}
+        </ul>
+      );
+    }
+    
+    // Check if it's a numbered list
+    if (para.match(/^\d+\.\s/m)) {
+      const items = para.split(/\n/).filter(line => line.trim());
+      return (
+        <ol key={idx} className="feedback-list numbered">
+          {items.map((item, i) => (
+            <li key={i}>{item.replace(/^\d+\.\s/, '')}</li>
+          ))}
+        </ol>
+      );
+    }
+    
+    // Regular paragraph
+    return <p key={idx} className="feedback-paragraph">{para}</p>;
+  });
 };
 
 export default MockInterviewSession;

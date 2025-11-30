@@ -2919,7 +2919,21 @@ export const mockInterviewAPI = {
       const response = await api.get(`/mock-interviews/${sessionId}/summary`);
       return response.data;
     } catch (error) {
-      throw error.error || error.response?.data?.error || { message: 'Failed to fetch summary' };
+      const errorData = error.error || error.response?.data?.error || { message: 'Failed to fetch summary' };
+      if (error.response?.status === 404) {
+        errorData.code = 'not_found';
+      }
+      throw errorData;
+    }
+  },
+
+  // Delete a mock interview session
+  deleteSession: async (sessionId) => {
+    try {
+      const response = await api.delete(`/mock-interviews/${sessionId}/delete`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete session' };
     }
   },
 };

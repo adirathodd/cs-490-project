@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import Toast from '../common/Toast';
 import api from '../../services/api';
 import './ResponseCoach.css';
 
@@ -26,6 +27,7 @@ export const ResponseCoach = () => {
   const [practiceStatus, setPracticeStatus] = useState(null);
   const [improvement, setImprovement] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState({ isOpen: false, message: '', type: 'info' });
 
   useEffect(() => {
     if (!question && questionId) {
@@ -55,7 +57,7 @@ export const ResponseCoach = () => {
 
   const handleSubmitForCoaching = async () => {
     if (!writtenResponse.trim()) {
-      alert('Please write a response before submitting for coaching.');
+      setToast({ isOpen: true, message: 'Please write a response before submitting for coaching.', type: 'warning' });
       return;
     }
 
@@ -165,6 +167,12 @@ export const ResponseCoach = () => {
   if (loading) {
     return (
       <div className="response-coach-container">
+        <Toast
+          isOpen={toast.isOpen}
+          onClose={() => setToast({ ...toast, isOpen: false })}
+          message={toast.message}
+          type={toast.type}
+        />
         <div className="loading-state">
           <div className="spinner"></div>
           <p>Loading question...</p>
@@ -175,6 +183,12 @@ export const ResponseCoach = () => {
 
   return (
     <div className="response-coach-container">
+      <Toast
+        isOpen={toast.isOpen}
+        onClose={() => setToast({ ...toast, isOpen: false })}
+        message={toast.message}
+        type={toast.type}
+      />
       <div className="coach-header">
         <button onClick={() => navigate(-1)} className="back-button">
           ← Back

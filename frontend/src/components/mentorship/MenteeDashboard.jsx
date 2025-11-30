@@ -352,18 +352,25 @@ const MentorshipMenteeDashboard = () => {
   };
 
   const handleGoalDelete = (goalId) => {
-    const confirmed = window.confirm('Delete this mentorship goal?');
-    if (!confirmed) return;
-    setGoalError('');
-    mentorshipAPI
-      .deleteGoal(goalId)
-      .then(() => {
-        refreshGoals();
-      })
-      .catch((err) => {
-        const fallback = err?.error?.message || err?.message || 'Unable to delete goal.';
-        setGoalError(fallback);
-      });
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Goal',
+      message: 'Delete this mentorship goal?',
+      variant: 'danger',
+      onConfirm: () => {
+        setGoalError('');
+        mentorshipAPI
+          .deleteGoal(goalId)
+          .then(() => {
+            refreshGoals();
+            setToast({ isOpen: true, message: 'Goal deleted successfully', type: 'success' });
+          })
+          .catch((err) => {
+            const fallback = err?.error?.message || err?.message || 'Unable to delete goal.';
+            setGoalError(fallback);
+          });
+      }
+    });
   };
 
   const handleSendMessage = (event) => {
