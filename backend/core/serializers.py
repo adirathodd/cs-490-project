@@ -3618,8 +3618,23 @@ class ReferencePortfolioListSerializer(serializers.ModelSerializer):
 class MarketIntelligenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = MarketIntelligence
-        fields = ['id', 'user', 'industry', 'role', 'location', 'salary_range_min', 'salary_range_max', 'demand_level', 'skills_in_demand', 'market_trends', 'created_at', 'updated_at']
-        read_only_fields = ['user', 'created_at', 'updated_at']
+        fields = [
+            'id',
+            'job_title',
+            'location',
+            'experience_level',
+            'industry',
+            'median_salary',
+            'percentile_25',
+            'percentile_75',
+            'sample_size',
+            'demand_score',
+            'growth_trend',
+            'top_skills',
+            'data_source',
+            'last_updated',
+        ]
+        read_only_fields = fields
 
 
 # Mock Interview Serializers (UC-077)
@@ -3707,4 +3722,3 @@ class MockInterviewSessionListSerializer(serializers.ModelSerializer):
         if obj.pk:
             return obj.questions.filter(user_answer__isnull=False).exclude(user_answer='').count()
         return 0
-
