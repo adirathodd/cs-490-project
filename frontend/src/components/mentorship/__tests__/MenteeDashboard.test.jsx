@@ -120,6 +120,30 @@ const sampleMessages = {
   ],
 };
 
+const sampleAnalytics = {
+  funnel_analytics: {
+    total_applications: 3,
+    status_breakdown: { interested: 1, applied: 3, phone_screen: 1, interview: 1, offer: 0, rejected: 1 },
+    response_rate: 33.3,
+    interview_rate: 33.3,
+    offer_rate: 0,
+  },
+  time_to_response: {
+    avg_application_to_response_days: 2.0,
+    avg_application_to_interview_days: 5.5,
+    avg_interview_to_offer_days: null,
+    samples: { application_to_response: 2, application_to_interview: 1, interview_to_offer: 0 },
+  },
+  volume_patterns: { weekly_volume: [{ week: '2025-11-20', count: 2 }], avg_weekly: 2, total_applications: 2 },
+  practice_engagement: {
+    total_sessions: 4,
+    last_7_days: 2,
+    average_score: 78,
+    activity: [],
+    focus_categories: [{ category: 'behavioral', average_score: 70, count: 2 }],
+  },
+};
+
 const mockNewMessage = {
   id: 'msg-2',
   message: 'Just sent another application!',
@@ -142,6 +166,7 @@ describe('MentorshipMenteeDashboard', () => {
     jest.spyOn(window, 'clearInterval').mockImplementation(() => {});
     mentorshipAPI.getSharedData.mockResolvedValue(sampleSharedData);
     mentorshipAPI.getProgressReport.mockResolvedValue(sampleReport);
+    mentorshipAPI.getAnalytics.mockResolvedValue(sampleAnalytics);
     mentorshipAPI.getMessages.mockResolvedValue(sampleMessages);
     mentorshipAPI.getGoals.mockResolvedValue({
       goals: sampleSharedData.goals,

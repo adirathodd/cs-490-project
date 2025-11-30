@@ -187,6 +187,7 @@ const mentorshipAPI = {
 	getShareSettings: jestFn(),
 	updateShareSettings: jestFn(),
 	getSharedData: jestFn(),
+	getAnalytics: jestFn(),
 	getProgressReport: jestFn(),
 	getMessages: jestFn(),
 	getGoals: jestFn(),

@@ -123,6 +123,20 @@ const getDegreeLabel = (value) => {
   return degreeTypeLabels[key] || value;
 };
 
+const formatTiming = (days) => {
+  if (days == null) return 'No data';
+  if (days >= 1) return `${days} days`;
+  return `${(days * 24).toFixed(1)} hrs`;
+};
+
+const formatStageLabel = (value) => {
+  if (!value) return '';
+  return value
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
 const formatEducationDates = (edu) => {
   if (!edu) return 'Dates not provided';
   const start = formatDateLabel(edu.start_date);
@@ -164,6 +178,9 @@ const MentorshipMenteeDashboard = () => {
   const [messagesError, setMessagesError] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [analytics, setAnalytics] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState('');
   const chatLogRef = useRef(null);
 
   const refreshGoals = useCallback(() => {
@@ -226,6 +243,22 @@ const MentorshipMenteeDashboard = () => {
       .finally(() => setReportLoading(false));
   }, [teamMemberId]);
 
+  const fetchAnalytics = useCallback(() => {
+    if (!teamMemberId) return;
+    setAnalyticsLoading(true);
+    mentorshipAPI
+      .getAnalytics(teamMemberId)
+      .then((response) => {
+        setAnalytics(response || {});
+        setAnalyticsError('');
+      })
+      .catch((err) => {
+        const fallback = err?.error?.message || err?.message || 'Unable to load mentee analytics.';
+        setAnalyticsError(fallback);
+      })
+      .finally(() => setAnalyticsLoading(false));
+  }, [teamMemberId]);
+
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
@@ -253,6 +286,10 @@ const MentorshipMenteeDashboard = () => {
   useEffect(() => {
     fetchProgressReport();
   }, [fetchProgressReport]);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
 
   useEffect(() => {
     fetchMessages();
@@ -606,6 +643,104 @@ const MentorshipMenteeDashboard = () => {
             </button>
           </div>
         </form>
+      </section>
+
+      <section className="mentorship-card mentorship-mentee-section">
+        <div className="mentorship-section-header">
+          <div>
+            <p className="mentorship-card__eyebrow">Applications</p>
+            <h3>Mentee funnel & timing</h3>
+          </div>
+          <button
+            type="button"
+            className="mentorship-btn mentorship-btn--ghost"
+            onClick={fetchAnalytics}
+            disabled={analyticsLoading}
+          >
+            {analyticsLoading ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
+        {analyticsError && <div className="mentorship-alert mentorship-alert--error">{analyticsError}</div>}
+        {!analytics && analyticsLoading && <LoadingSpinner />}
+        {analytics && (
+          <>
+            <div className="mentorship-analytics-grid">
+              <div className="mentorship-analytic-card">
+                <p className="mentorship-card__eyebrow">Funnel</p>
+                <h4>{analytics.funnel_analytics?.total_applications || 0} applications</h4>
+                <div className="mentorship-funnel-stats">
+                  {Object.entries(analytics.funnel_analytics?.status_breakdown || {}).map(([key, val]) => (
+                    <div key={key} className="mentorship-funnel-row">
+                      <span className="muted">{formatStageLabel(key)}</span>
+                      <span>{val}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mentorship-funnel-rates">
+                  <span>Response {analytics.funnel_analytics?.response_rate || 0}%</span>
+                  <span>Interview {analytics.funnel_analytics?.interview_rate || 0}%</span>
+                  <span>Offer {analytics.funnel_analytics?.offer_rate || 0}%</span>
+                </div>
+              </div>
+              <div className="mentorship-analytic-card">
+                <p className="mentorship-card__eyebrow">Stage timing</p>
+                <ul className="mentorship-timing-list">
+                  <li>
+                    <span>Application → Response</span>
+                    <strong>{formatTiming(analytics.time_to_response?.avg_application_to_response_days)}</strong>
+                  </li>
+                  <li>
+                    <span>Application → Interview</span>
+                    <strong>{formatTiming(analytics.time_to_response?.avg_application_to_interview_days)}</strong>
+                  </li>
+                  <li>
+                    <span>Interview → Offer</span>
+                    <strong>{formatTiming(analytics.time_to_response?.avg_interview_to_offer_days)}</strong>
+                  </li>
+                </ul>
+              </div>
+              <div className="mentorship-analytic-card">
+                <p className="mentorship-card__eyebrow">Practice engagement</p>
+                <div className="mentorship-practice-stats">
+                  <div>
+                    <p className="muted">Sessions (30d)</p>
+                    <h4>{analytics.practice_engagement?.total_sessions || 0}</h4>
+                  </div>
+                  <div>
+                    <p className="muted">Last 7d</p>
+                    <h4>{analytics.practice_engagement?.last_7_days || 0}</h4>
+                  </div>
+                  <div>
+                    <p className="muted">Avg score</p>
+                    <h4>{analytics.practice_engagement?.average_score ?? '—'}</h4>
+                  </div>
+                </div>
+                {analytics.practice_engagement?.focus_categories?.length > 0 && (
+                  <div className="mentorship-practice-focus">
+                    <p className="muted">Focus areas</p>
+                    <ul>
+                      {analytics.practice_engagement.focus_categories.map((cat) => (
+                        <li key={cat.category}>
+                          {formatStageLabel(cat.category)} — {cat.average_score ?? '—'} avg ({cat.count} sessions)
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+            {analytics.practice_recommendations?.length > 0 && (
+              <div className="mentorship-analytic-card mentorship-analytic-card--full">
+                <p className="mentorship-card__eyebrow">Practice recommendations</p>
+                <ul className="mentorship-recommendations">
+                  {analytics.practice_recommendations.map((rec, idx) => (
+                    <li key={idx}>{rec}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
       </section>
 
       <section className="mentorship-card mentorship-mentee-section mentorship-goals-card">
