@@ -1091,3 +1091,50 @@
     align-items: flex-start;
   }
 }
+
+/* Analytics additions */
+.mentorship-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+.mentorship-analytic-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+.mentorship-funnel-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 8px 0;
+}
+.mentorship-funnel-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.mentorship-funnel-rates {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+  color: #374151;
+}
+.mentorship-timing-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: grid;
+  gap: 6px;
+}
+.mentorship-timing-list li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.mentorship-practice-stats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
