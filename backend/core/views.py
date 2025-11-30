@@ -8162,7 +8162,18 @@ def salary_negotiation_outcomes(request, job_id):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    if not any([company_offer, counter_amount, final_result]):
+    # Base components (optional)
+    try:
+        base_salary = Decimal(payload.get('base_salary')) if payload.get('base_salary') not in (None, '', 'null') else None
+        bonus = Decimal(payload.get('bonus')) if payload.get('bonus') not in (None, '', 'null') else None
+        equity = Decimal(payload.get('equity')) if payload.get('equity') not in (None, '', 'null') else None
+    except (InvalidOperation, TypeError):
+        return Response(
+            {'error': {'code': 'invalid_payload', 'message': 'Base, bonus, and equity must be valid numbers.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not any([company_offer, counter_amount, final_result, base_salary, bonus, equity]):
         return Response(
             {'error': {'code': 'missing_amount', 'message': 'Provide at least one compensation amount.'}},
             status=status.HTTP_400_BAD_REQUEST
@@ -8177,15 +8188,24 @@ def salary_negotiation_outcomes(request, job_id):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    computed_total = None
+    if total_comp is None:
+        # Prefer explicit base salary; fall back to final/counter/company offers
+        base_for_total = base_salary or final_result or counter_amount or company_offer
+        components = [base_for_total, bonus, equity]
+        computed_total = sum([val for val in components if val is not None]) if any(components) else None
     outcome = SalaryNegotiationOutcome.objects.create(
         job=job,
         plan=plan,
         stage=stage,
         status=status_value,
+        base_salary=base_salary,
+        bonus=bonus,
+        equity=equity,
         company_offer=company_offer,
         counter_amount=counter_amount,
         final_result=final_result,
-        total_comp_value=total_comp,
+        total_comp_value=total_comp if total_comp is not None else computed_total,
         leverage_used=payload.get('leverage_used', ''),
         confidence_score=confidence_score,
         notes=payload.get('notes', ''),
@@ -8195,19 +8215,59 @@ def salary_negotiation_outcomes(request, job_id):
 
 
 def _serialize_outcome(outcome):
+    def positive_or_none(val):
+        try:
+            num = float(val)
+        except (TypeError, ValueError):
+            return None
+        return num if num > 0 else None
+
     return {
         'id': outcome.id,
         'stage': outcome.stage,
         'status': outcome.status,
-        'company_offer': float(outcome.company_offer) if outcome.company_offer is not None else None,
-        'counter_amount': float(outcome.counter_amount) if outcome.counter_amount is not None else None,
-        'final_result': float(outcome.final_result) if outcome.final_result is not None else None,
-        'total_comp_value': float(outcome.total_comp_value) if outcome.total_comp_value is not None else None,
+        'base_salary': positive_or_none(outcome.base_salary),
+        'bonus': positive_or_none(outcome.bonus),
+        'equity': positive_or_none(outcome.equity),
+        'company_offer': positive_or_none(outcome.company_offer),
+        'counter_amount': positive_or_none(outcome.counter_amount),
+        'final_result': positive_or_none(outcome.final_result),
+        'total_comp_value': positive_or_none(outcome.total_comp_value),
         'leverage_used': outcome.leverage_used,
         'confidence_score': outcome.confidence_score,
         'notes': outcome.notes,
         'created_at': outcome.created_at.isoformat(),
     }
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def salary_negotiation_outcome_detail(request, job_id, outcome_id):
+    """Delete a specific negotiation outcome."""
+    from core.models import CandidateProfile, JobEntry, SalaryNegotiationOutcome
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_required', 'message': 'Candidate profile required.'}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    outcome = SalaryNegotiationOutcome.objects.filter(id=outcome_id, job=job).first()
+    if not outcome:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Outcome not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    outcome.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # 
