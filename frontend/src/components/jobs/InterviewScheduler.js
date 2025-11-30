@@ -119,7 +119,7 @@ export default function InterviewScheduler({ job, onClose, onSuccess, existingIn
         const errorMsg = Array.isArray(err.error) ? err.error[0] : err.error;
         setError(errorMsg);
       } else if (err?.message === 'Network error' || err?.name === 'TypeError') {
-        setError('Unable to schedule interview due to network issues. Please try again later.');
+        setError('Network error: Unable to schedule interview due to network issues. Please try again later.');
       } else {
         // Extract first available error message from any field
         let errorMsg = err.message || (existingInterview ? 'Failed to update interview' : 'Failed to create interview');

@@ -410,6 +410,6 @@ describe('InterviewScheduler (UC-071: Interview Scheduling)', () => {
     const submitBtn = screen.getByRole('button', { name: /schedule interview/i });
     await userEvent.click(submitBtn);
 
-    expect(await screen.findByText(/network error/i)).toBeInTheDocument();
+    expect(await screen.findByText(/unable to schedule interview due to network issues/i)).toBeInTheDocument();
   });
 });
