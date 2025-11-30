@@ -19,10 +19,19 @@ class MockInterviewGenerator:
     """Generate tailored mock interview questions using Gemini AI."""
     
     def __init__(self):
-        """Initialize Gemini AI client."""
-        if genai is None:
-            raise ValueError("google-genai package is not installed")
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        """Initialize generator without creating client yet."""
+        self._client = None
+    
+    @property
+    def client(self):
+        """Lazy initialization of Gemini AI client."""
+        if self._client is None:
+            if genai is None:
+                raise ValueError("google-genai package is not installed")
+            if not settings.GEMINI_API_KEY:
+                raise ValueError("API key must be set when using the Google AI API.")
+            self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        return self._client
     
     def generate_questions(
         self,
@@ -274,10 +283,19 @@ class MockInterviewCoach:
     """Provide AI-powered coaching and feedback on interview responses."""
     
     def __init__(self):
-        """Initialize Gemini AI client."""
-        if genai is None:
-            raise ValueError("google-genai package is not installed")
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        """Initialize coach without creating client yet."""
+        self._client = None
+    
+    @property
+    def client(self):
+        """Lazy initialization of Gemini AI client."""
+        if self._client is None:
+            if genai is None:
+                raise ValueError("google-genai package is not installed")
+            if not settings.GEMINI_API_KEY:
+                raise ValueError("API key must be set when using the Google AI API.")
+            self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        return self._client
     
     def evaluate_answer(
         self,
