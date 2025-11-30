@@ -81,6 +81,16 @@ urlpatterns = [
     path('networking-events/<uuid:event_id>/follow-ups/<uuid:follow_up_id>/complete', views.event_follow_up_complete, name='event-follow-up-complete'),
     path('networking-events/analytics', views.networking_analytics, name='networking-analytics'),
 
+    # Supporters (family/friends) access
+    path('supporters', views.supporter_invites, name='supporter-invites'),
+    path('supporters/<int:invite_id>', views.supporter_invite_detail, name='supporter-invite-detail'),
+    path('supporters/dashboard', views.supporter_dashboard, name='supporter-dashboard'),
+    path('supporters/encouragements', views.supporter_encouragement, name='supporter-encouragement'),
+    path('supporters/encouragements/list', views.supporter_encouragements_for_candidate, name='supporter-encouragements-for-candidate'),
+    path('supporters/chat', views.supporter_chat, name='supporter-chat'),
+    path('supporters/chat/candidate', views.supporter_chat_candidate, name='supporter-chat-candidate'),
+    path('supporters/mood', views.supporter_mood, name='supporter-mood'),
+
     # Mentorship & collaboration
     path('mentorship/requests', views.mentorship_requests_view, name='mentorship-requests'),
     path('mentorship/requests/<uuid:request_id>/respond', views.respond_to_mentorship_request, name='mentorship-request-respond'),

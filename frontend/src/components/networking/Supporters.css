@@ -1,0 +1,276 @@
+.supporters-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+  min-height: 100vh;
+  width: 100%;
+  background: linear-gradient(180deg, rgba(124, 58, 237, 0.06) 0%, rgba(255, 255, 255, 0.95) 55%, #ffffff 100%);
+}
+
+.supporters-header h1 {
+  margin: 4px 0 8px;
+}
+
+.supporters-header .muted {
+  color: #475569;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.supporters-card {
+  background: #fff;
+  border: 1px solid rgba(124, 58, 237, 0.15);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 12px 30px rgba(124, 58, 237, 0.08);
+  margin-top: 16px;
+}
+
+.supporters-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.supporters-alert {
+  background: #fff1f2;
+  color: #b91c1c;
+  border: 1px solid #fecdd3;
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+.supporters-toast {
+  color: #0f172a;
+  background: #ecfeff;
+  border: 1px solid #bae6fd;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.supporters-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.supporters-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.supporters-form input,
+.supporters-form select {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.supporters-form textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  resize: vertical;
+}
+
+.actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.btn-primary {
+  border: none;
+  background: linear-gradient(135deg, #6366f1, #7c3aed);
+  color: #fff;
+  border-radius: 999px;
+  padding: 10px 18px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn-ghost {
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  background: rgba(124, 58, 237, 0.06);
+  border-radius: 999px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #5b21b6;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #4f46e5;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0;
+}
+.btn-danger {
+  color: #b91c1c;
+}
+
+.supporters-table {
+  width: 100%;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.supporters-row {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 1fr 1fr 1.2fr 1.4fr;
+  gap: 8px;
+  padding: 12px 14px;
+  align-items: center;
+}
+
+.supporters-row--head {
+  background: #f8fafc;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.supporters-row:not(.supporters-row--head) {
+  border-top: 1px solid #e2e8f0;
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.badge--green {
+  background: #ecfdf3;
+  color: #047857;
+}
+
+.badge--gray {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.supporters-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.supporters-loading {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+.muted {
+  color: #1f2937;
+}
+
+.supporters-timing-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.supporters-timing-list li {
+  display: flex;
+  justify-content: space-between;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.supporters-achievements {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.supporters-achievements li {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.supporters-mood {
+  display: grid;
+  gap: 8px;
+}
+
+.supporters-mood__score {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.supporters-achievement-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.supporters-emoji {
+  font-size: 18px;
+}
+
+.supporters-chat {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.supporters-chat__item {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.supporters-chat__item--candidate {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+}
+
+.supporters-chat__item--supporter {
+  border-color: #e0f2fe;
+  background: #f0f9ff;
+}
+
+.supporters-chat__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.supporters-chat__sender {
+  font-weight: 700;
+  color: #0f172a;
+}

@@ -29,6 +29,8 @@ import SalaryNegotiation from './components/jobs/SalaryNegotiation';
 import Goals from './components/goals/Goals';
 import ContactsPage from './components/contacts/ContactsPage';
 import NetworkingEvents from './components/networking/NetworkingEvents';
+import Supporters from './components/networking/Supporters';
+import SupporterPublic from './components/networking/SupporterPublic';
 import ReferencesPage from './components/references/ReferencesPage';
 import MentorshipDashboard from './components/mentorship/MentorshipDashboard';
 import ReferralManagement from './components/referrals/ReferralManagement';
@@ -59,6 +61,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/supporter" element={<SupporterPublic />} />
           
           {/* Public shared resume view */}
           <Route path="/shared-resume/:shareToken" element={<SharedResumeView />} />
@@ -365,6 +368,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <NetworkingEvents />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/supporters"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <Supporters />
               </PrivateRoute>
             }
           />
