@@ -343,7 +343,7 @@
 /* Discovery Search Form */
 
 .discovery-search-form {
-  max-width: 800px;
+  max-width: 900px;
   margin: 24px auto;
   background: white;
   padding: 32px;
@@ -366,6 +366,7 @@
 
 .form-group {
   margin-bottom: 20px;
+  width: 100%;
 }
 
 .form-group label {
@@ -379,10 +380,12 @@
 .input-with-button {
   display: flex;
   gap: 8px;
+  width: 100%;
 }
 
 .input-with-button input {
   flex: 1;
+  min-width: 300px;
   padding: 10px 12px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
