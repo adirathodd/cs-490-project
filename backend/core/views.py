@@ -4728,6 +4728,44 @@ def jobs_stats(request):
         return Response({'error': {'code': 'internal_error', 'message': 'Failed to compute job stats.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def application_success_analysis(request):
+    """
+    UC-097: Application Success Rate Analysis
+    
+    Provides comprehensive analysis of job application success patterns including:
+    - Overall metrics (response rate, interview rate, offer rate)
+    - Success rates by industry, company size, role type
+    - Comparison of application sources and methods
+    - Impact of resume/cover letter customization
+    - Timing pattern analysis (best days/times to apply)
+    - Actionable recommendations for improvement
+    """
+    try:
+        from core.application_analytics import ApplicationSuccessAnalyzer
+        
+        profile = CandidateProfile.objects.get(user=request.user)
+        analyzer = ApplicationSuccessAnalyzer(profile)
+        
+        # Get complete analysis
+        analysis = analyzer.get_complete_analysis()
+        
+        return Response(analysis, status=status.HTTP_200_OK)
+        
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Candidate profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.exception(f"Error in application_success_analysis: {e}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to compute success analysis.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def jobs_bulk_status(request):
