@@ -1,15 +1,12 @@
 """
 Test script for UC-097: Application Success Rate Analysis
 """
-import os
-import django
-
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
-django.setup()
-
+import pytest
 from core.models import CandidateProfile
 from core.application_analytics import ApplicationSuccessAnalyzer
 
+
+@pytest.mark.django_db
 def test_success_analysis():
     """Test the success analysis for all candidates."""
     print("🔍 Testing UC-097: Application Success Rate Analysis\n")
