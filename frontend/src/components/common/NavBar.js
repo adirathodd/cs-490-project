@@ -151,6 +151,13 @@ const NavBar = () => {
         >
           Referrals
         </NavLink>
+        <NavLink
+          to="/mock-interview"
+          className="nav-dropdown-item"
+          onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
+        >
+          Mock Interview Practice
+        </NavLink>
 
       </div>
     )}
