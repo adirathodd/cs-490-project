@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { authAPI, skillsAPI, educationAPI, projectsAPI } from '../../services/api';
+import api from '../../services/api';
 import SummaryCard from './SummaryCard';
 import ProfileProgress from './ProfileProgress';
 import SkillDistribution from './SkillDistribution';
@@ -30,6 +32,7 @@ const DashboardOverview = () => {
   const [education, setEducation] = useState([]);
   const [projects, setProjects] = useState([]);
   const [employmentCount, setEmploymentCount] = useState(0);
+  const [suggestedContacts, setSuggestedContacts] = useState([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -37,7 +40,7 @@ const DashboardOverview = () => {
       try {
         setLoading(true);
         // Fetch in parallel where possible
-        const [me, skillsRes, eduRes, projRes, empList] = await Promise.all([
+        const [me, skillsRes, eduRes, projRes, empList, contactSuggestions] = await Promise.all([
           authAPI.getCurrentUser().catch(() => null),
           (skillsAPI?.getSkills ? skillsAPI.getSkills() : Promise.resolve([])).catch(() => []),
           (educationAPI?.getEducations ? educationAPI.getEducations() : Promise.resolve({ results: [] })).catch(() => ({ results: [] })),
@@ -46,6 +49,10 @@ const DashboardOverview = () => {
           fetch((process.env.REACT_APP_API_URL || 'http://localhost:8000/api') + '/profile/employment', {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('firebaseToken') || ''}` }
           }).then(r => r.ok ? r.json() : Promise.resolve({ results: [] })).catch(() => ({ results: [] })),
+          // Fetch suggested contacts
+          api.get('/contact-suggestions', { params: { status: 'suggested' } })
+            .then(res => res.data || [])
+            .catch(() => []),
         ]);
 
         if (!isMounted) return;
@@ -54,6 +61,7 @@ const DashboardOverview = () => {
         setEducation(Array.isArray(eduRes) ? eduRes : (eduRes?.results || []));
         setProjects(Array.isArray(projRes) ? projRes : (projRes?.results || []));
         setEmploymentCount(Array.isArray(empList) ? empList.length : ((empList?.results || []).length));
+        setSuggestedContacts((Array.isArray(contactSuggestions) ? contactSuggestions : []).slice(0, 3));
         setError(null);
       } catch (e) {
         if (!isMounted) return;
@@ -228,6 +236,73 @@ const DashboardOverview = () => {
           </div>
         )}
       </div>
+      {/* Suggested Contacts Widget */}
+      {suggestedContacts.length > 0 && (
+        <div className="dashboard-card" style={{ padding: 14, marginTop: 12, ...section }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Suggested Contacts</h3>
+            <Link to="/contact-discovery" style={{ fontSize: 13, color: '#3b82f6', textDecoration: 'none' }}>
+              View All →
+            </Link>
+          </div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {suggestedContacts.map((suggestion) => (
+              <div 
+                key={suggestion.id} 
+                style={{ 
+                  padding: 12, 
+                  border: '1px solid #e5e7eb', 
+                  borderRadius: 6,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 12
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                    {suggestion.suggested_name}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                    {suggestion.suggested_title} at {suggestion.suggested_company}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
+                    {suggestion.reason}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <span 
+                    className="badge" 
+                    style={{ 
+                      fontSize: 10, 
+                      padding: '3px 8px',
+                      background: '#dbeafe',
+                      color: '#1e40af'
+                    }}
+                  >
+                    {suggestion.suggestion_type_display || suggestion.suggestion_type}
+                  </span>
+                  <Link 
+                    to="/contact-discovery"
+                    style={{
+                      fontSize: 12,
+                      padding: '4px 10px',
+                      background: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 4,
+                      textDecoration: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    View
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div style={{ ...twoCol, ...section }}>
         <SkillDistribution data={skillChartData} />
         <ActivityTimeline events={[]} />

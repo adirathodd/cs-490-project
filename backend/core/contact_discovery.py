@@ -31,9 +31,15 @@ def generate_contact_suggestions(user, search_criteria):
     include_industry_leaders = search_criteria.get('include_industry_leaders', False)
     
     # Get user's education for alumni matching
-    user_education = Education.objects.filter(user=user)
-    user_institutions = set(user_education.values_list('institution', flat=True))
-    user_degrees = set(user_education.values_list('degree', flat=True))
+    try:
+        candidate_profile = user.profile
+        user_education = Education.objects.filter(candidate=candidate_profile)
+        user_institutions = set(user_education.values_list('institution', flat=True))
+        user_degrees = set(user_education.values_list('field_of_study', flat=True))
+    except:
+        # User has no profile or education
+        user_institutions = set()
+        user_degrees = set()
     
     # Get user's existing contacts to avoid duplicates
     existing_contacts = set(
@@ -84,50 +90,36 @@ def _generate_target_company_suggestions(user, target_companies, existing_contac
     """Generate suggestions for people at target companies"""
     suggestions = []
     
-    # Find jobs at target companies
-    jobs = JobOpportunity.objects.filter(
-        Q(user=user) | Q(user__isnull=True),
-        company_name__in=target_companies
-    ).select_related('company')
+    # In a real implementation, this would:
+    # 1. Query LinkedIn API for employees at target companies
+    # 2. Filter by relevance criteria (role, seniority, etc.)
+    # 3. Check for existing contacts to avoid duplicates
+    # For now, return empty list - actual implementation would require external API
     
-    for job in jobs:
-        # Create a generic suggestion for this company
-        linkedin_url = f"https://linkedin.com/company/{job.company_name.lower().replace(' ', '-')}" if job.company_name else None
-        
-        if linkedin_url and linkedin_url not in existing_contacts and linkedin_url not in existing_suggestions:
-            suggestion = ContactSuggestion(
-                user=user,
-                suggested_name=f"Contact at {job.company_name}",
-                suggested_title=job.title if job.title else "Employee",
-                suggested_company=job.company_name,
-                suggested_linkedin_url=linkedin_url,
-                suggested_location=job.location if hasattr(job, 'location') else None,
-                suggested_industry=job.industry if hasattr(job, 'industry') else None,
-                suggestion_type='target_company',
-                relevance_score=0.85,
-                reason=f"Works at {job.company_name}, a company you're interested in. Role: {job.title or 'Various positions'}",
-                related_job=job,
-                related_company=job.company if hasattr(job, 'company') else None,
-            )
-            suggestions.append(suggestion)
-    
-    return suggestions[:10]  # Limit to top 10
+    return suggestions
 
 
 def _generate_alumni_suggestions(user, user_institutions, user_degrees, target_companies, existing_contacts, existing_suggestions):
     """Generate suggestions for alumni connections"""
     suggestions = []
     
-    # Find education records from same institutions
-    alumni_education = Education.objects.filter(
-        institution__in=user_institutions
-    ).exclude(user=user).select_related('user')
+    if not user_institutions:
+        return suggestions
+    
+    # Find education records from same institutions (excluding user's own profile)
+    try:
+        candidate_profile = user.profile
+        alumni_education = Education.objects.filter(
+            institution__in=user_institutions
+        ).exclude(candidate=candidate_profile).select_related('candidate')
+    except:
+        return suggestions
     
     for edu in alumni_education[:20]:  # Limit search
         # Check if this person has contact info we can suggest
         # In a real implementation, this would connect to a LinkedIn API or database
         # For now, create placeholder suggestions
-        linkedin_url = f"https://linkedin.com/in/{edu.user.email.split('@')[0]}" if hasattr(edu, 'user') and hasattr(edu.user, 'email') else None
+        linkedin_url = f"https://linkedin.com/in/{edu.candidate.email.split('@')[0]}" if hasattr(edu, 'candidate') and hasattr(edu.candidate, 'email') else None
         
         if linkedin_url and linkedin_url not in existing_contacts and linkedin_url not in existing_suggestions:
             suggestion = ContactSuggestion(
@@ -139,9 +131,9 @@ def _generate_alumni_suggestions(user, user_institutions, user_degrees, target_c
                 suggested_industry=None,
                 suggestion_type='alumni',
                 relevance_score=0.75,
-                reason=f"Fellow alumnus from {edu.institution}. Degree: {edu.degree or 'Unknown'}",
+                reason=f"Fellow alumnus from {edu.institution}. Degree: {edu.field_of_study or 'Unknown'}",
                 shared_institution=edu.institution,
-                shared_degree=edu.degree if edu.degree in user_degrees else None,
+                shared_degree=edu.field_of_study if edu.field_of_study in user_degrees else None,
             )
             suggestions.append(suggestion)
     
@@ -191,7 +183,7 @@ def _generate_mutual_connection_suggestions(user, existing_contacts, existing_su
     
     # For now, create placeholder logic
     # Look for contacts who might know other people (based on same company)
-    companies = user_contacts.values_list('company_name', flat=True).distinct()
+    companies = user_contacts.filter(company_name__isnull=False).values_list('company_name', flat=True).distinct()
     
     for company in companies[:10]:
         if company:
