@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from core.models import CandidateProfile, JobEntry, Document, JobStatusChange
+from core.models import CandidateSkill, Skill
 from django.db import models
 from django.db.models import Count, Q, F, Case, When, Value, IntegerField, Avg, FloatField, ExpressionWrapper
 from django.db.models.functions import TruncMonth, TruncDate, Coalesce
@@ -14,6 +15,8 @@ from django.utils.dateparse import parse_date
 import logging
 import statistics
 from datetime import datetime, timedelta, date
+from django.conf import settings
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +89,40 @@ def cover_letter_analytics_view(request):
             {'error': {'code': 'analytics_error', 'message': 'Failed to load analytics data'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def competitive_analysis_view(request):
+    """Peer benchmarking and positioning analysis for the current user."""
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': {'message': 'Profile not found'}}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        params = request.query_params
+        user_qs, filters_applied = _build_filtered_queryset(profile, params)
+
+        # Peer cohort for benchmarks: same industry + same experience level
+        peer_same_level = CandidateProfile.objects.filter(
+            industry=profile.industry,
+            experience_level=profile.experience_level,
+        ).exclude(id=profile.id)
+        peer_same_ids = list(peer_same_level.values_list('id', flat=True))
+
+        peer_qs = JobEntry.objects.filter(candidate_id__in=peer_same_ids)
+        peer_qs, _ = _build_filtered_queryset_for_peers(peer_qs, params)
+
+        # Progression cohort: same industry, higher experience level than current user
+        progression_profiles = CandidateProfile.objects.filter(industry=profile.industry).exclude(id=profile.id)
+
+        analysis = _calculate_competitive_analysis(profile, user_qs, peer_qs, peer_same_level, progression_profiles)
+        analysis['filters'] = filters_applied
+        return Response(analysis)
+    except Exception as e:
+        logger.error(f"Competitive analysis error: {e}")
+        return Response({'error': {'message': 'Failed to load competitive analysis'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['PATCH'])
@@ -552,6 +589,42 @@ def _build_filtered_queryset(profile, params):
     return qs, filters_applied
 
 
+def _build_filtered_queryset_for_peers(qs, params):
+    """Apply the same filters as _build_filtered_queryset but without candidate scoping."""
+    filters_applied = {}
+    params = params or {}
+
+    start_date = _parse_date_param(params.get('start_date'))
+    if start_date:
+        qs = qs.filter(created_at__date__gte=start_date)
+        filters_applied['start_date'] = start_date.isoformat()
+
+    end_date = _parse_date_param(params.get('end_date'))
+    if end_date:
+        qs = qs.filter(created_at__date__lte=end_date)
+        filters_applied['end_date'] = end_date.isoformat()
+
+    job_type_codes = _normalize_job_type_filters(params)
+    if job_type_codes:
+        qs = qs.filter(job_type__in=job_type_codes)
+        filters_applied['job_types'] = job_type_codes
+
+    salary_min = _parse_float_param(params.get('salary_min'))
+    salary_max = _parse_float_param(params.get('salary_max'))
+    avg_salary_expr = _avg_salary_expression()
+
+    if salary_min is not None or salary_max is not None:
+        qs = qs.annotate(avg_salary=avg_salary_expr)
+        if salary_min is not None:
+            qs = qs.filter(avg_salary__gte=salary_min)
+            filters_applied['salary_min'] = salary_min
+        if salary_max is not None:
+            qs = qs.filter(avg_salary__lte=salary_max)
+            filters_applied['salary_max'] = salary_max
+
+    return qs, filters_applied
+
+
 def _parse_date_param(value):
     if not value:
         return None
@@ -662,6 +735,183 @@ def _empty_industry_benchmarks():
         'industry_avg_offer_rate': 2.5,
         'user_vs_benchmark': 'no_data'
     }
+
+
+def _calculate_competitive_analysis(profile, user_qs, peer_qs, peer_profiles_same_level, progression_profiles_all):
+    """Compute user vs peer benchmarks, skill gaps, and recommendations."""
+    level_order = ['entry', 'mid', 'senior', 'executive']
+    def _is_higher_level(level):
+        if not profile.experience_level or level not in level_order or profile.experience_level not in level_order:
+            return False
+        return level_order.index(level) > level_order.index(profile.experience_level)
+
+    def _metrics(qs):
+        total = qs.count()
+        phone = qs.filter(status__in=['phone_screen', 'interview', 'offer']).count()
+        interview = qs.filter(status__in=['interview', 'offer']).count()
+        offer = qs.filter(status='offer').count()
+        apps_per_week = 0
+        if total:
+            earliest = qs.order_by('created_at').first().created_at
+            latest = qs.order_by('-created_at').first().created_at
+            days = max((latest - earliest).days + 1, 7)
+            apps_per_week = round(total / (days / 7), 1)
+        # Employment stats for this cohort
+        return {
+            'applications': total,
+            'response_rate': round((phone / total) * 100, 1) if total else 0,
+            'interview_rate': round((interview / total) * 100, 1) if total else 0,
+            'offer_rate': round((offer / total) * 100, 1) if total else 0,
+            'apps_per_week': apps_per_week,
+            'funnel': {
+                'interested': qs.filter(status='interested').count(),
+                'applied': qs.filter(status='applied').count(),
+                'phone_screen': qs.filter(status='phone_screen').count(),
+                'interview': qs.filter(status='interview').count(),
+                'offer': offer,
+                'rejected': qs.filter(status='rejected').count(),
+            }
+        }
+
+    user_metrics = _metrics(user_qs)
+    peer_metrics = _metrics(peer_qs)
+
+    # Employment comparison (positions held, total years) for peers at same level
+    def _employment_stats(profiles):
+        """Compute average positions and years for a list of CandidateProfile instances."""
+        if not profiles:
+            return {'avg_positions': 0, 'avg_years': 0}
+        position_counts = []
+        years_list = []
+        for p in profiles:
+            emps = getattr(p, 'work_experiences', None)
+            if not emps:
+                continue
+            emp_qs = emps.all()
+            position_counts.append(emp_qs.count())
+            years_total = 0
+            for job in emp_qs:
+                start = job.start_date or None
+                end = job.end_date or timezone.now().date()
+                if start:
+                    years_total += max((end - start).days, 0) / 365.0
+            years_list.append(years_total)
+        avg_positions = round(sum(position_counts) / len(position_counts), 1) if position_counts else 0
+        avg_years = round(sum(years_list) / len(years_list), 1) if years_list else 0
+        return {'avg_positions': avg_positions, 'avg_years': avg_years}
+
+    user_positions = _employment_stats([profile])
+    peer_positions = _employment_stats(peer_profiles_same_level)
+
+    # Skill gap analysis
+    user_skills = set(profile.skills.select_related('skill').values_list('skill__name', flat=True))
+    peer_ids = list(peer_profiles_same_level.values_list('id', flat=True))
+    peer_skill_rows = CandidateSkill.objects.filter(candidate_id__in=peer_ids).select_related('skill')
+    freq = {}
+    for row in peer_skill_rows:
+        name = row.skill.name
+        freq[name] = freq.get(name, 0) + 1
+    peer_count = max(len(set(peer_ids)), 1)
+    peer_skill_freq = [{ 'name': k, 'prevalence': round((v / peer_count) * 100, 1) } for k, v in freq.items()]
+    peer_skill_freq.sort(key=lambda x: x['prevalence'], reverse=True)
+    top_peer_skills = [s for s in peer_skill_freq if s['prevalence'] >= 10][:10]
+    gaps = [s for s in top_peer_skills if s['name'] not in user_skills]
+    differentiators = [{'name': s, 'note': 'Less common peer skill to highlight'} for s in user_skills if freq.get(s, 0) < max(1, peer_count * 0.2)]
+
+    deterministic_recs = []
+    if user_metrics['apps_per_week'] < peer_metrics['apps_per_week']:
+        deterministic_recs.append(f"Peers average {peer_metrics['apps_per_week']} applications/week; increase your pace from {user_metrics['apps_per_week']}.")
+    if user_metrics['response_rate'] < peer_metrics['response_rate']:
+        deterministic_recs.append("Improve response rate with tighter targeting and refreshed outreach.")
+    if gaps:
+        gap_names = ', '.join([g['name'] for g in gaps[:3]])
+        deterministic_recs.append(f"Add or strengthen skills commonly seen in peers: {gap_names}.")
+    if differentiators:
+        diff_names = ', '.join([d['name'] for d in differentiators[:2]])
+        deterministic_recs.append(f"Highlight differentiators in your profile: {diff_names}.")
+
+    # Progression cohort: same industry, higher experience levels
+    progression_profiles = [p for p in progression_profiles_all if _is_higher_level(p.experience_level)]
+    progression_ids = [p.id for p in progression_profiles]
+    progression_qs = JobEntry.objects.filter(candidate_id__in=progression_ids) if progression_ids else JobEntry.objects.none()
+    progression_metrics = _metrics(progression_qs) if progression_ids else None
+    progression_gaps = []
+    if progression_ids:
+        freq_prog = {}
+        for row in CandidateSkill.objects.filter(candidate_id__in=progression_ids).select_related('skill'):
+            name = row.skill.name
+            freq_prog[name] = freq_prog.get(name, 0) + 1
+        prog_count = max(len(set(progression_ids)), 1)
+        prog_skill_freq = [{ 'name': k, 'prevalence': round((v / prog_count) * 100, 1) } for k, v in freq_prog.items()]
+        prog_skill_freq.sort(key=lambda x: x['prevalence'], reverse=True)
+        top_prog_skills = [s for s in prog_skill_freq if s['prevalence'] >= 10][:10]
+        progression_gaps = [s for s in top_prog_skills if s['name'] not in user_skills]
+
+    ai_recs = _generate_competitive_ai_recs(profile, user_metrics, peer_metrics, gaps, differentiators)
+
+    return {
+        'cohort': {
+            'industry': profile.industry or 'unspecified',
+            'experience_level': profile.experience_level or 'unspecified',
+            'sample_size': len(set(peer_ids)),
+        },
+        'user_metrics': user_metrics,
+        'peer_benchmarks': peer_metrics,
+        'employment': {
+            'user': user_positions,
+            'peers': peer_positions,
+        },
+        'skill_gaps': gaps,
+        'differentiators': differentiators[:5],
+        'progression': {
+          'sample_size': len(set(progression_ids)),
+          'metrics': progression_metrics,
+          'skill_gaps': progression_gaps,
+        },
+        'recommendations': {
+            'deterministic': deterministic_recs,
+            'ai': ai_recs,
+        },
+    }
+
+
+def _generate_competitive_ai_recs(profile, user_metrics, peer_metrics, gaps, differentiators):
+    api_key = getattr(settings, 'GEMINI_API_KEY', None)
+    model = getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash')
+    if not api_key:
+        return []
+
+    snapshot = {
+        'industry': profile.industry,
+        'experience_level': profile.experience_level,
+        'user_metrics': user_metrics,
+        'peer_metrics': peer_metrics,
+        'skill_gaps': [g['name'] for g in gaps],
+        'differentiators': [d['name'] for d in differentiators],
+    }
+    prompt = (
+        "You are a career coach generating competitive positioning tips. "
+        "Return 3 concise bullet sentences. Include:\n"
+        "1) Competitive advantage actions (skills/projects) suited to the user's experience level.\n"
+        "2) Differentiation strategies and unique value propositions.\n"
+        "3) Market positioning suggestions (roles/titles/companies to target).\n"
+        f"User snapshot: {snapshot}"
+    )
+    try:
+        resp = requests.post(
+            "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent".format(model=model),
+            params={'key': api_key},
+            json={'contents': [{'parts': [{'text': prompt}]}]},
+            timeout=10,
+        )
+        data = resp.json()
+        parts = data.get('candidates', [{}])[0].get('content', {}).get('parts', [])
+        text = ' '.join([p.get('text', '') for p in parts]).strip()
+        tips = [t.strip('•- ').strip() for t in text.split('\n') if t.strip()]
+        return tips[:3]
+    except Exception as exc:
+        logger.warning("Gemini recommendations failed: %s", exc)
+        return []
 
 def _empty_response_trends():
     return {'monthly_trends': []}
