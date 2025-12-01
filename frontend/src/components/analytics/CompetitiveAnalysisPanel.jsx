@@ -173,7 +173,7 @@ export default function CompetitiveAnalysisPanel() {
         <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {jobTypeOptions.map((opt) => (
             <label key={opt.id} htmlFor={`jobtype-${opt.id}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <input type="checkbox" checked={filters.jobTypes[opt.id]} onChange={() => handleJobTypeToggle(opt.id)} />
+              <input id=`"jobtype-${opt.id}`" type="checkbox" checked={filters.jobTypes[opt.id]} onChange={() => handleJobTypeToggle(opt.id)} />
               {opt.label}
             </label>
           ))}
@@ -272,6 +272,7 @@ export default function CompetitiveAnalysisPanel() {
     </div>
   );
 }
+
 
 
 
