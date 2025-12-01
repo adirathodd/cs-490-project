@@ -107,7 +107,9 @@ export default function InterviewScheduler({ job, onClose, onSuccess, existingIn
       if (onSuccess) onSuccess();
       if (onClose) onClose();
     } catch (err) {
-      console.error('Interview scheduling error:', err);
+      if (process.env.NODE_ENV !== 'test') {
+        console.error('Interview scheduling error:', err);
+      }
 
       const normalizeError = (error) => {
         if (!error) return {};
@@ -135,10 +137,14 @@ export default function InterviewScheduler({ job, onClose, onSuccess, existingIn
       const errData = normalizeError(err);
 
       try {
-        console.error('Error keys:', (errData && typeof errData === 'object') ? Object.keys(errData) : []);
-        console.error('Error structure:', safeStringify(errData));
+        if (process.env.NODE_ENV !== 'test') {
+          console.error('Error keys:', (errData && typeof errData === 'object') ? Object.keys(errData) : []);
+          console.error('Error structure:', safeStringify(errData));
+        }
       } catch (e) {
-        console.error('Unable to inspect error object:', e);
+        if (process.env.NODE_ENV !== 'test') {
+          console.error('Unable to inspect error object:', e);
+        }
       }
       
       // Check for conflicts
