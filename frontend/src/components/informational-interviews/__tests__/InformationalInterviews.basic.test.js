@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
-import { act } from 'react-dom/test-utils';
+import { act } from 'react';
 
 // Mock API before any imports
 jest.mock('../../../services/api', () => ({

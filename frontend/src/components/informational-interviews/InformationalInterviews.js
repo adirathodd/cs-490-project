@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { informationalInterviewsAPI, contactsAPI } from '../../services/api';
 import './InformationalInterviews.css';
 
 const InformationalInterviews = () => {
+  const isMounted = useRef(true);
   const [interviews, setInterviews] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -12,6 +13,23 @@ const InformationalInterviews = () => {
   const [selectedInterview, setSelectedInterview] = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [notification, setNotification] = useState(null);
+  const notificationTimer = useRef(null);
+
+  const setInterviewsSafe = (value) => {
+    if (isMounted.current) setInterviews(value);
+  };
+  const setContactsSafe = (value) => {
+    if (isMounted.current) setContacts(value);
+  };
+  const setAnalyticsSafe = (value) => {
+    if (isMounted.current) setAnalytics(value);
+  };
+  const setErrorSafe = (value) => {
+    if (isMounted.current) setError(value);
+  };
+  const setLoadingSafe = (value) => {
+    if (isMounted.current) setLoading(value);
+  };
 
   const statusOptions = [
     { value: 'identified', label: 'Identified', color: '#6c757d' },
@@ -31,29 +49,53 @@ const InformationalInterviews = () => {
   ];
 
   useEffect(() => {
-    loadData();
-    loadContacts();
-    loadAnalytics();
+    const loadAll = async () => {
+      try {
+        setLoadingSafe(true);
+        const [data, contactsData, analyticsData] = await Promise.all([
+          informationalInterviewsAPI.getInterviews({}),
+          contactsAPI.list(),
+          informationalInterviewsAPI.getAnalytics(),
+        ]);
+        setInterviewsSafe(data);
+        setContactsSafe(contactsData);
+        setAnalyticsSafe(analyticsData);
+        setErrorSafe('');
+      } catch (err) {
+        setErrorSafe(err.message || 'Failed to load informational interviews');
+      } finally {
+        setLoadingSafe(false);
+      }
+    };
+
+    loadAll();
+    return () => {
+      isMounted.current = false;
+      if (notificationTimer.current) {
+        clearTimeout(notificationTimer.current);
+        notificationTimer.current = null;
+      }
+    };
   }, []);
 
   const loadData = async (statusFilter = null) => {
     try {
-      setLoading(true);
+      setLoadingSafe(true);
       const filters = statusFilter && statusFilter !== 'all' ? { status: statusFilter } : {};
       const data = await informationalInterviewsAPI.getInterviews(filters);
-      setInterviews(data);
-      setError('');
+      setInterviewsSafe(data);
+      setErrorSafe('');
     } catch (err) {
-      setError(err.message || 'Failed to load informational interviews');
+      setErrorSafe(err.message || 'Failed to load informational interviews');
     } finally {
-      setLoading(false);
+      setLoadingSafe(false);
     }
   };
 
   const loadContacts = async () => {
     try {
       const data = await contactsAPI.list();
-      setContacts(data);
+      setContactsSafe(data);
     } catch (err) {
       console.error('Failed to load contacts:', err);
     }
@@ -62,7 +104,7 @@ const InformationalInterviews = () => {
   const loadAnalytics = async () => {
     try {
       const data = await informationalInterviewsAPI.getAnalytics();
-      setAnalytics(data);
+      setAnalyticsSafe(data);
     } catch (err) {
       console.error('Failed to load analytics:', err);
     }
@@ -106,8 +148,17 @@ const InformationalInterviews = () => {
   };
 
   const showNotification = (message, type = 'success') => {
+    if (!isMounted.current) return;
     setNotification({ message, type });
-    setTimeout(() => setNotification(null), 4000);
+    if (notificationTimer.current) {
+      clearTimeout(notificationTimer.current);
+    }
+    notificationTimer.current = setTimeout(() => {
+      if (isMounted.current) {
+        setNotification(null);
+      }
+      notificationTimer.current = null;
+    }, 4000);
   };
 
   if (loading && interviews.length === 0) {

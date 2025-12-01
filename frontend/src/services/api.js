@@ -760,6 +760,10 @@ export const jobsAPI = {
     const response = await api.get('/jobs/analytics', { params });
     return response.data; // Enhanced analytics data
   },
+  getCompetitiveAnalysis: async (params = {}) => {
+    const response = await api.get('/jobs/competitive-analysis', { params });
+    return response.data;
+  },
   updateAnalyticsGoals: async (payload) => {
     const response = await api.patch('/jobs/analytics/goals', payload);
     return response.data;

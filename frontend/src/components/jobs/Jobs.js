@@ -2199,7 +2199,7 @@ const companyDropdownRef = useRef(null);
                       <div className="education-item-dates" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{ width: 10, height: 10, borderRadius: 4, background: color }} aria-hidden />
                         {/* Keep this exact text for existing tests */}
-                        <span className="status">Deadline: {item.application_deadline}</span>
+                        <span className="status" data-testid="application-deadline">Deadline: {item.application_deadline}</span>
                         {diff != null && (
                           <span style={{ fontSize: 12, color: '#444' }}>
                             {diff < 0 ? `Overdue by ${Math.abs(diff)}d` : `${diff}d left`}

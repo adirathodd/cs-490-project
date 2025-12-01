@@ -66,14 +66,20 @@ class AutomationAPI {
       }
       return {};
     } catch (error) {
-      console.error(`API request failed: ${endpoint}`, error);
-      if (error?.status) {
-        throw new Error(error.message || `HTTP ${error.status}`);
+      // Normalize error to a predictable shape for callers/tests
+      if (console && console.debug) {
+        console.debug(`API request failed: ${endpoint}`, error);
       }
-      if (error?.message === 'Network error' || error?.name === 'TypeError') {
-        throw new Error('Network error');
-      }
-      throw error;
+
+      const normalized = new Error(
+        error?.message || (error?.name === 'TypeError' ? 'Network error' : 'Unknown API error')
+      );
+      normalized.status = error?.status ?? null;
+      normalized.data = error?.data ?? null;
+      normalized.isNetworkError = error?.name === 'TypeError' || normalized.message === 'Network error';
+      normalized.cause = error;
+
+      throw normalized;
     }
   }
 
