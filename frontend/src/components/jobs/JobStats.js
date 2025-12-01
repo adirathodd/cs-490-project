@@ -136,6 +136,7 @@ export default function JobStats() {
             <div
               style={{ display: 'flex', gap: 6, alignItems: 'end', height: 140, paddingTop: 12 }}
               tabIndex={0}
+              role="region"
               onKeyDown={onKeyDownNav}
               aria-label="Monthly applications chart"
               aria-live="polite"
