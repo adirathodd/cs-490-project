@@ -44,7 +44,7 @@ describe('CompetitiveAnalysisPanel', () => {
     await renderPanel();
 
     expect(jobsAPI.getCompetitiveAnalysis).toHaveBeenCalled();
-    expect(screen.getAllByText(/?/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Δ/).length).toBeGreaterThan(0);
     expect(screen.getByText(/Average positions held/i)).toBeInTheDocument();
     expect(screen.getByText(/You: 1/)).toBeInTheDocument();
     expect(screen.getByText(/Peers: 2/)).toBeInTheDocument();

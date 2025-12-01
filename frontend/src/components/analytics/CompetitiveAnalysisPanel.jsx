@@ -97,8 +97,8 @@ export default function CompetitiveAnalysisPanel() {
 
   const {
     cohort,
-    user_metrics,
-    peer_benchmarks,
+    user_metrics = {},
+    peer_benchmarks = {},
     skill_gaps = [],
     differentiators = [],
     recommendations = {},
@@ -257,8 +257,13 @@ export default function CompetitiveAnalysisPanel() {
           <div style={sectionTitle}>Recommendations</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {(recommendations.deterministic || []).map((r, idx) => <div key={`det-${idx}`}>{r}</div>)}
-            {(recommendations.ai || []).map((r, idx) => {
-              const cleaned = r.replace(/^here are.*?:\s*/i, '').replace(/^[*-]\s*/g, '');
+            {(recommendations.ai || []).map((raw, idx) => {
+              let cleaned = String(raw ?? '');
+              try {
+                cleaned = cleaned.replace(/^here are.*?:\s*/i, '').replace(/^[*-]\s*/g, '');
+              } catch (e) {
+                console.error('Failed to clean recommendation text', e, raw);
+              }
               return <div key={`ai-${idx}`}>{cleaned}</div>;
             })}
           </div>
