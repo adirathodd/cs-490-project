@@ -154,25 +154,25 @@ export default function CompetitiveAnalysisPanel() {
       <div style={{ ...card }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
           <div>
-            <label>Start Date</label>
-            <input type="date" value={filters.startDate} onChange={(e) => handleFilterChange('startDate', e.target.value)} />
+            <label htmlFor="start-date">Start Date</label>
+            <input id="start-date" type="date" value={filters.startDate} onChange={(e) => handleFilterChange('startDate', e.target.value)} />
           </div>
           <div>
-            <label>End Date</label>
-            <input type="date" value={filters.endDate} onChange={(e) => handleFilterChange('endDate', e.target.value)} />
+            <label htmlFor="end-date">End Date</label>
+            <input id="end-date" type="date" value={filters.endDate} onChange={(e) => handleFilterChange('endDate', e.target.value)} />
           </div>
           <div>
-            <label>Salary Min</label>
-            <input type="number" value={filters.salaryMin} onChange={(e) => handleFilterChange('salaryMin', e.target.value)} />
+            <label htmlFor="salary-min">Salary Min</label>
+            <input id="salary-min" type="number" value={filters.salaryMin} onChange={(e) => handleFilterChange('salaryMin', e.target.value)} />
           </div>
           <div>
-            <label>Salary Max</label>
-            <input type="number" value={filters.salaryMax} onChange={(e) => handleFilterChange('salaryMax', e.target.value)} />
+            <label htmlFor="salary-max">Salary Max</label>
+            <input id="salary-max" type="number" value={filters.salaryMax} onChange={(e) => handleFilterChange('salaryMax', e.target.value)} />
           </div>
         </div>
         <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {jobTypeOptions.map((opt) => (
-            <label key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <label key={opt.id} htmlFor={`jobtype-${opt.id}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <input type="checkbox" checked={filters.jobTypes[opt.id]} onChange={() => handleJobTypeToggle(opt.id)} />
               {opt.label}
             </label>
