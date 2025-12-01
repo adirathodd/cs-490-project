@@ -18,6 +18,11 @@ test('ArrowRight navigates to next month and CSV export uses month param', async
   const thisMonth = '2025-11';
   const nextMonth = '2025-12';
 
+  // Freeze system time so month calculations are deterministic
+  const fixedDate = new Date('2025-11-15T12:00:00Z');
+  jest.useFakeTimers('modern');
+  jest.setSystemTime(fixedDate);
+
   const statsThis = { daily_applications: [{ date: '2025-11-01', count: 1 }], daily_month: thisMonth };
   const statsNext = { daily_applications: [{ date: '2025-12-01', count: 2 }], daily_month: nextMonth };
 
@@ -48,6 +53,8 @@ test('ArrowRight navigates to next month and CSV export uses month param', async
   const calledUrl = global.fetch.mock.calls[0][0];
   expect(calledUrl).toMatch(/export=csv/);
   expect(calledUrl).toMatch(/month=2025-12/);
-
   global.fetch = originalFetch;
+
+  // Restore real timers
+  jest.useRealTimers();
 });

@@ -683,6 +683,17 @@ export const jobsAPI = {
     }
   },
 
+  // Interview practice question bank (alias to questionBankAPI)
+  getJobQuestionBank: async (jobId, refresh = false) => {
+    return questionBankAPI.getQuestionBank(jobId, refresh);
+  },
+
+  logQuestionPractice: async (jobId, data) => {
+    return questionBankAPI.logQuestionPractice(jobId, data);
+  },
+  coachQuestionResponse: async (jobId, data) => {
+    return questionBankAPI.coachQuestionResponse(jobId, data);
+  },
   logTechnicalPrepAttempt: async (id, data) => {
     try {
       const response = await api.post(`/jobs/${id}/technical-prep/practice/`, data);
@@ -1914,15 +1925,21 @@ try {
     _defaultExport.materialsAPI = materialsAPI;
     _defaultExport.salaryAPI = salaryAPI;
     _defaultExport.resumeAIAPI = resumeAIAPI;
-    _defaultExport.resumeExportAPI = resumeExportAPI;
-    _defaultExport.coverLetterExportAPI = coverLetterExportAPI;
-    _defaultExport.interviewsAPI = interviewsAPI;
-    _defaultExport.calendarAPI = calendarAPI;
+  _defaultExport.resumeExportAPI = resumeExportAPI;
+  _defaultExport.coverLetterExportAPI = coverLetterExportAPI;
+  _defaultExport.interviewsAPI = interviewsAPI;
+  _defaultExport.calendarAPI = calendarAPI;
+  _defaultExport.logQuestionPractice = jobsAPI.logQuestionPractice;
+  _defaultExport.coachQuestionResponse = jobsAPI.coachQuestionResponse;
+  if (questionBankAPI?.getQuestionBank) {
+    jobsAPI.getJobQuestionBank = questionBankAPI.getQuestionBank;
+    _defaultExport.getJobQuestionBank = jobsAPI.getJobQuestionBank;
   }
-  if (typeof module !== 'undefined' && module && module.exports) {
-    module.exports = _defaultExport;
-    module.exports.authAPI = authAPI;
-    module.exports.jobsAPI = jobsAPI;
+}
+if (typeof module !== 'undefined' && module && module.exports) {
+  module.exports = _defaultExport;
+  module.exports.authAPI = authAPI;
+  module.exports.jobsAPI = jobsAPI;
     module.exports.materialsAPI = materialsAPI;
     module.exports.salaryAPI = salaryAPI;
     module.exports.resumeAIAPI = resumeAIAPI;
