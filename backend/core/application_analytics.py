@@ -1,14 +1,18 @@
-# backend/core/application_analytics.py
+﻿# backend/core/application_analytics.py
 """
 UC-097: Application Success Rate Analysis
 Analytics service for analyzing job application success patterns
 """
 
 from django.db.models import Count, Avg, Q, F, ExpressionWrapper, fields
-from django.db.models.functions import TruncDate
+from django.db.models.functions import TruncDate, Coalesce, TruncMonth
+import os, json, logging, requests
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, date
 from collections import defaultdict
+
+logger = logging.getLogger(__name__)
+
 
 from core.models import JobEntry
 
@@ -297,10 +301,12 @@ class ApplicationSuccessAnalyzer:
     
     def analyze_timing_patterns(self):
         """Analyze optimal application submission timing."""
-        # Get applications with submission dates
-        apps_with_dates = self.applications.filter(
-            application_submitted_at__isnull=False
-        ).exclude(status='interested')
+        # Get applications with submission dates (fallback to created_at)
+        apps_with_dates = (
+            self.applications.annotate(submitted_at=Coalesce('application_submitted_at', 'created_at'))
+            .filter(submitted_at__isnull=False)
+            .exclude(status='interested')
+        )
         
         if apps_with_dates.count() == 0:
             return {
@@ -314,7 +320,7 @@ class ApplicationSuccessAnalyzer:
         day_stats = defaultdict(lambda: {'total': 0, 'responded': 0, 'interviewed': 0, 'offers': 0})
         
         for app in apps_with_dates:
-            day = app.application_submitted_at.weekday()
+            day = app.submitted_at.weekday()
             day_stats[day]['total'] += 1
             
             if app.status not in ['interested', 'applied']:
@@ -340,20 +346,16 @@ class ApplicationSuccessAnalyzer:
                 })
         
         # Find best day
-        best_day = max(by_day, key=lambda x: x['offer_rate']) if by_day else None
+        best_day = max(by_day, key=lambda x: (x['offer_rate'], x['response_rate'], x['total_applications'])) if by_day else None
         
-        # Analyze by time of day (morning, afternoon, evening)
+        # Analyze by time of day (4-hour buckets)
         time_stats = defaultdict(lambda: {'total': 0, 'responded': 0, 'interviewed': 0, 'offers': 0})
-        
+        slot_labels = ['overnight', 'early_morning', 'morning', 'midday', 'afternoon', 'evening']
+
         for app in apps_with_dates:
-            hour = app.application_submitted_at.hour
-            if 6 <= hour < 12:
-                time_slot = 'morning'
-            elif 12 <= hour < 18:
-                time_slot = 'afternoon'
-            else:
-                time_slot = 'evening'
-            
+            hour = app.submitted_at.hour
+            slot_idx = min(hour // 4, len(slot_labels) - 1)
+            time_slot = slot_labels[slot_idx]
             time_stats[time_slot]['total'] += 1
             
             if app.status not in ['interested', 'applied']:
@@ -364,7 +366,7 @@ class ApplicationSuccessAnalyzer:
                 time_stats[time_slot]['offers'] += 1
         
         by_time = []
-        for time_slot in ['morning', 'afternoon', 'evening']:
+        for time_slot in slot_labels:
             if time_stats[time_slot]['total'] > 0:
                 total = time_stats[time_slot]['total']
                 by_time.append({
@@ -376,14 +378,440 @@ class ApplicationSuccessAnalyzer:
                 })
         
         # Find best time
-        best_time = max(by_time, key=lambda x: x['offer_rate']) if by_time else None
+        best_time = max(by_time, key=lambda x: (x['offer_rate'], x['response_rate'], x['total_applications'])) if by_time else None
         
         return {
             'by_day_of_week': by_day,
             'by_time_of_day': by_time,
             'best_day': best_day,
             'best_time': best_time,
+            'apply_speed': [],
+            'response_speed': [],
+            'medians': {},
         }
+
+    def analyze_apply_and_response_speed(self):
+        """Buckets for apply speed (interestedâ†’applied) and response speed (appliedâ†’response)."""
+        apply_buckets = defaultdict(lambda: {'count': 0, 'success': 0})
+        response_buckets = defaultdict(lambda: {'count': 0, 'success': 0})
+        response_durations = []
+
+        for app in self.applications:
+            if getattr(app, 'interested_at', None) and getattr(app, 'applied_at', None):
+                delta_days = (app.applied_at.date() - app.interested_at.date()).days
+                if delta_days <= 1:
+                    bucket = '0-1 days'
+                elif delta_days <= 3:
+                    bucket = '2-3 days'
+                elif delta_days <= 7:
+                    bucket = '4-7 days'
+                else:
+                    bucket = '8+ days'
+                apply_buckets[bucket]['count'] += 1
+                if app.status in ['phone_screen', 'interview', 'offer']:
+                    apply_buckets[bucket]['success'] += 1
+
+            if getattr(app, 'applied_at', None) and getattr(app, 'response_at', None):
+                delta_days = (app.response_at.date() - app.applied_at.date()).days
+                response_durations.append(delta_days)
+                if delta_days <= 3:
+                    bucket = '0-3 days'
+                elif delta_days <= 7:
+                    bucket = '4-7 days'
+                elif delta_days <= 14:
+                    bucket = '8-14 days'
+                else:
+                    bucket = '15+ days'
+                response_buckets[bucket]['count'] += 1
+                if app.status in ['phone_screen', 'interview', 'offer']:
+                    response_buckets[bucket]['success'] += 1
+
+        def format_bucket(b):
+            out = []
+            for bucket, vals in b.items():
+                total = vals['count']
+                success_rate = (vals['success'] / total) if total else 0
+                out.append({'bucket': bucket, 'count': total, 'success_rate': round(success_rate, 3)})
+            return out
+
+        median_resp = None
+        if response_durations:
+            arr = sorted(response_durations)
+            mid = len(arr) // 2
+            median_resp = arr[mid] if len(arr) % 2 else round((arr[mid - 1] + arr[mid]) / 2, 1)
+
+        return {
+            'apply_speed': format_bucket(apply_buckets),
+            'response_speed': format_bucket(response_buckets),
+            'medians': {'apply_to_response_days': median_resp} if median_resp is not None else {},
+        }
+
+    def analyze_industry_success(self):
+        """Alias for UI naming."""
+        return self.analyze_by_industry()
+
+    def analyze_keyword_signals(self):
+        """
+        Keyword/skill signals weighted by outcome.
+        Uses required_skills/skills/keywords (first available).
+        Weights: offer=3, interview=2, phone_screen=1.
+        """
+        from collections import defaultdict
+
+        # candidate skill fields to consider on JobEntry
+        job_skill_fields = ('required_skills', 'skills', 'skill_requirements', 'keywords')
+
+        # candidate skills set (must exist to report signals)
+        candidate_skills = set()
+        # 1) CandidateSkill relation (preferred, uses related_name="skills")
+        try:
+            if hasattr(self.candidate, 'skills'):
+                related = self.candidate.skills.all()
+                if related is not None:
+                    candidate_skills.update({getattr(cs.skill, 'name', str(cs.skill)) for cs in related if getattr(cs, 'skill', None)})
+        except Exception:
+            candidate_skills = set()
+
+        # 2) Fallback to other fields if still empty
+        if not candidate_skills:
+            for cand_field in ('skills', 'required_skills', 'keywords'):
+                if hasattr(self.candidate, cand_field):
+                    val = getattr(self.candidate, cand_field)
+                    try:
+                        if hasattr(val, 'all'):
+                            candidate_skills = {getattr(s, 'name', str(s)) for s in val.all()}
+                        elif isinstance(val, str):
+                            candidate_skills = {s.strip() for s in val.split(',') if s.strip()}
+                        else:
+                            candidate_skills = set(val or [])
+                    except Exception:
+                        candidate_skills = set()
+                    break
+        # If the candidate has no recorded skills, we cannot determine â€œkey skillsâ€
+        if not candidate_skills:
+            return []
+
+        weights = {'offer': 3, 'interview': 2, 'phone_screen': 1}
+        signals = defaultdict(lambda: {'count': 0, 'score': 0})
+
+        for app in self.applications:
+            if app.status not in ['phone_screen', 'interview', 'offer']:
+                continue
+            # pull skills from the first available field on the job
+            raw_skills = []
+            for field in job_skill_fields:
+                if hasattr(app, field):
+                    raw_skills = getattr(app, field, []) or []
+                    if raw_skills:
+                        break
+
+            # Normalize skills to a list of strings
+            skills = []
+            if isinstance(raw_skills, str):
+                skills = [s.strip() for s in raw_skills.split(',') if s.strip()]
+            else:
+                for s in list(raw_skills):
+                    if isinstance(s, dict) and 'name' in s:
+                        skills.append(s['name'])
+                    else:
+                        skills.append(str(s))
+
+            # If still empty, fall back to parsing job requirements/description via SkillsGapAnalyzer
+            if not skills:
+                try:
+                    from core.skills_gap_analysis import SkillsGapAnalyzer
+
+                    parsed = SkillsGapAnalyzer._extract_job_requirements(app)
+                    skills = [req.get('name') for req in parsed if req.get('name')]
+                except Exception:
+                    skills = []
+
+            # Only keep overlaps with candidate skills
+            skills = [s for s in skills if s in candidate_skills]
+            if not skills:
+                continue
+
+            weight = weights.get(app.status, 1)
+            for kw in skills:
+                signals[kw]['count'] += 1
+                signals[kw]['score'] += weight
+
+        result = []
+        for kw, vals in signals.items():
+            count = vals['count']
+            score = vals['score']
+            result.append({
+                'keyword': kw,
+                'count': count,
+                'success_score': score,
+                'success_rate': round(score / count, 3) if count else 0,
+                'uplift': 0,
+            })
+
+        # Sort by weighted score descending
+        result.sort(key=lambda x: x['success_score'], reverse=True)
+        # Return only the fields needed by the UI (keyword + rate + count)
+        simplified = []
+        for r in result:
+            simplified.append({
+                'keyword': r['keyword'],
+                'count': r['count'],
+                'success_rate': r['success_rate'],
+            })
+        return simplified
+
+    def analyze_prep_correlations(self):
+        """
+        Correlate practice activity with interview success.
+        Currently uses JobQuestionPractice logs as a proxy for prep.
+        """
+        from core.models import JobQuestionPractice
+
+        prep = []
+        qs = JobQuestionPractice.objects.filter(job__candidate=self.candidate)
+        total_logs = qs.count()
+        if total_logs == 0:
+            return prep
+
+        success_logs = qs.filter(job__status__in=['phone_screen', 'interview', 'offer']).count()
+        rate = success_logs / total_logs if total_logs else 0
+        # baseline: overall interview rate for this candidate
+        applied_count = self.applications.exclude(status='interested').count() or 1
+        overall_interview = self.applications.filter(status__in=['phone_screen', 'interview', 'offer']).count() / applied_count
+
+        prep.append({
+            'prep_type': 'question_practice',
+            'count': total_logs,
+            'interview_rate': round(rate, 3),
+            'uplift': round(rate - overall_interview, 3),
+        })
+
+        return prep
+
+    def analyze_practice_history(self):
+        """
+        Weekly practice history using JobQuestionPractice logs.
+        Uses practice_count as a proxy for score per week.
+        """
+        from core.models import JobQuestionPractice
+
+        history = defaultdict(lambda: {'sessions': 0})
+        logs = JobQuestionPractice.objects.filter(job__candidate=self.candidate)
+        for log in logs:
+            dt = getattr(log, 'last_practiced_at', None) or getattr(log, 'first_practiced_at', None)
+            if not dt:
+                continue
+            iso_year, iso_week, _ = dt.isocalendar()
+            key = f"{iso_year}-W{iso_week:02d}"
+            history[key]['sessions'] += (log.practice_count or 1)
+
+        result = []
+        for key, vals in sorted(history.items()):
+            _, week = key.split('-W')
+            result.append({
+                'week': int(week),
+                'week_label': key,
+                'avg_score': vals['sessions'],
+            })
+        return result
+
+    def analyze_success_trend(self, months_back=6):
+        """Monthly trend of response/offer rates (unique months) for the last N months."""
+        end_date = timezone.now().date().replace(day=1)
+        start_date = (end_date - timedelta(days=months_back * 31)).replace(day=1)
+        qs = self.applications.filter(created_at__date__gte=start_date)
+        month_counts = (
+            qs.annotate(month=TruncMonth('created_at'))
+            .values('month')
+            .annotate(
+                total=Count('id'),
+                applied=Count('id', filter=~Q(status='interested')),
+                responded=Count('id', filter=~Q(status__in=['interested', 'applied'])),
+                offers=Count('id', filter=Q(status='offer')),
+            )
+            .order_by('month')
+        )
+        trend = []
+        seen = set()
+        for row in month_counts:
+            month_key = row['month'].strftime('%Y-%m') if row['month'] else ''
+            if month_key in seen:
+                continue
+            seen.add(month_key)
+            applied = row['applied'] or 0
+            responded = row['responded'] or 0
+            offers = row['offers'] or 0
+            trend.append({
+                'month': month_key + '-01',  # normalize to first of month ISO
+                'response_rate': round((responded / applied * 100), 2) if applied else 0,
+                'offer_rate': round((offers / applied * 100), 2) if applied else 0,
+                'total': row['total'] or 0,
+            })
+        return trend
+
+    def analyze_pattern_factors(self):
+        """Summarize top personal factors."""
+        factors = {}
+        industries = self.analyze_by_industry()
+        if industries:
+            factors['best_industries'] = industries[:2]
+
+        timing = self.analyze_timing_patterns()
+        if timing:
+            factors['best_timing'] = {
+                'day': timing.get('best_day'),
+                'time': timing.get('best_time'),
+            }
+
+        key_skills = self.analyze_keyword_signals()
+        if key_skills:
+            factors['key_skills'] = key_skills[:5]
+        return factors
+
+    def predict_success(self):
+        """
+        Conservative heuristic score curved to 0-100 (original 0-80)
+        based on offer rate, industry fit, and prep uplift.
+        """
+        overall = self.get_overall_metrics()
+        base = min((overall.get('offer_rate') or 0) * 1.2, 65)
+
+        boost = 0
+        drivers = []
+
+        industries = self.analyze_by_industry()
+        if industries:
+            top = industries[0]
+            boost += min((top.get('offer_rate') or 0) * 0.1, 10)
+            drivers.append(f"Strong results in {top['industry']} ({top['offer_rate']}% offer rate)")
+
+        prep = self.analyze_prep_correlations()
+        if prep:
+            uplift = prep[0].get('uplift', 0) or 0
+            boost += min(max(uplift, 0) * 50, 5)
+            drivers.append(f"Prep uplift: +{round(uplift * 100)}% interview rate")
+
+        score_0_80 = max(10, min(80, round(base + boost)))
+        # Curve to 0-100 by simple multiplier as requested
+        score = min(100, round(score_0_80 * 1.25))
+        if not drivers:
+            drivers.append("Based on recent offer/interview history")
+
+        return {
+            'score': score,
+            'drivers': drivers[:3],
+            'caveats': ["Heuristic only; not a guarantee"],
+        }
+
+    def get_pattern_recommendations(self, factors):
+        """Return up to 3 pattern-based recommendations.
+
+        Attempts Gemini AI generation if configured; falls back to deterministic rules.
+        AI response expected as JSON array of objects: [{title, body, type}].
+        """
+        api_key = getattr(__import__('django.conf').conf.settings, 'GEMINI_API_KEY', '')
+        # Skip AI when running tests for determinism
+        if api_key and not os.getenv('PYTEST_CURRENT_TEST'):
+            try:
+                prompt = self._build_recommendations_prompt(factors)
+                model = 'gemini-1.5-flash-latest'
+                url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}'
+                payload = {
+                    'contents': [{'parts': [{'text': prompt}]}],
+                    'generationConfig': {
+                        'temperature': 0.35,
+                        'topK': 40,
+                        'topP': 0.9,
+                        'maxOutputTokens': 2048,
+                        'responseMimeType': 'application/json'
+                    }
+                }
+                resp = requests.post(url, json=payload, timeout=25)
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get('candidates'):
+                    content = data['candidates'][0]['content']['parts'][0]['text'].strip()
+                    if content.startswith('```json'):
+                        content = content[7:]
+                    if content.startswith('```'):
+                        content = content[3:]
+                    if content.endswith('```'):
+                        content = content[:-3]
+                    parsed = json.loads(content)
+                    # Accept either {'recommendations': [...]} or list directly
+                    if isinstance(parsed, dict) and 'recommendations' in parsed:
+                        rec_list = parsed['recommendations']
+                    else:
+                        rec_list = parsed
+                    cleaned = []
+                    if isinstance(rec_list, list):
+                        for r in rec_list[:3]:
+                            if isinstance(r, dict) and r.get('title') and r.get('body'):
+                                cleaned.append({
+                                    'title': r['title'][:120],
+                                    'body': r['body'][:500],
+                                    'type': (r.get('type') or 'general')[:30],
+                                })
+                    if cleaned:
+                        return cleaned
+            except Exception as e:
+                logger.warning(f"AI pattern recommendations failed; falling back to rules: {e}")
+
+        # Deterministic fallback
+        recs = []
+        best_inds = factors.get('best_industries') or []
+        if best_inds:
+            top = best_inds[0]
+            recs.append({
+                'title': 'Double down on high-yield industry',
+                'body': f"Focus more applications in {top['industry']} where your offer rate is {top['offer_rate']}%.",
+                'type': 'industry',
+            })
+        key_sk = factors.get('key_skills') or []
+        if key_sk:
+            names = ', '.join(ks['keyword'] for ks in key_sk[:3])
+            recs.append({
+                'title': 'Lead with strongest skills',
+                'body': f"Highlight {names} in your resume and outreach; they appear in your successful outcomes.",
+                'type': 'skills',
+            })
+        timing = factors.get('best_timing') or {}
+        day = timing.get('day')
+        if isinstance(day, dict):
+            day = day.get('day')
+        if day:
+            recs.append({
+                'title': 'Apply at your best time',
+                'body': f"Batch applications on {day} when possible to mirror your best results.",
+                'type': 'timing',
+            })
+        if not recs:
+            recs.append({
+                'title': 'Stay consistent',
+                'body': 'Maintain steady applications and iterate on what worked in past offers.',
+                'type': 'general',
+            })
+        return recs[:3]
+
+    def _build_recommendations_prompt(self, factors):
+        predicted = self.predict_success()
+        best_inds = factors.get('best_industries') or []
+        key_skills = factors.get('key_skills') or []
+        timing = factors.get('best_timing') or {}
+        inds_text = ', '.join(f"{i['industry']} ({i['offer_rate']}%)" for i in best_inds) or 'None'
+        skills_text = ', '.join(s.get('keyword') for s in key_skills) or 'None'
+        day = timing.get('day')
+        if isinstance(day, dict):
+            day = day.get('day')
+        day_text = day or 'None'
+        return (
+            "You are a career coach. Based on the candidate's application pattern factors and predicted success, "
+            "generate exactly 3 concise, actionable recommendations as a JSON array only (no wrapper object). "
+            "Each object must have keys: title, body, type (one of industry, skills, timing, general). Avoid duplication. "
+            f"Predicted Score: {predicted['score']} (drivers: {', '.join(predicted['drivers'])}). "
+            f"Best Industries: {inds_text}. Key Skills: {skills_text}. Best Application Day: {day_text}. "
+            "Focus on actions the candidate can take this week."
+        )
     
     def get_recommendations(self):
         """Generate actionable recommendations based on analysis."""
@@ -444,6 +872,7 @@ class ApplicationSuccessAnalyzer:
     
     def get_complete_analysis(self):
         """Get comprehensive success rate analysis."""
+        pattern_factors = self.analyze_pattern_factors()
         return {
             'overall_metrics': self.get_overall_metrics(),
             'by_industry': self.analyze_by_industry(),
@@ -452,5 +881,14 @@ class ApplicationSuccessAnalyzer:
             'by_application_method': self.analyze_by_application_method(),
             'customization_impact': self.analyze_customization_impact(),
             'timing_patterns': self.analyze_timing_patterns(),
+            'apply_response_patterns': self.analyze_apply_and_response_speed(),
+            'prep_correlations': self.analyze_prep_correlations(),
+            'practice_history': self.analyze_practice_history(),
+            'industry_success': self.analyze_industry_success(),
+            'keyword_signals': self.analyze_keyword_signals(),
             'recommendations': self.get_recommendations(),
+            'pattern_factors': pattern_factors,
+            'predicted_success': self.predict_success(),
+            'pattern_recommendations': self.get_pattern_recommendations(pattern_factors),
+            'success_trend': self.analyze_success_trend(),
         }

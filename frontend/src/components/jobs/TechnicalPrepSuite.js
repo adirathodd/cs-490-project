@@ -254,7 +254,7 @@ const TechnicalPrepSuite = ({
     }
   };
 
-  const handleLogAttempt = async (event) => {
+  const handleLogAttempt = (event) => {
     event.preventDefault();
     if (!selectedChallenge) return;
     setAttemptError('');
@@ -268,13 +268,14 @@ const TechnicalPrepSuite = ({
       confidence: attemptForm.confidence,
       notes: attemptForm.notes,
     };
-    try {
-      await onLogAttempt(payload);
-      setTimer({ running: false, elapsed: 0 });
-      setAttemptForm(DEFAULT_ATTEMPT);
-    } catch (err) {
-      setAttemptError(err?.message || 'Unable to log attempt. Please try again.');
-    }
+    Promise.resolve(onLogAttempt(payload))
+      .then(() => {
+        setTimer({ running: false, elapsed: 0 });
+        setAttemptForm(DEFAULT_ATTEMPT);
+      })
+      .catch((err) => {
+        setAttemptError(err?.message || 'Unable to log attempt. Please try again.');
+      });
   };
 
   if (loading && !hasPlan) {

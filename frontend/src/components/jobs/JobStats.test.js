@@ -14,7 +14,12 @@ jest.mock('../../services/api', () => ({
 import { jobsAPI } from '../../services/api';
 
 beforeEach(() => {
+  jest.useFakeTimers().setSystemTime(new Date('2025-12-15T00:00:00Z'));
   jest.clearAllMocks();
+});
+
+afterEach(() => {
+  jest.useRealTimers();
 });
 
 describe('JobStats component', () => {

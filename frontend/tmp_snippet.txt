@@ -1,0 +1,120 @@
+                      background: '#f9fafb',
+                      borderRadius: 6,
+                    }}
+                  >
+                    <div style={{ width: 100, fontWeight: 500, fontSize: 13 }}>{day.day}</div>
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div
+                        style={{
+                          width: `${Math.max(day.offer_rate, 1)}%`,
+                          height: 20,
+                          background: '#8b5cf6',
+                          borderRadius: 4,
+                          minWidth: 20,
+                        }}
+                      ></div>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{day.offer_rate}%</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                      ({day.total_applications} apps)
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginTop: 12, color: '#6b7280' }}>Not enough data for day-of-week patterns yet.</div>
+          )}
+        </div>
+      )}
+      {/* Success Patterns & Strategy */}
+      {(analysis.prep_correlations?.length > 0 ||
+        (analysis.apply_response_patterns &&
+          ((analysis.apply_response_patterns.apply_speed?.length || 0) > 0 ||
+            (analysis.apply_response_patterns.response_speed?.length || 0) > 0)) ||
+        (analysis.keyword_signals && analysis.keyword_signals.length > 0)) && (
+        <div style={card}>
+          <h2 style={sectionTitle}>
+            <Icon name="trendingUp" style={{ marginRight: 8 }} />
+            Success Patterns & Strategy
+          </h2>
+
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Preparation impact</div>
+            {analysis.prep_correlations && analysis.prep_correlations.length > 0 ? (
+              <div style={{ display: 'grid', gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Practice score over time</div>
+                  {analysis.practice_history && analysis.practice_history.length > 0 ? (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', minHeight: 80 }}>
+                      {analysis.practice_history.map((p, idx) => (
+                        <div key={idx} style={{ textAlign: 'center', flex: 1 }}>
+                          <div
+                            style={{
+                              height: `${Math.max(p.avg_score || 0, 5)}px`,
+                              background: '#60a5fa',
+                              borderRadius: 4,
+                            }}
+                            title={`Week ${p.week}: ${p.avg_score || 0}`}
+                          />
+                          <div style={{ fontSize: 11, color: '#6b7280' }}>{p.week_label || p.week}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ color: '#6b7280', fontSize: 13 }}>Not enough practice data yet.</div>
+                  )}
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Practice ? interview success</div>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {analysis.prep_correlations.map((p, idx) => (
+                      <div
+                        key={idx}
+                        style={{ padding: 10, background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}
+                      >
+                        <div style={{ fontWeight: 600 }}>{p.prep_type.replace('_', ' ')}</div>
+                        <div style={{ fontSize: 13, color: '#6b7280' }}>
+                          Sessions: {p.count} • Interview rate: {Math.round((p.interview_rate || 0) * 100)}% • Uplift:{' '}
+                          {Math.round((p.uplift || 0) * 100)}%
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ color: '#6b7280', fontSize: 13 }}>Not enough prep data yet.</div>
+            )}
+          </div>
+
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Key Skills</div>
+            {analysis.keyword_signals && analysis.keyword_signals.length > 0 ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+                {analysis.keyword_signals.slice(0, 8).map((kw, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      padding: 10,
+                      borderRadius: 8,
+                      background: '#f9fafb',
+                      border: '1px solid #e5e7eb',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, color: '#111827' }}>{kw.keyword}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: '#6b7280', fontSize: 13 }}>No clear key skills yet.</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
