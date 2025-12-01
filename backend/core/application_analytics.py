@@ -1,14 +1,17 @@
-# backend/core/application_analytics.py
+﻿# backend/core/application_analytics.py
 """
 UC-097: Application Success Rate Analysis
 Analytics service for analyzing job application success patterns
 """
 
 from django.db.models import Count, Avg, Q, F, ExpressionWrapper, fields
-from django.db.models.functions import TruncDate, Coalesce
+from django.db.models.functions import TruncDate, Coalesce, TruncMonth
+import os, json, logging, requests
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, date
 from collections import defaultdict
+
+logger = logging.getLogger(__name__)
 
 
 from core.models import JobEntry
@@ -388,7 +391,7 @@ class ApplicationSuccessAnalyzer:
         }
 
     def analyze_apply_and_response_speed(self):
-        """Buckets for apply speed (interested→applied) and response speed (applied→response)."""
+        """Buckets for apply speed (interestedâ†’applied) and response speed (appliedâ†’response)."""
         apply_buckets = defaultdict(lambda: {'count': 0, 'success': 0})
         response_buckets = defaultdict(lambda: {'count': 0, 'success': 0})
         response_durations = []
@@ -484,7 +487,7 @@ class ApplicationSuccessAnalyzer:
                     except Exception:
                         candidate_skills = set()
                     break
-        # If the candidate has no recorded skills, we cannot determine “key skills”
+        # If the candidate has no recorded skills, we cannot determine â€œkey skillsâ€
         if not candidate_skills:
             return []
 
@@ -584,6 +587,228 @@ class ApplicationSuccessAnalyzer:
         })
 
         return prep
+
+    def analyze_practice_history(self):
+        """
+        Weekly practice history using JobQuestionPractice logs.
+        Uses practice_count as a proxy for score per week.
+        """
+        from core.models import JobQuestionPractice
+
+        history = defaultdict(lambda: {'sessions': 0})
+        logs = JobQuestionPractice.objects.filter(job__candidate=self.candidate)
+        for log in logs:
+            dt = getattr(log, 'last_practiced_at', None) or getattr(log, 'first_practiced_at', None)
+            if not dt:
+                continue
+            iso_year, iso_week, _ = dt.isocalendar()
+            key = f"{iso_year}-W{iso_week:02d}"
+            history[key]['sessions'] += (log.practice_count or 1)
+
+        result = []
+        for key, vals in sorted(history.items()):
+            _, week = key.split('-W')
+            result.append({
+                'week': int(week),
+                'week_label': key,
+                'avg_score': vals['sessions'],
+            })
+        return result
+
+    def analyze_success_trend(self, months_back=6):
+        """Monthly trend of response/offer rates (unique months) for the last N months."""
+        end_date = timezone.now().date().replace(day=1)
+        start_date = (end_date - timedelta(days=months_back * 31)).replace(day=1)
+        qs = self.applications.filter(created_at__date__gte=start_date)
+        month_counts = (
+            qs.annotate(month=TruncMonth('created_at'))
+            .values('month')
+            .annotate(
+                total=Count('id'),
+                applied=Count('id', filter=~Q(status='interested')),
+                responded=Count('id', filter=~Q(status__in=['interested', 'applied'])),
+                offers=Count('id', filter=Q(status='offer')),
+            )
+            .order_by('month')
+        )
+        trend = []
+        seen = set()
+        for row in month_counts:
+            month_key = row['month'].strftime('%Y-%m') if row['month'] else ''
+            if month_key in seen:
+                continue
+            seen.add(month_key)
+            applied = row['applied'] or 0
+            responded = row['responded'] or 0
+            offers = row['offers'] or 0
+            trend.append({
+                'month': month_key + '-01',  # normalize to first of month ISO
+                'response_rate': round((responded / applied * 100), 2) if applied else 0,
+                'offer_rate': round((offers / applied * 100), 2) if applied else 0,
+                'total': row['total'] or 0,
+            })
+        return trend
+
+    def analyze_pattern_factors(self):
+        """Summarize top personal factors."""
+        factors = {}
+        industries = self.analyze_by_industry()
+        if industries:
+            factors['best_industries'] = industries[:2]
+
+        timing = self.analyze_timing_patterns()
+        if timing:
+            factors['best_timing'] = {
+                'day': timing.get('best_day'),
+                'time': timing.get('best_time'),
+            }
+
+        key_skills = self.analyze_keyword_signals()
+        if key_skills:
+            factors['key_skills'] = key_skills[:5]
+        return factors
+
+    def predict_success(self):
+        """
+        Conservative heuristic score (0-80) based on offer rate, industry fit, and prep uplift.
+        """
+        overall = self.get_overall_metrics()
+        base = min((overall.get('offer_rate') or 0) * 1.2, 65)
+
+        boost = 0
+        drivers = []
+
+        industries = self.analyze_by_industry()
+        if industries:
+            top = industries[0]
+            boost += min((top.get('offer_rate') or 0) * 0.1, 10)
+            drivers.append(f"Strong results in {top['industry']} ({top['offer_rate']}% offer rate)")
+
+        prep = self.analyze_prep_correlations()
+        if prep:
+            uplift = prep[0].get('uplift', 0) or 0
+            boost += min(max(uplift, 0) * 50, 5)
+            drivers.append(f"Prep uplift: +{round(uplift * 100)}% interview rate")
+
+        score = max(10, min(80, round(base + boost)))
+        if not drivers:
+            drivers.append("Based on recent offer/interview history")
+
+        return {
+            'score': score,
+            'drivers': drivers[:3],
+            'caveats': ["Heuristic only; not a guarantee"],
+        }
+
+    def get_pattern_recommendations(self, factors):
+        """Return up to 3 pattern-based recommendations.
+
+        Attempts Gemini AI generation if configured; falls back to deterministic rules.
+        AI response expected as JSON array of objects: [{title, body, type}].
+        """
+        api_key = getattr(__import__('django.conf').conf.settings, 'GEMINI_API_KEY', '')
+        # Skip AI when running tests for determinism
+        if api_key and not os.getenv('PYTEST_CURRENT_TEST'):
+            try:
+                prompt = self._build_recommendations_prompt(factors)
+                model = 'gemini-1.5-flash-latest'
+                url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}'
+                payload = {
+                    'contents': [{'parts': [{'text': prompt}]}],
+                    'generationConfig': {
+                        'temperature': 0.35,
+                        'topK': 40,
+                        'topP': 0.9,
+                        'maxOutputTokens': 2048,
+                        'responseMimeType': 'application/json'
+                    }
+                }
+                resp = requests.post(url, json=payload, timeout=25)
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get('candidates'):
+                    content = data['candidates'][0]['content']['parts'][0]['text'].strip()
+                    if content.startswith('```json'):
+                        content = content[7:]
+                    if content.startswith('```'):
+                        content = content[3:]
+                    if content.endswith('```'):
+                        content = content[:-3]
+                    parsed = json.loads(content)
+                    # Accept either {'recommendations': [...]} or list directly
+                    if isinstance(parsed, dict) and 'recommendations' in parsed:
+                        rec_list = parsed['recommendations']
+                    else:
+                        rec_list = parsed
+                    cleaned = []
+                    if isinstance(rec_list, list):
+                        for r in rec_list[:3]:
+                            if isinstance(r, dict) and r.get('title') and r.get('body'):
+                                cleaned.append({
+                                    'title': r['title'][:120],
+                                    'body': r['body'][:500],
+                                    'type': (r.get('type') or 'general')[:30],
+                                })
+                    if cleaned:
+                        return cleaned
+            except Exception as e:
+                logger.warning(f"AI pattern recommendations failed; falling back to rules: {e}")
+
+        # Deterministic fallback
+        recs = []
+        best_inds = factors.get('best_industries') or []
+        if best_inds:
+            top = best_inds[0]
+            recs.append({
+                'title': 'Double down on high-yield industry',
+                'body': f"Focus more applications in {top['industry']} where your offer rate is {top['offer_rate']}%.",
+                'type': 'industry',
+            })
+        key_sk = factors.get('key_skills') or []
+        if key_sk:
+            names = ', '.join(ks['keyword'] for ks in key_sk[:3])
+            recs.append({
+                'title': 'Lead with strongest skills',
+                'body': f"Highlight {names} in your resume and outreach; they appear in your successful outcomes.",
+                'type': 'skills',
+            })
+        timing = factors.get('best_timing') or {}
+        day = timing.get('day')
+        if isinstance(day, dict):
+            day = day.get('day')
+        if day:
+            recs.append({
+                'title': 'Apply at your best time',
+                'body': f"Batch applications on {day} when possible to mirror your best results.",
+                'type': 'timing',
+            })
+        if not recs:
+            recs.append({
+                'title': 'Stay consistent',
+                'body': 'Maintain steady applications and iterate on what worked in past offers.',
+                'type': 'general',
+            })
+        return recs[:3]
+
+    def _build_recommendations_prompt(self, factors):
+        predicted = self.predict_success()
+        best_inds = factors.get('best_industries') or []
+        key_skills = factors.get('key_skills') or []
+        timing = factors.get('best_timing') or {}
+        inds_text = ', '.join(f"{i['industry']} ({i['offer_rate']}%)" for i in best_inds) or 'None'
+        skills_text = ', '.join(s.get('keyword') for s in key_skills) or 'None'
+        day = timing.get('day')
+        if isinstance(day, dict):
+            day = day.get('day')
+        day_text = day or 'None'
+        return (
+            "You are a career coach. Based on the candidate's application pattern factors and predicted success, "
+            "generate exactly 3 concise, actionable recommendations as a JSON array only (no wrapper object). "
+            "Each object must have keys: title, body, type (one of industry, skills, timing, general). Avoid duplication. "
+            f"Predicted Score: {predicted['score']} (drivers: {', '.join(predicted['drivers'])}). "
+            f"Best Industries: {inds_text}. Key Skills: {skills_text}. Best Application Day: {day_text}. "
+            "Focus on actions the candidate can take this week."
+        )
     
     def get_recommendations(self):
         """Generate actionable recommendations based on analysis."""
@@ -644,6 +869,7 @@ class ApplicationSuccessAnalyzer:
     
     def get_complete_analysis(self):
         """Get comprehensive success rate analysis."""
+        pattern_factors = self.analyze_pattern_factors()
         return {
             'overall_metrics': self.get_overall_metrics(),
             'by_industry': self.analyze_by_industry(),
@@ -654,7 +880,12 @@ class ApplicationSuccessAnalyzer:
             'timing_patterns': self.analyze_timing_patterns(),
             'apply_response_patterns': self.analyze_apply_and_response_speed(),
             'prep_correlations': self.analyze_prep_correlations(),
+            'practice_history': self.analyze_practice_history(),
             'industry_success': self.analyze_industry_success(),
             'keyword_signals': self.analyze_keyword_signals(),
             'recommendations': self.get_recommendations(),
+            'pattern_factors': pattern_factors,
+            'predicted_success': self.predict_success(),
+            'pattern_recommendations': self.get_pattern_recommendations(pattern_factors),
+            'success_trend': self.analyze_success_trend(),
         }
