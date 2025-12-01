@@ -907,7 +907,13 @@ def _generate_competitive_ai_recs(profile, user_metrics, peer_metrics, gaps, dif
         data = resp.json()
         parts = data.get('candidates', [{}])[0].get('content', {}).get('parts', [])
         text = ' '.join([p.get('text', '') for p in parts]).strip()
-        tips = [t.strip('•- ').strip() for t in text.split('\n') if t.strip()]
+        tips = []
+        for raw in text.split('\n'):
+            if not raw.strip():
+                continue
+            cleaned = raw.lstrip('*•- ').strip()
+            cleaned = cleaned.replace('**', '')
+            tips.append(cleaned.strip())
         return tips[:3]
     except Exception as exc:
         logger.warning("Gemini recommendations failed: %s", exc)
