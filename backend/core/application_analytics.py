@@ -670,7 +670,8 @@ class ApplicationSuccessAnalyzer:
 
     def predict_success(self):
         """
-        Conservative heuristic score (0-80) based on offer rate, industry fit, and prep uplift.
+        Conservative heuristic score curved to 0-100 (original 0-80)
+        based on offer rate, industry fit, and prep uplift.
         """
         overall = self.get_overall_metrics()
         base = min((overall.get('offer_rate') or 0) * 1.2, 65)
@@ -690,7 +691,9 @@ class ApplicationSuccessAnalyzer:
             boost += min(max(uplift, 0) * 50, 5)
             drivers.append(f"Prep uplift: +{round(uplift * 100)}% interview rate")
 
-        score = max(10, min(80, round(base + boost)))
+        score_0_80 = max(10, min(80, round(base + boost)))
+        # Curve to 0-100 by simple multiplier as requested
+        score = min(100, round(score_0_80 * 1.25))
         if not drivers:
             drivers.append("Based on recent offer/interview history")
 

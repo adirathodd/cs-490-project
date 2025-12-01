@@ -5,20 +5,24 @@ import Icon from '../common/Icon';
 
 const card = { padding: 12, borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb' };
 
+// Format a Date to YYYY-MM based on local calendar fields (timezone-safe)
+const formatMonth = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
 export default function JobStats() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [month, setMonth] = useState(() => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth() - 1, 1); // use last completed month for stability
+    // Use the current month (first day) so tests and UX align with expectations
+    return new Date(d.getFullYear(), d.getMonth(), 1);
   });
 
   const load = async (opts = {}) => {
     setLoading(true);
     try {
       const params = {};
-      const monthStr = opts.month || month.toISOString().slice(0, 7);
+      const monthStr = opts.month || formatMonth(month);
       params.month = monthStr;
       const s = await jobsAPI.getJobStats(params);
       setStats(s);
@@ -37,15 +41,15 @@ export default function JobStats() {
   // authenticated profile is recognized.
   useEffect(() => {
     if (!authLoading) {
-      load({ month: month.toISOString().slice(0, 7) });
+      load({ month: formatMonth(month) });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, month]);
+  }, [authLoading]);
 
   const downloadCsv = async () => {
     try {
       const base = (process.env.REACT_APP_API_URL || '') + '/jobs/stats';
-      const monthParam = `&month=${month.toISOString().slice(0, 7)}`;
+      const monthParam = `&month=${formatMonth(month)}`;
       const url = `${base}?export=csv${monthParam}`;
       const token = localStorage.getItem('firebaseToken') || '';
       const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -83,12 +87,14 @@ export default function JobStats() {
     const m = month.getMonth();
     const newDate = new Date(y, m - 1, 1);
     setMonth(newDate);
+    load({ month: formatMonth(newDate) });
   };
   const nextMonth = () => {
     const y = month.getFullYear();
     const m = month.getMonth();
     const newDate = new Date(y, m + 1, 1);
     setMonth(newDate);
+    load({ month: formatMonth(newDate) });
   };
 
   // Keyboard navigation: allow left/right arrows to navigate months when

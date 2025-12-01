@@ -181,7 +181,7 @@ export default function ApplicationSuccessAnalysis() {
             <div style={{ textAlign: 'center', padding: 16, background: '#ecfeff', borderRadius: 12, border: '1px solid #a5f3fc' }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#155e75' }}>Career Preparedness Score</div>
               <div style={{ fontSize: 42, fontWeight: 800, color: '#0e7490' }}>{analysis.predicted_success.score}</div>
-              <div style={{ fontSize: 12, color: '#155e75', marginBottom: 6 }}>/ 80</div>
+              <div style={{ fontSize: 12, color: '#155e75', marginBottom: 6 }}>/ 100</div>
               <div style={{ fontSize: 11, lineHeight: '14px', color: '#0c4a6e' }}>Reflects readiness based on past outcomes and preparation.</div>
             </div>
             <div>
