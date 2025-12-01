@@ -43,6 +43,11 @@ describe('JobStats component', () => {
 
     jobsAPI.getJobStats.mockResolvedValueOnce(statsA).mockResolvedValueOnce(statsB);
 
+    // Freeze system time so month calculations are deterministic regardless of current date
+    const fixedDate = new Date('2025-11-15T12:00:00Z');
+    jest.useFakeTimers('modern');
+    jest.setSystemTime(fixedDate);
+
     render(
       <AuthProvider value={{ loading: false }}>
         <JobStats />
@@ -67,5 +72,8 @@ describe('JobStats component', () => {
     await waitFor(() => expect(jobsAPI.getJobStats).toHaveBeenCalledTimes(2));
     const secondArgs = jobsAPI.getJobStats.mock.calls[1][0] || {};
     expect(secondArgs.month).toBe(monthB);
+
+    // Restore real timers
+    jest.useRealTimers();
   });
 });

@@ -29,6 +29,7 @@ import SalaryNegotiation from './components/jobs/SalaryNegotiation';
 import Goals from './components/goals/Goals';
 import ContactsPage from './components/contacts/ContactsPage';
 import NetworkingEvents from './components/networking/NetworkingEvents';
+import NetworkingCampaigns from './components/networking/NetworkingCampaigns';
 import Supporters from './components/networking/Supporters';
 import SupporterPublic from './components/networking/SupporterPublic';
 import InformationalInterviews from './components/informational-interviews/InformationalInterviews';
@@ -371,6 +372,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <NetworkingEvents />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/networking/campaigns"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <NetworkingCampaigns />
               </PrivateRoute>
             }
           />

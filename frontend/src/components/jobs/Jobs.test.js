@@ -284,16 +284,12 @@ describe('Jobs component (UC-036 & UC-038)', () => {
 
     render(<Jobs />, { wrapper: RouterWrapper });
 
-    expect(await screen.findByText(/product manager/i)).toBeInTheDocument();
-    const deadlineEl = await screen.findByTestId('application-deadline');
-    const rendered = deadlineEl.textContent || '';
-    const iso = new Date('2025-12-31').toLocaleDateString('en-CA'); // deterministic YYYY-MM-DD
-    const usShort = new Date('2025-12-31').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-    expect(
-      rendered.includes(iso) ||
-      rendered.includes(usShort) ||
-      /2025-12-31|Dec(?:ember)?\s*31(?:,)?\s*2025/i.test(rendered)
-    ).toBe(true);
+    // There can be multiple nodes containing the job title (calendar pill and list),
+    // so use findAllByText to avoid ambiguity and assert that at least one exists.
+    const pmTitles = await screen.findAllByText(/product manager/i);
+    expect(pmTitles.length).toBeGreaterThan(0);
+    // Deadline should still be present
+    expect(screen.getByText(/deadline: 2025-12-31/i)).toBeInTheDocument();
   });
 
   test('shows posting URL link when available', async () => {

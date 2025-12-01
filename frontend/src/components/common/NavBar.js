@@ -152,6 +152,13 @@ const NavBar = () => {
           Informational Interviews
         </NavLink>
         <NavLink
+          to="/networking/campaigns"
+          className="nav-dropdown-item"
+          onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
+        >
+          Networking Campaigns
+        </NavLink>
+        <NavLink
           to="/references"
           className="nav-dropdown-item"
           onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
