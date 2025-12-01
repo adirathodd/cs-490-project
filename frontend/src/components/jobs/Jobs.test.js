@@ -5,18 +5,6 @@ import { BrowserRouter } from 'react-router-dom';
 import Jobs from './Jobs';
 import { jobsAPI } from '../../services/api';
 
-jest.mock('../../services/api', () => ({
-  jobsAPI: {
-    getJobs: jest.fn(),
-    updateJob: jest.fn(),
-    deleteJob: jest.fn(),
-    archiveJob: jest.fn(),
-    unarchiveJob: jest.fn(),
-    bulkArchiveJobs: jest.fn(),
-    bulkUnarchiveJobs: jest.fn(),
-  },
-}));
-
 // Mock the navigate function
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -285,15 +273,7 @@ describe('Jobs component (UC-036 & UC-038)', () => {
     render(<Jobs />, { wrapper: RouterWrapper });
 
     expect(await screen.findByText(/product manager/i)).toBeInTheDocument();
-    const deadlineEl = await screen.findByTestId('application-deadline');
-    const rendered = deadlineEl.textContent || '';
-    const iso = new Date('2025-12-31').toLocaleDateString('en-CA'); // deterministic YYYY-MM-DD
-    const usShort = new Date('2025-12-31').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-    expect(
-      rendered.includes(iso) ||
-      rendered.includes(usShort) ||
-      /2025-12-31|Dec(?:ember)?\s*31(?:,)?\s*2025/i.test(rendered)
-    ).toBe(true);
+    expect(screen.getByText(/deadline: 2025-12-31/i)).toBeInTheDocument();
   });
 
   test('shows posting URL link when available', async () => {

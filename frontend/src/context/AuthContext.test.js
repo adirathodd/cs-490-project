@@ -359,9 +359,7 @@ describe('AuthContext', () => {
     await act(async () => {
       fireEvent.click(screen.getByTestId('refresh-profile-error-trigger'));
     });
-    await waitFor(() => {
-      expect(screen.getByTestId('error').textContent).toBe('refresh-fail');
-    });
+    expect(screen.getByTestId('refresh-profile-error').textContent).toBe('refresh-fail');
   });
 
   test('refreshToken returns null when no currentUser and does not write storage', async () => {

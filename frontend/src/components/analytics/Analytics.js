@@ -4,7 +4,6 @@ import { useAuth } from '../../context/AuthContext';
 import Icon from '../common/Icon';
 import InterviewPerformanceTracking from './InterviewPerformanceTracking';
 import ApplicationSuccessAnalysis from './ApplicationSuccessAnalysis';
-import CompetitiveAnalysisPanel from './CompetitiveAnalysisPanel';
 
 const card = { padding: 16, borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb', marginBottom: 16 };
 const sectionTitle = { fontSize: 18, fontWeight: 700, marginBottom: 12, color: '#1f2937' };
@@ -27,7 +26,6 @@ export default function Analytics() {
     { id: 'applications', label: 'Application Analytics' },
     { id: 'success', label: 'Success Analysis' },
     { id: 'interviews', label: 'Interview Performance' },
-    { id: 'competitive', label: 'Competitive Analysis' },
   ];
 
   return (
@@ -63,7 +61,6 @@ export default function Analytics() {
         {activeTab === 'applications' && <ApplicationAnalyticsPanel />}
         {activeTab === 'success' && <ApplicationSuccessAnalysis />}
         {activeTab === 'interviews' && <InterviewPerformanceTracking />}
-        {activeTab === 'competitive' && <CompetitiveAnalysisPanel />}
       </div>
     </div>
   );

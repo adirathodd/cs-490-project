@@ -7,22 +7,6 @@ export default function InterviewScheduler({ job, onClose, onSuccess, existingIn
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [conflicts, setConflicts] = useState([]);
-
-  const withRetry = async (fn, retries = 2, delay = 0) => {
-    for (let attempt = 0; attempt <= retries; attempt += 1) {
-      try {
-        return await fn();
-      } catch (err) {
-        const isNetwork = err?.message === 'Network error' || err?.name === 'TypeError';
-        if (!isNetwork || attempt === retries) {
-          throw err;
-        }
-        if (delay) {
-          await new Promise((res) => setTimeout(res, delay));
-        }
-      }
-    }
-  };
   
   const [formData, setFormData] = useState({
     interview_type: 'video',
@@ -98,78 +82,62 @@ export default function InterviewScheduler({ job, onClose, onSuccess, existingIn
 
       if (existingInterview) {
         // Update existing interview
-        await withRetry(() => interviewsAPI.updateInterview(existingInterview.id, payload));
+        await interviewsAPI.updateInterview(existingInterview.id, payload);
       } else {
         // Create new interview
-        await withRetry(() => interviewsAPI.createInterview(payload));
+        await interviewsAPI.createInterview(payload);
       }
       
       if (onSuccess) onSuccess();
       if (onClose) onClose();
     } catch (err) {
-      if (process.env.NODE_ENV !== 'test') {
-        console.error('Interview scheduling error:', err);
-      }
-
-      const normalizeError = (error) => {
-        if (!error) return {};
-        if (error.response && error.response.data) return error.response.data;
-        if (error instanceof Error) return { message: error.message };
-        if (typeof error === 'string') return { message: error };
-        return error;
-      };
-
-      const safeStringify = (obj) => {
+      console.error('Interview scheduling error:', err);
+      if (err) {
         try {
-          const seen = new WeakSet();
-          return JSON.stringify(obj, (key, value) => {
-            if (value && typeof value === 'object') {
-              if (seen.has(value)) return '[Circular]';
-              seen.add(value);
-            }
-            return value;
-          }, 2);
+          console.error('Error keys:', Object.keys(err));
+          console.error('Error structure:', JSON.stringify(err, null, 2));
         } catch (e) {
-          return String(obj);
-        }
-      };
-
-      const errData = normalizeError(err);
-
-      try {
-        if (process.env.NODE_ENV !== 'test') {
-          console.error('Error keys:', (errData && typeof errData === 'object') ? Object.keys(errData) : []);
-          console.error('Error structure:', safeStringify(errData));
-        }
-      } catch (e) {
-        if (process.env.NODE_ENV !== 'test') {
           console.error('Unable to inspect error object:', e);
         }
       }
       
       // Check for conflicts
-      if (errData.conflicts && Array.isArray(errData.conflicts) && errData.conflicts.length > 0) {
-        setConflicts(errData.conflicts);
+      if (err.conflicts && err.conflicts.length > 0) {
+        setConflicts(err.conflicts);
         setError('Scheduling conflict detected. See details below.');
-      } else if (errData.scheduled_at) {
+      } else if (err.scheduled_at) {
         // Field-specific error from backend (likely a conflict message)
         // DRF can return errors as arrays or strings
-        const errorMsg = Array.isArray(errData.scheduled_at) ? errData.scheduled_at[0] : errData.scheduled_at;
+        const errorMsg = Array.isArray(err.scheduled_at) ? err.scheduled_at[0] : err.scheduled_at;
         setError(errorMsg);
-      } else if (errData.non_field_errors) {
+      } else if (err.non_field_errors) {
         // General validation errors
-        const errorMsg = Array.isArray(errData.non_field_errors) ? errData.non_field_errors[0] : errData.non_field_errors;
+        const errorMsg = Array.isArray(err.non_field_errors) ? err.non_field_errors[0] : err.non_field_errors;
         setError(errorMsg);
-      } else if (errData.error) {
+      } else if (err.error) {
         // Check for generic error field that backend might return
-        const errorMsg = Array.isArray(errData.error) ? errData.error[0] : errData.error;
+        const errorMsg = Array.isArray(err.error) ? err.error[0] : err.error;
         setError(errorMsg);
       } else if (err?.message === 'Network error' || err?.name === 'TypeError') {
         setError('Network error: Unable to schedule interview due to network issues. Please try again later.');
       } else {
         // Extract first available error message from any field
-        const fallbackMsg = errData.message || (existingInterview ? 'Failed to update interview' : 'Failed to create interview');
-        setError(fallbackMsg);
+        let errorMsg = err.message || (existingInterview ? 'Failed to update interview' : 'Failed to create interview');
+        
+        // Try to find any error message in the error object
+        if (typeof err === 'object' && err !== null) {
+          for (const key in err) {
+            if (err[key] && typeof err[key] === 'string') {
+              errorMsg = err[key];
+              break;
+            } else if (Array.isArray(err[key]) && err[key].length > 0 && typeof err[key][0] === 'string') {
+              errorMsg = err[key][0];
+              break;
+            }
+          }
+        }
+        
+        setError(errorMsg);
       }
     } finally {
       setLoading(false);
