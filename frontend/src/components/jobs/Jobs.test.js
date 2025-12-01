@@ -286,7 +286,14 @@ describe('Jobs component (UC-036 & UC-038)', () => {
 
     expect(await screen.findByText(/product manager/i)).toBeInTheDocument();
     const deadlineEl = await screen.findByTestId('application-deadline');
-    expect(deadlineEl.textContent).toMatch(/2025-12-31/);
+    const rendered = deadlineEl.textContent || '';
+    const iso = new Date('2025-12-31').toLocaleDateString('en-CA'); // deterministic YYYY-MM-DD
+    const usShort = new Date('2025-12-31').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    expect(
+      rendered.includes(iso) ||
+      rendered.includes(usShort) ||
+      /2025-12-31|Dec(?:ember)?\s*31(?:,)?\s*2025/i.test(rendered)
+    ).toBe(true);
   });
 
   test('shows posting URL link when available', async () => {

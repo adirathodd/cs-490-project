@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { informationalInterviewsAPI, contactsAPI } from '../../services/api';
 import './InformationalInterviews.css';
 
 const InformationalInterviews = () => {
+  const isMounted = useRef(true);
   const [interviews, setInterviews] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,26 +35,31 @@ const InformationalInterviews = () => {
     loadData();
     loadContacts();
     loadAnalytics();
+    return () => {
+      isMounted.current = false;
+    };
   }, []);
 
   const loadData = async (statusFilter = null) => {
     try {
-      setLoading(true);
+      if (isMounted.current) setLoading(true);
       const filters = statusFilter && statusFilter !== 'all' ? { status: statusFilter } : {};
       const data = await informationalInterviewsAPI.getInterviews(filters);
-      setInterviews(data);
-      setError('');
+      if (isMounted.current) {
+        setInterviews(data);
+        setError('');
+      }
     } catch (err) {
-      setError(err.message || 'Failed to load informational interviews');
+      if (isMounted.current) setError(err.message || 'Failed to load informational interviews');
     } finally {
-      setLoading(false);
+      if (isMounted.current) setLoading(false);
     }
   };
 
   const loadContacts = async () => {
     try {
       const data = await contactsAPI.list();
-      setContacts(data);
+      if (isMounted.current) setContacts(data);
     } catch (err) {
       console.error('Failed to load contacts:', err);
     }
@@ -62,7 +68,7 @@ const InformationalInterviews = () => {
   const loadAnalytics = async () => {
     try {
       const data = await informationalInterviewsAPI.getAnalytics();
-      setAnalytics(data);
+      if (isMounted.current) setAnalytics(data);
     } catch (err) {
       console.error('Failed to load analytics:', err);
     }
