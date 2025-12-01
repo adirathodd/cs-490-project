@@ -5,6 +5,18 @@ import { BrowserRouter } from 'react-router-dom';
 import Jobs from './Jobs';
 import { jobsAPI } from '../../services/api';
 
+jest.mock('../../services/api', () => ({
+  jobsAPI: {
+    getJobs: jest.fn(),
+    updateJob: jest.fn(),
+    deleteJob: jest.fn(),
+    archiveJob: jest.fn(),
+    unarchiveJob: jest.fn(),
+    bulkArchiveJobs: jest.fn(),
+    bulkUnarchiveJobs: jest.fn(),
+  },
+}));
+
 // Mock the navigate function
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
