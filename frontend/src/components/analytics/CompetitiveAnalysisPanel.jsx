@@ -272,3 +272,7 @@ export default function CompetitiveAnalysisPanel() {
     </div>
   );
 }
+
+
+
+

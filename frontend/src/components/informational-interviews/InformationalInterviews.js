@@ -13,36 +13,22 @@ const InformationalInterviews = () => {
   const [selectedInterview, setSelectedInterview] = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [notification, setNotification] = useState(null);
+  const notificationTimer = useRef(null);
 
-  const setInterviewsSafe = (...args) => {
-    if (!isMounted.current) return;
-    Promise.resolve().then(() => {
-      if (isMounted.current) setInterviews(...args);
-    });
+  const setInterviewsSafe = (value) => {
+    if (isMounted.current) setInterviews(value);
   };
-  const setContactsSafe = (...args) => {
-    if (!isMounted.current) return;
-    Promise.resolve().then(() => {
-      if (isMounted.current) setContacts(...args);
-    });
+  const setContactsSafe = (value) => {
+    if (isMounted.current) setContacts(value);
   };
-  const setAnalyticsSafe = (...args) => {
-    if (!isMounted.current) return;
-    Promise.resolve().then(() => {
-      if (isMounted.current) setAnalytics(...args);
-    });
+  const setAnalyticsSafe = (value) => {
+    if (isMounted.current) setAnalytics(value);
   };
-  const setErrorSafe = (...args) => {
-    if (!isMounted.current) return;
-    Promise.resolve().then(() => {
-      if (isMounted.current) setError(...args);
-    });
+  const setErrorSafe = (value) => {
+    if (isMounted.current) setError(value);
   };
-  const setLoadingSafe = (...args) => {
-    if (!isMounted.current) return;
-    Promise.resolve().then(() => {
-      if (isMounted.current) setLoading(...args);
-    });
+  const setLoadingSafe = (value) => {
+    if (isMounted.current) setLoading(value);
   };
 
   const statusOptions = [
@@ -85,6 +71,10 @@ const InformationalInterviews = () => {
     loadAll();
     return () => {
       isMounted.current = false;
+      if (notificationTimer.current) {
+        clearTimeout(notificationTimer.current);
+        notificationTimer.current = null;
+      }
     };
   }, []);
 
@@ -158,8 +148,17 @@ const InformationalInterviews = () => {
   };
 
   const showNotification = (message, type = 'success') => {
+    if (!isMounted.current) return;
     setNotification({ message, type });
-    setTimeout(() => setNotification(null), 4000);
+    if (notificationTimer.current) {
+      clearTimeout(notificationTimer.current);
+    }
+    notificationTimer.current = setTimeout(() => {
+      if (isMounted.current) {
+        setNotification(null);
+      }
+      notificationTimer.current = null;
+    }, 4000);
   };
 
   if (loading && interviews.length === 0) {
