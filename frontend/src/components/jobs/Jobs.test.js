@@ -271,7 +271,7 @@ describe('Jobs component (UC-036 & UC-038)', () => {
     expect(screen.getByText(/usd 100000 - 150000/i)).toBeInTheDocument();
   });
 
-  test('displays application deadline when present', async () => {
+    test('displays application deadline when present', async () => {
     jobsAPI.getJobs.mockResolvedValueOnce([
       {
         id: 21,
@@ -284,7 +284,9 @@ describe('Jobs component (UC-036 & UC-038)', () => {
 
     render(<Jobs />, { wrapper: RouterWrapper });
 
-    expect(await screen.findByText(/product manager/i)).toBeInTheDocument();
+    const [titleEl] = await screen.findAllByText(/product manager/i);
+    expect(titleEl).toBeInTheDocument();
+
     const deadlineEl = await screen.findByTestId('application-deadline');
     const rendered = deadlineEl.textContent || '';
     const iso = new Date('2025-12-31').toLocaleDateString('en-CA'); // deterministic YYYY-MM-DD
@@ -784,3 +786,4 @@ describe('Jobs component (UC-045: Job Archiving and Management)', () => {
     });
   });
 });
+

@@ -1,3 +1,4 @@
+import React from 'react';
 // jest-dom adds custom jest matchers for asserting on DOM nodes.
 // allows you to do things like:
 // expect(element).toHaveTextContent(/react/i)
@@ -28,6 +29,27 @@ if (typeof window !== 'undefined') {
 	window.scrollTo = jest.fn();
 }
 
+// Lightweight mocks for libraries not available in Jest/jsdom
+jest.mock('@fullcalendar/react', () => () => <div data-testid="fullcalendar" />);
+jest.mock('@fullcalendar/list', () => () => null);
+jest.mock('@fullcalendar/daygrid', () => () => null);
+jest.mock('@fullcalendar/timegrid', () => () => null);
+jest.mock('@fullcalendar/interaction', () => () => null);
+jest.mock('recharts', () => ({
+	ResponsiveContainer: ({ children }) => <div>{children}</div>,
+	LineChart: ({ children }) => <div>{children}</div>,
+	BarChart: ({ children }) => <div>{children}</div>,
+	PieChart: ({ children }) => <div>{children}</div>,
+	Line: () => null,
+	Bar: () => null,
+	Pie: () => null,
+	XAxis: () => null,
+	YAxis: () => null,
+	Tooltip: () => null,
+	Legend: () => null,
+	CartesianGrid: () => null,
+}));
+
 // Mock Firebase services to avoid initializing real SDK in tests
 jest.mock('./services/firebase', () => ({
 	__esModule: true,
@@ -51,7 +73,6 @@ jest.mock('./services/firebase', () => ({
 	confirmPasswordReset: jest.fn(),
 }));
 
-
 // Mock API module via the manual mock
 jest.mock('./services/api');
 
@@ -69,6 +90,19 @@ beforeEach(() => {
 	jobsAPI.getUpcomingDeadlines.mockResolvedValue([]);
 	jobsAPI.getJobStats.mockResolvedValue({ daily_applications: [], counts: {} });
 	jobsAPI.getAnalytics.mockResolvedValue({ counts: {}, monthly_applications: [], daily_applications: [], response_rate_percent: 0 });
+	if (!jobsAPI.getCompetitiveAnalysis) {
+		jobsAPI.getCompetitiveAnalysis = jest.fn();
+	}
+	jobsAPI.getCompetitiveAnalysis.mockResolvedValue({
+		cohort: { industry: 'General', experience_level: 'mid', sample_size: 0 },
+		user_metrics: {},
+		peer_benchmarks: {},
+		skill_gaps: [],
+		differentiators: [],
+		recommendations: { deterministic: [], ai: [] },
+		progression: {},
+		employment: {},
+	});
 	jobsAPI.bulkUpdateStatus.mockResolvedValue({ updated: 0 });
 	interviewsAPI.getActiveReminders.mockResolvedValue([]);
 	interviewsAPI.dismissReminder.mockResolvedValue({});

@@ -115,7 +115,7 @@ export default function CompetitiveAnalysisPanel() {
         <div style={{ fontSize: 14, color: '#6b7280' }}>{title}</div>
         <div style={{ fontSize: 20, fontWeight: 600, marginTop: 2, color: '#6b7280' }}>You: {userValue}{suffix}</div>
         <div style={{ fontSize: 13, color: '#6b7280' }}>Peers: {peerValue}{suffix}</div>
-        <div style={{ fontSize: 18, fontWeight: 800, marginTop: 6, color: deltaColor }}>Δ {deltaLabel}</div>
+        <div style={{ fontSize: 18, fontWeight: 800, marginTop: 6, color: deltaColor }}>Delta {deltaLabel}</div>
       </div>
     );
   };
@@ -173,7 +173,7 @@ export default function CompetitiveAnalysisPanel() {
         <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {jobTypeOptions.map((opt) => (
             <label key={opt.id} htmlFor={`jobtype-${opt.id}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <input id=`"jobtype-${opt.id}`" type="checkbox" checked={filters.jobTypes[opt.id]} onChange={() => handleJobTypeToggle(opt.id)} />
+              <input id={`jobtype-${opt.id}`} type="checkbox" checked={filters.jobTypes[opt.id]} onChange={() => handleJobTypeToggle(opt.id)} />
               {opt.label}
             </label>
           ))}
@@ -182,7 +182,9 @@ export default function CompetitiveAnalysisPanel() {
           <button type="button" className="btn-primary" onClick={() => loadCompetitive(filters)}>Apply Filters</button>
           <button type="button" className="btn-ghost" onClick={handleResetFilters}>Reset</button>
           <span style={{ marginLeft: 'auto', color: '#6b7280', fontSize: 13 }}>
-            Cohort: {cohort?.industry || 'N/A'} • {cohort?.experience_level || 'N/A'} • Peers: {cohort?.sample_size || 0}
+          <span style={{ marginLeft: 'auto', color: '#6b7280', fontSize: 13 }}>
+            Cohort: {cohort?.industry || 'N/A'} | {cohort?.experience_level || 'N/A'} | Peers: {cohort?.sample_size || 0}
+          </span>
           </span>
         </div>
       </div>

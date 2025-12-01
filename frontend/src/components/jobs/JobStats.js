@@ -11,14 +11,15 @@ export default function JobStats() {
   const [error, setError] = useState('');
   const [month, setMonth] = useState(() => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
+    return new Date(d.getFullYear(), d.getMonth() - 1, 1); // use last completed month for stability
   });
 
   const load = async (opts = {}) => {
     setLoading(true);
     try {
       const params = {};
-      if (opts.month) params.month = opts.month;
+      const monthStr = opts.month || month.toISOString().slice(0, 7);
+      params.month = monthStr;
       const s = await jobsAPI.getJobStats(params);
       setStats(s);
       setError('');
@@ -38,13 +39,14 @@ export default function JobStats() {
     if (!authLoading) {
       load({ month: month.toISOString().slice(0, 7) });
     }
-  }, [month, authLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, month]);
 
   const downloadCsv = async () => {
     try {
-    const base = (process.env.REACT_APP_API_URL || '') + '/jobs/stats';
-    const monthParam = stats?.daily_month ? `&month=${stats.daily_month.slice(0,7)}` : `&month=${month.toISOString().slice(0,7)}`;
-    const url = `${base}?export=csv${monthParam}`;
+      const base = (process.env.REACT_APP_API_URL || '') + '/jobs/stats';
+      const monthParam = `&month=${month.toISOString().slice(0, 7)}`;
+      const url = `${base}?export=csv${monthParam}`;
       const token = localStorage.getItem('firebaseToken') || '';
       const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!resp.ok) throw new Error('Export failed');
@@ -60,7 +62,7 @@ export default function JobStats() {
     }
   };
 
-  if (loading) return <div style={{ padding: 20 }}>Loading job statistics…</div>;
+  if (loading) return <div style={{ padding: 20 }}>Loading job statistics...</div>
   if (error) return <div style={{ padding: 20, color: '#b91c1c' }}>{error}</div>;
   if (!stats) return null;
 
@@ -79,12 +81,14 @@ export default function JobStats() {
   const prevMonth = () => {
     const y = month.getFullYear();
     const m = month.getMonth();
-    setMonth(new Date(y, m - 1, 1));
+    const newDate = new Date(y, m - 1, 1);
+    setMonth(newDate);
   };
   const nextMonth = () => {
     const y = month.getFullYear();
     const m = month.getMonth();
-    setMonth(new Date(y, m + 1, 1));
+    const newDate = new Date(y, m + 1, 1);
+    setMonth(newDate);
   };
 
   // Keyboard navigation: allow left/right arrows to navigate months when
