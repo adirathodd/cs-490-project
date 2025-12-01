@@ -51,21 +51,22 @@ export const AuthProvider = ({ children, value: injectedValue }) => {
           // Fetch user profile from backend
           const profileData = await authAPI.getCurrentUser();
 
-          // If backend doesn't yet have a stored Google photo, prefer the Firebase user's photoURL
-          // This helps show the Google profile picture immediately while the backend sync completes.
+          const backendProfile = profileData?.profile || null;
+
           if (user.photoURL) {
-            // Merge backend profile with photoURL fallback
-            const backendProfile = profileData?.profile || {};
-            if (!backendProfile.portfolio_url) {
-              backendProfile.portfolio_url = user.photoURL;
+            const mergedProfile = backendProfile ? { ...backendProfile } : {};
+            if (!mergedProfile.portfolio_url) {
+              mergedProfile.portfolio_url = user.photoURL;
             }
-            setUserProfile(backendProfile);
+            setUserProfile(mergedProfile);
           } else {
-            setUserProfile(profileData.profile);
+            setUserProfile(backendProfile);
           }
         } catch (error) {
-          console.error('Error fetching user profile:', error);
-          setError(error.message);
+          if (process.env.NODE_ENV !== 'test') {
+            console.error('Error fetching user profile:', error);
+          }
+          setError(error?.message || String(error));
         }
       } else {
         localStorage.removeItem('firebaseToken');
@@ -85,9 +86,13 @@ export const AuthProvider = ({ children, value: injectedValue }) => {
       setCurrentUser(null);
       setUserProfile(null);
     } catch (error) {
-      console.error('Error signing out:', error);
-      throw error;
+      if (process.env.NODE_ENV !== 'test') {
+        console.error('Error signing out:', error);
+      }
+      setError(error?.message || 'Failed to sign out');
+      return false;
     }
+    return true;
   };
 
   const refreshToken = async () => {
@@ -103,22 +108,28 @@ export const AuthProvider = ({ children, value: injectedValue }) => {
     if (currentUser) {
       try {
         const profileData = await authAPI.getCurrentUser();
+        const backendProfile = profileData?.profile || null;
 
         // Preserve photoURL from Firebase if available
-        if (currentUser.photoURL) {
-          const backendProfile = profileData?.profile || {};
-          if (!backendProfile.portfolio_url) {
-            backendProfile.portfolio_url = currentUser.photoURL;
+        if (currentUser?.photoURL) {
+          const mergedProfile = backendProfile ? { ...backendProfile } : {};
+          if (!mergedProfile.portfolio_url) {
+            mergedProfile.portfolio_url = currentUser.photoURL;
           }
-          setUserProfile(backendProfile);
+          setUserProfile(mergedProfile);
         } else {
-          setUserProfile(profileData.profile);
+          setUserProfile(backendProfile);
         }
+        return backendProfile;
       } catch (error) {
-        console.error('Error refreshing user profile:', error);
-        throw error;
+        if (process.env.NODE_ENV !== 'test') {
+          console.error('Error refreshing user profile:', error);
+        }
+        setError(error?.message || 'Failed to refresh profile');
+        return null;
       }
     }
+    return null;
   };
 
   const value = injectedValue || {
