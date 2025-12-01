@@ -9,6 +9,8 @@ const titleMap = {
   'login': 'Login',
   'register': 'Register',
   'informational-interviews': 'Informational Interviews',
+  'networking': 'Networking Events',
+  'networking-campaigns': 'Networking Campaigns',
 };
 
 const Breadcrumbs = () => {
@@ -40,4 +42,3 @@ const Breadcrumbs = () => {
 };
 
 export default Breadcrumbs;
-
