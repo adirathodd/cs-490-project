@@ -14,6 +14,37 @@ const InformationalInterviews = () => {
   const [analytics, setAnalytics] = useState(null);
   const [notification, setNotification] = useState(null);
 
+  const setInterviewsSafe = (...args) => {
+    if (!isMounted.current) return;
+    Promise.resolve().then(() => {
+      if (isMounted.current) setInterviews(...args);
+    });
+  };
+  const setContactsSafe = (...args) => {
+    if (!isMounted.current) return;
+    Promise.resolve().then(() => {
+      if (isMounted.current) setContacts(...args);
+    });
+  };
+  const setAnalyticsSafe = (...args) => {
+    if (!isMounted.current) return;
+    Promise.resolve().then(() => {
+      if (isMounted.current) setAnalytics(...args);
+    });
+  };
+  const setErrorSafe = (...args) => {
+    if (!isMounted.current) return;
+    Promise.resolve().then(() => {
+      if (isMounted.current) setError(...args);
+    });
+  };
+  const setLoadingSafe = (...args) => {
+    if (!isMounted.current) return;
+    Promise.resolve().then(() => {
+      if (isMounted.current) setLoading(...args);
+    });
+  };
+
   const statusOptions = [
     { value: 'identified', label: 'Identified', color: '#6c757d' },
     { value: 'outreach_sent', label: 'Outreach Sent', color: '#007bff' },
@@ -32,9 +63,26 @@ const InformationalInterviews = () => {
   ];
 
   useEffect(() => {
-    loadData();
-    loadContacts();
-    loadAnalytics();
+    const loadAll = async () => {
+      try {
+        setLoadingSafe(true);
+        const [data, contactsData, analyticsData] = await Promise.all([
+          informationalInterviewsAPI.getInterviews({}),
+          contactsAPI.list(),
+          informationalInterviewsAPI.getAnalytics(),
+        ]);
+        setInterviewsSafe(data);
+        setContactsSafe(contactsData);
+        setAnalyticsSafe(analyticsData);
+        setErrorSafe('');
+      } catch (err) {
+        setErrorSafe(err.message || 'Failed to load informational interviews');
+      } finally {
+        setLoadingSafe(false);
+      }
+    };
+
+    loadAll();
     return () => {
       isMounted.current = false;
     };
@@ -42,24 +90,22 @@ const InformationalInterviews = () => {
 
   const loadData = async (statusFilter = null) => {
     try {
-      if (isMounted.current) setLoading(true);
+      setLoadingSafe(true);
       const filters = statusFilter && statusFilter !== 'all' ? { status: statusFilter } : {};
       const data = await informationalInterviewsAPI.getInterviews(filters);
-      if (isMounted.current) {
-        setInterviews(data);
-        setError('');
-      }
+      setInterviewsSafe(data);
+      setErrorSafe('');
     } catch (err) {
-      if (isMounted.current) setError(err.message || 'Failed to load informational interviews');
+      setErrorSafe(err.message || 'Failed to load informational interviews');
     } finally {
-      if (isMounted.current) setLoading(false);
+      setLoadingSafe(false);
     }
   };
 
   const loadContacts = async () => {
     try {
       const data = await contactsAPI.list();
-      if (isMounted.current) setContacts(data);
+      setContactsSafe(data);
     } catch (err) {
       console.error('Failed to load contacts:', err);
     }
@@ -68,7 +114,7 @@ const InformationalInterviews = () => {
   const loadAnalytics = async () => {
     try {
       const data = await informationalInterviewsAPI.getAnalytics();
-      if (isMounted.current) setAnalytics(data);
+      setAnalyticsSafe(data);
     } catch (err) {
       console.error('Failed to load analytics:', err);
     }

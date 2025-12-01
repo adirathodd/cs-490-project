@@ -32,7 +32,7 @@ const basePayload = {
 const renderPanel = async (payload = basePayload) => {
   jobsAPI.getCompetitiveAnalysis.mockResolvedValueOnce(payload);
   render(<CompetitiveAnalysisPanel />);
-  await waitFor(() => expect(screen.getByText(/Competitive Analysis/i)).toBeInTheDocument());
+  await screen.findByText(/Competitive Analysis/i);
 };
 
 describe('CompetitiveAnalysisPanel', () => {
@@ -44,24 +44,24 @@ describe('CompetitiveAnalysisPanel', () => {
     await renderPanel();
 
     expect(jobsAPI.getCompetitiveAnalysis).toHaveBeenCalled();
-    expect(screen.getAllByText(/Δ/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Average positions held/i)).toBeInTheDocument();
-    expect(screen.getByText(/You: 1/)).toBeInTheDocument();
-    expect(screen.getByText(/Peers: 2/)).toBeInTheDocument();
+    expect(await screen.findAllByText(/?/)).not.toHaveLength(0);
+    expect(await screen.findByText(/Average positions held/i)).toBeInTheDocument();
+    expect(await screen.findByText(/You: 1/)).toBeInTheDocument();
+    expect(await screen.findByText(/Peers: 2/)).toBeInTheDocument();
 
-    expect(screen.getByText(/Next-step skills to add/i)).toBeInTheDocument();
-    expect(screen.getByText(/Kubernetes - 50% of higher-level peers/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Next-step skills to add/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Kubernetes - 50% of higher-level peers/i)).toBeInTheDocument();
 
-    expect(screen.getByText(/Ruby - 60% of peers have this skill/i)).toBeInTheDocument();
-    expect(screen.getByText(/Go - Less common peer skill to highlight/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Ruby - 60% of peers have this skill/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Go - Less common peer skill to highlight/i)).toBeInTheDocument();
 
-    expect(screen.getByText(/Showcase React and SQL depth/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Showcase React and SQL depth/i)).toBeInTheDocument();
   });
 
   it('shows fallback when progression metrics are unavailable', async () => {
     const payload = { ...basePayload, progression: {} };
     await renderPanel(payload);
-    expect(screen.getByText(/Not enough higher-level peers yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Not enough higher-level peers yet/i)).toBeInTheDocument();
   });
 
   it('applies filters and passes params to API', async () => {
