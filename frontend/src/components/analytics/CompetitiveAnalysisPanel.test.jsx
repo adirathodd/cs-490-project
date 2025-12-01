@@ -44,7 +44,7 @@ describe('CompetitiveAnalysisPanel', () => {
     await renderPanel();
 
     expect(jobsAPI.getCompetitiveAnalysis).toHaveBeenCalled();
-    expect(await screen.findAllByText(/?/)).not.toHaveLength(0);
+    // removed invalid regex assertion; specific checks below validate content presence
     expect(await screen.findByText(/Average positions held/i)).toBeInTheDocument();
     expect(await screen.findByText(/You: 1/)).toBeInTheDocument();
     expect(await screen.findByText(/Peers: 2/)).toBeInTheDocument();
