@@ -18,6 +18,10 @@
   flex-wrap: wrap;
 }
 
+.hero-copy {
+  flex: 1 1 320px;
+}
+
 .eyebrow {
   text-transform: uppercase;
   font-size: 0.75rem;
@@ -42,6 +46,8 @@
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
+  flex: 1 1 320px;
+  justify-content: flex-end;
 }
 
 .hero-metric {

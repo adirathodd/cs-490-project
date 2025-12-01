@@ -972,7 +972,7 @@ const NetworkingCampaigns = () => {
   return (
     <div className="networking-campaigns">
       <div className="campaigns-hero">
-        <div>
+        <div className="hero-copy">
           <h1>Networking Campaigns</h1>
           <p>Design targeted outreach plays, measure response quality, and link every relationship push to job outcomes.</p>
         </div>
