@@ -7,6 +7,22 @@ export default function InterviewScheduler({ job, onClose, onSuccess, existingIn
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [conflicts, setConflicts] = useState([]);
+
+  const withRetry = async (fn, retries = 2, delay = 0) => {
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        return await fn();
+      } catch (err) {
+        const isNetwork = err?.message === 'Network error' || err?.name === 'TypeError';
+        if (!isNetwork || attempt === retries) {
+          throw err;
+        }
+        if (delay) {
+          await new Promise((res) => setTimeout(res, delay));
+        }
+      }
+    }
+  };
   
   const [formData, setFormData] = useState({
     interview_type: 'video',
@@ -82,10 +98,10 @@ export default function InterviewScheduler({ job, onClose, onSuccess, existingIn
 
       if (existingInterview) {
         // Update existing interview
-        await interviewsAPI.updateInterview(existingInterview.id, payload);
+        await withRetry(() => interviewsAPI.updateInterview(existingInterview.id, payload));
       } else {
         // Create new interview
-        await interviewsAPI.createInterview(payload);
+        await withRetry(() => interviewsAPI.createInterview(payload));
       }
       
       if (onSuccess) onSuccess();
