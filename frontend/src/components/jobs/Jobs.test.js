@@ -285,7 +285,8 @@ describe('Jobs component (UC-036 & UC-038)', () => {
     render(<Jobs />, { wrapper: RouterWrapper });
 
     expect(await screen.findByText(/product manager/i)).toBeInTheDocument();
-    expect(screen.getByText(/2025-12-31/i)).toBeInTheDocument();
+    const deadlineEl = await screen.findByTestId('application-deadline');
+    expect(deadlineEl.textContent).toMatch(/2025-12-31/);
   });
 
   test('shows posting URL link when available', async () => {

@@ -90,9 +90,8 @@ export const AuthProvider = ({ children, value: injectedValue }) => {
         console.error('Error signing out:', error);
       }
       setError(error?.message || 'Failed to sign out');
-      return false;
+      throw error;
     }
-    return true;
   };
 
   const refreshToken = async () => {
