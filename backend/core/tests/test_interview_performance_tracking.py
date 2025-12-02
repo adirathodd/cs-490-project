@@ -156,7 +156,8 @@ class TestInterviewPerformanceTracker:
         for item in result:
             assert 'period' in item
             assert 'conversion_rate' in item
-            assert 'rejections' in item  # Not 'rejection_rate'
+            assert 'rejections' in item
+            assert 'rejection_rate' in item
             assert 'total_interviews' in item
             assert 'offers' in item
             assert 'pending' in item
@@ -178,6 +179,7 @@ class TestInterviewPerformanceTracker:
             assert 'conversion_rate' in item
             assert 'offers' in item
             assert 'rejections' in item
+            assert 'avg_confidence' in item
     
     def test_track_mock_to_real_improvement(self, user, interviews, mock_sessions):
         """Test mock to real improvement tracking"""
@@ -203,6 +205,7 @@ class TestInterviewPerformanceTracker:
                 assert 'total_interviews' in item
                 assert 'conversion_rate' in item
                 assert 'offers' in item
+                assert 'avg_confidence' in item
     
     def test_track_feedback_themes(self, user, coaching_feedback):
         """Test feedback themes analysis"""
@@ -213,6 +216,10 @@ class TestInterviewPerformanceTracker:
         assert 'improvement_areas' in result
         assert 'positive_themes' in result
         assert isinstance(result['improvement_areas'], list)
+        if result['improvement_areas']:
+            entry = result['improvement_areas'][0]
+            assert 'area' in entry
+            assert 'percentage' in entry
     
     def test_monitor_confidence_progression(self, user, interviews):
         """Test confidence progression tracking"""
@@ -220,13 +227,11 @@ class TestInterviewPerformanceTracker:
         result = tracker.monitor_confidence_progression()
         
         assert isinstance(result, dict)
-        assert 'current_period_average' in result
-        assert 'previous_period_average' in result
-        assert 'change_percent' in result
-        assert 'trend' in result
-        assert 'progression_data' in result
-        assert isinstance(result['progression_data'], list)
-        assert result['trend'] in ['improving', 'declining', 'stable']
+        assert 'current_avg_confidence' in result
+        assert 'previous_avg_confidence' in result
+        assert 'trend_percentage' in result
+        assert 'confidence_progression' in result
+        assert isinstance(result['confidence_progression'], list)
     
     def test_generate_coaching_recommendations(self, user, interviews, mock_sessions):
         """Test coaching recommendations generation"""
@@ -380,10 +385,11 @@ class TestInterviewPerformanceTrackingAPI:
             item = data['conversion_rates_over_time'][0]
             assert 'period' in item
             assert 'conversion_rate' in item
-            assert 'rejections' in item  # Not 'rejection_rate'
+            assert 'rejections' in item
+            assert 'rejection_rate' in item
             assert 'offers' in item
             assert 'pending' in item
-        
+
         # Validate performance by format structure
         if len(data['performance_by_format']) > 0:
             item = data['performance_by_format'][0]
@@ -391,6 +397,7 @@ class TestInterviewPerformanceTrackingAPI:
             assert 'format_label' in item
             assert 'total_interviews' in item
             assert 'conversion_rate' in item
+            assert 'avg_confidence' in item
         
         # Validate mock to real improvement structure
         mock_data = data['mock_to_real_improvement']
@@ -405,12 +412,76 @@ class TestInterviewPerformanceTrackingAPI:
             assert 'recommendation' in rec
             assert 'action_items' in rec  # Not 'action'
         
+        # Validate confidence progression structure
+        assert 'confidence_progression' in data
+        assert 'current_avg_confidence' in data['confidence_progression']
+        assert 'previous_avg_confidence' in data['confidence_progression']
+        assert 'trend_percentage' in data['confidence_progression']
+        assert 'confidence_progression' in data['confidence_progression']
+
         # Validate benchmark comparison structure (flat structure)
         assert 'conversion_rate' in data['benchmark_comparison']
         assert 'user' in data['benchmark_comparison']['conversion_rate']
         assert 'average' in data['benchmark_comparison']['conversion_rate']
 
 
+@pytest.mark.django_db
+class TestInterviewPerformanceAnalyticsAPI:
+    """Tests for UC-080 analytics endpoint."""
+
+    def test_unauthenticated_access(self):
+        client = APIClient()
+        response = client.get('/api/interviews/performance-analytics/')
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_returns_defaults_without_data(self, user):
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.get('/api/interviews/performance-analytics/')
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+
+        assert 'summary' in data
+        assert data['summary']['total_interviews'] == 0
+        assert 'format_performance' in data
+        assert data['format_performance'] == []
+        assert isinstance(data['insights'], list)
+
+    def test_returns_metrics_with_data(self, user, job_entry, mock_sessions):
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        # Create interviews across formats/industries
+        finance_job = JobEntry.objects.create(
+            candidate=user.profile,
+            company_name='FinServe',
+            title='Analyst',
+            industry='Finance'
+        )
+        job_variants = [job_entry, finance_job]
+        formats = ['phone', 'video']
+        for idx in range(4):
+            InterviewSchedule.objects.create(
+                candidate=user.profile,
+                job=job_variants[idx % len(job_variants)],
+                interview_type=formats[idx % len(formats)],
+                scheduled_at=timezone.now() - timedelta(days=idx * 5),
+                outcome='excellent' if idx % 2 == 0 else 'rejected',
+                status='completed'
+            )
+
+        response = client.get('/api/interviews/performance-analytics/')
+        assert response.status_code == status.HTTP_200_OK
+
+        data = response.json()
+        assert data['summary']['total_interviews'] >= 4
+        assert 'conversion_trend' in data
+        assert 'format_performance' in data
+        assert 'feedback_themes' in data
+        assert 'practice_insights' in data
+        assert 'strengths_and_gaps' in data
+        assert isinstance(data['recommendations'], list)
 @pytest.mark.django_db
 class TestEdgeCases:
     """Test edge cases and boundary conditions"""
@@ -430,8 +501,7 @@ class TestEdgeCases:
         result = tracker.get_conversion_rates_over_time()
         
         assert len(result) > 0
-        # Note: only 'offer_received' counts as offer, not 'excellent'
-        # So conversion rate may not be 100%
+        # Excellent/good outcomes are treated as offers for analytics
     
     def test_all_pending_interviews(self, user, job_entry):
         """Test with all interviews in pending/scheduled status"""

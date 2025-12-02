@@ -519,19 +519,35 @@ export default function InterviewPerformanceTracking() {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 16, fontWeight: 600 }}>{'⭐'.repeat(item.confidence_level)}</span>
-                    {item.outcome && (
-                      <span
-                        style={{
-                          fontSize: 12,
-                          padding: '2px 8px',
-                          borderRadius: 4,
-                          background: item.outcome === 'offer_received' ? '#d1fae5' : '#fee2e2',
-                          color: item.outcome === 'offer_received' ? '#065f46' : '#991b1b',
-                        }}
-                      >
-                        {item.outcome.replace('_', ' ')}
-                      </span>
-                    )}
+                    {(() => {
+                      const normalizedOutcome = (item.outcome || 'pending').toLowerCase();
+                      const positiveOutcomes = new Set(['excellent', 'good', 'offer_received']);
+                      const neutralOutcomes = new Set(['pending', 'average', 'withdrew']);
+                      let background = '#fee2e2';
+                      let color = '#991b1b';
+                      if (positiveOutcomes.has(normalizedOutcome)) {
+                        background = '#d1fae5';
+                        color = '#065f46';
+                      } else if (neutralOutcomes.has(normalizedOutcome)) {
+                        background = '#f3f4f6';
+                        color = '#4b5563';
+                      }
+                      const label = (item.outcome || 'pending').replace('_', ' ');
+                      return (
+                        <span
+                          style={{
+                            fontSize: 12,
+                            padding: '2px 8px',
+                            borderRadius: 4,
+                            background,
+                            color,
+                            textTransform: 'capitalize',
+                          }}
+                        >
+                          {label}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}
