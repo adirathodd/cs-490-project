@@ -15,6 +15,7 @@ from core.models import (
     ResumeVersion, ResumeVersionChange, ResumeShare, ShareAccessLog,
     ResumeFeedback, FeedbackComment, FeedbackNotification, SupporterInvite, SupporterEncouragement, SupporterChatMessage,
     TeamMember, TeamAccount, TeamMembership, TeamInvitation, TeamCandidateAccess, TeamMessage,
+    TeamSharedJob, TeamJobComment,
     MentorshipRequest, MentorshipSharingPreference, MentorshipSharedApplication,
     MentorshipGoal, MentorshipMessage,
     MarketIntelligence, MockInterviewSession, MockInterviewQuestion, MockInterviewSummary,
@@ -4271,7 +4272,7 @@ class InformationalInterviewListSerializer(serializers.ModelSerializer):
 
 class TeamMembershipSerializer(serializers.ModelSerializer):
     user_profile = serializers.SerializerMethodField()
-    candidate_profile = CandidatePublicProfileSerializer(source='candidate_profile', read_only=True)
+    candidate_profile = CandidatePublicProfileSerializer(read_only=True)
 
     class Meta:
         model = TeamMembership
@@ -4467,3 +4468,85 @@ class TeamDashboardSerializer(serializers.Serializer):
     progress = serializers.DictField(child=serializers.FloatField(), required=False)
     messaging = serializers.DictField(child=serializers.IntegerField(), required=False)
     recent_activity = serializers.ListField(child=serializers.DictField(), required=False)
+
+
+class TeamJobCommentSerializer(serializers.ModelSerializer):
+    author_profile = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamJobComment
+        fields = [
+            'id',
+            'shared_job',
+            'author',
+            'content',
+            'created_at',
+            'updated_at',
+            'author_profile',
+        ]
+        read_only_fields = ['id', 'shared_job', 'author', 'created_at', 'updated_at', 'author_profile']
+
+    def get_author_profile(self, obj):
+        profile = getattr(obj.author, 'profile', None)
+        if profile:
+            return {
+                'user_id': obj.author.id,
+                'full_name': profile.get_full_name() or obj.author.get_full_name() or obj.author.email,
+                'headline': getattr(profile, 'headline', ''),
+            }
+        return {
+            'user_id': obj.author.id,
+            'full_name': obj.author.get_full_name() or obj.author.email,
+            'headline': '',
+        }
+
+
+class TeamSharedJobSerializer(serializers.ModelSerializer):
+    shared_by_profile = serializers.SerializerMethodField()
+    job_details = serializers.SerializerMethodField()
+    comments = TeamJobCommentSerializer(many=True, read_only=True)
+    comment_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamSharedJob
+        fields = [
+            'id',
+            'team',
+            'job',
+            'shared_by',
+            'note',
+            'shared_at',
+            'shared_by_profile',
+            'job_details',
+            'comments',
+            'comment_count',
+        ]
+        read_only_fields = ['id', 'team', 'shared_by', 'shared_at', 'shared_by_profile', 'job_details', 'comments', 'comment_count']
+
+    def get_shared_by_profile(self, obj):
+        profile = getattr(obj.shared_by, 'profile', None)
+        if profile:
+            return {
+                'user_id': obj.shared_by.id,
+                'full_name': profile.get_full_name() or obj.shared_by.get_full_name() or obj.shared_by.email,
+            }
+        return {
+            'user_id': obj.shared_by.id,
+            'full_name': obj.shared_by.get_full_name() or obj.shared_by.email,
+        }
+
+    def get_job_details(self, obj):
+        job = obj.job
+        return {
+            'id': job.id,
+            'title': job.title,
+            'company': job.company_name,
+            'location': job.location or '',
+            'status': job.status,
+            'url': job.posting_url or '',
+            'salary_min': job.salary_min,
+            'salary_max': job.salary_max,
+        }
+
+    def get_comment_count(self, obj):
+        return obj.comments.count()

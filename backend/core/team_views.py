@@ -15,6 +15,8 @@ from core.models import (
     TeamInvitation,
     TeamCandidateAccess,
     TeamMessage,
+    TeamSharedJob,
+    TeamJobComment,
     CandidateProfile,
     JobEntry,
     MentorshipGoal,
@@ -27,6 +29,8 @@ from core.serializers import (
     TeamCandidateAccessSerializer,
     TeamMessageSerializer,
     TeamDashboardSerializer,
+    TeamSharedJobSerializer,
+    TeamJobCommentSerializer,
 )
 
 
@@ -93,6 +97,36 @@ def team_accounts(request):
         )
     serializer = TeamAccountSerializer(team, context={'request': request})
     return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def my_pending_invites(request):
+    """Get pending team invitations for the current user based on their email."""
+    user_email = request.user.email.lower() if request.user.email else ''
+    if not user_email:
+        return Response({"invitations": []})
+    
+    invites = TeamInvitation.objects.filter(
+        email__iexact=user_email,
+        status='pending',
+        expires_at__gt=timezone.now()
+    ).select_related('team', 'invited_by').order_by('-created_at')
+    
+    invitations = []
+    for invite in invites:
+        invitations.append({
+            'id': invite.id,
+            'token': invite.token,
+            'team_name': invite.team.name if invite.team else 'Unknown Team',
+            'role': invite.role,
+            'permission_level': invite.permission_level,
+            'invited_by': invite.invited_by.get_full_name() or invite.invited_by.email if invite.invited_by else 'Unknown',
+            'expires_at': invite.expires_at,
+            'created_at': invite.created_at,
+        })
+    
+    return Response({"invitations": invitations})
 
 
 @api_view(["GET"])
@@ -444,3 +478,161 @@ def team_reports(request, team_id):
         'recent_offers': jobs.filter(status='offer').count(),
     }
     return Response(report)
+
+
+# ------------------------------------------------------------------
+# Shared Jobs Endpoints
+# ------------------------------------------------------------------
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def team_shared_jobs(request, team_id):
+    """Get all jobs shared with a team."""
+    team, membership, error = _team_and_membership(team_id, request.user)
+    if error:
+        return error
+
+    shared_jobs = TeamSharedJob.objects.filter(team=team).select_related(
+        'job', 'shared_by', 'shared_by__profile'
+    ).prefetch_related('comments', 'comments__author').order_by('-shared_at')
+
+    serializer = TeamSharedJobSerializer(shared_jobs, many=True, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def share_job_with_team(request, team_id):
+    """Share a job posting with the team."""
+    team, membership, error = _team_and_membership(team_id, request.user)
+    if error:
+        return error
+
+    payload = request.data or {}
+    job_id = payload.get('job_id')
+
+    if not job_id:
+        return Response({"error": "job_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Verify the job exists and belongs to the user or the user has access
+    try:
+        job = JobEntry.objects.get(id=job_id)
+    except JobEntry.DoesNotExist:
+        return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    # Check if already shared
+    if TeamSharedJob.objects.filter(team=team, job=job).exists():
+        return Response({"error": "This job is already shared with the team."}, status=status.HTTP_400_BAD_REQUEST)
+
+    shared_job = TeamSharedJob.objects.create(
+        team=team,
+        job=job,
+        shared_by=request.user,
+        note=payload.get('note', ''),
+    )
+
+    serializer = TeamSharedJobSerializer(shared_job, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def unshare_job_from_team(request, team_id, shared_job_id):
+    """Remove a shared job from the team."""
+    team, membership, error = _team_and_membership(team_id, request.user)
+    if error:
+        return error
+
+    try:
+        shared_job = TeamSharedJob.objects.get(id=shared_job_id, team=team)
+    except TeamSharedJob.DoesNotExist:
+        return Response({"error": "Shared job not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    # Only the person who shared or admin can remove
+    if shared_job.shared_by != request.user and membership.role != 'admin':
+        return Response({"error": "Only the person who shared or an admin can remove this."}, status=status.HTTP_403_FORBIDDEN)
+
+    shared_job.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def shared_job_comments(request, team_id, shared_job_id):
+    """Get or add comments on a shared job."""
+    team, membership, error = _team_and_membership(team_id, request.user)
+    if error:
+        return error
+
+    try:
+        shared_job = TeamSharedJob.objects.get(id=shared_job_id, team=team)
+    except TeamSharedJob.DoesNotExist:
+        return Response({"error": "Shared job not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        comments = shared_job.comments.select_related('author', 'author__profile').all()
+        serializer = TeamJobCommentSerializer(comments, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    # POST - add a comment
+    payload = request.data or {}
+    content = (payload.get('content') or '').strip()
+
+    if not content:
+        return Response({"error": "Comment content is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    comment = TeamJobComment.objects.create(
+        shared_job=shared_job,
+        author=request.user,
+        content=content,
+    )
+
+    serializer = TeamJobCommentSerializer(comment, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_shared_job_comment(request, team_id, shared_job_id, comment_id):
+    """Delete a comment on a shared job."""
+    team, membership, error = _team_and_membership(team_id, request.user)
+    if error:
+        return error
+
+    try:
+        comment = TeamJobComment.objects.get(
+            id=comment_id,
+            shared_job_id=shared_job_id,
+            shared_job__team=team,
+        )
+    except TeamJobComment.DoesNotExist:
+        return Response({"error": "Comment not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    # Only author or admin can delete
+    if comment.author != request.user and membership.role != 'admin':
+        return Response({"error": "Only the comment author or an admin can delete this."}, status=status.HTTP_403_FORBIDDEN)
+
+    comment.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def my_shareable_jobs(request):
+    """Get jobs the current user can share with teams."""
+    profile = getattr(request.user, 'profile', None)
+    if not profile:
+        return Response([])
+
+    jobs = JobEntry.objects.filter(candidate=profile).order_by('-created_at')[:50]
+    job_list = [
+        {
+            'id': job.id,
+            'title': job.title,
+            'company': job.company_name,
+            'status': job.status,
+            'location': job.location or '',
+        }
+        for job in jobs
+    ]
+    return Response(job_list)

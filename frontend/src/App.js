@@ -49,6 +49,7 @@ import SharedResumeView from './components/resume/SharedResumeView';
 import { LinkedInIntegration } from './components/linkedin';
 import ResumeReviewTools from './components/resume/ResumeReviewTools';
 import TeamDashboard from './components/team/TeamDashboard';
+import TeamInviteAccept from './components/team/TeamInviteAccept';
 import ScrollToTop from './components/common/ScrollToTop';
 import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
@@ -73,6 +74,16 @@ function App() {
           
           {/* Public shared resume view */}
           <Route path="/shared-resume/:shareToken" element={<SharedResumeView />} />
+          
+          {/* Team invite accept - requires auth */}
+          <Route 
+            path="/team/invite/:token" 
+            element={
+              <PrivateRoute>
+                <TeamInviteAccept />
+              </PrivateRoute>
+            } 
+          />
 
           {/* protected */}
           <Route

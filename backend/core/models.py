@@ -5149,3 +5149,62 @@ class MentorshipMessage(models.Model):
 
     def __str__(self):
         return f"MentorshipMessage({self.team_member_id})"
+
+
+class TeamSharedJob(models.Model):
+    """Jobs shared with a team for collaborative review and feedback."""
+
+    team = models.ForeignKey(
+        TeamAccount,
+        on_delete=models.CASCADE,
+        related_name='shared_jobs',
+    )
+    job = models.ForeignKey(
+        'JobEntry',
+        on_delete=models.CASCADE,
+        related_name='team_shares',
+    )
+    shared_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='team_shared_jobs',
+    )
+    note = models.TextField(blank=True, help_text='Optional note when sharing')
+    shared_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('team', 'job')]
+        ordering = ['-shared_at']
+        indexes = [
+            models.Index(fields=['team', '-shared_at']),
+        ]
+
+    def __str__(self):
+        return f"TeamSharedJob({self.team_id}, job={self.job_id})"
+
+
+class TeamJobComment(models.Model):
+    """Comments on jobs shared with the team."""
+
+    shared_job = models.ForeignKey(
+        TeamSharedJob,
+        on_delete=models.CASCADE,
+        related_name='comments',
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='team_job_comments',
+    )
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['shared_job', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"TeamJobComment({self.shared_job_id}, by={self.author_id})"

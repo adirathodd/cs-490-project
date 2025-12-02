@@ -3354,6 +3354,72 @@ export const teamAPI = {
       throw error.error || error.response?.data?.error || { message: 'Failed to send message' };
     }
   },
+  getMyPendingInvites: async () => {
+    try {
+      const response = await api.get('/team/my-invites');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load pending invitations' };
+    }
+  },
+  // Shared Jobs
+  getMyShareableJobs: async () => {
+    try {
+      const response = await api.get('/team/my-shareable-jobs');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load your jobs' };
+    }
+  },
+  listSharedJobs: async (teamId) => {
+    try {
+      const response = await api.get(`/team/accounts/${teamId}/shared-jobs`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load shared jobs' };
+    }
+  },
+  shareJob: async (teamId, payload) => {
+    try {
+      const response = await api.post(`/team/accounts/${teamId}/share-job`, payload);
+      return response.data;
+    } catch (error) {
+      const errMsg = error.response?.data?.error || 'Failed to share job';
+      throw { message: errMsg };
+    }
+  },
+  unshareJob: async (teamId, sharedJobId) => {
+    try {
+      const response = await api.delete(`/team/accounts/${teamId}/shared-jobs/${sharedJobId}`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to unshare job' };
+    }
+  },
+  listSharedJobComments: async (teamId, sharedJobId) => {
+    try {
+      const response = await api.get(`/team/accounts/${teamId}/shared-jobs/${sharedJobId}/comments`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load comments' };
+    }
+  },
+  addSharedJobComment: async (teamId, sharedJobId, content) => {
+    try {
+      const response = await api.post(`/team/accounts/${teamId}/shared-jobs/${sharedJobId}/comments`, { content });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to add comment' };
+    }
+  },
+  deleteSharedJobComment: async (teamId, sharedJobId, commentId) => {
+    try {
+      const response = await api.delete(`/team/accounts/${teamId}/shared-jobs/${sharedJobId}/comments/${commentId}`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete comment' };
+    }
+  },
 };
 
 // Export for module compatibility
