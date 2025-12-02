@@ -110,6 +110,8 @@ urlpatterns = [
     path('mentorship/relationships/<int:team_member_id>/analytics', views.mentorship_relationship_analytics, name='mentorship-relationship-analytics'),
     path('mentorship/goals/<uuid:goal_id>', views.mentorship_goal_detail, name='mentorship-goal-detail'),
     path('mentorship/relationships/<int:team_member_id>/progress-report', views.mentorship_progress_report, name='mentorship-progress-report'),
+    path('mentorship/relationships/<int:team_member_id>/accountability', views.mentorship_accountability_overview, name='mentorship-accountability-overview'),
+    path('mentorship/relationships/<int:team_member_id>/accountability/engagement', views.mentorship_accountability_engagement, name='mentorship-accountability-engagement'),
     path('mentorship/relationships/<int:team_member_id>/messages', views.mentorship_messages, name='mentorship-messages'),
 
     # Profile Picture endpoints (UC-022)

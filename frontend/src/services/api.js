@@ -2752,6 +2752,31 @@ export const mentorshipAPI = {
     }
   },
 
+  getAccountabilityOverview: async (teamMemberId, params = {}) => {
+    try {
+      const search = new URLSearchParams(params).toString();
+      const path = search
+        ? `/mentorship/relationships/${teamMemberId}/accountability?${search}`
+        : `/mentorship/relationships/${teamMemberId}/accountability`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to load accountability overview' };
+    }
+  },
+
+  logAccountabilityEngagement: async (teamMemberId, payload) => {
+    try {
+      const response = await api.post(
+        `/mentorship/relationships/${teamMemberId}/accountability/engagement`,
+        payload
+      );
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to log engagement' };
+    }
+  },
+
   getAnalytics: async (teamMemberId) => {
     try {
       const response = await api.get(`/mentorship/relationships/${teamMemberId}/analytics`);

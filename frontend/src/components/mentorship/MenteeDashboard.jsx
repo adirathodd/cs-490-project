@@ -181,6 +181,11 @@ const MentorshipMenteeDashboard = () => {
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [analyticsError, setAnalyticsError] = useState('');
+  const [accountability, setAccountability] = useState(null);
+  const [accountabilityLoading, setAccountabilityLoading] = useState(true);
+  const [accountabilityError, setAccountabilityError] = useState('');
+  const [encouragementNote, setEncouragementNote] = useState('');
+  const [loggingEngagement, setLoggingEngagement] = useState(false);
   const chatLogRef = useRef(null);
 
   const refreshGoals = useCallback(() => {
@@ -243,6 +248,22 @@ const MentorshipMenteeDashboard = () => {
       .finally(() => setReportLoading(false));
   }, [teamMemberId]);
 
+  const fetchAccountability = useCallback(() => {
+    if (!teamMemberId) return;
+    setAccountabilityLoading(true);
+    mentorshipAPI
+      .getAccountabilityOverview(teamMemberId, { days: 14 })
+      .then((response) => {
+        setAccountability(response);
+        setAccountabilityError('');
+      })
+      .catch((err) => {
+        const fallback = err?.error?.message || err?.message || 'Unable to load accountability overview.';
+        setAccountabilityError(fallback);
+      })
+      .finally(() => setAccountabilityLoading(false));
+  }, [teamMemberId]);
+
   const fetchAnalytics = useCallback(() => {
     if (!teamMemberId) return;
     setAnalyticsLoading(true);
@@ -286,6 +307,10 @@ const MentorshipMenteeDashboard = () => {
   useEffect(() => {
     fetchProgressReport();
   }, [fetchProgressReport]);
+
+  useEffect(() => {
+    fetchAccountability();
+  }, [fetchAccountability]);
 
   useEffect(() => {
     fetchAnalytics();
@@ -414,6 +439,51 @@ const MentorshipMenteeDashboard = () => {
     });
   };
 
+  const handleSendEncouragement = async () => {
+    if (!encouragementNote.trim()) {
+      setAccountabilityError('Add a quick note before sending encouragement.');
+      return;
+    }
+    setLoggingEngagement(true);
+    setAccountabilityError('');
+    try {
+      const response = await mentorshipAPI.logAccountabilityEngagement(teamMemberId, {
+        event_type: 'encouragement',
+        metadata: { note: encouragementNote.trim() },
+      });
+      if (response?.summary) {
+        setAccountability((prev) => ({ ...(prev || {}), engagement: response.summary }));
+      }
+      setEncouragementNote('');
+      setToast({ isOpen: true, message: 'Encouragement shared.', type: 'success' });
+    } catch (err) {
+      const fallback = err?.error?.message || err?.message || 'Unable to send encouragement.';
+      setAccountabilityError(fallback);
+    } finally {
+      setLoggingEngagement(false);
+    }
+  };
+
+  const handleLogCelebration = async (milestone) => {
+    setLoggingEngagement(true);
+    setAccountabilityError('');
+    try {
+      const response = await mentorshipAPI.logAccountabilityEngagement(teamMemberId, {
+        event_type: 'celebration',
+        metadata: milestone || {},
+      });
+      if (response?.summary) {
+        setAccountability((prev) => ({ ...(prev || {}), engagement: response.summary }));
+      }
+      setToast({ isOpen: true, message: 'Celebration shared with your partner.', type: 'success' });
+    } catch (err) {
+      const fallback = err?.error?.message || err?.message || 'Unable to log celebration.';
+      setAccountabilityError(fallback);
+    } finally {
+      setLoggingEngagement(false);
+    }
+  };
+
   const handleSendMessage = (event) => {
     event.preventDefault();
     if (!newMessage.trim() || sendingMessage) return;
@@ -466,6 +536,14 @@ const MentorshipMenteeDashboard = () => {
   const showSkillFields = isSkillGoalType(goalForm.goal_type);
   const showStartingLevel = goalForm.goal_type === 'skill_improve';
   const reportWindowLabel = report ? `${formatDateFull(report.window_start)} → ${formatDateFull(report.window_end)}` : '';
+  const accountabilityPrivacy = accountability?.privacy || {};
+  const engagementSummary = accountability?.engagement || {};
+  const progressVisualizations = accountability?.progress_visualization || [];
+  const milestoneAchievements = accountability?.milestone_achievements || [];
+  const impactInsights = accountability?.impact_insights || [];
+  const sharedGoals = accountability?.goal_progress?.shared_goals || [];
+  const hiddenGoalCount = accountability?.goal_progress?.hidden_goal_count || 0;
+  const encouragementTemplates = accountability?.encouragement_templates || [];
 
   const openPreview = (url) => {
     if (!url) return;
@@ -493,6 +571,14 @@ const MentorshipMenteeDashboard = () => {
             {report && (
               <p className="muted">
                 {report.window_days} day window {reportWindowLabel ? `(${reportWindowLabel})` : ''}
+  const accountabilityPrivacy = accountability?.privacy || {};
+  const engagementSummary = accountability?.engagement || {};
+  const progressVisualizations = accountability?.progress_visualization || [];
+  const milestoneAchievements = accountability?.milestone_achievements || [];
+  const impactInsights = accountability?.impact_insights || [];
+  const sharedGoals = accountability?.goal_progress?.shared_goals || [];
+  const hiddenGoalCount = accountability?.goal_progress?.hidden_goal_count || 0;
+  const encouragementTemplates = accountability?.encouragement_templates || [];
               </p>
             )}
           </div>
@@ -584,6 +670,179 @@ const MentorshipMenteeDashboard = () => {
               )}
             </div>
           </div>
+        )}
+      </section>
+
+      <section className="mentorship-card mentorship-progress-card">
+        <div className="mentorship-progress-card__header">
+          <div>
+            <p className="mentorship-card__eyebrow">Accountability</p>
+            <h3>Shared progress & encouragement</h3>
+          </div>
+          <div className="mentorship-chip-row">
+            {Object.entries(accountabilityPrivacy)
+              .filter(([, enabled]) => enabled === true)
+              .map(([key]) => (
+                <span key={key} className="mentorship-chip">{key.replace(/_/g, ' ')}</span>
+              ))}
+          </div>
+        </div>
+        {accountabilityError && <div className="mentorship-alert mentorship-alert--error">{accountabilityError}</div>}
+        {accountabilityLoading ? (
+          <div className="mentorship-progress-loading">
+            <LoadingSpinner />
+          </div>
+        ) : (
+          <>
+            <div className="mentorship-progress-grid">
+              <div className="mentorship-progress-item">
+                <h4>Goal sharing</h4>
+                {sharedGoals.length === 0 ? (
+                  <p className="mentorship-empty">No goals are shared yet.{hiddenGoalCount ? ` (${hiddenGoalCount} hidden)` : ''}</p>
+                ) : (
+                  <ul className="mentorship-progress-list">
+                    {sharedGoals.map((goal) => {
+                      const pct = Math.min(100, Number(goal.progress_percentage || 0));
+                      return (
+                        <li key={goal.id}>
+                          <div className="mentorship-goal__row">
+                            <div>
+                              <strong>{goal.title || 'Goal'}</strong>
+                              <p className="muted">{goal.status}</p>
+                            </div>
+                            <span>{pct}%</span>
+                          </div>
+                          <div className="mentorship-goal__progress-track">
+                            <div className="mentorship-goal__progress-value" style={{ width: `${pct}%` }} />
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mentorship-progress-item">
+                <h4>Engagement</h4>
+                <p>Total events: <strong>{engagementSummary.total_events || 0}</strong></p>
+                <p>Unique supporters: <strong>{engagementSummary.unique_contributors || 0}</strong></p>
+                {engagementSummary.last_event && (
+                  <p className="muted">Last touchpoint: {formatDateFull(engagementSummary.last_event)}</p>
+                )}
+                {engagementSummary.by_type && (
+                  <ul className="mentorship-progress-list">
+                    {Object.entries(engagementSummary.by_type).map(([key, value]) => (
+                      <li key={key}>{capitalizeWord(key.replace(/_/g, ' '))}: {value}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mentorship-progress-item mentorship-progress-item--wide">
+                <h4>Progress visualization</h4>
+                {progressVisualizations.length === 0 ? (
+                  <p className="mentorship-empty">No progress to visualize yet.</p>
+                ) : (
+                  <ul className="mentorship-progress-list">
+                    {progressVisualizations.map((item, idx) => {
+                      const target = item.target || 0;
+                      const pct = target ? Math.min(100, Math.round((Number(item.current || 0) / target) * 100)) : Number(item.current || 0);
+                      return (
+                        <li key={`${item.label}-${idx}`}>
+                          <div className="mentorship-goal__row">
+                            <div>
+                              <strong>{item.label}</strong>
+                              <p className="muted">{item.current || 0}{target ? ` / ${target}` : ''}</p>
+                            </div>
+                            <span>{target ? `${pct}%` : item.current || 0}</span>
+                          </div>
+                          <div className="mentorship-goal__progress-track">
+                            <div className="mentorship-goal__progress-value" style={{ width: `${Math.min(100, pct)}%` }} />
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mentorship-progress-item mentorship-progress-item--wide">
+                <h4>Milestone celebrations</h4>
+                {milestoneAchievements.length === 0 ? (
+                  <p className="mentorship-empty">No shared milestones yet.</p>
+                ) : (
+                  <ul className="mentorship-progress-list">
+                    {milestoneAchievements.map((item) => (
+                      <li key={item.id}>
+                        <div className="mentorship-goal__row">
+                          <div>
+                            <strong>{item.title}</strong>
+                            <p className="muted">{item.goal_title}</p>
+                          </div>
+                          <button
+                            type="button"
+                            className="mentorship-btn mentorship-btn--ghost"
+                            onClick={() => handleLogCelebration({ milestone_id: item.id, title: item.title })}
+                            disabled={loggingEngagement}
+                          >
+                            Celebrate
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            <div className="mentorship-grid mentorship-grid--two" style={{ marginTop: 12 }}>
+              <div className="mentorship-card mentorship-card--subtle">
+                <p className="mentorship-card__eyebrow">Impact insights</p>
+                {impactInsights.length === 0 ? (
+                  <p className="mentorship-empty">No insights yet.</p>
+                ) : (
+                  <ul className="mentorship-progress-list">
+                    {impactInsights.map((insight, idx) => (
+                      <li key={`insight-${idx}`}>{insight}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="mentorship-card mentorship-card--subtle">
+                <p className="mentorship-card__eyebrow">Send encouragement</p>
+                <textarea
+                  rows={3}
+                  value={encouragementNote}
+                  onChange={(e) => setEncouragementNote(e.target.value)}
+                  placeholder="Cheer them on or ask how you can help."
+                />
+                {encouragementTemplates.length > 0 && (
+                  <div className="mentorship-chip-row" style={{ marginTop: 6 }}>
+                    {encouragementTemplates.map((template, idx) => (
+                      <button
+                        type="button"
+                        key={`template-${idx}`}
+                        className="mentorship-chip mentorship-chip--action"
+                        onClick={() => setEncouragementNote(template)}
+                      >
+                        {template}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="mentorship-sharing-panel__footer" style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="mentorship-btn mentorship-btn--primary"
+                    onClick={handleSendEncouragement}
+                    disabled={loggingEngagement}
+                  >
+                    {loggingEngagement ? 'Sending...' : 'Share encouragement'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </section>
 

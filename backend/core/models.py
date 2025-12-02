@@ -4683,6 +4683,22 @@ class MentorshipSharingPreference(models.Model):
         on_delete=models.CASCADE,
         related_name='sharing_preference',
     )
+    share_goal_progress = models.BooleanField(
+        default=True,
+        help_text="Allow mentors/accountability partners to see detailed goal progress",
+    )
+    share_milestones = models.BooleanField(
+        default=True,
+        help_text="Allow sharing of milestone-level achievements",
+    )
+    share_practice_insights = models.BooleanField(
+        default=True,
+        help_text="Allow sharing of practice/engagement insights in reports",
+    )
+    share_accountability_insights = models.BooleanField(
+        default=True,
+        help_text="Allow sharing of accountability impact/insights",
+    )
     share_profile_basics = models.BooleanField(default=False)
     share_skills = models.BooleanField(default=False)
     share_employment = models.BooleanField(default=False)
@@ -4695,6 +4711,43 @@ class MentorshipSharingPreference(models.Model):
 
     def __str__(self):
         return f"SharingPreference({self.team_member_id})"
+
+
+class AccountabilityEngagement(models.Model):
+    """Track engagement from mentors/accountability partners for progress sharing."""
+
+    EVENT_CHOICES = [
+        ('report_viewed', 'Progress report viewed'),
+        ('encouragement', 'Encouragement sent'),
+        ('celebration', 'Celebration shared'),
+        ('check_in', 'Check-in logged'),
+        ('comment', 'Commented on progress'),
+    ]
+
+    team_member = models.ForeignKey(
+        'TeamMember',
+        on_delete=models.CASCADE,
+        related_name='accountability_engagements',
+    )
+    event_type = models.CharField(max_length=40, choices=EVENT_CHOICES)
+    metadata = models.JSONField(default=dict, blank=True)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='accountability_events',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['team_member', 'event_type', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.team_member_id} {self.event_type} @ {self.created_at}"
 
 
 class MentorshipSharedApplication(models.Model):

@@ -2,6 +2,7 @@
 Authentication views for Firebase-based user registration and login.
 """
 from typing import Any, Dict, List, Optional
+from collections import defaultdict
 
 from datetime import timezone as datetime_timezone, timedelta
 
@@ -58,6 +59,8 @@ from core.serializers import (
     MentorshipGoalSerializer,
     MentorshipGoalInputSerializer,
     MentorshipMessageSerializer,
+    AccountabilityEngagementSerializer,
+    AccountabilityEngagementSummarySerializer,
     SupporterInviteSerializer,
     SupporterEncouragementSerializer,
     SupporterChatMessageSerializer,
@@ -162,6 +165,7 @@ from core.models import (
     ReferencePortfolio,
 
     TeamMember,
+    AccountabilityEngagement,
     SupporterInvite,
     SupporterEncouragement,
     MentorshipRequest,
@@ -650,6 +654,38 @@ def _build_progress_report(team_member, request, days):
             'company_name': getattr(job, 'company_name', ''),
         })
     avg_score = round(sum(score_values) / len(score_values), 1) if score_values else None
+    from core.models import CareerGoal, GoalMilestone
+    from django.db.models import Avg
+
+    career_goals_qs = CareerGoal.objects.filter(user=candidate.user)
+    avg_goal_progress = career_goals_qs.aggregate(avg=Avg('progress_percentage')).get('avg') or 0
+    shareable_goals_qs = career_goals_qs.filter(share_progress=True)
+    goal_progress = []
+    for goal in shareable_goals_qs.order_by('-updated_at')[:5]:
+        goal_progress.append({
+            'id': str(goal.id),
+            'title': goal.title,
+            'status': goal.status,
+            'progress_percentage': float(goal.progress_percentage or 0),
+            'target_date': goal.target_date.isoformat() if goal.target_date else None,
+            'milestones_total': goal.milestones.count(),
+            'milestones_completed': goal.milestones.filter(completed=True).count(),
+        })
+    milestones_qs = GoalMilestone.objects.filter(
+        goal__user=candidate.user,
+        completed=True,
+        completed_at__isnull=False,
+    ).order_by('-completed_at')
+    milestone_feed = [
+        {
+            'id': str(ms.id),
+            'goal_id': str(ms.goal_id),
+            'goal_title': ms.goal.title,
+            'title': ms.title,
+            'completed_at': ms.completed_at.isoformat() if ms.completed_at else None,
+        }
+        for ms in milestones_qs[:6]
+    ]
 
     report = {
         'generated_at': now.isoformat(),
@@ -679,8 +715,158 @@ def _build_progress_report(team_member, request, days):
             'average_score': avg_score,
             'entries': practice_entries,
         },
+        'career_goals': {
+            'total': career_goals_qs.count(),
+            'shared': shareable_goals_qs.count(),
+            'average_progress': round(float(avg_goal_progress), 1) if avg_goal_progress else 0,
+            'progress': goal_progress,
+        },
+        'milestones': milestone_feed,
     }
     return report
+
+
+def _summarize_accountability_engagement(team_member):
+    """Aggregate engagement events for a mentorship/accountability relationship."""
+    from django.db.models import Count
+
+    qs = AccountabilityEngagement.objects.filter(team_member=team_member)
+    by_type = {row['event_type']: row['total'] for row in qs.values('event_type').annotate(total=Count('id'))}
+    last_event = qs.order_by('-created_at').first()
+    unique_contributors = qs.exclude(actor_id__isnull=True).values('actor_id').distinct().count()
+    total_events = sum(by_type.values())
+    return {
+        'total_events': total_events,
+        'by_type': by_type,
+        'unique_contributors': unique_contributors,
+        'last_event': last_event.created_at if last_event else None,
+    }
+
+
+def _build_accountability_overview(team_member, request, window_days=14):
+    """Comprehensive accountability/progress payload for mentors and partners."""
+    from django.db.models import Avg
+    from core.models import CareerGoal, GoalMilestone
+
+    candidate = team_member.candidate
+    preference = _ensure_sharing_preference(team_member)
+    report = _build_progress_report(team_member, request, window_days)
+    since = timezone.now() - timedelta(days=window_days)
+
+    career_goals_qs = CareerGoal.objects.filter(user=candidate.user)
+    avg_goal_progress = career_goals_qs.aggregate(avg=Avg('progress_percentage')).get('avg') or 0
+    goals_payload = []
+    hidden_goals = career_goals_qs.count()
+    if preference.share_goal_progress:
+        visible_qs = career_goals_qs.filter(share_progress=True)
+        hidden_goals = max(career_goals_qs.count() - visible_qs.count(), 0)
+        for goal in visible_qs.order_by('-updated_at')[:6]:
+            goals_payload.append({
+                'id': str(goal.id),
+                'title': goal.title,
+                'status': goal.status,
+                'progress_percentage': float(goal.progress_percentage or 0),
+                'target_date': goal.target_date.isoformat() if goal.target_date else None,
+                'share_progress': goal.share_progress,
+                'milestones_total': goal.milestones.count(),
+                'milestones_completed': goal.milestones.filter(completed=True).count(),
+            })
+
+    milestones_payload = []
+    if preference.share_milestones:
+        milestone_rows = GoalMilestone.objects.filter(
+            goal__user=candidate.user,
+            completed=True,
+            completed_at__isnull=False,
+        ).select_related('goal').order_by('-completed_at')[:8]
+        for ms in milestone_rows:
+            milestones_payload.append({
+                'id': str(ms.id),
+                'goal_id': str(ms.goal_id),
+                'goal_title': ms.goal.title,
+                'title': ms.title,
+                'completed_at': ms.completed_at.isoformat() if ms.completed_at else None,
+            })
+
+    engagement_summary = _summarize_accountability_engagement(team_member)
+    encouragements = SupporterEncouragement.objects.filter(candidate=candidate).count()
+    if encouragements:
+        engagement_summary['encouragements'] = encouragements
+
+    progress_viz = []
+    weekly_target = getattr(candidate, "weekly_application_target", None) or 5
+    weekly_applied = JobEntry.objects.filter(candidate=candidate, created_at__gte=since).count()
+    progress_viz.append({'label': 'Weekly applications', 'current': weekly_applied, 'target': weekly_target})
+    progress_viz.append({'label': 'Avg goal progress', 'current': round(float(avg_goal_progress or 0), 1), 'target': 100})
+
+    insights = []
+    engagement_events = engagement_summary.get('total_events', 0)
+    recent_positive = JobEntry.objects.filter(
+        candidate=candidate,
+        status__in={'phone_screen', 'interview', 'offer'},
+        updated_at__gte=since,
+    ).count()
+    if engagement_events and recent_positive:
+        insights.append(f"{engagement_events} accountability touchpoints alongside {recent_positive} recent interview-stage responses.")
+    elif engagement_events:
+        insights.append("Engagement is up. Keep pairing check-ins with targeted applications to convert momentum.")
+    else:
+        insights.append("Invite your accountability partner to view your report weekly to boost follow-through.")
+    if encouragements:
+        insights.append("Encouragements are flowing—celebrate wins and ask for feedback on stalled goals.")
+    if avg_goal_progress and avg_goal_progress < 40:
+        insights.append("Goal progress is light. Break down milestones and schedule mini check-ins.")
+
+    viewer_role = 'mentor' if request.user.id == team_member.user_id else 'mentee'
+    sanitized_report = dict(report)
+    if not preference.share_practice_insights:
+        sanitized_report['interview_practice'] = {}
+    if not preference.share_goal_progress:
+        sanitized_report['career_goals'] = {
+            'total': career_goals_qs.count(),
+            'shared': 0,
+            'average_progress': round(float(avg_goal_progress), 1) if avg_goal_progress else 0,
+            'progress': [],
+        }
+    if not preference.share_milestones:
+        sanitized_report['milestones'] = []
+
+    encouragement_templates = [
+        "Just saw your latest milestone—huge progress! How can I help this week?",
+        "Proud of your momentum. Want to pair on mock interviews or outreach?",
+        "Great job moving applications forward. Let’s plan a check-in after your next response.",
+    ]
+    if engagement_summary.get('last_event'):
+        last_dt = engagement_summary['last_event']
+        try:
+            engagement_summary['last_event'] = last_dt.isoformat()
+        except Exception:
+            engagement_summary['last_event'] = str(last_dt)
+
+    return {
+        'team_member_id': team_member.id,
+        'viewer_role': viewer_role,
+        'privacy': {
+            'share_goal_progress': preference.share_goal_progress,
+            'share_milestones': preference.share_milestones,
+            'share_practice_insights': preference.share_practice_insights,
+            'share_accountability_insights': preference.share_accountability_insights,
+            'job_sharing_mode': preference.job_sharing_mode,
+        },
+        'goal_progress': {
+            'shared_goals': goals_payload,
+            'hidden_goal_count': hidden_goals,
+            'average_progress': round(float(avg_goal_progress or 0), 1),
+        },
+        'milestone_achievements': milestones_payload,
+        'progress_visualization': progress_viz,
+        'engagement': engagement_summary,
+        'impact_insights': insights,
+        'encouragement_templates': encouragement_templates,
+        'report': sanitized_report,
+        'report_window_days': window_days,
+    }
+
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
@@ -13548,10 +13734,24 @@ def mentorship_relationships(request):
         'shared_applications__job__cover_letter_doc',
     )
 
+    partners_qs = TeamMember.objects.filter(
+        candidate=profile,
+        role='partner',
+        is_active=True,
+    ).select_related('candidate__user', 'user__profile', 'sharing_preference')
+
+    partner_for_qs = TeamMember.objects.filter(
+        user=request.user,
+        role='partner',
+        is_active=True,
+    ).select_related('candidate__user', 'user__profile', 'sharing_preference')
+
     serializer_context = {'request': request}
     return Response({
         'mentors': MentorshipRelationshipSerializer(mentors_qs, many=True, context=serializer_context).data,
         'mentees': MentorshipRelationshipSerializer(mentees_qs, many=True, context=serializer_context).data,
+        'partners': MentorshipRelationshipSerializer(partners_qs, many=True, context=serializer_context).data,
+        'partner_for': MentorshipRelationshipSerializer(partner_for_qs, many=True, context=serializer_context).data,
     })
 
 
@@ -13642,6 +13842,10 @@ def mentorship_shared_data(request, team_member_id):
         'team_member_id': team_member.id,
         'mentee': CandidatePublicProfileSerializer(candidate, context={'request': request}).data,
         'sections': {
+            'share_goal_progress': preference.share_goal_progress,
+            'share_milestones': preference.share_milestones,
+            'share_practice_insights': preference.share_practice_insights,
+            'share_accountability_insights': preference.share_accountability_insights,
             'share_profile_basics': preference.share_profile_basics,
             'share_skills': preference.share_skills,
             'share_employment': preference.share_employment,
@@ -13704,8 +13908,11 @@ def mentorship_shared_data(request, team_member_id):
             response_data['documents'] = doc_payloads
 
     goals = list(team_member.mentorship_goals.order_by('-created_at'))
-    response_data['goals'] = MentorshipGoalSerializer(goals, many=True, context={'request': request}).data
     response_data['goal_summary'] = _build_goal_summary(goals)
+    if preference.share_goal_progress:
+        response_data['goals'] = MentorshipGoalSerializer(goals, many=True, context={'request': request}).data
+    else:
+        response_data['goals'] = []
 
     shared_jobs_qs = MentorshipSharedApplication.objects.filter(team_member=team_member).select_related(
         'job',
@@ -13826,9 +14033,94 @@ def mentorship_progress_report(request, team_member_id):
     except (TypeError, ValueError):
         days = 7
 
+    preference = _ensure_sharing_preference(team_member)
     report = _build_progress_report(team_member, request, days)
+    if not preference.share_practice_insights:
+        report['interview_practice'] = {}
+    if not preference.share_goal_progress:
+        report['career_goals'] = {
+            'total': report.get('career_goals', {}).get('total', 0),
+            'shared': 0,
+            'average_progress': report.get('career_goals', {}).get('average_progress', 0),
+            'progress': [],
+        }
+    if not preference.share_milestones:
+        report['milestones'] = []
     report['viewer_role'] = 'mentor' if request.user.id == team_member.user_id else 'mentee'
+    try:
+        AccountabilityEngagement.objects.create(
+            team_member=team_member,
+            event_type='report_viewed',
+            actor=request.user,
+            metadata={'window_days': days},
+        )
+    except Exception:
+        pass
     return Response(report)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def mentorship_accountability_overview(request, team_member_id):
+    """Progress sharing hub for accountability partners/mentors with privacy controls."""
+    try:
+        team_member = TeamMember.objects.select_related('candidate__user', 'user').get(id=team_member_id)
+    except TeamMember.DoesNotExist:
+        return Response({"error": "Mentorship relationship not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    candidate_user_id = team_member.candidate.user_id
+    if request.user.id not in {team_member.user_id, candidate_user_id}:
+        return Response({"error": "You do not have access to this accountability view."}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        days = int(request.query_params.get('days', 14))
+    except (TypeError, ValueError):
+        days = 14
+
+    overview = _build_accountability_overview(team_member, request, window_days=days)
+    return Response(overview)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def mentorship_accountability_engagement(request, team_member_id):
+    """Log engagement/encouragement events to track accountability effectiveness."""
+    try:
+        team_member = TeamMember.objects.select_related('candidate__user', 'user').get(id=team_member_id)
+    except TeamMember.DoesNotExist:
+        return Response({"error": "Mentorship relationship not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.user.id not in {team_member.user_id, team_member.candidate.user_id}:
+        return Response({"error": "You do not have access to log this engagement."}, status=status.HTTP_403_FORBIDDEN)
+
+    event_type = request.data.get('event_type')
+    valid_types = {choice[0] for choice in AccountabilityEngagement.EVENT_CHOICES}
+    if event_type not in valid_types:
+        return Response({"error": "Invalid event type."}, status=status.HTTP_400_BAD_REQUEST)
+
+    metadata = request.data.get('metadata') or {}
+    if not isinstance(metadata, dict):
+        metadata = {'note': str(metadata)}
+
+    engagement = AccountabilityEngagement.objects.create(
+        team_member=team_member,
+        event_type=event_type,
+        actor=request.user,
+        metadata=metadata,
+    )
+    summary = _summarize_accountability_engagement(team_member)
+    if summary.get('last_event'):
+        try:
+            summary['last_event'] = summary['last_event'].isoformat()
+        except Exception:
+            summary['last_event'] = str(summary['last_event'])
+    return Response(
+        {
+            'event': AccountabilityEngagementSerializer(engagement).data,
+            'summary': summary,
+        },
+        status=status.HTTP_201_CREATED,
+    )
 
 
 @api_view(["GET", "POST"])
@@ -16432,4 +16724,3 @@ def informational_interviews_analytics(request):
             'total_tracked': len(relationship_changes)
         }
     })
-

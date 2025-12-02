@@ -15,7 +15,7 @@ from core.models import (
     ResumeVersion, ResumeVersionChange, ResumeShare, ShareAccessLog,
     ResumeFeedback, FeedbackComment, FeedbackNotification, SupporterInvite, SupporterEncouragement, SupporterChatMessage,
     TeamMember, MentorshipRequest, MentorshipSharingPreference, MentorshipSharedApplication,
-    MentorshipGoal, MentorshipMessage,
+    MentorshipGoal, MentorshipMessage, AccountabilityEngagement,
     MarketIntelligence, MockInterviewSession, MockInterviewQuestion, MockInterviewSummary,
 )
 from core.models import (
@@ -3203,6 +3203,10 @@ class MentorshipRelationshipSerializer(serializers.ModelSerializer):
             return None
         request = self.context.get('request')
         summary = {
+            'share_goal_progress': pref.share_goal_progress,
+            'share_milestones': pref.share_milestones,
+            'share_practice_insights': pref.share_practice_insights,
+            'share_accountability_insights': pref.share_accountability_insights,
             'share_profile_basics': pref.share_profile_basics,
             'share_skills': pref.share_skills,
             'share_employment': pref.share_employment,
@@ -3306,6 +3310,10 @@ class MentorshipShareSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = MentorshipSharingPreference
         fields = [
+            'share_goal_progress',
+            'share_milestones',
+            'share_practice_insights',
+            'share_accountability_insights',
             'share_profile_basics',
             'share_skills',
             'share_employment',
@@ -3345,6 +3353,10 @@ class MentorshipShareSettingsSerializer(serializers.ModelSerializer):
 
 
 class MentorshipShareSettingsUpdateSerializer(serializers.Serializer):
+    share_goal_progress = serializers.BooleanField(required=False)
+    share_milestones = serializers.BooleanField(required=False)
+    share_practice_insights = serializers.BooleanField(required=False)
+    share_accountability_insights = serializers.BooleanField(required=False)
     share_profile_basics = serializers.BooleanField(required=False)
     share_skills = serializers.BooleanField(required=False)
     share_employment = serializers.BooleanField(required=False)
@@ -3390,6 +3402,10 @@ class MentorshipShareSettingsUpdateSerializer(serializers.Serializer):
     def save(self, **kwargs):
         preference = self.context['preference']
         for field in [
+            'share_goal_progress',
+            'share_milestones',
+            'share_practice_insights',
+            'share_accountability_insights',
             'share_profile_basics',
             'share_skills',
             'share_employment',
@@ -3430,6 +3446,29 @@ class MentorshipShareSettingsUpdateSerializer(serializers.Serializer):
             ).exclude(job_id__in=updated_jobs).delete()
 
         return preference
+
+
+class AccountabilityEngagementSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AccountabilityEngagement
+        fields = ['id', 'event_type', 'metadata', 'created_at', 'actor_name']
+        read_only_fields = fields
+
+    def get_actor_name(self, obj):
+        user = getattr(obj, 'actor', None)
+        if not user:
+            return None
+        full_name = user.get_full_name()
+        return full_name or user.email or f"User {user.id}"
+
+
+class AccountabilityEngagementSummarySerializer(serializers.Serializer):
+    total_events = serializers.IntegerField()
+    by_type = serializers.DictField(child=serializers.IntegerField())
+    unique_contributors = serializers.IntegerField()
+    last_event = serializers.DateTimeField(allow_null=True)
 
 
 # UC-101: Career Goal serializers
@@ -4125,4 +4164,3 @@ class InformationalInterviewListSerializer(serializers.ModelSerializer):
         if obj.pk:
             return obj.connected_jobs.count()
         return 0
-

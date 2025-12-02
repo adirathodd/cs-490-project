@@ -12,6 +12,18 @@ const statusClassMap = {
 };
 
 const sectionLabels = {
+  share_goal_progress: {
+    title: 'Goal progress',
+    description: 'Share progress % and targets for goals you choose to share.',
+  },
+  share_milestones: {
+    title: 'Milestone achievements',
+    description: 'Celebrate completed milestones with your mentors/partners.',
+  },
+  share_practice_insights: {
+    title: 'Practice insights',
+    description: 'Surface practice streaks and interview drill stats.',
+  },
   share_profile_basics: {
     title: 'Profile basics',
     description: 'Name, headline, location, summary',
@@ -35,6 +47,10 @@ const sectionLabels = {
   share_documents: {
     title: 'Documents',
     description: 'Resumes and cover letters in your library',
+  },
+  share_accountability_insights: {
+    title: 'Accountability insights',
+    description: 'Share engagement metrics and impact analytics with partners.',
   },
 };
 
