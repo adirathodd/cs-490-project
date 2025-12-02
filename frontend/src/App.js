@@ -45,6 +45,7 @@ import { AiResumeGenerator } from './features/resume';
 import { AiCoverLetterGenerator } from './features/cover-letter';
 import ResumeVersionControl from './components/resume/ResumeVersionControl';
 import SharedResumeView from './components/resume/SharedResumeView';
+import TeamDashboard from './components/team/TeamDashboard';
 import ScrollToTop from './components/common/ScrollToTop';
 import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
@@ -412,6 +413,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <Supporters />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/team"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <TeamDashboard />
               </PrivateRoute>
             }
           />

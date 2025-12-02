@@ -1015,6 +1015,180 @@ class TeamMember(models.Model):
         indexes = [models.Index(fields=["candidate", "is_active"])]
 
 
+class TeamAccount(models.Model):
+    """Organization/team workspace with billing + membership controls."""
+
+    PLAN_CHOICES = [
+        ('starter', 'Starter'),
+        ('pro', 'Professional'),
+        ('enterprise', 'Enterprise'),
+    ]
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('trialing', 'Trialing'),
+        ('past_due', 'Past Due'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    name = models.CharField(max_length=180)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='owned_teams')
+    billing_email = models.EmailField(blank=True)
+    subscription_plan = models.CharField(max_length=40, choices=PLAN_CHOICES, default='starter')
+    subscription_status = models.CharField(max_length=40, choices=STATUS_CHOICES, default='trialing')
+    seat_limit = models.PositiveIntegerField(default=5)
+    next_billing_date = models.DateTimeField(null=True, blank=True)
+    trial_ends_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['owner']),
+            models.Index(fields=['subscription_status']),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.subscription_plan})"
+
+
+TEAM_PERMISSION_CHOICES = [
+    ('view', 'View Only'),
+    ('comment', 'View & Comment'),
+    ('edit', 'Edit'),
+    ('admin', 'Admin'),
+]
+
+
+class TeamMembership(models.Model):
+    """Membership record for users inside a TeamAccount."""
+
+    ROLE_CHOICES = [
+        ('admin', 'Admin'),
+        ('mentor', 'Mentor'),
+        ('candidate', 'Candidate'),
+    ]
+
+    team = models.ForeignKey(TeamAccount, on_delete=models.CASCADE, related_name='memberships')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='team_memberships')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    permission_level = models.CharField(max_length=20, choices=TEAM_PERMISSION_CHOICES, default='view')
+    is_active = models.BooleanField(default=True)
+    joined_at = models.DateTimeField(auto_now_add=True)
+    last_accessed_at = models.DateTimeField(null=True, blank=True)
+    invited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='team_invites_sent'
+    )
+    candidate_profile = models.ForeignKey(
+        CandidateProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="Link candidate role memberships to their profile for analytics"
+    )
+
+    class Meta:
+        unique_together = [('team', 'user')]
+        indexes = [
+            models.Index(fields=['team', 'role']),
+            models.Index(fields=['team', 'permission_level']),
+            models.Index(fields=['user']),
+        ]
+
+    def __str__(self):
+        return f"{self.user_id} in {self.team_id} as {self.role}"
+
+
+class TeamInvitation(models.Model):
+    """Invitation flow for bringing collaborators into a TeamAccount."""
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('expired', 'Expired'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    team = models.ForeignKey(TeamAccount, on_delete=models.CASCADE, related_name='invitations')
+    email = models.EmailField()
+    role = models.CharField(max_length=20, choices=TeamMembership.ROLE_CHOICES)
+    permission_level = models.CharField(max_length=20, choices=TEAM_PERMISSION_CHOICES, default='view')
+    token = models.CharField(max_length=128, unique=True, db_index=True)
+    invited_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='team_invitations_created')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    expires_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    accepted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='team_invitations_accepted')
+    candidate_profile = models.ForeignKey(CandidateProfile, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['team', 'status']),
+            models.Index(fields=['email']),
+        ]
+
+    def is_expired(self):
+        return self.expires_at and timezone.now() > self.expires_at
+
+
+class TeamCandidateAccess(models.Model):
+    """Per-mentorship access controls for viewing candidate data inside a team."""
+
+    team = models.ForeignKey(TeamAccount, on_delete=models.CASCADE, related_name='candidate_access')
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name='team_access')
+    granted_to = models.ForeignKey(TeamMembership, on_delete=models.CASCADE, related_name='candidate_access')
+    permission_level = models.CharField(max_length=20, choices=TEAM_PERMISSION_CHOICES, default='view')
+    can_view_profile = models.BooleanField(default=True)
+    can_view_progress = models.BooleanField(default=True)
+    can_edit_goals = models.BooleanField(default=False)
+    granted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='team_access_granted')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [('team', 'candidate', 'granted_to')]
+        indexes = [
+            models.Index(fields=['team', 'candidate']),
+            models.Index(fields=['team', 'granted_to']),
+        ]
+
+    def __str__(self):
+        return f"{self.granted_to_id} -> {self.candidate_id} ({self.permission_level})"
+
+
+class TeamMessage(models.Model):
+    """Lightweight collaboration feed for a team workspace."""
+
+    MESSAGE_TYPES = [
+        ('update', 'Update'),
+        ('request', 'Request'),
+        ('alert', 'Alert'),
+        ('note', 'Note'),
+    ]
+
+    team = models.ForeignKey(TeamAccount, on_delete=models.CASCADE, related_name='messages')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='team_messages')
+    message = models.TextField()
+    message_type = models.CharField(max_length=20, choices=MESSAGE_TYPES, default='update')
+    pinned = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['team', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"TeamMessage({self.team_id})"
+
+
 class SupporterInvite(models.Model):
     """Invite and lightweight access control for family/supporter dashboards."""
     candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="supporter_invites")

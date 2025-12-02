@@ -5,6 +5,7 @@ from django.urls import path, re_path
 from core import views
 from core import analytics_views
 from core import market_views
+from core import team_views
 
 app_name = 'core'
 
@@ -111,6 +112,18 @@ urlpatterns = [
     path('mentorship/goals/<uuid:goal_id>', views.mentorship_goal_detail, name='mentorship-goal-detail'),
     path('mentorship/relationships/<int:team_member_id>/progress-report', views.mentorship_progress_report, name='mentorship-progress-report'),
     path('mentorship/relationships/<int:team_member_id>/messages', views.mentorship_messages, name='mentorship-messages'),
+
+    # Team accounts & collaboration
+    path('team/accounts', team_views.team_accounts, name='team-accounts'),
+    path('team/accounts/<int:team_id>', team_views.team_account_detail, name='team-account-detail'),
+    path('team/accounts/<int:team_id>/subscription', team_views.team_subscription_update, name='team-subscription-update'),
+    path('team/accounts/<int:team_id>/invites', team_views.team_invites, name='team-invites'),
+    path('team/invites/<str:token>/accept', team_views.team_accept_invite, name='team-accept-invite'),
+    path('team/memberships/<int:membership_id>', team_views.team_membership_detail, name='team-membership-detail'),
+    path('team/accounts/<int:team_id>/access', team_views.team_candidate_access, name='team-candidate-access'),
+    path('team/accounts/<int:team_id>/dashboard', team_views.team_dashboard, name='team-dashboard'),
+    path('team/accounts/<int:team_id>/messages', team_views.team_messages, name='team-messages'),
+    path('team/accounts/<int:team_id>/reports', team_views.team_reports, name='team-reports'),
 
     # Profile Picture endpoints (UC-022)
     path('profile/picture', views.get_profile_picture, name='get-profile-picture'),

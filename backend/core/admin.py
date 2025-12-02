@@ -13,7 +13,8 @@ from .models import (
     # Interview prep
     InterviewQuestion,
     # Network models
-    Contact, Referral, TeamMember, SupporterInvite, SupporterEncouragement, SupporterChatMessage, SharedNote, MentorshipRequest,
+    Contact, Referral, TeamMember, TeamAccount, TeamMembership, TeamInvitation, TeamCandidateAccess, TeamMessage,
+    SupporterInvite, SupporterEncouragement, SupporterChatMessage, SharedNote, MentorshipRequest,
     MentorshipSharingPreference, MentorshipSharedApplication, MentorshipGoal,
     MentorshipMessage,
     # Analytics models
@@ -210,6 +211,41 @@ class TeamMemberAdmin(admin.ModelAdmin):
     list_display = ['candidate', 'user', 'role', 'permission_level', 'is_active']
     list_filter = ['role', 'permission_level', 'is_active']
     search_fields = ['candidate__user__username', 'user__username']
+
+
+@admin.register(TeamAccount)
+class TeamAccountAdmin(admin.ModelAdmin):
+    list_display = ['name', 'owner', 'subscription_plan', 'subscription_status', 'seat_limit', 'created_at']
+    list_filter = ['subscription_plan', 'subscription_status']
+    search_fields = ['name', 'owner__username', 'billing_email']
+
+
+@admin.register(TeamMembership)
+class TeamMembershipAdmin(admin.ModelAdmin):
+    list_display = ['team', 'user', 'role', 'permission_level', 'is_active', 'candidate_profile']
+    list_filter = ['role', 'permission_level', 'is_active']
+    search_fields = ['team__name', 'user__username', 'user__email']
+
+
+@admin.register(TeamInvitation)
+class TeamInvitationAdmin(admin.ModelAdmin):
+    list_display = ['team', 'email', 'role', 'permission_level', 'status', 'expires_at', 'accepted_at']
+    list_filter = ['role', 'permission_level', 'status']
+    search_fields = ['team__name', 'email', 'token']
+
+
+@admin.register(TeamCandidateAccess)
+class TeamCandidateAccessAdmin(admin.ModelAdmin):
+    list_display = ['team', 'candidate', 'granted_to', 'permission_level', 'can_view_profile', 'can_view_progress', 'can_edit_goals']
+    list_filter = ['permission_level', 'can_view_profile', 'can_view_progress', 'can_edit_goals']
+    search_fields = ['team__name', 'candidate__user__email', 'granted_to__user__email']
+
+
+@admin.register(TeamMessage)
+class TeamMessageAdmin(admin.ModelAdmin):
+    list_display = ['team', 'author', 'message_type', 'pinned', 'created_at']
+    list_filter = ['message_type', 'pinned']
+    search_fields = ['team__name', 'author__username', 'message']
 
 
 @admin.register(MentorshipRequest)

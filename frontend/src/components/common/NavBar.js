@@ -185,6 +185,7 @@ const NavBar = () => {
   </div>
 
   <NavLink to="/analytics" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Analytics</NavLink>
+  <NavLink to="/team" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Teams</NavLink>
   <NavLink to="/mentorship" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Mentors</NavLink>
         
   {/* Profile dropdown */}
