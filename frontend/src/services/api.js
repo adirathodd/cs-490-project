@@ -691,6 +691,9 @@ export const jobsAPI = {
   logQuestionPractice: async (jobId, data) => {
     return questionBankAPI.logQuestionPractice(jobId, data);
   },
+  getQuestionPracticeHistory: async (jobId, questionId) => {
+    return questionBankAPI.getQuestionPracticeHistory(jobId, questionId);
+  },
   coachQuestionResponse: async (jobId, data) => {
     return questionBankAPI.coachQuestionResponse(jobId, data);
   },
@@ -2158,6 +2161,25 @@ export const resumeSharingAPI = {
     }
   },
 
+  // List shares available to the logged-in reviewer
+  listReviewerShares: async () => {
+    try {
+      const response = await api.get('/resume-shares/reviewer/');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch shared resumes' };
+    }
+  },
+
+  getReviewerStats: async () => {
+    try {
+      const response = await api.get('/resume-shares/reviewer/stats/');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch reviewer stats' };
+    }
+  },
+
   // View shared resume (public endpoint)
   viewSharedResume: async (shareToken, accessData = {}) => {
     try {
@@ -2184,6 +2206,27 @@ export const resumeSharingAPI = {
         requires_email: errorData.requires_email || false,
         ...errorData
       };
+    }
+  },
+  // Download PDF for shared resume (with auth context)
+  previewSharePdf: async (shareToken, accessData = {}) => {
+    try {
+      const response = await api.get(`/shared-resume/${shareToken}/pdf/`, {
+        params: accessData,
+        responseType: 'arraybuffer',
+      });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load shared PDF' };
+    }
+  },
+  // Update shared resume (if editing is enabled on the share)
+  editSharedResume: async (shareToken, data) => {
+    try {
+      const response = await api.put(`/shared-resume/${shareToken}/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update shared resume' };
     }
   },
 };

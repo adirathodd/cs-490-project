@@ -226,6 +226,7 @@ const RoleQuestionBank = ({
 
   const handleViewHistory = async (question) => {
     if (!jobId) return;
+    console.log('Viewing history for question:', question.id);
     setLoadingHistory(true);
     try {
       const history = await jobsAPI.getQuestionPracticeHistory(jobId, question.id);
@@ -233,6 +234,7 @@ const RoleQuestionBank = ({
       setShowHistoryModal(true);
     } catch (error) {
       console.error('Failed to load practice history:', error);
+      alert(`Failed to load history: ${error.message || JSON.stringify(error)}`);
       // If no history found, show empty state
       setPracticeHistory(null);
       setShowHistoryModal(true);

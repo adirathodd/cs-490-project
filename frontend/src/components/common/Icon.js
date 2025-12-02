@@ -72,6 +72,9 @@ import {
   FaPlay,
   FaPause,
   FaStop,
+  FaBalanceScale,
+  FaBookOpen,
+  FaArrowUp,
   FaShieldAlt,
 } from 'react-icons/fa';
 
@@ -159,6 +162,7 @@ const iconMap = {
   'align-left': FaAlignLeft,
   book: FaBook,
   activity: FaChartLine,
+  'trending-up': FaArrowUp,
   star: FaStar,
   copy: FaCopy,
   gitBranch: FaCodeBranch,
@@ -178,6 +182,8 @@ const iconMap = {
   play: FaPlay,
   pause: FaPause,
   stop: FaStop,
+  'book-open': FaBookOpen,
+  scale: FaBalanceScale,
   shield: FaShieldAlt,
 };
 
