@@ -4,6 +4,47 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+RESUMEFEEDBACK_INDEX_RENAMES = [
+    ('core_resumefeedback_resume_version_0c3a71_idx', 'core_resume_resume__c74ce1_idx'),
+    ('core_resumefeedback_cover_letter_d_5ab3d9_idx', 'core_resume_cover_l_ac04d1_idx'),
+    ('core_resumefeedback_share_92935d_idx', 'core_resume_share_i_4f59d5_idx'),
+    ('core_resumefeedback_status_03b13a_idx', 'core_resume_status_610122_idx'),
+    ('core_resumefeedback_review_2a84fb_idx', 'core_resume_reviewe_7fdbbe_idx'),
+]
+
+
+def rename_resumefeedback_indexes(apps, schema_editor):
+    """Rename indexes when they exist so migrations stay idempotent."""
+    connection = schema_editor.connection
+    if connection.vendor != 'postgresql':
+        return
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT indexname FROM pg_indexes WHERE schemaname = 'public'")
+        existing_indexes = {row[0] for row in cursor.fetchall()}
+
+    for old_name, new_name in RESUMEFEEDBACK_INDEX_RENAMES:
+        if old_name in existing_indexes:
+            with connection.cursor() as cursor:
+                cursor.execute(f'ALTER INDEX {old_name} RENAME TO {new_name}')
+
+
+def reverse_rename_resumefeedback_indexes(apps, schema_editor):
+    """Reverse the rename if the new indexes exist."""
+    connection = schema_editor.connection
+    if connection.vendor != 'postgresql':
+        return
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT indexname FROM pg_indexes WHERE schemaname = 'public'")
+        existing_indexes = {row[0] for row in cursor.fetchall()}
+
+    for old_name, new_name in RESUMEFEEDBACK_INDEX_RENAMES:
+        if new_name in existing_indexes:
+            with connection.cursor() as cursor:
+                cursor.execute(f'ALTER INDEX {new_name} RENAME TO {old_name}')
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -11,30 +52,40 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RenameIndex(
-            model_name='resumefeedback',
-            new_name='core_resume_resume__c74ce1_idx',
-            old_name='core_resumefeedback_resume_version_0c3a71_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='resumefeedback',
-            new_name='core_resume_cover_l_ac04d1_idx',
-            old_name='core_resumefeedback_cover_letter_d_5ab3d9_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='resumefeedback',
-            new_name='core_resume_share_i_4f59d5_idx',
-            old_name='core_resumefeedback_share_92935d_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='resumefeedback',
-            new_name='core_resume_status_610122_idx',
-            old_name='core_resumefeedback_status_03b13a_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='resumefeedback',
-            new_name='core_resume_reviewe_7fdbbe_idx',
-            old_name='core_resumefeedback_review_2a84fb_idx',
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunPython(
+                    rename_resumefeedback_indexes,
+                    reverse_rename_resumefeedback_indexes,
+                ),
+            ],
+            state_operations=[
+                migrations.RenameIndex(
+                    model_name='resumefeedback',
+                    new_name='core_resume_resume__c74ce1_idx',
+                    old_name='core_resumefeedback_resume_version_0c3a71_idx',
+                ),
+                migrations.RenameIndex(
+                    model_name='resumefeedback',
+                    new_name='core_resume_cover_l_ac04d1_idx',
+                    old_name='core_resumefeedback_cover_letter_d_5ab3d9_idx',
+                ),
+                migrations.RenameIndex(
+                    model_name='resumefeedback',
+                    new_name='core_resume_share_i_4f59d5_idx',
+                    old_name='core_resumefeedback_share_92935d_idx',
+                ),
+                migrations.RenameIndex(
+                    model_name='resumefeedback',
+                    new_name='core_resume_status_610122_idx',
+                    old_name='core_resumefeedback_status_03b13a_idx',
+                ),
+                migrations.RenameIndex(
+                    model_name='resumefeedback',
+                    new_name='core_resume_reviewe_7fdbbe_idx',
+                    old_name='core_resumefeedback_review_2a84fb_idx',
+                ),
+            ],
         ),
         migrations.AlterField(
             model_name='resumeshare',

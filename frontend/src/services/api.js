@@ -691,6 +691,9 @@ export const jobsAPI = {
   logQuestionPractice: async (jobId, data) => {
     return questionBankAPI.logQuestionPractice(jobId, data);
   },
+  getQuestionPracticeHistory: async (jobId, questionId) => {
+    return questionBankAPI.getQuestionPracticeHistory(jobId, questionId);
+  },
   coachQuestionResponse: async (jobId, data) => {
     return questionBankAPI.coachQuestionResponse(jobId, data);
   },

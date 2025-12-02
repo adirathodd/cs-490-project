@@ -21,6 +21,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.core.management import call_command
+from django.core.mail import send_mail
 from django.http import HttpResponse
 from django.utils.text import slugify
 from django.conf import settings
@@ -9055,6 +9056,12 @@ def job_question_bank(request, job_id):
 
     bank_with_practice = _attach_practice_status(bank_data, practice_map)
 
+    # Debug logging to trace ID mismatches
+    for cat in bank_with_practice.get('categories', []):
+        for q in cat.get('questions', []):
+            if q.get('practice_status', {}).get('practiced'):
+                logger.info(f"Sending question {q.get('id')} with practice status: {q.get('practice_status')}")
+
     return Response(bank_with_practice, status=status.HTTP_200_OK)
 
 
@@ -9089,7 +9096,7 @@ def _log_practice_entry(
 
     log, created = JobQuestionPractice.objects.get_or_create(
         job=job,
-        question_id=payload['question_id'],
+        question_id=str(payload['question_id']).strip(),
         defaults=defaults,
     )
 
@@ -9342,6 +9349,7 @@ def get_question_practice_history(request, job_id, question_id):
     Get practice history for a specific question.
     Returns the stored written response, STAR response, and practice notes.
     """
+    logger.info(f"get_question_practice_history called for job_id={job_id}, question_id={question_id}, user={request.user}")
     try:
         profile = CandidateProfile.objects.get(user=request.user)
         job = JobEntry.objects.get(id=job_id, candidate=profile)
@@ -9352,7 +9360,15 @@ def get_question_practice_history(request, job_id, question_id):
         )
     
     try:
-        practice_log = JobQuestionPractice.objects.get(job=job, question_id=question_id)
+        # Use filter().first() with iexact and strip to be more robust against URL encoding/casing issues
+        practice_log = JobQuestionPractice.objects.filter(
+            job=job, 
+            question_id__iexact=question_id.strip()
+        ).first()
+        
+        if not practice_log:
+            raise JobQuestionPractice.DoesNotExist
+
         history_entries = [
             entry for entry in (
                 _serialize_coaching_entry(obj)
@@ -9381,6 +9397,10 @@ def get_question_practice_history(request, job_id, question_id):
             response_payload['coaching_history'] = history_entries
         return Response(response_payload)
     except JobQuestionPractice.DoesNotExist:
+        logger.error(f"JobQuestionPractice not found for job_id={job_id}, question_id={question_id}")
+        # Log existing practices for this job to debug mismatch
+        existing = JobQuestionPractice.objects.filter(job=job).values_list('question_id', flat=True)
+        logger.error(f"Existing question_ids for job {job_id}: {list(existing)}")
         return Response(
             {'error': 'No practice history found for this question'},
             status=status.HTTP_404_NOT_FOUND
@@ -14442,15 +14462,6 @@ def career_goals_list_create(request):
         serializer = CareerGoalSerializer(data=request.data)
         if serializer.is_valid():
             goal = serializer.save(user=request.user)
-            references = references.filter(availability_status=availability)
-        
-        serializer = ProfessionalReferenceListSerializer(references, many=True)
-        return Response(serializer.data)
-    
-    elif request.method == 'POST':
-        serializer = ProfessionalReferenceSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(user=request.user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
