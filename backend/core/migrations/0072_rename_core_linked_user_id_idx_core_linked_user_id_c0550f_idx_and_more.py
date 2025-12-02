@@ -10,14 +10,64 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RenameIndex(
-            model_name='linkedinintegration',
-            new_name='core_linked_user_id_c0550f_idx',
-            old_name='core_linked_user_id_idx',
+        migrations.RunSQL(
+            sql="""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE c.relkind = 'i'
+                          AND c.relname = 'core_linked_user_id_idx'
+                          AND n.nspname = current_schema()
+                    ) THEN
+                        ALTER INDEX core_linked_user_id_idx RENAME TO core_linked_user_id_c0550f_idx;
+                    END IF;
+                END$$;
+            """,
+            reverse_sql="""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE c.relkind = 'i'
+                          AND c.relname = 'core_linked_user_id_c0550f_idx'
+                          AND n.nspname = current_schema()
+                    ) THEN
+                        ALTER INDEX core_linked_user_id_c0550f_idx RENAME TO core_linked_user_id_idx;
+                    END IF;
+                END$$;
+            """,
         ),
-        migrations.RenameIndex(
-            model_name='linkedinintegration',
-            new_name='core_linked_linkedi_290f08_idx',
-            old_name='core_linked_linkedin_id_idx',
+        migrations.RunSQL(
+            sql="""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE c.relkind = 'i'
+                          AND c.relname = 'core_linked_linkedin_id_idx'
+                          AND n.nspname = current_schema()
+                    ) THEN
+                        ALTER INDEX core_linked_linkedin_id_idx RENAME TO core_linked_linkedi_290f08_idx;
+                    END IF;
+                END$$;
+            """,
+            reverse_sql="""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE c.relkind = 'i'
+                          AND c.relname = 'core_linked_linkedi_290f08_idx'
+                          AND n.nspname = current_schema()
+                    ) THEN
+                        ALTER INDEX core_linked_linkedi_290f08_idx RENAME TO core_linked_linkedin_id_idx;
+                    END IF;
+                END$$;
+            """,
         ),
     ]
