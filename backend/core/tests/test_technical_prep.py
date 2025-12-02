@@ -507,3 +507,31 @@ class TestTechnicalPrepEndpoint:
         generator.deadline = time.monotonic() - 1
         with pytest.raises(TimeoutError):
             generator._request_gemini('{"prompt": "test"}')
+
+    def test_business_process_analyst_is_non_technical(self, settings):
+        settings.GEMINI_API_KEY = 'fake-key'
+
+        description = (
+            "The Business Process Analyst will serve a key role in ensuring successful hardware support delivery. "
+            "They will continuously audit existing workflows to identify opportunities for automation and other efficiencies. "
+            "Successfully navigate reactive change management. "
+            "Program Management Lead cross-functional programs from initiation through execution."
+        )
+
+        analyst_job = JobEntry.objects.create(
+            candidate=self.profile,
+            title='Business Process Analyst',
+            company_name='Prep Corp',
+            industry='Operations',
+            description=description,
+            status='applied',
+        )
+
+        url = reverse('core:job-technical-prep', kwargs={'job_id': analyst_job.id})
+        response = self.client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+
+        assert data['role_profile'] == 'business'
+        assert data['coding_challenges'] == []
+        assert data['suggested_challenges'] == []

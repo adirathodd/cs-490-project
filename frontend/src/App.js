@@ -38,6 +38,7 @@ import ReferencesPage from './components/references/ReferencesPage';
 import MentorshipDashboard from './components/mentorship/MentorshipDashboard';
 import ReferralManagement from './components/referrals/ReferralManagement';
 import MentorshipMenteeDashboard from './components/mentorship/MenteeDashboard';
+import PeerSupportHub from './components/community/PeerSupportHub';
 import MarketIntelligence from './components/tools/MarketIntelligence';
 import SalaryProgression from './components/tools/SalaryProgression';
 import { CompanyInsights } from './features/company';
@@ -45,6 +46,7 @@ import { AiResumeGenerator } from './features/resume';
 import { AiCoverLetterGenerator } from './features/cover-letter';
 import ResumeVersionControl from './components/resume/ResumeVersionControl';
 import SharedResumeView from './components/resume/SharedResumeView';
+import ResumeReviewTools from './components/resume/ResumeReviewTools';
 import TeamDashboard from './components/team/TeamDashboard';
 import ScrollToTop from './components/common/ScrollToTop';
 import ForgotPassword from './components/auth/ForgotPassword';
@@ -367,6 +369,17 @@ function App() {
           />
 
           <Route
+            path="/peer-support"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <PeerSupportHub />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
             path="/networking"
             element={
               <PrivateRoute>
@@ -543,6 +556,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <ResumeVersionControl />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/tools/document-review"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ResumeReviewTools />
               </PrivateRoute>
             }
           />

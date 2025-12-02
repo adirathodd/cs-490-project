@@ -55,6 +55,9 @@ urlpatterns = [
     path('contacts/import/callback', views.contacts_import_callback, name='contacts-import-callback'),
     path('contacts/imports', views.import_jobs_list, name='contacts-imports-list'),
     path('contacts/import/<uuid:job_id>', views.import_job_detail, name='contacts-import-detail'),
+    path('contacts/maintenance/overview', views.relationship_maintenance_overview, name='contacts-maintenance-overview'),
+    path('contacts/maintenance/generate-reminders', views.generate_check_in_reminders, name='contacts-maintenance-generate'),
+    path('contacts/<uuid:contact_id>/outreach', views.log_personalized_outreach, name='contact-outreach'),
     path('contacts/<uuid:contact_id>/mutuals', views.contact_mutuals, name='contact-mutuals'),
     path('contacts/<uuid:contact_id>/mutuals/<uuid:mutual_id>', views.delete_mutual_connection, name='delete-mutual-connection'),
     path('contacts/<uuid:contact_id>/company-links', views.contact_company_links, name='contact-company-links'),
@@ -277,6 +280,7 @@ urlpatterns = [
     path('interviews/events/', views.interview_events_list_create, name='interview-events-list-create'),
     path('interviews/events/<int:pk>/', views.interview_event_detail, name='interview-event-detail'),
     path('interviews/success-forecast/', views.interview_success_forecast, name='interview-success-forecast'),
+    path('interviews/performance-analytics/', views.interview_performance_analytics, name='interview-performance-analytics'),  # UC-080
     path('interviews/performance-tracking/', views.interview_performance_tracking, name='interview-performance-tracking'),  # UC-098
 
     # UC-081: Pre-Interview Preparation Checklist endpoints
@@ -318,7 +322,10 @@ urlpatterns = [
     # UC-052: Resume Sharing and Feedback endpoints
     path('resume-shares/', views.resume_share_list_create, name='resume-share-list-create'),
     path('resume-shares/<uuid:share_id>/', views.resume_share_detail, name='resume-share-detail'),
+    path('resume-shares/reviewer/', views.reviewer_resume_shares, name='resume-share-reviewer'),
+    path('resume-shares/reviewer/stats/', views.reviewer_feedback_stats, name='reviewer-feedback-stats'),
     path('shared-resume/<str:share_token>/', views.shared_resume_view, name='shared-resume-view'),
+    path('shared-resume/<str:share_token>/pdf/', views.shared_resume_pdf, name='shared-resume-pdf'),
     path('feedback/', views.feedback_list, name='feedback-list'),
     path('feedback/create/', views.create_feedback, name='create-feedback'),
     path('feedback/<uuid:feedback_id>/', views.feedback_detail, name='feedback-detail'),

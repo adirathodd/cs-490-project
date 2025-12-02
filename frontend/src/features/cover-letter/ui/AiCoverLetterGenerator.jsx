@@ -7,7 +7,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { jobsAPI, coverLetterAIAPI, coverLetterExportAPI, materialsAPI } from '../../../services/api';
+import { jobsAPI, coverLetterAIAPI, coverLetterExportAPI, materialsAPI, resumeSharingAPI } from '../../../services/api';
 import Icon from '../../../components/common/Icon';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import { auth } from '../../../services/firebase';
@@ -593,6 +593,14 @@ const AiCoverLetterGenerator = () => {
   const [linkingCoverLetter, setLinkingCoverLetter] = useState(false);
   const [linkDocumentError, setLinkDocumentError] = useState('');
   const [linkSuccessMessage, setLinkSuccessMessage] = useState('');
+  const [coverSharePanelOpen, setCoverSharePanelOpen] = useState(false);
+  const [coverShareEmail, setCoverShareEmail] = useState('');
+  const [coverShareAllowEdit, setCoverShareAllowEdit] = useState(false);
+  const [coverShareDeadline, setCoverShareDeadline] = useState('');
+  const [coverShareMessage, setCoverShareMessage] = useState('');
+  const [coverShareLoading, setCoverShareLoading] = useState(false);
+  const [coverShareLink, setCoverShareLink] = useState('');
+  const [coverShareError, setCoverShareError] = useState('');
   const [compareSelection, setCompareSelection] = useState([]);
   const [compareError, setCompareError] = useState('');
   const [showCompareModal, setShowCompareModal] = useState(false);
@@ -2676,6 +2684,51 @@ const AiCoverLetterGenerator = () => {
     }
   };
 
+  const handleShareCoverLetter = async () => {
+    if (!savedDocument?.id) {
+      setCoverShareError('Save this cover letter to Documents before requesting a review.');
+      return;
+    }
+    if (!coverShareEmail.trim()) {
+      setCoverShareError('Reviewer email is required.');
+      return;
+    }
+
+    setCoverShareLoading(true);
+    setCoverShareError('');
+    setCoverShareLink('');
+
+    try {
+      const payload = {
+        cover_letter_document_id: savedDocument.id,
+        privacy_level: 'email_verified',
+        allowed_emails: [coverShareEmail.trim()],
+        allow_comments: true,
+        allow_download: coverShareAllowEdit,
+        allow_edit: coverShareAllowEdit,
+        require_reviewer_info: false,
+        share_message: coverShareMessage.trim(),
+      };
+
+      if (coverShareDeadline) {
+        const deadlineIso = new Date(coverShareDeadline);
+        if (!Number.isNaN(deadlineIso.getTime())) {
+          payload.expires_at = deadlineIso.toISOString();
+        }
+      }
+
+      const response = await resumeSharingAPI.createShare(payload);
+      setCoverShareLink(response.share_url || '');
+      setCoverShareMessage('');
+      setCoverShareDeadline('');
+      setCoverShareAllowEdit(false);
+    } catch (err) {
+      setCoverShareError(err?.message || 'Unable to request a review.');
+    } finally {
+      setCoverShareLoading(false);
+    }
+  };
+
   const computeReadabilityMetrics = useCallback((text) => {
     if (!text?.trim()) {
       return { score: null, level: '' };
@@ -3516,7 +3569,116 @@ const AiCoverLetterGenerator = () => {
                           )}
                         </button>
                       )}
+                      <button
+                        type="button"
+                        className="ghost share-toggle-btn"
+                        onClick={() => setCoverSharePanelOpen((prev) => !prev)}
+                        disabled={!savedDocument}
+                      >
+                        <Icon name="share" size="sm" />{' '}
+                        {coverSharePanelOpen ? 'Hide share panel' : 'Share for review'}
+                      </button>
                     </div>
+                    {coverSharePanelOpen && (
+                      <div className="share-panel share-panel--cover">
+                        <div className="share-panel__header">
+                          <div>
+                            <h4>Share this cover letter</h4>
+                            <p className="muted">
+                              Send the saved cover letter to a reviewer for comments or edits (if allowed).
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="ghost small"
+                            onClick={() => setCoverSharePanelOpen(false)}
+                          >
+                            Close
+                          </button>
+                        </div>
+                        <div className="share-panel__body">
+                          <label>
+                            Reviewer email
+                            <input
+                              type="email"
+                              value={coverShareEmail}
+                              onChange={(e) => setCoverShareEmail(e.target.value)}
+                              placeholder="reviewer@example.com"
+                              disabled={coverShareLoading}
+                            />
+                          </label>
+                          <div className="share-options">
+                            <label>
+                              <input
+                                type="checkbox"
+                                checked={coverShareAllowEdit}
+                                onChange={(e) => setCoverShareAllowEdit(e.target.checked)}
+                                disabled={coverShareLoading}
+                              />
+                              Allow reviewer to edit & download
+                            </label>
+                          </div>
+                          <label>
+                            Deadline (optional)
+                            <input
+                              type="datetime-local"
+                              value={coverShareDeadline}
+                              onChange={(e) => setCoverShareDeadline(e.target.value)}
+                              disabled={coverShareLoading}
+                            />
+                          </label>
+                          <label>
+                            Message (optional)
+                            <textarea
+                              rows={2}
+                              value={coverShareMessage}
+                              onChange={(e) => setCoverShareMessage(e.target.value)}
+                              disabled={coverShareLoading}
+                              placeholder="Share context or focus areas"
+                            />
+                          </label>
+                        </div>
+                        <div className="share-panel__actions">
+                          <button
+                            type="button"
+                            className="primary"
+                            onClick={handleShareCoverLetter}
+                            disabled={coverShareLoading || !coverShareEmail.trim() || !savedDocument}
+                          >
+                            {coverShareLoading ? (
+                              <>
+                                <LoadingSpinner size="sm" /> Sharing...
+                              </>
+                            ) : (
+                              <>
+                                <Icon name="send" size="sm" /> Send review request
+                              </>
+                            )}
+                          </button>
+                          {coverShareLink && (
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(coverShareLink);
+                                } catch (err) {
+                                  console.error('Clipboard copy failed', err);
+                                }
+                              }}
+                            >
+                              <Icon name="copy" size="sm" /> Copy link
+                            </button>
+                          )}
+                        </div>
+                        {coverShareError && <p className="inline-error">{coverShareError}</p>}
+                        {coverShareLink && (
+                          <p className="share-panel__link">
+                            Share link ready: <a href={coverShareLink} target="_blank" rel="noreferrer">{coverShareLink}</a>
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {(saveDocumentError || linkDocumentError || linkSuccessMessage) && (
                       <div className="document-action-feedback">
                         {saveDocumentError && <p className="inline-error compact">{saveDocumentError}</p>}
