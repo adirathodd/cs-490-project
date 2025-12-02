@@ -654,9 +654,140 @@ export default function ApplicationSuccessAnalysis() {
                 </div>
               ))}
             </div>
+        </div>
+      );
+    })()}
+
+      {/* Predictive Analytics */}
+      {analysis.predicted_success && (
+        <div style={card}>
+          <h2 style={sectionTitle}>
+            <Icon name="chartLine" style={{ marginRight: 8 }} /> Predictive Analytics
+          </h2>
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div>
+                <div style={{ fontSize: 48, fontWeight: 700, lineHeight: 1 }}>{analysis.predicted_success.score}%</div>
+                <div style={{ fontSize: 14, color: '#6b7280' }}>Interview success probability</div>
+              </div>
+              <div style={{ flex: 1 }}>
+                {analysis.predicted_success.drivers?.map((driver, idx) => (
+                  <div key={idx} style={{ fontSize: 13, color: '#374151' }}>
+                    • {driver}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+              {analysis.timeline_forecast && (
+                <div style={{ padding: 10, borderRadius: 8, background: '#f9fafb', border: '1px solid #e5e7eb' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Time to next offer</div>
+                  <div style={{ fontSize: 24, fontWeight: 700 }}>{analysis.timeline_forecast.weeks_to_offer} weeks</div>
+                  <div style={{ fontSize: 12, color: '#6b7280' }}>Confidence: {analysis.timeline_forecast.confidence}</div>
+                </div>
+              )}
+              {analysis.salary_forecast && (
+                <div style={{ padding: 10, borderRadius: 8, background: '#fff7ed', border: '1px solid #fcd34d' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Salary forecast</div>
+                  <div style={{ fontSize: 24, fontWeight: 700 }}>${analysis.salary_forecast.salary_target?.toLocaleString()}</div>
+                  <div style={{ fontSize: 12, color: '#6b7280' }}>{analysis.salary_forecast.message}</div>
+                </div>
+              )}
+            </div>
+            {Array.isArray(analysis.prediction_accuracy) && analysis.prediction_accuracy.length > 0 && (
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
+                Prediction confidence varies slightly month-to-month; see timeline history for the latest offer rate.
+              </div>
+            )}
+            {Array.isArray(analysis.prediction_recommendations) && analysis.prediction_recommendations.length > 0 && (
+              <div>
+                <div style={{ fontSize: 13, color: '#4b5563', marginTop: 6 }}>
+                  Recommendations to improve predicted success:
+                </div>
+                <div style={{ marginTop: 4 }}>
+                  {analysis.prediction_recommendations.map((line, idx) => (
+                    <p key={idx} style={{ fontSize: 13, margin: '4px 0', color: '#1f2937' }}>
+                      {line}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        );
-      })()}
+        </div>
+      )}
+
+      {/* Timeline & Scenario Planning */}
+      {(analysis.scenario_planning?.length || 0) > 0 && (
+        <div style={card}>
+          <h2 style={sectionTitle}>
+            <Icon name="forecast" style={{ marginRight: 8 }} /> Scenario Planning
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+            {analysis.scenario_planning.map((scenario, idx) => (
+              <div key={idx} style={{ padding: 12, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff' }}>
+                <div style={{ fontWeight: 600 }}>{scenario.title}</div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#1d4ed8' }}>{scenario.score}%</div>
+                <div style={{ fontSize: 13, color: '#374151' }}>{scenario.description}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Personal Success Factors */}
+      {analysis.pattern_factors && (
+        <div style={card}>
+          <h2 style={sectionTitle}>
+            <Icon name="sparkles" style={{ marginRight: 8 }} /> Personal Success Factors
+          </h2>
+          <div style={{ display: 'grid', gap: 12 }}>
+            {analysis.pattern_factors.best_industries?.length > 0 && (() => {
+              const unique = [];
+              const seen = new Set();
+              for (const ind of analysis.pattern_factors.best_industries) {
+                if (!seen.has(ind.industry)) {
+                  seen.add(ind.industry);
+                  unique.push(ind);
+                }
+                if (unique.length >= 3) break;
+              }
+              return (
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Best industries</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                    {unique.map((ind, idx) => (
+                      <span key={idx} style={{ padding: '4px 8px', borderRadius: 999, border: '1px solid #d1d5db', fontSize: 12 }}>
+                        {ind.industry} · {ind.offer_rate}% offers
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            {analysis.pattern_factors.key_skills?.length > 0 && (
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>Key skills</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                  {analysis.pattern_factors.key_skills.map((kw, idx) => (
+                    <span key={idx} style={{ padding: '4px 8px', borderRadius: 6, background: '#f0fdf4', border: '1px solid #86efac', fontSize: 12 }}>
+                      {kw.keyword}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {analysis.pattern_factors.best_timing?.day && (
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>Best timing</div>
+                <div style={{ marginTop: 4, fontSize: 14, color: '#374151' }}>
+                  {analysis.pattern_factors.best_timing.day.day} · {analysis.pattern_factors.best_timing.time?.time_slot || 'Any time'}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Success Patterns & Strategy */}
       {(analysis.prep_correlations?.length > 0 ||
