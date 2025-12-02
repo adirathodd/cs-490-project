@@ -179,6 +179,7 @@ const Dashboard = () => {
                 ];
 
                 const toolsCards = [
+                  { key: 'linkedin', icon: <Icon name="linkedin" size="lg" ariaLabel="LinkedIn Integration" />, title: 'LinkedIn Integration', desc: 'Connect your profile, get optimization tips, and generate networking messages', action: () => navigate('/linkedin'), actionText: 'Open LinkedIn Tools' },
                   { key: 'ai_resume', icon: <Icon name="sparkles" size="lg" ariaLabel="AI Resume" />, title: 'AI Resume', desc: 'Generate an AI-optimized resume', action: () => navigate('/resume/ai'), actionText: 'Open AI Resume' },
                   { key: 'ai_cover_letter', icon: <Icon name="sparkles" size="lg" ariaLabel="AI Cover Letter" />, title: 'AI Cover Letter', desc: 'Generate tailored cover letters using AI', action: () => navigate('/cover-letter/ai'), actionText: 'Open AI Cover Letter' },
                   { key: 'market_intelligence', icon: <Icon name="chart" size="lg" ariaLabel="Market Intelligence" />, title: 'Market Intelligence', desc: 'Track market trends, salaries, and skill demand', action: () => navigate('/tools/market-intelligence'), actionText: 'Open Market Intelligence' },
