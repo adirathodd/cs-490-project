@@ -1,6 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import Icon from '../common/Icon';
 import './PeerSupportHub.css';
+
+const PRIVACY_STORAGE_KEY = 'peerSupportPrivacy';
+const THREAD_STORAGE_KEY = 'peerSupportThreads';
 
 const groupSeed = [
   {
@@ -9,7 +13,7 @@ const groupSeed = [
     industry: 'Technology',
     role: 'PM / Strategy',
     members: 184,
-    focus: 'Roadmapping, storytelling, PM interviews',
+    focus: 'Roadmapping, PM interviews',
     cadence: 'Weekly standups',
     joined: true,
     privacy: 'Identity optional',
@@ -20,8 +24,8 @@ const groupSeed = [
     industry: 'Technology',
     role: 'Data / Analytics',
     members: 132,
-    focus: 'SQL drills, case studies, referral swaps',
-    cadence: 'Bi-weekly accountability',
+    focus: 'SQL drills, case studies',
+    cadence: 'Bi-weekly',
     joined: false,
     privacy: 'Alias-friendly',
   },
@@ -31,8 +35,8 @@ const groupSeed = [
     industry: 'Consumer / SaaS',
     role: 'Growth / Lifecycle',
     members: 96,
-    focus: 'Campaign retros, portfolio swaps, peer intros',
-    cadence: 'Weekly demo day',
+    focus: 'Campaign retros, peer intros',
+    cadence: 'Weekly demos',
     joined: false,
     privacy: 'Name visible',
   },
@@ -42,7 +46,7 @@ const groupSeed = [
     industry: 'Services',
     role: 'Ops / GTM',
     members: 88,
-    focus: 'Process design, negotiation practice',
+    focus: 'Process design, negotiation',
     cadence: 'Fortnightly',
     joined: false,
     privacy: 'Identity optional',
@@ -56,7 +60,7 @@ const threadSeed = [
     title: 'Weekly accountability — top 3 commitments',
     body: 'Sharing what I will tackle this week: 10 targeted applications, 2 mock product cases, and 1 portfolio refresh. Anyone want to co-work?',
     tag: 'Accountability',
-    author: 'Sasha (anon)',
+    author: 'Anon',
     timeAgo: '2h ago',
     replies: 9,
     helpful: 21,
@@ -80,7 +84,7 @@ const threadSeed = [
     title: 'SQL practice cadence that worked for me',
     body: 'Three 25-minute blocks with 1 peer review per week raised my take-home scores. I can host a Wednesday session if helpful.',
     tag: 'Strategy',
-    author: 'Ana (anon)',
+    author: 'Anon',
     timeAgo: '1d ago',
     replies: 12,
     helpful: 33,
@@ -156,10 +160,17 @@ const storiesSeed = [
 const score = (value) => Math.min(100, Math.max(0, Math.round(value)));
 
 const PeerSupportHub = () => {
+  const { currentUser, userProfile } = useAuth();
+  const backendFullName = (userProfile?.full_name || '').trim();
+  const backendFirstLast = `${(userProfile?.first_name || '').trim()} ${(userProfile?.last_name || '').trim()}`.trim();
+  const firebaseName = (currentUser?.displayName || '').trim();
+  const emailFallback = currentUser?.email || 'Anon';
+  const displayName = backendFullName || backendFirstLast || firebaseName || emailFallback;
+
   const [groups, setGroups] = useState(groupSeed);
   const [selectedGroupId, setSelectedGroupId] = useState(groupSeed.find((g) => g.joined)?.id || groupSeed[0].id);
   const [threads, setThreads] = useState(threadSeed);
-  const [messageForm, setMessageForm] = useState({ text: '', tag: 'Strategy', anonymous: true });
+  const [messageForm, setMessageForm] = useState({ text: '', tag: 'Strategy' });
   const [challenges, setChallenges] = useState(challengeSeed);
   const [referrals, setReferrals] = useState(referralSeed);
   const [referralForm, setReferralForm] = useState({ title: '', company: '', location: '', type: 'Referral share' });
@@ -167,10 +178,32 @@ const PeerSupportHub = () => {
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [privacy, setPrivacy] = useState({
     showIdentity: false,
-    allowDMs: false,
-    shareProgress: true,
-    shareTargets: false,
   });
+  const [appliedAt, setAppliedAt] = useState(null);
+
+  // Load persisted privacy choices on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PRIVACY_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setPrivacy((prev) => ({ ...prev, ...parsed }));
+      }
+    } catch (e) {}
+  }, []);
+
+  // Load persisted threads on mount
+  useEffect(() => {
+    try {
+      const savedThreads = localStorage.getItem(THREAD_STORAGE_KEY);
+      if (savedThreads) {
+        const parsed = JSON.parse(savedThreads);
+        if (Array.isArray(parsed)) {
+          setThreads(parsed);
+        }
+      }
+    } catch (e) {}
+  }, []);
 
   const joinedGroups = useMemo(() => groups.filter((g) => g.joined), [groups]);
   const selectedGroup = useMemo(
@@ -212,20 +245,27 @@ const PeerSupportHub = () => {
   const handlePost = (e) => {
     e.preventDefault();
     if (!messageForm.text.trim()) return;
+    const anonymous = !privacy.showIdentity;
     const newThread = {
       id: Date.now(),
       groupId: selectedGroup.id,
       title: `${messageForm.tag} insight`,
       body: messageForm.text.trim(),
       tag: messageForm.tag,
-      author: messageForm.anonymous || !privacy.showIdentity ? 'Anonymous peer' : 'You',
+      author: anonymous ? 'Anon' : displayName,
       timeAgo: 'Just now',
       replies: 0,
       helpful: 0,
-      anonymous: messageForm.anonymous || !privacy.showIdentity,
+      anonymous,
       isMine: true,
     };
-    setThreads((prev) => [newThread, ...prev]);
+    setThreads((prev) => {
+      const next = [newThread, ...prev];
+      try {
+        localStorage.setItem(THREAD_STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     setMessageForm((prev) => ({ ...prev, text: '' }));
   };
 
@@ -266,6 +306,15 @@ const PeerSupportHub = () => {
 
   const togglePrivacy = (key) => {
     setPrivacy((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleApplyPrivacy = () => {
+    try {
+      localStorage.setItem(PRIVACY_STORAGE_KEY, JSON.stringify(privacy));
+      setAppliedAt(Date.now());
+    } catch (e) {}
+    // Reload so any future actions use the latest privacy defaults
+    setTimeout(() => window.location.reload(), 250);
   };
 
   const filteredThreads = useMemo(
@@ -335,16 +384,16 @@ const PeerSupportHub = () => {
 
       <div className="peer-grid">
         <section className="peer-card">
-          <div className="peer-card__header">
-            <div>
-              <p className="peer-pill">Group matching</p>
+            <div className="peer-card__header">
+              <div>
+                <p className="peer-pill">Group matching</p>
               <h2>Join industry or role crews</h2>
               <p className="muted">Pick your lane and stay anonymous until you are ready.</p>
+              </div>
             </div>
-          </div>
-          <div className="peer-group-list">
-            {filteredGroups.map((group) => (
-              <button
+            <div className="peer-group-list">
+              {filteredGroups.map((group) => (
+                <button
                 key={group.id}
                 className={`peer-group ${group.joined ? 'peer-group--joined' : ''}`}
                 onClick={() => handleJoinGroup(group.id)}
@@ -391,6 +440,9 @@ const PeerSupportHub = () => {
           </div>
           <form className="peer-form" onSubmit={handlePost}>
             <label className="peer-label">Share an insight or question</label>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Posting as: {!privacy.showIdentity ? 'Anon' : displayName}
+            </div>
             <textarea
               value={messageForm.text}
               onChange={(e) => setMessageForm((prev) => ({ ...prev, text: e.target.value }))}
@@ -407,14 +459,6 @@ const PeerSupportHub = () => {
                 <option>Opportunity</option>
                 <option>Interview prep</option>
               </select>
-              <label className="peer-toggle">
-                <input
-                  type="checkbox"
-                  checked={messageForm.anonymous}
-                  onChange={() => setMessageForm((prev) => ({ ...prev, anonymous: !prev.anonymous }))}
-                />
-                Post anonymously
-              </label>
               <button className="peer-button" type="submit">Share with group</button>
             </div>
           </form>
@@ -624,7 +668,7 @@ const PeerSupportHub = () => {
             <div>
               <p className="peer-pill">Privacy</p>
               <h2>Privacy controls</h2>
-              <p className="muted">Dial in how visible you are before sharing.</p>
+              <p className="muted">Choose whether your name shows up in group posts.</p>
             </div>
           </div>
           <div className="peer-privacy">
@@ -632,20 +676,14 @@ const PeerSupportHub = () => {
               <input type="checkbox" checked={privacy.showIdentity} onChange={() => togglePrivacy('showIdentity')} />
               Show my name in groups
             </label>
-            <label className="peer-toggle">
-              <input type="checkbox" checked={privacy.allowDMs} onChange={() => togglePrivacy('allowDMs')} />
-              Allow peer DMs
-            </label>
-            <label className="peer-toggle">
-              <input type="checkbox" checked={privacy.shareProgress} onChange={() => togglePrivacy('shareProgress')} />
-              Share challenge progress
-            </label>
-            <label className="peer-toggle">
-              <input type="checkbox" checked={privacy.shareTargets} onChange={() => togglePrivacy('shareTargets')} />
-              Show target companies to peers
-            </label>
             <div className="peer-privacy__hint">
-              Tip: Keep anonymous posting on until you find a crew you trust. You can still receive referrals with privacy on.
+              Identity only shows when this is on. Otherwise, posts display as Anon.
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="peer-button" onClick={handleApplyPrivacy}>
+                Apply privacy settings
+              </button>
+              {appliedAt && <span className="muted" style={{ fontSize: 12 }}>Applied. Reloading to enforce...</span>}
             </div>
           </div>
         </section>
