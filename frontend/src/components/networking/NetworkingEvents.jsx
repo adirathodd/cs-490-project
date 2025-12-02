@@ -366,6 +366,38 @@ const NetworkingEvents = () => {
       .join(' ');
   };
 
+  const formatPercent = (value) => {
+    const numeric = Number(value);
+    if (Number.isNaN(numeric)) return '0%';
+    const rounded = Math.round(numeric);
+    return `${rounded}%`;
+  };
+
+  const formatCurrency = (value) => {
+    const numeric = Number(value) || 0;
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: numeric >= 100 ? 0 : 2,
+    }).format(numeric);
+  };
+
+  const formatTrend = (value) => {
+    const numeric = Number(value) || 0;
+    if (numeric === 0) return 'Flat';
+    return numeric > 0 ? `+${numeric}` : `${numeric}`;
+  };
+
+  const relationshipHealth = analytics?.relationship_health || {};
+  const activityVolume = analytics?.activity_volume || {};
+  const referralPipeline = analytics?.referral_pipeline || {};
+  const eventRoi = analytics?.event_roi || {};
+  const conversionRates = analytics?.conversion_rates || {};
+  const insights = analytics?.insights || {};
+  const benchmarks = analytics?.industry_benchmarks || {};
+  const bestChannel = analytics?.best_channel;
+  const bestChannelLabel = bestChannel ? formatBadgeLabel(bestChannel.event_type) : '';
+
   return (
     <div className="employment-container">
       <div className="employment-page-header">
@@ -387,27 +419,238 @@ const NetworkingEvents = () => {
       {/* Analytics Overview */}
       {analytics && (
         <div className="networking-analytics-card">
-          <h3><Icon name="trending-up" size="md" /> Networking Analytics</h3>
-          <div className="analytics-grid">
+          <div className="analytics-top">
+            <div>
+              <h3><Icon name="trending-up" size="md" /> Networking Analytics</h3>
+              <p className="analytics-subtitle">Volume, relationship quality, referrals, and ROI in one view.</p>
+            </div>
+            {benchmarks?.industry && (
+              <span className="benchmark-pill">
+                Benchmarks: {formatBadgeLabel(benchmarks.industry)}
+              </span>
+            )}
+          </div>
+
+          <div className="analytics-grid analytics-grid--summary">
             <div className="stat-card">
               <div className="stat-value">{analytics.overview.total_events}</div>
               <div className="stat-label">Total Events</div>
             </div>
             <div className="stat-card">
+              <div className="stat-value">{analytics.overview.attended_events}</div>
+              <div className="stat-label">Events Attended</div>
+            </div>
+            <div className="stat-card">
               <div className="stat-value">{analytics.overview.total_connections}</div>
-              <div className="stat-label">Connections Made</div>
+              <div className="stat-label">Connections</div>
             </div>
             <div className="stat-card">
               <div className="stat-value">{analytics.overview.high_value_connections}</div>
-              <div className="stat-label">High-Value Connections</div>
+              <div className="stat-label">High-Value Intros</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">{analytics.overview.goals_achievement_rate}%</div>
-              <div className="stat-label">Goals Achievement</div>
+              <div className="stat-value">{formatPercent(relationshipHealth.high_value_ratio)}</div>
+              <div className="stat-label">High-Value Ratio</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">{analytics.overview.follow_up_completion_rate}%</div>
+              <div className="stat-value">{formatPercent(analytics.overview.follow_up_completion_rate)}</div>
               <div className="stat-label">Follow-Up Completion</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">{formatPercent(analytics.overview.goals_achievement_rate)}</div>
+              <div className="stat-label">Goals Met</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">{analytics.overview.manual_outreach_attempts_30d}</div>
+              <div className="stat-label">Manual Outreach (30d)</div>
+            </div>
+          </div>
+
+          <div className="panel-grid">
+            <div className="panel-card">
+              <div className="panel-header">
+                <div>
+                  <h4>Activity & Relationship Progress</h4>
+                  <p className="panel-subtitle">Track volume, quality, and reciprocity momentum.</p>
+                </div>
+                <span className={`trend-pill ${relationshipHealth.relationship_trend >= 0 ? 'trend-positive' : 'trend-negative'}`}>
+                  {formatTrend(relationshipHealth.relationship_trend)} relationship strength
+                </span>
+              </div>
+              <div className="metric-grid">
+                <div className="metric-card">
+                  <div className="metric-label">Connections (60d)</div>
+                  <div className="metric-value">{activityVolume.connections_added_60d || 0}</div>
+                  <div className="metric-subtext">New people added recently</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Engaged Contacts</div>
+                  <div className="metric-value">{relationshipHealth.engaged_contacts_60d || 0}</div>
+                  <div className="metric-subtext">Touched in the last 60 days</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Avg Strength</div>
+                  <div className="metric-value">{relationshipHealth.avg_relationship_strength?.toFixed(1) || '0.0'}</div>
+                  <div className="metric-subtext">Recent: {relationshipHealth.recent_relationship_strength?.toFixed(1) || '0.0'}</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Interactions Logged</div>
+                  <div className="metric-value">{activityVolume.interactions_logged_30d || 0}</div>
+                  <div className="metric-subtext">Conversations captured (30d)</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Outreach Attempts</div>
+                  <div className="metric-value">{activityVolume.outreach_attempts_30d || 0}</div>
+                  <div className="metric-subtext">Manual networking + follow-ups (30d)</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Follow-Ups Open</div>
+                  <div className="metric-value">{activityVolume.followups_open || 0}</div>
+                  <div className="metric-subtext">Outstanding next steps</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="panel-card">
+              <div className="panel-header">
+                <div>
+                  <h4>ROI & Conversion</h4>
+                  <p className="panel-subtitle">See how networking time and spend turn into outcomes.</p>
+                </div>
+                {bestChannel && (
+                  <span className="trend-pill">
+                    Best channel: {bestChannelLabel || bestChannel.event_type} ({bestChannel.high_value_connections} high-value)
+                  </span>
+                )}
+              </div>
+              <div className="metric-grid">
+                <div className="metric-card">
+                  <div className="metric-label">Cost / Connection</div>
+                  <div className="metric-value">{formatCurrency(eventRoi.cost_per_connection)}</div>
+                  <div className="metric-subtext">Total spend: {formatCurrency(eventRoi.total_spend)}</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Cost / High-Value</div>
+                  <div className="metric-value">{formatCurrency(eventRoi.cost_per_high_value_connection)}</div>
+                  <div className="metric-subtext">High-value from paid events</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Connections / Event</div>
+                  <div className="metric-value">{eventRoi.connections_per_event || 0}</div>
+                  <div className="metric-subtext">Follow-ups per connection: {eventRoi.followups_per_connection || 0}</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Follow-Ups Started</div>
+                  <div className="metric-value">{formatPercent(conversionRates.connection_to_followup_rate)}</div>
+                  <div className="metric-subtext">Follow-Up completion: {formatPercent(conversionRates.follow_up_completion_rate)}</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Outreach Response</div>
+                  <div className="metric-value">{formatPercent(conversionRates.outreach_response_rate)}</div>
+                  <div className="metric-subtext">Warm replies and meetings</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Network → Opportunities</div>
+                  <div className="metric-value">{formatPercent(conversionRates.networking_to_application_rate)}</div>
+                  <div className="metric-subtext">Applications tied to networking</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Referral Reciprocity</div>
+                  <div className="metric-value">{formatPercent(conversionRates.referral_conversion_rate)}</div>
+                  <div className="metric-subtext">Referrals fulfilled vs requested</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="panel-grid">
+            <div className="panel-card">
+              <div className="panel-header">
+                <div>
+                  <h4>Referrals & Opportunity Sourcing</h4>
+                  <p className="panel-subtitle">Monitor how the network fuels jobs and introductions.</p>
+                </div>
+              </div>
+              <div className="metric-grid">
+                <div className="metric-card">
+                  <div className="metric-label">Referrals Requested</div>
+                  <div className="metric-value">{referralPipeline.referrals_requested || 0}</div>
+                  <div className="metric-subtext">Pending asks to your network</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Referrals Received</div>
+                  <div className="metric-value">{referralPipeline.referrals_received || 0}</div>
+                  <div className="metric-subtext">Warm intros back to you</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Referrals Used</div>
+                  <div className="metric-value">{referralPipeline.referrals_used || 0}</div>
+                  <div className="metric-subtext">Reciprocity in action</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Network-Sourced Jobs</div>
+                  <div className="metric-value">{referralPipeline.networking_sourced_jobs || 0}</div>
+                  <div className="metric-subtext">Opportunities from your relationships</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Offers from Network</div>
+                  <div className="metric-value">{referralPipeline.networking_offers || 0}</div>
+                  <div className="metric-subtext">Offers tied to referrals/events</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Introductions Created</div>
+                  <div className="metric-value">{referralPipeline.introductions_created || 0}</div>
+                  <div className="metric-subtext">Mutual value you facilitated</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">Opportunities via Interviews</div>
+                  <div className="metric-value">{referralPipeline.opportunities_from_interviews || 0}</div>
+                  <div className="metric-subtext">Informational interviews that led to jobs</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="panel-card insights-card">
+              <div className="panel-header">
+                <div>
+                  <h4>Insights & Benchmarks</h4>
+                  <p className="panel-subtitle">Double down on what works; shore up gaps with best practices.</p>
+                </div>
+              </div>
+              <div className="insights-grid">
+                <div>
+                  <div className="insight-title">Strengths</div>
+                  <ul className="insights-list">
+                    {(insights.strengths || ['Keep logging interactions to surface patterns.']).map((item, idx) => (
+                      <li key={`strength-${idx}`}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <div className="insight-title">Focus Areas</div>
+                  <ul className="insights-list">
+                    {(insights.focus || ['Increase warm follow-ups within 48 hours of each event.']).map((item, idx) => (
+                      <li key={`focus-${idx}`}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <div className="insight-title">Next Bets</div>
+                  <ul className="insights-list">
+                    {(insights.recommendations || ['Experiment with smaller niche events for deeper connections.']).map((item, idx) => (
+                      <li key={`rec-${idx}`}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              <div className="benchmarks-grid">
+                {benchmarks?.benchmarks && Object.entries(benchmarks.benchmarks).map(([label, value]) => (
+                  <div key={label} className="benchmark-card">
+                    <div className="metric-label">{formatBadgeLabel(label.replace(/_/g, ' '))}</div>
+                    <div className="metric-value">{formatPercent(value)}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

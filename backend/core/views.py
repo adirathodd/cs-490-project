@@ -13056,42 +13056,189 @@ def event_follow_up_complete(request, event_id, follow_up_id):
 def networking_analytics(request):
     """Get networking ROI and analytics."""
     user = request.user
+    now = timezone.now()
+    last_30_days = now - timedelta(days=30)
+    last_60_days = now - timedelta(days=60)
+
     events = NetworkingEvent.objects.filter(owner=user)
-    
+    connections = EventConnection.objects.filter(event__owner=user)
+    followups = EventFollowUp.objects.filter(event__owner=user)
+    goals = EventGoal.objects.filter(event__owner=user)
+    informational_interviews = InformationalInterview.objects.filter(user=user)
+    interactions = Interaction.objects.filter(owner=user)
+    contacts = Contact.objects.filter(owner=user)
+    candidate = _get_candidate_profile_for_request(user)
+
+    def _pct(numerator, denominator):
+        if not denominator:
+            return 0.0
+        return round((numerator / denominator) * 100, 1)
+
     # Overall stats
     total_events = events.count()
     attended_events = events.filter(attendance_status='attended').count()
-    total_connections = EventConnection.objects.filter(event__owner=user).count()
-    high_value_connections = EventConnection.objects.filter(
-        event__owner=user,
-        potential_value='high'
-    ).count()
-    
+    total_connections = connections.count()
+    high_value_connections = connections.filter(potential_value='high').count()
+
     # Goals tracking
-    total_goals = EventGoal.objects.filter(event__owner=user).count()
-    achieved_goals = EventGoal.objects.filter(event__owner=user, achieved=True).count()
-    goals_achievement_rate = (achieved_goals / total_goals * 100) if total_goals > 0 else 0
-    
+    total_goals = goals.count()
+    achieved_goals = goals.filter(achieved=True).count()
+    goals_achievement_rate = _pct(achieved_goals, total_goals)
+
     # Follow-ups
-    total_follow_ups = EventFollowUp.objects.filter(event__owner=user).count()
-    completed_follow_ups = EventFollowUp.objects.filter(event__owner=user, completed=True).count()
-    follow_up_completion_rate = (completed_follow_ups / total_follow_ups * 100) if total_follow_ups > 0 else 0
-    
-    # Event types breakdown
-    event_types = events.values('event_type').annotate(count=models.Count('id')).order_by('-count')
-    
+    total_follow_ups = followups.count()
+    completed_follow_ups = followups.filter(completed=True).count()
+    follow_up_completion_rate = _pct(completed_follow_ups, total_follow_ups)
+
+    # Engagement + manual activity
+    outreach_attempts_30d = followups.filter(created_at__gte=last_30_days).count()
+    outreach_attempts_30d += informational_interviews.filter(
+        outreach_sent_at__isnull=False,
+        outreach_sent_at__gte=last_30_days,
+    ).count()
+    interactions_30d = interactions.filter(date__gte=last_30_days).count()
+    followups_completed_30d = followups.filter(completed=True, completed_at__gte=last_30_days).count()
+
+    # Relationship strength signals
+    avg_relationship_strength = contacts.aggregate(avg=models.Avg('relationship_strength'))['avg'] or 0
+    recent_relationship_strength = contacts.filter(
+        last_interaction__gte=last_60_days
+    ).aggregate(avg=models.Avg('relationship_strength'))['avg'] or 0
+    relationship_trend = round(recent_relationship_strength - avg_relationship_strength, 1) if contacts.exists() else 0
+    engaged_contacts = contacts.filter(last_interaction__gte=last_60_days).count()
+    strong_relationships = contacts.filter(relationship_strength__gte=70).count()
+    high_value_ratio = _pct(high_value_connections, total_connections)
+
+    # Referrals and opportunities sourced through the network
+    referrals_qs = Referral.objects.none()
+    applications_qs = JobEntry.objects.none()
+    if candidate:
+        applications_qs = JobEntry.objects.filter(candidate=candidate, is_archived=False)
+        referrals_qs = Referral.objects.filter(application__candidate=candidate)
+
+    referrals_requested = referrals_qs.filter(status__in=['potential', 'requested']).count()
+    referrals_received = referrals_qs.filter(status__in=['received', 'used']).count()
+    referrals_used = referrals_qs.filter(status='used').count()
+    networking_sourced_jobs = applications_qs.filter(application_source__in=['networking', 'referral']).count()
+    networking_offers = applications_qs.filter(
+        application_source__in=['networking', 'referral'],
+        status='offer'
+    ).count()
+    opportunities_from_interviews = informational_interviews.filter(led_to_job_application=True).count()
+    introductions_created = informational_interviews.filter(led_to_introduction=True).count()
+
+    # Response quality + outreach conversion
+    outreach_sent = informational_interviews.filter(
+        status__in=['outreach_sent', 'scheduled', 'completed', 'declined', 'no_response']
+    ).count()
+    outreach_responses = informational_interviews.filter(status__in=['scheduled', 'completed', 'declined']).count()
+    outreach_response_rate = _pct(outreach_responses, outreach_sent)
+    networking_to_application_rate = _pct(
+        networking_sourced_jobs,
+        total_connections or attended_events or total_events
+    )
+
+    # ROI + conversion around events
+    paid_events = events.filter(registration_fee__isnull=False).exclude(registration_fee=0)
+    total_spend = paid_events.aggregate(total=models.Sum('registration_fee'))['total'] or 0
+    paid_connections_count = connections.filter(event__in=paid_events).count()
+    paid_high_value_count = connections.filter(event__in=paid_events, potential_value='high').count()
+    cost_per_connection = float(total_spend) / paid_connections_count if paid_connections_count else 0.0
+    cost_per_high_value = float(total_spend) / paid_high_value_count if paid_high_value_count else 0.0
+    connections_per_event = round(total_connections / attended_events, 1) if attended_events else 0
+    followups_per_connection = round(total_follow_ups / total_connections, 2) if total_connections else 0
+
+    # Event types breakdown + best performing channel
+    event_types = list(events.values('event_type').annotate(count=models.Count('id')).order_by('-count'))
+    high_value_by_type = list(
+        connections.values('event__event_type').annotate(
+            total=models.Count('id'),
+            high_value=models.Count('id', filter=models.Q(potential_value='high'))
+        ).order_by('-high_value')
+    )
+    best_channel = None
+    if high_value_by_type:
+        best = high_value_by_type[0]
+        best_channel = {
+            'event_type': best['event__event_type'],
+            'high_value_connections': best['high_value'],
+            'total_connections': best['total'],
+        }
+
+    # Industry benchmarks and best practices
+    industry_key = (getattr(candidate, 'industry', '') or '').lower()
+    benchmarks_catalog = {
+        'software': {
+            'outreach_to_meeting_rate': 22,
+            'follow_up_completion': 75,
+            'high_value_ratio': 30,
+            'connections_per_event': 6,
+            'referral_conversion': 18,
+        },
+        'finance': {
+            'outreach_to_meeting_rate': 18,
+            'follow_up_completion': 72,
+            'high_value_ratio': 26,
+            'connections_per_event': 5,
+            'referral_conversion': 20,
+        },
+        'healthcare': {
+            'outreach_to_meeting_rate': 20,
+            'follow_up_completion': 78,
+            'high_value_ratio': 22,
+            'connections_per_event': 4,
+            'referral_conversion': 16,
+        },
+        'default': {
+            'outreach_to_meeting_rate': 20,
+            'follow_up_completion': 72,
+            'high_value_ratio': 25,
+            'connections_per_event': 5,
+            'referral_conversion': 17,
+        },
+    }
+    selected_benchmarks = benchmarks_catalog.get(industry_key) or benchmarks_catalog['default']
+
+    # Insight strings for frontend display
+    strengths = []
+    focus = []
+    recommendations = []
+
+    if high_value_ratio >= 25:
+        strengths.append("You are consistently creating high-value connections.")
+    if follow_up_completion_rate >= 70:
+        strengths.append("Follow-up discipline is strong and building trust.")
+    if outreach_response_rate >= 25:
+        strengths.append("Outreach messages are converting to meetings at a healthy rate.")
+
+    if high_value_ratio < selected_benchmarks['high_value_ratio']:
+        focus.append("Increase targeting of decision makers to raise high-value connection ratio.")
+    if follow_up_completion_rate < selected_benchmarks['follow_up_completion']:
+        focus.append("Close open loops faster to improve reciprocity and conversions.")
+    if networking_to_application_rate < 10:
+        focus.append("Tie more connections to concrete opportunities or introductions.")
+
+    if best_channel:
+        recommendations.append(
+            f"Double down on {best_channel['event_type'].replace('_', ' ')} events; "
+            f"{best_channel['high_value_connections']} recent high-value intros came from this channel."
+        )
+    if cost_per_connection and cost_per_connection > 0 and cost_per_connection > 100:
+        recommendations.append("Reduce spend on low-yield events; test smaller meetups or virtual sessions.")
+    if not recommendations:
+        recommendations.append("Keep nurturing recent connections with quick value-add follow-ups.")
+
     # Recent high-value connections
-    recent_connections = EventConnection.objects.filter(
-        event__owner=user,
+    recent_connections = connections.filter(
         potential_value='high'
     ).order_by('-created_at')[:5]
-    
+
     # Upcoming events with pending follow-ups
     upcoming_events = events.filter(
-        event_date__gte=timezone.now(),
+        event_date__gte=now,
         attendance_status__in=['planned', 'registered']
     ).order_by('event_date')[:5]
-    
+
     return Response({
         'overview': {
             'total_events': total_events,
@@ -13100,8 +13247,69 @@ def networking_analytics(request):
             'high_value_connections': high_value_connections,
             'goals_achievement_rate': round(goals_achievement_rate, 1),
             'follow_up_completion_rate': round(follow_up_completion_rate, 1),
+            'manual_outreach_attempts_30d': outreach_attempts_30d,
+            'interactions_logged_30d': interactions_30d,
+            'strong_relationships': strong_relationships,
         },
-        'event_types': list(event_types),
+        'activity_volume': {
+            'events_planned': events.filter(attendance_status='planned').count(),
+            'events_registered': events.filter(attendance_status='registered').count(),
+            'events_attended': attended_events,
+            'followups_open': followups.filter(completed=False).count(),
+            'followups_completed_30d': followups_completed_30d,
+            'connections_added_60d': connections.filter(created_at__gte=last_60_days).count(),
+            'interactions_logged_30d': interactions_30d,
+            'outreach_attempts_30d': outreach_attempts_30d,
+        },
+        'relationship_health': {
+            'avg_relationship_strength': round(avg_relationship_strength, 1),
+            'recent_relationship_strength': round(recent_relationship_strength, 1),
+            'relationship_trend': relationship_trend,
+            'engaged_contacts_60d': engaged_contacts,
+            'high_value_ratio': high_value_ratio,
+        },
+        'referral_pipeline': {
+            'referrals_requested': referrals_requested,
+            'referrals_received': referrals_received,
+            'referrals_used': referrals_used,
+            'networking_sourced_jobs': networking_sourced_jobs,
+            'networking_offers': networking_offers,
+            'introductions_created': introductions_created,
+            'opportunities_from_interviews': opportunities_from_interviews,
+        },
+        'event_roi': {
+            'total_spend': float(total_spend) if total_spend else 0.0,
+            'connections_per_event': connections_per_event,
+            'followups_per_connection': followups_per_connection,
+            'cost_per_connection': round(cost_per_connection, 2),
+            'cost_per_high_value_connection': round(cost_per_high_value, 2),
+            'paid_events_count': paid_events.count(),
+            'paid_connections': paid_connections_count,
+            'paid_high_value_connections': paid_high_value_count,
+        },
+        'conversion_rates': {
+            'connection_to_followup_rate': _pct(total_follow_ups, total_connections),
+            'follow_up_completion_rate': round(follow_up_completion_rate, 1),
+            'outreach_response_rate': outreach_response_rate,
+            'networking_to_application_rate': networking_to_application_rate,
+            'referral_conversion_rate': _pct(referrals_used, referrals_requested or referrals_received or referrals_requested),
+        },
+        'engagement_quality': {
+            'relationship_trend': relationship_trend,
+            'recent_followup_completion': _pct(followups_completed_30d, total_follow_ups),
+            'recent_strength': round(recent_relationship_strength, 1),
+        },
+        'insights': {
+            'strengths': strengths,
+            'focus': focus,
+            'recommendations': recommendations,
+        },
+        'industry_benchmarks': {
+            'industry': industry_key or 'general',
+            'benchmarks': selected_benchmarks,
+        },
+        'event_types': event_types,
+        'best_channel': best_channel,
         'recent_high_value_connections': EventConnectionSerializer(
             recent_connections,
             many=True,
@@ -16432,4 +16640,3 @@ def informational_interviews_analytics(request):
             'total_tracked': len(relationship_changes)
         }
     })
-
