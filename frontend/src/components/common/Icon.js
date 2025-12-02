@@ -69,6 +69,9 @@ import {
   FaThLarge,
   FaBullseye,
   FaMicrophone,
+  FaPlay,
+  FaPause,
+  FaStop,
   FaBalanceScale,
   FaBookOpen,
   FaArrowUp,
@@ -175,8 +178,6 @@ const iconMap = {
   layout: FaThLarge,
   mic: FaMicrophone,
   microphone: FaMicrophone,
-  'book-open': FaBookOpen,
-  scale: FaBalanceScale,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {

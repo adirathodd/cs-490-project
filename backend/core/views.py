@@ -21,6 +21,8 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.core.management import call_command
+from django.core.mail import send_mail
+from django.http import HttpResponse
 from django.utils.text import slugify
 from django.conf import settings
 from django.utils.text import slugify
@@ -48,7 +50,9 @@ from core.serializers import (
     ResumeVersionListSerializer,
     ResumeVersionCompareSerializer,
     ResumeVersionMergeSerializer,
+    ResumeVersionEditSerializer,
     ResumeShareListSerializer,
+    ResumeShareSerializer,
     MentorshipRequestSerializer,
     MentorshipRequestCreateSerializer,
     MentorshipRelationshipSerializer,
@@ -173,7 +177,7 @@ from core.models import (
     ContactSuggestion,
     DiscoverySearch,
 )
-from core import google_import, tasks, response_coach, interview_followup, calendar_sync
+from core import google_import, tasks, response_coach, interview_followup, calendar_sync, resume_ai
 from core.interview_checklist import build_checklist_tasks
 from core.interview_success import InterviewSuccessForecastService, InterviewSuccessScorer
 from core.research.enrichment import fallback_domain
@@ -576,6 +580,53 @@ def _get_candidate_profile_for_request(user):
 def _ensure_sharing_preference(team_member):
     preference, _ = MentorshipSharingPreference.objects.get_or_create(team_member=team_member)
     return preference
+
+
+def _send_mentorship_request_email(mentorship_request):
+    """Send a notification email to the receiver when a mentorship request is created."""
+    receiver_user = getattr(getattr(mentorship_request, 'receiver', None), 'user', None)
+    requester_user = getattr(getattr(mentorship_request, 'requester', None), 'user', None)
+    receiver_email = (getattr(receiver_user, 'email', '') or '').strip()
+    if not receiver_email:
+        return
+
+    requester_name = (getattr(requester_user, 'get_full_name', lambda: '')() or getattr(requester_user, 'email', '') or 'A candidate').strip()
+    receiver_name = (getattr(receiver_user, 'get_full_name', lambda: '')() or receiver_email).strip()
+    role_for_requester = getattr(mentorship_request, 'role_for_requester', 'mentee')
+    if role_for_requester == 'mentor':
+        intro_line = f"{requester_name} would like to mentor you on ResumeRocket."
+    else:
+        intro_line = f"{requester_name} is requesting your mentorship on ResumeRocket."
+
+    dashboard_base = getattr(settings, 'FRONTEND_BASE_URL', 'http://localhost:3000').rstrip('/')
+    dashboard_url = f"{dashboard_base}/mentorship"
+
+    message_lines = [
+        f"Hi {receiver_name},",
+        "",
+        intro_line,
+    ]
+    request_message = (mentorship_request.message or '').strip()
+    if request_message:
+        message_lines.extend([
+            "",
+            "Personal note:",
+            request_message,
+        ])
+    message_lines.extend([
+        "",
+        f"Review and respond to this request: {dashboard_url}",
+        "",
+        "Thanks,",
+        "ResumeRocket",
+    ])
+
+    subject = "New mentorship request on ResumeRocket"
+    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None)
+    try:
+        send_mail(subject, "\n".join(message_lines), from_email, [receiver_email], fail_silently=False)
+    except Exception as exc:
+        logger.warning("Failed to send mentorship request email to %s: %s", receiver_email, exc)
 
 
 def _build_goal_summary(goal_list):
@@ -9413,6 +9464,12 @@ def job_question_bank(request, job_id):
 
     bank_with_practice = _attach_practice_status(bank_data, practice_map)
 
+    # Debug logging to trace ID mismatches
+    for cat in bank_with_practice.get('categories', []):
+        for q in cat.get('questions', []):
+            if q.get('practice_status', {}).get('practiced'):
+                logger.info(f"Sending question {q.get('id')} with practice status: {q.get('practice_status')}")
+
     return Response(bank_with_practice, status=status.HTTP_200_OK)
 
 
@@ -9447,7 +9504,7 @@ def _log_practice_entry(
 
     log, created = JobQuestionPractice.objects.get_or_create(
         job=job,
-        question_id=payload['question_id'],
+        question_id=str(payload['question_id']).strip(),
         defaults=defaults,
     )
 
@@ -9700,6 +9757,7 @@ def get_question_practice_history(request, job_id, question_id):
     Get practice history for a specific question.
     Returns the stored written response, STAR response, and practice notes.
     """
+    logger.info(f"get_question_practice_history called for job_id={job_id}, question_id={question_id}, user={request.user}")
     try:
         profile = CandidateProfile.objects.get(user=request.user)
         job = JobEntry.objects.get(id=job_id, candidate=profile)
@@ -9710,7 +9768,15 @@ def get_question_practice_history(request, job_id, question_id):
         )
     
     try:
-        practice_log = JobQuestionPractice.objects.get(job=job, question_id=question_id)
+        # Use filter().first() with iexact and strip to be more robust against URL encoding/casing issues
+        practice_log = JobQuestionPractice.objects.filter(
+            job=job, 
+            question_id__iexact=question_id.strip()
+        ).first()
+        
+        if not practice_log:
+            raise JobQuestionPractice.DoesNotExist
+
         history_entries = [
             entry for entry in (
                 _serialize_coaching_entry(obj)
@@ -9739,6 +9805,10 @@ def get_question_practice_history(request, job_id, question_id):
             response_payload['coaching_history'] = history_entries
         return Response(response_payload)
     except JobQuestionPractice.DoesNotExist:
+        logger.error(f"JobQuestionPractice not found for job_id={job_id}, question_id={question_id}")
+        # Log existing practices for this job to debug mismatch
+        existing = JobQuestionPractice.objects.filter(job=job).values_list('question_id', flat=True)
+        logger.error(f"Existing question_ids for job {job_id}: {list(existing)}")
         return Response(
             {'error': 'No practice history found for this question'},
             status=status.HTTP_404_NOT_FOUND
@@ -12078,10 +12148,11 @@ def resume_share_list_create(request):
     profile = request.user.profile
     
     if request.method == 'GET':
-        # Get all shares for user's resume versions
+        from django.db.models import Q
         shares = ResumeShare.objects.filter(
-            resume_version__candidate=profile
-        ).select_related('resume_version')
+            Q(resume_version__candidate=profile) |
+            Q(cover_letter_document__candidate=profile)
+        ).select_related('resume_version', 'cover_letter_document')
         
         serializer = ResumeShareListSerializer(shares, many=True)
         return Response({'shares': serializer.data})
@@ -12089,54 +12160,71 @@ def resume_share_list_create(request):
     elif request.method == 'POST':
         from core.serializers import CreateResumeShareSerializer, ResumeShareSerializer
         from django.contrib.auth.hashers import make_password
-        
+
         serializer = CreateResumeShareSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Get resume version and verify ownership
-        try:
-            version = ResumeVersion.objects.get(
-                id=serializer.validated_data['resume_version_id'],
-                candidate=profile
-            )
-        except ResumeVersion.DoesNotExist:
-            return Response(
-                {'error': 'Resume version not found or you do not have permission'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        # Create share
+
+        version_id = serializer.validated_data.get('resume_version_id')
+        cover_letter_id = serializer.validated_data.get('cover_letter_document_id')
+        version = None
+        cover_letter_doc = None
+
+        if version_id:
+            try:
+                version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+            except ResumeVersion.DoesNotExist:
+                return Response(
+                    {'error': 'Resume version not found or you do not have permission'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            try:
+                cover_letter_doc = Document.objects.get(
+                    id=cover_letter_id,
+                    candidate=profile,
+                    doc_type='cover_letter'
+                )
+            except Document.DoesNotExist:
+                return Response(
+                    {'error': 'Cover letter document not found or you do not have permission'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
         share_data = {
-            'resume_version': version,
             'privacy_level': serializer.validated_data.get('privacy_level', 'public'),
             'allow_comments': serializer.validated_data.get('allow_comments', True),
             'allow_download': serializer.validated_data.get('allow_download', False),
+            'allow_edit': serializer.validated_data.get('allow_edit', False),
             'require_reviewer_info': serializer.validated_data.get('require_reviewer_info', True),
             'allowed_emails': serializer.validated_data.get('allowed_emails', []),
             'allowed_domains': serializer.validated_data.get('allowed_domains', []),
             'expires_at': serializer.validated_data.get('expires_at'),
             'share_message': serializer.validated_data.get('share_message', ''),
         }
-        
-        # Hash password if provided
+
+        if version:
+            share_data['resume_version'] = version
+        else:
+            share_data['cover_letter_document'] = cover_letter_doc
+
         password = serializer.validated_data.get('password')
         if password:
             share_data['password_hash'] = make_password(password)
-        
+
         share = ResumeShare.objects.create(**share_data)
-        
-        # Create notification
+
         from core.models import FeedbackNotification
+        document_label = version.version_name if version else cover_letter_doc.document_name
         FeedbackNotification.objects.create(
             user=request.user,
             notification_type='share_accessed',
-            title='Resume Share Link Created',
-            message=f'You created a share link for "{version.version_name}"',
+            title='Document Share Link Created',
+            message=f'You created a share link for "{document_label}"',
             share=share,
-            action_url=f'/resume-versions?share={share.id}'
+            action_url='/documents'
         )
-        
+
         return Response(
             ResumeShareSerializer(share, context={'request': request}).data,
             status=status.HTTP_201_CREATED
@@ -12154,9 +12242,14 @@ def resume_share_detail(request, share_id):
     profile = request.user.profile
     
     try:
-        share = ResumeShare.objects.select_related('resume_version').get(
-            id=share_id,
-            resume_version__candidate=profile
+        from django.db.models import Q
+        share = (
+            ResumeShare.objects.select_related('resume_version', 'cover_letter_document')
+            .filter(
+                Q(resume_version__candidate=profile) | Q(cover_letter_document__candidate=profile),
+                id=share_id
+            )
+            .get()
         )
     except ResumeShare.DoesNotExist:
         return Response(
@@ -12174,7 +12267,7 @@ def resume_share_detail(request, share_id):
         # Update allowed fields
         allowed_fields = [
             'privacy_level', 'allowed_emails', 'allowed_domains',
-            'allow_comments', 'allow_download', 'require_reviewer_info',
+            'allow_comments', 'allow_download', 'allow_edit', 'require_reviewer_info',
             'expires_at', 'is_active', 'share_message'
         ]
         
@@ -12199,77 +12292,216 @@ def resume_share_detail(request, share_id):
         )
 
 
-@api_view(['GET', 'POST'])
-@permission_classes([AllowAny])
-def shared_resume_view(request, share_token):
+def _get_share_owner_user(share: ResumeShare):
+    """Return the owner user for a share, whether resume or cover letter."""
+    if share.resume_version and getattr(share.resume_version, 'candidate', None):
+        return share.resume_version.candidate.user
+    if share.cover_letter_document and getattr(share.cover_letter_document, 'candidate', None):
+        return share.cover_letter_document.candidate.user
+    return None
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def reviewer_resume_shares(request):
     """
-    Public endpoint to view a shared resume
-    Handles access control based on privacy settings
-    GET: Initial load (may return access requirements)
-    POST: Submit access credentials (password, reviewer info)
+    GET: List shares that include the authenticated reviewer by email/domain.
     """
-    from core.serializers import ResumeVersionSerializer, ShareAccessLogSerializer
-    from django.contrib.auth.hashers import check_password
-    
+    from core.serializers import ResumeShareSerializer
+
+    reviewer_email = (request.user.email or '').lower()
+    if not reviewer_email:
+        return Response({'shares': []})
+
+    domain = reviewer_email.split('@')[1] if '@' in reviewer_email else ''
+    candidates = ResumeShare.objects.filter(is_active=True).select_related('resume_version__candidate__user')
+    matches = []
+
+    for share in candidates:
+        owner_user = _get_share_owner_user(share)
+        if owner_user == request.user:
+            continue
+        if share.is_expired():
+            continue
+        if share.privacy_level == 'private':
+            continue
+
+        allowed_emails = [e.lower() for e in (share.allowed_emails or []) if e]
+        allowed_domains = [d.lower() for d in (share.allowed_domains or []) if d]
+
+        if share.privacy_level == 'email_verified':
+            if reviewer_email in allowed_emails or (domain and domain in allowed_domains):
+                matches.append(share)
+        elif share.privacy_level in ['public', 'password']:
+            matches.append(share)
+
+    serializer = ResumeShareSerializer(matches, many=True, context={'request': request})
+    return Response({'shares': serializer.data})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def reviewer_feedback_stats(request):
+    """
+    Return aggregated reviewer stats: total reviews submitted and how many were marked resolved.
+    """
+    email = (request.user.email or '').strip().lower()
+    if not email:
+        return Response({'reviews_given': 0, 'reviews_implemented': 0})
+
+    feedback_qs = ResumeFeedback.objects.filter(reviewer_email__iexact=email)
+    total_reviews = feedback_qs.count()
+    implemented_reviews = feedback_qs.filter(is_resolved=True).count()
+
+    return Response(
+        {
+            'reviews_given': total_reviews,
+            'reviews_implemented': implemented_reviews,
+        }
+    )
+
+
+def _normalize_email(email: Optional[str]) -> str:
+    return (email or '').strip().lower()
+
+
+def _is_email_allowed(share: ResumeShare, reviewer_email: str) -> bool:
+    normalized_email = _normalize_email(reviewer_email)
+    if not normalized_email:
+        return False
+
+    allowed_emails = [email.lower() for email in (share.allowed_emails or []) if email]
+    allowed_domains = [domain.lower() for domain in (share.allowed_domains or []) if domain]
+
+    if allowed_emails and normalized_email in allowed_emails:
+        return True
+
+    if allowed_domains and '@' in normalized_email:
+        _, domain_part = normalized_email.split('@', 1)
+        if domain_part.lower() in allowed_domains:
+            return True
+
+    return not allowed_emails and not allowed_domains
+
+
+def _load_shared_resume(share_token):
     try:
         share = ResumeShare.objects.select_related('resume_version').get(
             share_token=share_token
         )
     except ResumeShare.DoesNotExist:
-        return Response(
-            {'error': 'Share link not found'},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    
-    # Check if share is accessible
+        return None, Response({'error': 'Share link not found'}, status=status.HTTP_404_NOT_FOUND)
+
     if not share.is_accessible():
         if share.is_expired():
-            return Response(
-                {'error': 'This share link has expired'},
-                status=status.HTTP_410_GONE
-            )
-        return Response(
-            {'error': 'This share link is no longer active'},
-            status=status.HTTP_403_FORBIDDEN
+            return None, Response({'error': 'This share link has expired'}, status=status.HTTP_410_GONE)
+        return None, Response({'error': 'This share link is no longer active'}, status=status.HTTP_403_FORBIDDEN)
+
+    if share.privacy_level == 'private':
+        return None, Response({'error': 'This share link is private'}, status=status.HTTP_403_FORBIDDEN)
+
+    return share, None
+
+
+def _document_payload(doc):
+    """Build lightweight payload for shared documents."""
+    if not doc:
+        return None
+    return {
+        'id': doc.id,
+        'document_name': doc.document_name,
+        'version_number': str(doc.version),
+        'document_type': doc.doc_type,
+        'document_url': doc.document_url,
+    }
+
+
+@api_view(['POST', 'PUT'])
+@permission_classes([AllowAny])
+def shared_resume_view(request, share_token):
+    """
+    Public endpoint to view or edit a shared resume.
+    POST: Validate access credentials and return resume + share metadata.
+    PUT: Apply updates when edit access is enabled.
+    """
+    from django.contrib.auth.hashers import check_password
+    from core.models import ShareAccessLog
+
+    share, error_response = _load_shared_resume(share_token)
+    if error_response:
+        return error_response
+
+    if request.method == 'PUT':
+        if not share.allow_edit or share.cover_letter_document and not share.resume_version:
+            return Response({'error': 'Editing this share is not supported'}, status=status.HTTP_403_FORBIDDEN)
+        if not request.user or not request.user.is_authenticated:
+            return Response({'error': 'Login is required to edit this resume'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        reviewer_email = _normalize_email(request.user.email)
+        reviewer_name = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.email or 'Reviewer'
+
+        if share.privacy_level == 'email_verified':
+            if not reviewer_email:
+                return Response(
+                    {'error': 'Email required', 'requires_email': True},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            if not _is_email_allowed(share, reviewer_email):
+                return Response(
+                    {'error': 'Your email is not authorized to edit this resume'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        if share.privacy_level == 'password':
+            password = request.data.get('password')
+            if not password or not check_password(password, share.password_hash):
+                return Response({'error': 'Invalid password'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        serializer = ResumeVersionEditSerializer(
+            share.resume_version,
+            data=request.data,
+            partial=True,
+            context={'request': request}
         )
-    
-    # Handle password protection
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        updated_version = serializer.save()
+
+        ShareAccessLog.objects.create(
+            share=share,
+            reviewer_name=reviewer_name,
+            reviewer_email=reviewer_email,
+            reviewer_ip=request.META.get('REMOTE_ADDR'),
+            action='edit'
+        )
+
+        return Response(ResumeVersionSerializer(updated_version, context={'request': request}).data)
+
+    password = request.data.get('password') or request.query_params.get('password')
+    reviewer_email = (request.data.get('reviewer_email') or request.query_params.get('reviewer_email') or '').strip()
+    reviewer_name = request.data.get('reviewer_name') or request.query_params.get('reviewer_name') or ''
+
     if share.privacy_level == 'password':
-        password = request.data.get('password') or request.query_params.get('password')
         if not password or not check_password(password, share.password_hash):
             return Response(
                 {'error': 'Invalid password', 'requires_password': True},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-    
-    # Handle email verification
-    reviewer_email = request.data.get('reviewer_email') or request.query_params.get('reviewer_email')
-    
+
     if share.privacy_level == 'email_verified':
         if not reviewer_email:
             return Response(
                 {'error': 'Email required', 'requires_email': True},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-        
-        # Check if email is allowed
-        email_allowed = False
-        if share.allowed_emails and reviewer_email.lower() in [e.lower() for e in share.allowed_emails]:
-            email_allowed = True
-        elif share.allowed_domains:
-            email_domain = reviewer_email.split('@')[1] if '@' in reviewer_email else ''
-            if email_domain.lower() in [d.lower() for d in share.allowed_domains]:
-                email_allowed = True
-        
-        if not email_allowed:
+        if not _is_email_allowed(share, reviewer_email):
             return Response(
                 {'error': 'Your email is not authorized to access this resume'},
                 status=status.HTTP_403_FORBIDDEN
             )
-    
-    # Require reviewer info if configured
+
     if share.require_reviewer_info:
-        reviewer_name = request.data.get('reviewer_name') or request.query_params.get('reviewer_name')
         if not reviewer_name or not reviewer_email:
             return Response(
                 {
@@ -12278,32 +12510,133 @@ def shared_resume_view(request, share_token):
                 },
                 status=status.HTTP_401_UNAUTHORIZED
             )
-    
-    # Log access
-    from core.models import ShareAccessLog
-    reviewer_ip = request.META.get('REMOTE_ADDR')
+
     ShareAccessLog.objects.create(
         share=share,
-        reviewer_name=request.data.get('reviewer_name', ''),
+        reviewer_name=reviewer_name,
         reviewer_email=reviewer_email or '',
-        reviewer_ip=reviewer_ip,
+        reviewer_ip=request.META.get('REMOTE_ADDR'),
         action='view'
     )
-    
-    # Increment view count
+
     share.increment_view_count()
-    
-    # Return resume data
-    return Response({
-        'share': {
-            'id': str(share.id),
-            'version_name': share.resume_version.version_name,
-            'share_message': share.share_message,
-            'allow_comments': share.allow_comments,
-            'allow_download': share.allow_download,
-        },
-        'resume': ResumeVersionSerializer(share.resume_version).data
-    })
+
+    share_payload = ResumeShareSerializer(share, context={'request': request}).data
+    payload = {'share': share_payload}
+    if share.resume_version:
+        payload['resume'] = ResumeVersionSerializer(share.resume_version, context={'request': request}).data
+    else:
+        payload['document'] = _document_payload(share.cover_letter_document)
+
+    return Response(payload)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def shared_resume_pdf(request, share_token):
+    """
+    GET: Return the compiled PDF bytes for a shared resume version.
+    """
+    from django.contrib.auth.hashers import check_password
+    from core.models import ShareAccessLog
+
+    share, error_response = _load_shared_resume(share_token)
+    if error_response:
+        return error_response
+
+    reviewer_email = request.query_params.get('reviewer_email', '').strip()
+    reviewer_name = request.query_params.get('reviewer_name', '').strip()
+    password = request.query_params.get('password')
+
+    if share.privacy_level == 'password':
+        if not password or not check_password(password, share.password_hash):
+            return Response(
+                {'error': 'Invalid password', 'requires_password': True},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+    if share.privacy_level == 'email_verified':
+        if not reviewer_email:
+            return Response(
+                {'error': 'Email required', 'requires_email': True},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        if not _is_email_allowed(share, reviewer_email):
+            return Response(
+                {'error': 'Your email is not authorized to access this resume'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+    if share.require_reviewer_info:
+        if not reviewer_name or not reviewer_email:
+            return Response(
+                {
+                    'error': 'Please provide your name and email',
+                    'requires_reviewer_info': True
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+    if share.cover_letter_document:
+        from django.http import FileResponse
+        import os
+
+        doc = share.cover_letter_document
+        if not doc.file_upload:
+            return Response(
+                {'error': 'PDF content not available for this document'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        file_path = doc.file_upload.path
+        if not os.path.exists(file_path):
+            return Response(
+                {'error': 'Document file missing'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        content_type = 'application/pdf' if file_path.lower().endswith('.pdf') else 'application/octet-stream'
+        filename = doc.document_name or os.path.basename(file_path)
+        response = FileResponse(open(file_path, 'rb'), content_type=content_type)
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        response['X-Frame-Options'] = 'ALLOWALL'
+        return response
+
+    latex = share.resume_version.latex_content
+    if not latex:
+        return Response(
+            {'error': 'PDF content not available for this resume'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    try:
+        pdf_base64 = resume_ai.compile_latex_pdf(latex)
+    except resume_ai.ResumeAIError as exc:
+        return Response(
+            {'error': {'code': 'compilation_failed', 'message': str(exc)}},
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected error compiling shared resume PDF: %s', exc)
+        return Response(
+            {'error': {'code': 'compilation_failed', 'message': 'Unexpected compilation error.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+    pdf_bytes = base64.b64decode(pdf_base64)
+    ShareAccessLog.objects.create(
+        share=share,
+        reviewer_name=reviewer_name or reviewer_email or 'Reviewer',
+        reviewer_email=reviewer_email or '',
+        reviewer_ip=request.META.get('REMOTE_ADDR'),
+        action='view'
+    )
+    share.increment_view_count()
+
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = 'inline; filename=shared_resume.pdf'
+    response['X-Frame-Options'] = 'ALLOWALL'
+    return response
 
 
 @api_view(['POST'])
@@ -12352,16 +12685,22 @@ def create_feedback(request):
                 status=status.HTTP_401_UNAUTHORIZED
             )
     
-    # Create feedback
-    feedback = ResumeFeedback.objects.create(
-        share=share,
-        resume_version=share.resume_version,
-        reviewer_name=serializer.validated_data['reviewer_name'],
-        reviewer_email=serializer.validated_data['reviewer_email'],
-        reviewer_title=serializer.validated_data.get('reviewer_title', ''),
-        overall_feedback=serializer.validated_data['overall_feedback'],
-        rating=serializer.validated_data.get('rating')
-    )
+    # Determine target document or version
+    target_version = share.resume_version
+    target_document = share.cover_letter_document
+    feedback_kwargs = {
+        'share': share,
+        'reviewer_name': serializer.validated_data['reviewer_name'],
+        'reviewer_email': serializer.validated_data['reviewer_email'],
+        'reviewer_title': serializer.validated_data.get('reviewer_title', ''),
+        'overall_feedback': serializer.validated_data['overall_feedback'],
+        'rating': serializer.validated_data.get('rating'),
+    }
+    if target_version:
+        feedback_kwargs['resume_version'] = target_version
+    elif target_document:
+        feedback_kwargs['cover_letter_document'] = target_document
+    feedback = ResumeFeedback.objects.create(**feedback_kwargs)
     
     # Log access
     from core.models import ShareAccessLog
@@ -12373,16 +12712,29 @@ def create_feedback(request):
         action='comment'
     )
     
-    # Create notification for resume owner
-    FeedbackNotification.objects.create(
-        user=share.resume_version.candidate.user,
-        notification_type='new_feedback',
-        title=f'New Feedback on {share.resume_version.version_name}',
-        message=f'{feedback.reviewer_name} left feedback on your resume.',
-        feedback=feedback,
-        share=share,
-        action_url=f'/resume-versions?feedback={feedback.id}'
-    )
+    # Create notification for owner (resume or cover letter)
+    owner_user = None
+    document_label = None
+    action_url = '/documents'
+    if target_version:
+        owner_user = target_version.candidate.user
+        document_label = target_version.version_name or 'Resume'
+        action_url = f'/resume-versions?feedback={feedback.id}'
+    elif target_document:
+        owner_user = target_document.candidate.user
+        document_label = target_document.document_name or 'Cover letter'
+        action_url = f'/cover-letter/ai?feedback={feedback.id}'
+
+    if owner_user:
+        FeedbackNotification.objects.create(
+            user=owner_user,
+            notification_type='new_feedback',
+            title=f'New Feedback on {document_label}',
+            message=f'{feedback.reviewer_name} left feedback on your document.',
+            feedback=feedback,
+            share=share,
+            action_url=action_url
+        )
     
     return Response(
         ResumeFeedbackSerializer(feedback).data,
@@ -12463,13 +12815,14 @@ def feedback_list(request):
     Supports filtering by status, version, etc.
     """
     from core.serializers import ResumeFeedbackListSerializer
+    from django.db.models import Q
     
     profile = request.user.profile
     
-    # Get all feedback for user's resumes
+    # Get all feedback for user's resumes or cover letters
     feedback_qs = ResumeFeedback.objects.filter(
-        resume_version__candidate=profile
-    ).select_related('resume_version', 'share')
+        Q(resume_version__candidate=profile) | Q(cover_letter_document__candidate=profile)
+    ).select_related('resume_version', 'share', 'cover_letter_document')
     
     # Apply filters
     status_filter = request.query_params.get('status')
@@ -12479,6 +12832,10 @@ def feedback_list(request):
     version_id = request.query_params.get('version_id')
     if version_id:
         feedback_qs = feedback_qs.filter(resume_version__id=version_id)
+
+    document_id = request.query_params.get('document_id')
+    if document_id:
+        feedback_qs = feedback_qs.filter(cover_letter_document__id=document_id)
     
     is_resolved = request.query_params.get('is_resolved')
     if is_resolved is not None:
@@ -13417,42 +13774,189 @@ def event_follow_up_complete(request, event_id, follow_up_id):
 def networking_analytics(request):
     """Get networking ROI and analytics."""
     user = request.user
+    now = timezone.now()
+    last_30_days = now - timedelta(days=30)
+    last_60_days = now - timedelta(days=60)
+
     events = NetworkingEvent.objects.filter(owner=user)
-    
+    connections = EventConnection.objects.filter(event__owner=user)
+    followups = EventFollowUp.objects.filter(event__owner=user)
+    goals = EventGoal.objects.filter(event__owner=user)
+    informational_interviews = InformationalInterview.objects.filter(user=user)
+    interactions = Interaction.objects.filter(owner=user)
+    contacts = Contact.objects.filter(owner=user)
+    candidate = _get_candidate_profile_for_request(user)
+
+    def _pct(numerator, denominator):
+        if not denominator:
+            return 0.0
+        return round((numerator / denominator) * 100, 1)
+
     # Overall stats
     total_events = events.count()
     attended_events = events.filter(attendance_status='attended').count()
-    total_connections = EventConnection.objects.filter(event__owner=user).count()
-    high_value_connections = EventConnection.objects.filter(
-        event__owner=user,
-        potential_value='high'
-    ).count()
-    
+    total_connections = connections.count()
+    high_value_connections = connections.filter(potential_value='high').count()
+
     # Goals tracking
-    total_goals = EventGoal.objects.filter(event__owner=user).count()
-    achieved_goals = EventGoal.objects.filter(event__owner=user, achieved=True).count()
-    goals_achievement_rate = (achieved_goals / total_goals * 100) if total_goals > 0 else 0
-    
+    total_goals = goals.count()
+    achieved_goals = goals.filter(achieved=True).count()
+    goals_achievement_rate = _pct(achieved_goals, total_goals)
+
     # Follow-ups
-    total_follow_ups = EventFollowUp.objects.filter(event__owner=user).count()
-    completed_follow_ups = EventFollowUp.objects.filter(event__owner=user, completed=True).count()
-    follow_up_completion_rate = (completed_follow_ups / total_follow_ups * 100) if total_follow_ups > 0 else 0
-    
-    # Event types breakdown
-    event_types = events.values('event_type').annotate(count=models.Count('id')).order_by('-count')
-    
+    total_follow_ups = followups.count()
+    completed_follow_ups = followups.filter(completed=True).count()
+    follow_up_completion_rate = _pct(completed_follow_ups, total_follow_ups)
+
+    # Engagement + manual activity
+    outreach_attempts_30d = followups.filter(created_at__gte=last_30_days).count()
+    outreach_attempts_30d += informational_interviews.filter(
+        outreach_sent_at__isnull=False,
+        outreach_sent_at__gte=last_30_days,
+    ).count()
+    interactions_30d = interactions.filter(date__gte=last_30_days).count()
+    followups_completed_30d = followups.filter(completed=True, completed_at__gte=last_30_days).count()
+
+    # Relationship strength signals
+    avg_relationship_strength = contacts.aggregate(avg=models.Avg('relationship_strength'))['avg'] or 0
+    recent_relationship_strength = contacts.filter(
+        last_interaction__gte=last_60_days
+    ).aggregate(avg=models.Avg('relationship_strength'))['avg'] or 0
+    relationship_trend = round(recent_relationship_strength - avg_relationship_strength, 1) if contacts.exists() else 0
+    engaged_contacts = contacts.filter(last_interaction__gte=last_60_days).count()
+    strong_relationships = contacts.filter(relationship_strength__gte=70).count()
+    high_value_ratio = _pct(high_value_connections, total_connections)
+
+    # Referrals and opportunities sourced through the network
+    referrals_qs = Referral.objects.none()
+    applications_qs = JobEntry.objects.none()
+    if candidate:
+        applications_qs = JobEntry.objects.filter(candidate=candidate, is_archived=False)
+        referrals_qs = Referral.objects.filter(application__candidate=candidate)
+
+    referrals_requested = referrals_qs.filter(status__in=['potential', 'requested']).count()
+    referrals_received = referrals_qs.filter(status__in=['received', 'used']).count()
+    referrals_used = referrals_qs.filter(status='used').count()
+    networking_sourced_jobs = applications_qs.filter(application_source__in=['networking', 'referral']).count()
+    networking_offers = applications_qs.filter(
+        application_source__in=['networking', 'referral'],
+        status='offer'
+    ).count()
+    opportunities_from_interviews = informational_interviews.filter(led_to_job_application=True).count()
+    introductions_created = informational_interviews.filter(led_to_introduction=True).count()
+
+    # Response quality + outreach conversion
+    outreach_sent = informational_interviews.filter(
+        status__in=['outreach_sent', 'scheduled', 'completed', 'declined', 'no_response']
+    ).count()
+    outreach_responses = informational_interviews.filter(status__in=['scheduled', 'completed', 'declined']).count()
+    outreach_response_rate = _pct(outreach_responses, outreach_sent)
+    networking_to_application_rate = _pct(
+        networking_sourced_jobs,
+        total_connections or attended_events or total_events
+    )
+
+    # ROI + conversion around events
+    paid_events = events.filter(registration_fee__isnull=False).exclude(registration_fee=0)
+    total_spend = paid_events.aggregate(total=models.Sum('registration_fee'))['total'] or 0
+    paid_connections_count = connections.filter(event__in=paid_events).count()
+    paid_high_value_count = connections.filter(event__in=paid_events, potential_value='high').count()
+    cost_per_connection = float(total_spend) / paid_connections_count if paid_connections_count else 0.0
+    cost_per_high_value = float(total_spend) / paid_high_value_count if paid_high_value_count else 0.0
+    connections_per_event = round(total_connections / attended_events, 1) if attended_events else 0
+    followups_per_connection = round(total_follow_ups / total_connections, 2) if total_connections else 0
+
+    # Event types breakdown + best performing channel
+    event_types = list(events.values('event_type').annotate(count=models.Count('id')).order_by('-count'))
+    high_value_by_type = list(
+        connections.values('event__event_type').annotate(
+            total=models.Count('id'),
+            high_value=models.Count('id', filter=models.Q(potential_value='high'))
+        ).order_by('-high_value')
+    )
+    best_channel = None
+    if high_value_by_type:
+        best = high_value_by_type[0]
+        best_channel = {
+            'event_type': best['event__event_type'],
+            'high_value_connections': best['high_value'],
+            'total_connections': best['total'],
+        }
+
+    # Industry benchmarks and best practices
+    industry_key = (getattr(candidate, 'industry', '') or '').lower()
+    benchmarks_catalog = {
+        'software': {
+            'outreach_to_meeting_rate': 22,
+            'follow_up_completion': 75,
+            'high_value_ratio': 30,
+            'connections_per_event': 6,
+            'referral_conversion': 18,
+        },
+        'finance': {
+            'outreach_to_meeting_rate': 18,
+            'follow_up_completion': 72,
+            'high_value_ratio': 26,
+            'connections_per_event': 5,
+            'referral_conversion': 20,
+        },
+        'healthcare': {
+            'outreach_to_meeting_rate': 20,
+            'follow_up_completion': 78,
+            'high_value_ratio': 22,
+            'connections_per_event': 4,
+            'referral_conversion': 16,
+        },
+        'default': {
+            'outreach_to_meeting_rate': 20,
+            'follow_up_completion': 72,
+            'high_value_ratio': 25,
+            'connections_per_event': 5,
+            'referral_conversion': 17,
+        },
+    }
+    selected_benchmarks = benchmarks_catalog.get(industry_key) or benchmarks_catalog['default']
+
+    # Insight strings for frontend display
+    strengths = []
+    focus = []
+    recommendations = []
+
+    if high_value_ratio >= 25:
+        strengths.append("You are consistently creating high-value connections.")
+    if follow_up_completion_rate >= 70:
+        strengths.append("Follow-up discipline is strong and building trust.")
+    if outreach_response_rate >= 25:
+        strengths.append("Outreach messages are converting to meetings at a healthy rate.")
+
+    if high_value_ratio < selected_benchmarks['high_value_ratio']:
+        focus.append("Increase targeting of decision makers to raise high-value connection ratio.")
+    if follow_up_completion_rate < selected_benchmarks['follow_up_completion']:
+        focus.append("Close open loops faster to improve reciprocity and conversions.")
+    if networking_to_application_rate < 10:
+        focus.append("Tie more connections to concrete opportunities or introductions.")
+
+    if best_channel:
+        recommendations.append(
+            f"Double down on {best_channel['event_type'].replace('_', ' ')} events; "
+            f"{best_channel['high_value_connections']} recent high-value intros came from this channel."
+        )
+    if cost_per_connection and cost_per_connection > 0 and cost_per_connection > 100:
+        recommendations.append("Reduce spend on low-yield events; test smaller meetups or virtual sessions.")
+    if not recommendations:
+        recommendations.append("Keep nurturing recent connections with quick value-add follow-ups.")
+
     # Recent high-value connections
-    recent_connections = EventConnection.objects.filter(
-        event__owner=user,
+    recent_connections = connections.filter(
         potential_value='high'
     ).order_by('-created_at')[:5]
-    
+
     # Upcoming events with pending follow-ups
     upcoming_events = events.filter(
-        event_date__gte=timezone.now(),
+        event_date__gte=now,
         attendance_status__in=['planned', 'registered']
     ).order_by('event_date')[:5]
-    
+
     return Response({
         'overview': {
             'total_events': total_events,
@@ -13461,8 +13965,69 @@ def networking_analytics(request):
             'high_value_connections': high_value_connections,
             'goals_achievement_rate': round(goals_achievement_rate, 1),
             'follow_up_completion_rate': round(follow_up_completion_rate, 1),
+            'manual_outreach_attempts_30d': outreach_attempts_30d,
+            'interactions_logged_30d': interactions_30d,
+            'strong_relationships': strong_relationships,
         },
-        'event_types': list(event_types),
+        'activity_volume': {
+            'events_planned': events.filter(attendance_status='planned').count(),
+            'events_registered': events.filter(attendance_status='registered').count(),
+            'events_attended': attended_events,
+            'followups_open': followups.filter(completed=False).count(),
+            'followups_completed_30d': followups_completed_30d,
+            'connections_added_60d': connections.filter(created_at__gte=last_60_days).count(),
+            'interactions_logged_30d': interactions_30d,
+            'outreach_attempts_30d': outreach_attempts_30d,
+        },
+        'relationship_health': {
+            'avg_relationship_strength': round(avg_relationship_strength, 1),
+            'recent_relationship_strength': round(recent_relationship_strength, 1),
+            'relationship_trend': relationship_trend,
+            'engaged_contacts_60d': engaged_contacts,
+            'high_value_ratio': high_value_ratio,
+        },
+        'referral_pipeline': {
+            'referrals_requested': referrals_requested,
+            'referrals_received': referrals_received,
+            'referrals_used': referrals_used,
+            'networking_sourced_jobs': networking_sourced_jobs,
+            'networking_offers': networking_offers,
+            'introductions_created': introductions_created,
+            'opportunities_from_interviews': opportunities_from_interviews,
+        },
+        'event_roi': {
+            'total_spend': float(total_spend) if total_spend else 0.0,
+            'connections_per_event': connections_per_event,
+            'followups_per_connection': followups_per_connection,
+            'cost_per_connection': round(cost_per_connection, 2),
+            'cost_per_high_value_connection': round(cost_per_high_value, 2),
+            'paid_events_count': paid_events.count(),
+            'paid_connections': paid_connections_count,
+            'paid_high_value_connections': paid_high_value_count,
+        },
+        'conversion_rates': {
+            'connection_to_followup_rate': _pct(total_follow_ups, total_connections),
+            'follow_up_completion_rate': round(follow_up_completion_rate, 1),
+            'outreach_response_rate': outreach_response_rate,
+            'networking_to_application_rate': networking_to_application_rate,
+            'referral_conversion_rate': _pct(referrals_used, referrals_requested or referrals_received or referrals_requested),
+        },
+        'engagement_quality': {
+            'relationship_trend': relationship_trend,
+            'recent_followup_completion': _pct(followups_completed_30d, total_follow_ups),
+            'recent_strength': round(recent_relationship_strength, 1),
+        },
+        'insights': {
+            'strengths': strengths,
+            'focus': focus,
+            'recommendations': recommendations,
+        },
+        'industry_benchmarks': {
+            'industry': industry_key or 'general',
+            'benchmarks': selected_benchmarks,
+        },
+        'event_types': event_types,
+        'best_channel': best_channel,
         'recent_high_value_connections': EventConnectionSerializer(
             recent_connections,
             many=True,
@@ -13781,6 +14346,7 @@ def mentorship_requests_view(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     mentorship_request = serializer.save()
+    _send_mentorship_request_email(mentorship_request)
     response_serializer = MentorshipRequestSerializer(mentorship_request, context={'request': request})
     return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
@@ -14305,15 +14871,6 @@ def career_goals_list_create(request):
         serializer = CareerGoalSerializer(data=request.data)
         if serializer.is_valid():
             goal = serializer.save(user=request.user)
-            references = references.filter(availability_status=availability)
-        
-        serializer = ProfessionalReferenceListSerializer(references, many=True)
-        return Response(serializer.data)
-    
-    elif request.method == 'POST':
-        serializer = ProfessionalReferenceSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(user=request.user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

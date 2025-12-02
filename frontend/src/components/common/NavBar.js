@@ -90,14 +90,14 @@ const NavBar = () => {
         <NavLink to="/jobs" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Jobs</NavLink>
 
   {/* Tools dropdown - groups resume, cover letters, documents, contacts */}
-  <div className="nav-dropdown" ref={toolsDropdownRef}>
-    <button
-      className={`nav-link nav-dropdown-toggle ${(window.location.pathname.startsWith('/resume') || window.location.pathname.startsWith('/documents') || window.location.pathname.startsWith('/cover-letter') || window.location.pathname.startsWith('/contacts') || window.location.pathname.startsWith('/contact-discovery') || window.location.pathname.startsWith('/informational-interviews')) ? 'active' : ''}`}
-      type="button"
-      aria-haspopup="menu"
-      aria-expanded={toolsDropdownOpen}
-      onClick={(e) => { e.stopPropagation(); setToolsDropdownOpen(v => !v); }}
-    >
+    <div className="nav-dropdown" ref={toolsDropdownRef}>
+      <button
+        className={`nav-link nav-dropdown-toggle ${(window.location.pathname.startsWith('/resume') || window.location.pathname.startsWith('/documents') || window.location.pathname.startsWith('/cover-letter') || window.location.pathname.startsWith('/contacts') || window.location.pathname.startsWith('/contact-discovery') || window.location.pathname.startsWith('/informational-interviews') || window.location.pathname.startsWith('/tools/document-review')) ? 'active' : ''}`}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={toolsDropdownOpen}
+        onClick={(e) => { e.stopPropagation(); setToolsDropdownOpen(v => !v); }}
+      >
       Tools ▾
     </button>
     {toolsDropdownOpen && (
@@ -115,6 +115,13 @@ const NavBar = () => {
           onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
         >
           Resume Version Control
+        </NavLink>
+        <NavLink
+          to="/tools/document-review"
+          className="nav-dropdown-item"
+          onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
+        >
+          Document Review
         </NavLink>
         <NavLink
           to="/cover-letter/ai"
@@ -185,6 +192,7 @@ const NavBar = () => {
   </div>
 
   <NavLink to="/analytics" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Analytics</NavLink>
+  <NavLink to="/peer-support" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Peers</NavLink>
   <NavLink to="/mentorship" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Mentors</NavLink>
         
   {/* Profile dropdown */}

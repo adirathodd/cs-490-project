@@ -968,10 +968,11 @@ const TechnicalPrepSuite = ({
                     <div className="challenge-detail__actions">
                       <button
                         type="button"
-                        className="btn-secondary"
+                        className="btn-history"
                         onClick={() => setHistoryChallenge(selectedChallenge)}
                         aria-haspopup="dialog"
                       >
+                        <Icon name="history" size="sm" />
                         View Attempt History
                       </button>
                     </div>
@@ -980,14 +981,14 @@ const TechnicalPrepSuite = ({
                     <div>Elapsed</div>
                     <strong>{formatDuration(timer.elapsed)}</strong>
                     <div className="timer-controls">
-                      <button className="btn-secondary" onClick={() => handleTimerControl('start')} disabled={timer.running}>
-                        Start
+                      <button className="btn-timer btn-timer-start" onClick={() => handleTimerControl('start')} disabled={timer.running}>
+                        <Icon name="play" size="sm" /> Start
                       </button>
-                      <button className="btn-secondary" onClick={() => handleTimerControl('pause')} disabled={!timer.running}>
-                        Pause
+                      <button className="btn-timer btn-timer-pause" onClick={() => handleTimerControl('pause')} disabled={!timer.running}>
+                        <Icon name="pause" size="sm" /> Pause
                       </button>
-                      <button className="btn-secondary" onClick={() => handleTimerControl('reset')}>
-                        Reset
+                      <button className="btn-timer btn-timer-reset" onClick={() => handleTimerControl('reset')}>
+                        <Icon name="redo" size="sm" /> Reset
                       </button>
                     </div>
                     </div>
@@ -1099,7 +1100,7 @@ const TechnicalPrepSuite = ({
                     {selectedChallenge.recent_attempts.length > 3 && (
                       <button
                         type="button"
-                        className="btn-secondary"
+                        className="btn-ghost"
                         style={{ marginTop: '12px' }}
                         onClick={() => setShowFullAttempts((prev) => !prev)}
                       >

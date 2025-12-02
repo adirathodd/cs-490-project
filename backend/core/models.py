@@ -298,106 +298,6 @@ class Reminder(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
-class ContactSuggestion(models.Model):
-    """UC-092: Industry Contact Discovery - Suggested contacts for users"""
-    SUGGESTION_TYPES = [
-        ('target_company', 'Target Company Employee'),
-        ('alumni', 'Alumni Connection'),
-        ('industry_leader', 'Industry Leader/Influencer'),
-        ('mutual_connection', '2nd/3rd Degree Connection'),
-        ('conference_speaker', 'Conference Speaker/Event Participant'),
-        ('similar_role', 'Similar Role Professional'),
-    ]
-    
-    STATUS_CHOICES = [
-        ('suggested', 'Suggested'),
-        ('contacted', 'Contacted'),
-        ('connected', 'Connected'),
-        ('dismissed', 'Dismissed'),
-    ]
-    
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='contact_suggestions')
-    
-    # Suggested contact information
-    suggested_name = models.CharField(max_length=255)
-    suggested_title = models.CharField(max_length=220, blank=True)
-    suggested_company = models.CharField(max_length=180, blank=True)
-    suggested_linkedin_url = models.URLField(blank=True)
-    suggested_location = models.CharField(max_length=160, blank=True)
-    suggested_industry = models.CharField(max_length=120, blank=True)
-    
-    # Suggestion metadata
-    suggestion_type = models.CharField(max_length=30, choices=SUGGESTION_TYPES)
-    relevance_score = models.FloatField(default=0.0, help_text="0.0-1.0 relevance score")
-    reason = models.TextField(help_text="Why this contact is suggested")
-    
-    # Connection path for mutual connections
-    connection_path = models.JSONField(default=list, blank=True, help_text="List of intermediary contacts")
-    mutual_connections = models.JSONField(default=list, blank=True)
-    
-    # Related entities
-    related_job = models.ForeignKey('JobOpportunity', on_delete=models.SET_NULL, null=True, blank=True, related_name='contact_suggestions')
-    related_company = models.ForeignKey('Company', on_delete=models.SET_NULL, null=True, blank=True)
-    
-    # Alumni connection data
-    shared_institution = models.CharField(max_length=200, blank=True)
-    shared_degree = models.CharField(max_length=200, blank=True)
-    
-    # Status tracking
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='suggested')
-    contacted_at = models.DateTimeField(null=True, blank=True)
-    connected_contact = models.ForeignKey(Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='originated_from_suggestion')
-    
-    # Metadata
-    metadata = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        indexes = [
-            models.Index(fields=['user', 'status', '-relevance_score']),
-            models.Index(fields=['user', 'suggestion_type', '-created_at']),
-            models.Index(fields=['-relevance_score']),
-        ]
-        ordering = ['-relevance_score', '-created_at']
-    
-    def __str__(self):
-        return f"{self.suggested_name} ({self.get_suggestion_type_display()}) - Score: {self.relevance_score}"
-
-
-class DiscoverySearch(models.Model):
-    """UC-092: Track user's contact discovery searches and preferences"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='discovery_searches')
-    
-    # Search criteria
-    target_companies = models.JSONField(default=list, blank=True)
-    target_roles = models.JSONField(default=list, blank=True)
-    target_industries = models.JSONField(default=list, blank=True)
-    target_locations = models.JSONField(default=list, blank=True)
-    
-    # Filters
-    include_alumni = models.BooleanField(default=True)
-    include_mutual_connections = models.BooleanField(default=True)
-    include_industry_leaders = models.BooleanField(default=True)
-    
-    # Results
-    results_count = models.IntegerField(default=0)
-    contacted_count = models.IntegerField(default=0)
-    connected_count = models.IntegerField(default=0)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    last_refreshed = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        ordering = ['-created_at']
-        verbose_name_plural = 'Discovery searches'
-    
-    def __str__(self):
-        return f"Discovery search by {self.user.email} - {self.results_count} results"
-
-
 class ImportJob(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='import_jobs')
@@ -434,6 +334,106 @@ class ContactJobLink(models.Model):
     contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='job_links')
     job = models.ForeignKey(JobOpportunity, on_delete=models.CASCADE, related_name='contact_links')
     relationship_to_job = models.CharField(max_length=120, blank=True)
+
+
+class DiscoverySearch(models.Model):
+    """UC-092: Discovery search parameters for contact suggestions."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='discovery_searches'
+    )
+    target_companies = models.JSONField(default=list, blank=True)
+    target_roles = models.JSONField(default=list, blank=True)
+    target_industries = models.JSONField(default=list, blank=True)
+    target_locations = models.JSONField(default=list, blank=True)
+    include_alumni = models.BooleanField(default=True)
+    include_mutual_connections = models.BooleanField(default=True)
+    include_industry_leaders = models.BooleanField(default=True)
+    results_count = models.IntegerField(default=0)
+    contacted_count = models.IntegerField(default=0)
+    connected_count = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_refreshed = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = 'Discovery searches'
+        ordering = ['-created_at']
+
+
+class ContactSuggestion(models.Model):
+    SUGGESTION_TYPES = [
+        ('target_company', 'Target Company Employee'),
+        ('alumni', 'Alumni Connection'),
+        ('industry_leader', 'Industry Leader/Influencer'),
+        ('mutual_connection', 'Mutual Connection'),
+        ('conference_speaker', 'Conference Speaker/Event Participant'),
+        ('similar_role', 'Similar Role Professional'),
+    ]
+    STATUS_CHOICES = [
+        ('suggested', 'Suggested'),
+        ('contacted', 'Contacted'),
+        ('connected', 'Connected'),
+        ('dismissed', 'Dismissed'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='contact_suggestions'
+    )
+    suggested_name = models.CharField(max_length=255)
+    suggested_title = models.CharField(max_length=220, blank=True)
+    suggested_company = models.CharField(max_length=180, blank=True)
+    suggested_linkedin_url = models.URLField(blank=True)
+    suggested_location = models.CharField(max_length=160, blank=True)
+    suggested_industry = models.CharField(max_length=120, blank=True)
+    suggestion_type = models.CharField(max_length=30, choices=SUGGESTION_TYPES)
+    relevance_score = models.FloatField(default=0.0, help_text='0.0-1.0 relevance score')
+    reason = models.TextField(help_text='Why this contact is suggested')
+    connection_path = models.JSONField(blank=True, default=list, help_text='Intermediate contacts')
+    mutual_connections = models.JSONField(blank=True, default=list)
+    shared_institution = models.CharField(max_length=200, blank=True)
+    shared_degree = models.CharField(max_length=200, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='suggested')
+    contacted_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(blank=True, default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    related_company = models.ForeignKey(
+        Company,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    related_job = models.ForeignKey(
+        'JobOpportunity',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='contact_suggestions'
+    )
+    connected_contact = models.ForeignKey(
+        'Contact',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='originated_from_suggestion'
+    )
+
+    class Meta:
+        ordering = ['-relevance_score', '-created_at']
+        indexes = [
+            models.Index(fields=['user', 'status', '-relevance_score'], name='core_contac_user_id_035ce8_idx'),
+            models.Index(fields=['user', 'suggestion_type', '-created_at'], name='core_contac_user_id_2c8626_idx'),
+            models.Index(fields=['-relevance_score'], name='core_contac_relevan_d9bd1d_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.suggested_name} ({self.suggestion_type})"
 
 
 class InformationalInterview(models.Model):
@@ -3615,7 +3615,9 @@ class ResumeShare(models.Model):
     resume_version = models.ForeignKey(
         ResumeVersion,
         on_delete=models.CASCADE,
-        related_name='shares'
+        related_name='shares',
+        null=True,
+        blank=True,
     )
     
     # Sharing configuration
@@ -3657,6 +3659,10 @@ class ResumeShare(models.Model):
         default=False,
         help_text="Allow reviewers to download the resume"
     )
+    allow_edit = models.BooleanField(
+        default=False,
+        help_text="Allow reviewers to edit the resume themselves"
+    )
     require_reviewer_info = models.BooleanField(
         default=True,
         help_text="Require reviewers to provide name/email before accessing"
@@ -3676,6 +3682,15 @@ class ResumeShare(models.Model):
         help_text="Deactivate to disable access without deleting"
     )
     
+    cover_letter_document = models.ForeignKey(
+        Document,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cover_letter_shares',
+        help_text="Cover letter document shared with reviewers"
+    )
+
     # Metadata
     share_message = models.TextField(
         blank=True,
@@ -3709,10 +3724,19 @@ class ResumeShare(models.Model):
         """Increment the view count atomically"""
         self.view_count = models.F('view_count') + 1
         self.save(update_fields=['view_count'])
+        # Refresh so subsequent serialization sees the real integer value
+        self.refresh_from_db(fields=['view_count'])
     
     def __str__(self):
         status = "Active" if self.is_accessible() else "Inactive"
-        return f"{self.resume_version.version_name} - {status} ({self.privacy_level})"
+        label = None
+        if self.resume_version:
+            label = self.resume_version.version_name
+        elif self.cover_letter_document:
+            label = self.cover_letter_document.document_name
+        else:
+            label = 'Document'
+        return f"{label} - {status} ({self.privacy_level})"
 
 
 class ShareAccessLog(models.Model):
@@ -3739,6 +3763,7 @@ class ShareAccessLog(models.Model):
             ('view', 'Viewed'),
             ('download', 'Downloaded'),
             ('comment', 'Commented'),
+            ('edit', 'Edited'),
         ],
         default='view'
     )
@@ -3775,8 +3800,17 @@ class ResumeFeedback(models.Model):
     )
     resume_version = models.ForeignKey(
         ResumeVersion,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='feedback_received'
+    )
+    cover_letter_document = models.ForeignKey(
+        Document,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cover_letter_feedback'
     )
     
     # Reviewer information
@@ -3828,6 +3862,7 @@ class ResumeFeedback(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=['resume_version', '-created_at']),
+            models.Index(fields=['cover_letter_document', '-created_at']),
             models.Index(fields=['share', '-created_at']),
             models.Index(fields=['status', '-created_at']),
             models.Index(fields=['reviewer_email', '-created_at']),
@@ -4666,6 +4701,18 @@ class MentorshipRequest(models.Model):
 
     def __str__(self):
         return f"{self.requester_id} -> {self.receiver_id} ({self.status})"
+
+    def get_mentee_profile(self):
+        """Return the CandidateProfile that will be mentored in this request."""
+        if self.role_for_requester == 'mentor':
+            return self.receiver
+        return self.requester
+
+    def get_mentor_user(self):
+        """Return the Django user who will act as mentor in this request."""
+        if self.role_for_requester == 'mentor':
+            return getattr(self.requester, 'user', None)
+        return getattr(self.receiver, 'user', None)
 
 
 class MentorshipSharingPreference(models.Model):
