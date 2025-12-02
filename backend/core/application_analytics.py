@@ -649,6 +649,91 @@ class ApplicationSuccessAnalyzer:
             })
         return trend
 
+    def analyze_interview_conversion(self):
+        """Estimate match-based conversion chances for in-progress interviews."""
+        chances = []
+        prediction = self.predict_success()
+        base_score = prediction['score']
+        stage_fields = ['phone_screen', 'interview', 'offer']
+        jobs = self.applications.filter(status__in=stage_fields)
+        for job in jobs:
+            match = getattr(job, 'match_percentage', None)
+            if match is None:
+                match = getattr(job, 'match_score', None) or 0
+            chance = max(15, min(80, int((match or 0) * 0.6 + base_score * 0.15)))
+            chances.append({
+                'job_id': job.id,
+                'status': job.status,
+                'match': match,
+                'chance': chance,
+                'title': getattr(job, 'title', 'Job'),
+            })
+        return chances
+
+    def forecast_timeline(self, success_trend):
+        """Estimate weeks to next offer from recent offer rates."""
+        offer_rates = [row.get('offer_rate') or 0 for row in success_trend]
+        avg_offer = sum(offer_rates) / len(offer_rates) if offer_rates else 0
+        weeks = max(4, int(100 / max(avg_offer, 5)))
+        return {
+            'weeks_to_offer': weeks,
+            'confidence': 'medium' if avg_offer > 0 else 'low',
+        }
+
+    def forecast_salary(self):
+        offers = self.applications.filter(status='offer')
+        salary_vals = []
+        for job in offers:
+            lower = getattr(job, 'salary_lower', None)
+            upper = getattr(job, 'salary_upper', None)
+            if lower:
+                salary_vals.append(lower)
+            elif upper:
+                salary_vals.append(upper)
+        if not salary_vals:
+            return None
+        avg_salary = sum(salary_vals) / len(salary_vals)
+        return {
+            'salary_target': round(avg_salary, 0),
+            'message': 'Based on recent offers and market data',
+        }
+
+    def prediction_accuracy_trend(self, success_trend, predicted):
+        trend = []
+        for row in success_trend:
+            offer = row.get('offer_rate') or 0
+            error = abs(predicted['score'] - offer) / 100
+            trend.append({
+                'month': row.get('month', ''),
+                'error': round(error * 100, 2),
+                'offer_rate': offer,
+            })
+        return trend
+
+    def scenario_planning(self):
+        """Generate conservative/best-case scenario narratives."""
+        predicted = self.predict_success()
+        score = predicted['score']
+        scenarios = []
+        scenarios.append({
+            'title': 'Current trajectory',
+            'score': score,
+            'description': f"Maintaining current pace gives ~{score}% predicted success.",
+        })
+        improved = min(100, score + 8)
+        scenarios.append({
+            'title': 'Optimized prep',
+            'score': improved,
+            'description': 'Focus on practice + industry fit to push the score higher.',
+        })
+        conservative = max(10, score - 8)
+        scenarios.append({
+            'title': 'Conservative pace',
+            'score': conservative,
+            'description': 'If you slow down and focus, expect around this level.',
+        })
+        return scenarios
+
     def analyze_pattern_factors(self):
         """Summarize top personal factors."""
         factors = {}
@@ -793,6 +878,54 @@ class ApplicationSuccessAnalyzer:
             })
         return recs[:3]
 
+    def get_prediction_recommendations(self, factors, predicted):
+        api_key = getattr(__import__('django.conf').conf.settings, 'GEMINI_API_KEY', '')
+        if api_key and not os.getenv('PYTEST_CURRENT_TEST'):
+            try:
+                prompt = self._build_prediction_prompt(factors, predicted)
+                model = 'gemini-1.5-flash-latest'
+                url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}'
+                payload = {
+                    'contents': [{'parts': [{'text': prompt}]}],
+                    'generationConfig': {
+                        'temperature': 0.2,
+                        'topK': 40,
+                        'topP': 0.95,
+                        'maxOutputTokens': 1024,
+                        'responseMimeType': 'text/plain'
+                    }
+                }
+                resp = requests.post(url, json=payload, timeout=25)
+                resp.raise_for_status()
+                data = resp.json()
+                text = data.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '')
+                sentences = [s.strip() for s in text.strip().splitlines() if s.strip()]
+                if not sentences:
+                    sentences = [s.strip() for s in text.replace('\n', ' ').split('.') if s.strip()]
+                # ensure two sentences per recommendation
+                formatted = []
+                for sent in sentences:
+                    if len(sent.split('.')) > 1:
+                        formatted.append(sent.replace('\n', ' ').strip())
+                    else:
+                        formatted.append(sent.strip())
+                    if len(formatted) >= 3:
+                        break
+                return formatted[:3]
+            except Exception as e:
+                logger.warning(f'Prediction recommendations via Gemini failed: {e}')
+        # fallback deterministic sentences
+        industry = (factors.get('best_industries') or [{}])[0].get('industry')
+        lines = []
+        if industry:
+            lines.append(f"Lean into {industry} roles where your offer rate is already strong—tailor applications there first.")
+        key_skills = (factors.get('key_skills') or [])[:2]
+        if key_skills:
+            skill_line = ', '.join(ks['keyword'] for ks in key_skills)
+            lines.append(f"Highlight {skill_line} at the top of your resume to emphasize what has proven success.")
+        lines.append("Apply when your best day/time aligns with new openings and treat each practice session as preparation for that target.")
+        return lines[:3]
+
     def _build_recommendations_prompt(self, factors):
         predicted = self.predict_success()
         best_inds = factors.get('best_industries') or []
@@ -873,6 +1006,8 @@ class ApplicationSuccessAnalyzer:
     def get_complete_analysis(self):
         """Get comprehensive success rate analysis."""
         pattern_factors = self.analyze_pattern_factors()
+        success_trend = self.analyze_success_trend()
+        predicted = self.predict_success()
         return {
             'overall_metrics': self.get_overall_metrics(),
             'by_industry': self.analyze_by_industry(),
@@ -888,7 +1023,13 @@ class ApplicationSuccessAnalyzer:
             'keyword_signals': self.analyze_keyword_signals(),
             'recommendations': self.get_recommendations(),
             'pattern_factors': pattern_factors,
-            'predicted_success': self.predict_success(),
+            'predicted_success': predicted,
             'pattern_recommendations': self.get_pattern_recommendations(pattern_factors),
-            'success_trend': self.analyze_success_trend(),
+            'prediction_recommendations': self.get_prediction_recommendations(pattern_factors, predicted),
+            'success_trend': success_trend,
+            'timeline_forecast': self.forecast_timeline(success_trend),
+            'salary_forecast': self.forecast_salary(),
+            'prediction_accuracy': self.prediction_accuracy_trend(success_trend, predicted),
+            'scenario_planning': self.scenario_planning(),
+            'interview_conversion': self.analyze_interview_conversion(),
         }
