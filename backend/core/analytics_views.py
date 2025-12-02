@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from core.models import CandidateProfile, JobEntry, Document, JobStatusChange
 from core.models import CandidateSkill, Skill
+from core.productivity_analytics import ProductivityAnalyzer
 from django.db import models
 from django.db.models import Count, Q, F, Case, When, Value, IntegerField, Avg, FloatField, ExpressionWrapper
 from django.db.models.functions import TruncMonth, TruncDate, Coalesce
@@ -88,6 +89,26 @@ def cover_letter_analytics_view(request):
         return Response(
             {'error': {'code': 'analytics_error', 'message': 'Failed to load analytics data'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def productivity_analytics_view(request):
+    """Time investment, balance, and productivity insights for job search activity."""
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': {'message': 'Profile not found'}}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        analyzer = ProductivityAnalyzer(profile)
+        return Response(analyzer.build())
+    except Exception as exc:
+        logger.error(f"Productivity analytics error: {exc}")
+        return Response(
+            {'error': {'code': 'analytics_error', 'message': 'Unable to build productivity analytics'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
 
