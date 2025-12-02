@@ -3056,6 +3056,83 @@ export const goalsAPI = {
   },
 };
 
+// Enterprise / institutional reporting + integrations
+export const enterpriseAPI = {
+  getReports: async (range = 'quarter') => {
+    try {
+      const response = await api.get('/enterprise/reports', { params: { range } });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load enterprise reports' };
+    }
+  },
+
+  getIntegrations: async () => {
+    try {
+      const response = await api.get('/enterprise/integrations');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load integrations' };
+    }
+  },
+
+  connectIntegration: async (integrationId, payload = {}) => {
+    try {
+      const response = await api.post(`/enterprise/integrations/${integrationId}/connect`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to connect integration' };
+    }
+  },
+
+  disableIntegration: async (integrationId) => {
+    try {
+      const response = await api.post(`/enterprise/integrations/${integrationId}/disable`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to disable integration' };
+    }
+  },
+
+  syncIntegration: async (integrationId) => {
+    try {
+      const response = await api.post(`/enterprise/integrations/${integrationId}/sync`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to start sync' };
+    }
+  },
+};
+
+// Workable proxy (backend -> RapidAPI)
+export const workableAPI = {
+  sync: async (phase = 'published') => {
+    try {
+      const response = await api.post('/enterprise/integrations/workable/sync', { phase });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to sync Workable jobs' };
+    }
+  },
+  disable: async () => {
+    try {
+      const response = await api.post('/enterprise/integrations/workable/disable');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to disable Workable integration' };
+    }
+  },
+
+  importJobs: async (jobs = []) => {
+    try {
+      const response = await api.post('/enterprise/integrations/workable/import', { jobs });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to import Workable jobs' };
+    }
+  },
+};
+
 // UC-077: Mock Interview API
 export const mockInterviewAPI = {
   // Start a new mock interview session
@@ -3146,6 +3223,7 @@ try {
     module.exports.networkingAPI = networkingAPI;
     module.exports.mentorshipAPI = mentorshipAPI;
     module.exports.goalsAPI = goalsAPI;
+    module.exports.enterpriseAPI = enterpriseAPI;
     module.exports.mockInterviewAPI = mockInterviewAPI;
     module.exports.questionBankAPI = questionBankAPI;
   }

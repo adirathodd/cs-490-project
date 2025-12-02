@@ -72,6 +72,7 @@ import {
   FaPlay,
   FaPause,
   FaStop,
+  FaShieldAlt,
 } from 'react-icons/fa';
 
 // Simple, centralized Icon wrapper used across the app.
@@ -177,6 +178,7 @@ const iconMap = {
   play: FaPlay,
   pause: FaPause,
   stop: FaStop,
+  shield: FaShieldAlt,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {

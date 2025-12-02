@@ -16640,3 +16640,104 @@ def informational_interviews_analytics(request):
             'total_tracked': len(relationship_changes)
         }
     })
+
+
+# UC-Enterprise: Workable integration proxy (RapidAPI)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def workable_sync(request):
+    """
+    Proxy Workable job fetch through RapidAPI so the frontend doesn't need the key.
+    Returns a summary and the first 50 jobs for inspection.
+    """
+    api_key = getattr(settings, 'WORKABLE_RAPIDAPI_KEY', '') or os.environ.get('WORKABLE_RAPIDAPI_KEY', '')
+    if not api_key:
+        return Response({'error': 'WORKABLE_RAPIDAPI_KEY not configured'}, status=status.HTTP_400_BAD_REQUEST)
+
+    phase = (request.data.get('phase') or 'published').strip() or 'published'
+    url = f"https://workable.p.rapidapi.com/{api_key}/jobs"
+    headers = {
+        'x-rapidapi-host': 'workable.p.rapidapi.com',
+        'x-rapidapi-key': api_key,
+    }
+    try:
+        resp = requests.get(url, params={'phase': phase}, headers=headers, timeout=10)
+        resp.raise_for_status()
+        payload = resp.json() if resp.content else {}
+        jobs = payload.get('jobs') or payload.get('results') or []
+        count = len(jobs)
+        return Response({
+            'status': 'Connected',
+            'jobs_imported': count,
+            'last_sync': timezone.now(),
+            'jobs': jobs[:50],
+            'source': 'workable',
+        })
+    except requests.RequestException as exc:
+        return Response(
+            {'error': 'Failed to sync from Workable', 'detail': str(exc)},
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def workable_disable(request):
+    """Soft-disable the Workable integration (no persistence yet)."""
+    return Response({
+        'status': 'Disabled',
+        'last_sync': timezone.now(),
+        'source': 'workable',
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def workable_import(request):
+    """
+    Ingest Workable jobs into JobEntry records for the authenticated user.
+    Expects: { jobs: [ { title, company_name, location?, url?, published_at?, description? } ] }
+    """
+    from core.models import JobEntry, CandidateProfile
+
+    jobs = request.data.get('jobs')
+    if not isinstance(jobs, list):
+        return Response({'error': 'jobs must be a list'}, status=status.HTTP_400_BAD_REQUEST)
+
+    profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
+    imported = 0
+    skipped = 0
+    serialized = []
+
+    for job in jobs[:100]:  # safety cap
+        title = job.get('title') or job.get('name') or ''
+        company = job.get('company_name') or job.get('company') or ''
+        if not title or not company:
+            skipped += 1
+            continue
+
+        posting_url = job.get('url') or job.get('application_url') or ''
+        location = job.get('location') or job.get('city') or ''
+        description = job.get('description') or job.get('short_description') or ''
+        job_type = job.get('employment_type') or 'ft'
+
+        entry = JobEntry.objects.create(
+            candidate=profile,
+            title=title[:220],
+            company_name=company[:180],
+            location=location[:160],
+            posting_url=posting_url,
+            description=description[:2000],
+            job_type=job_type if job_type in dict(JobEntry.JOB_TYPES) else 'ft',
+            application_source='job_board',
+            company_size='enterprise',
+        )
+        imported += 1
+        serialized.append(JobEntrySerializer(entry).data)
+
+    return Response({
+        'imported': imported,
+        'skipped': skipped,
+        'total_received': len(jobs),
+        'jobs': serialized,
+    })

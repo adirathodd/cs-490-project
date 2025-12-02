@@ -322,6 +322,20 @@ const contactsAPI = {
 	delete: jestFn(),
 };
 
+const enterpriseAPI = {
+	getReports: jestFn(),
+	getIntegrations: jestFn(),
+	connectIntegration: jestFn(),
+	disableIntegration: jestFn(),
+	syncIntegration: jestFn(),
+};
+
+const workableAPI = {
+	sync: jestFn(),
+	disable: jestFn(),
+	importJobs: jestFn(),
+};
+
 module.exports = {
 	__esModule: true,
 	default: {},
@@ -347,4 +361,6 @@ module.exports = {
 	referralAPI,
 	informationalInterviewsAPI,
 	contactsAPI,
+	enterpriseAPI,
+	workableAPI,
 };

@@ -5,6 +5,7 @@ import Icon from '../common/Icon';
 import InterviewPerformanceTracking from './InterviewPerformanceTracking';
 import ApplicationSuccessAnalysis from './ApplicationSuccessAnalysis';
 import CompetitiveAnalysisPanel from './CompetitiveAnalysisPanel';
+import CustomReports from './CustomReports';
 
 const card = { padding: 16, borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb', marginBottom: 16 };
 const sectionTitle = { fontSize: 18, fontWeight: 700, marginBottom: 12, color: '#1f2937' };
@@ -28,6 +29,7 @@ export default function Analytics() {
     { id: 'success', label: 'Success Analysis' },
     { id: 'interviews', label: 'Interview Performance' },
     { id: 'competitive', label: 'Competitive Analysis' },
+    { id: 'enterprise', label: 'Enterprise Reports' },
   ];
 
   return (
@@ -64,6 +66,7 @@ export default function Analytics() {
         {activeTab === 'success' && <ApplicationSuccessAnalysis />}
         {activeTab === 'interviews' && <InterviewPerformanceTracking />}
         {activeTab === 'competitive' && <CompetitiveAnalysisPanel />}
+        {activeTab === 'enterprise' && <CustomReports />}
       </div>
     </div>
   );

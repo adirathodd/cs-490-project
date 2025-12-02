@@ -170,6 +170,7 @@ describe('Analytics component', () => {
       expect(screen.getByText('Application Analytics')).toBeInTheDocument();
       expect(screen.getByText('Success Analysis')).toBeInTheDocument();
       expect(screen.getByText('Interview Performance')).toBeInTheDocument();
+      expect(screen.getByText('Enterprise Reports')).toBeInTheDocument();
     });
 
     test('switches between tabs correctly', async () => {
@@ -202,6 +203,23 @@ describe('Analytics component', () => {
       await waitFor(() => {
         expect(screen.getByText('Application Analytics Dashboard')).toBeInTheDocument();
       });
+    });
+
+    test('shows enterprise dashboard when tab is selected', async () => {
+      render(<Analytics />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Enterprise Reports')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('Enterprise Reports'));
+
+      await waitFor(() => {
+        expect(screen.getByText('Enterprise Program Command Center')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText(/Bulk onboarding/i)).toBeInTheDocument();
+      expect(screen.getByText(/Program ROI \+ outcomes/i)).toBeInTheDocument();
     });
 
     test('shows loading state when auth is loading', () => {

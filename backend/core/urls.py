@@ -396,4 +396,9 @@ urlpatterns = [
     path('informational-interviews/<uuid:pk>/generate-outreach', views.informational_interviews_generate_outreach, name='informational-interviews-generate-outreach'),
     path('informational-interviews/<uuid:pk>/generate-preparation', views.informational_interviews_generate_preparation, name='informational-interviews-generate-preparation'),
 
+    # Enterprise: Workable proxy endpoints
+    path('enterprise/integrations/workable/sync', views.workable_sync, name='workable-sync'),
+    path('enterprise/integrations/workable/disable', views.workable_disable, name='workable-disable'),
+    path('enterprise/integrations/workable/import', views.workable_import, name='workable-import'),
+
 ]
