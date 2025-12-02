@@ -27,10 +27,12 @@ class LinkedInOAuthTests(APITestCase):
         self.profile = CandidateProfile.objects.create(user=self.user)
         self.client.force_authenticate(user=self.user)
     
+    @patch('core.linkedin_integration.build_linkedin_auth_url')
     @patch('django.core.cache.cache')
-    def test_oauth_initiate(self, mock_cache):
+    def test_oauth_initiate(self, mock_cache, mock_build_url):
         """Test LinkedIn OAuth initialization"""
         mock_cache.set.return_value = True
+        mock_build_url.return_value = 'https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=test&redirect_uri=http://localhost:3000/linkedin&state=test_state'
         response = self.client.get('/api/auth/oauth/linkedin/initiate')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('auth_url', response.data)
