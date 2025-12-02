@@ -27,16 +27,19 @@ class LinkedInOAuthTests(APITestCase):
         self.profile = CandidateProfile.objects.create(user=self.user)
         self.client.force_authenticate(user=self.user)
     
-    def test_oauth_initiate(self):
+    @patch('core.views.cache')
+    def test_oauth_initiate(self, mock_cache):
         """Test LinkedIn OAuth initialization"""
+        mock_cache.set.return_value = True
         response = self.client.get('/api/auth/oauth/linkedin/initiate')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('auth_url', response.data)
         self.assertIn('linkedin.com', response.data['auth_url'])
     
+    @patch('core.views.cache')
     @patch('core.linkedin_integration.fetch_linkedin_profile')
     @patch('core.linkedin_integration.exchange_code_for_tokens')
-    def test_oauth_callback_success(self, mock_exchange, mock_fetch):
+    def test_oauth_callback_success(self, mock_exchange, mock_fetch, mock_cache):
         """Test successful LinkedIn OAuth callback"""
         # Mock token exchange
         mock_exchange.return_value = {
@@ -54,10 +57,10 @@ class LinkedInOAuthTests(APITestCase):
             'email': 'john@example.com'
         }
         
-        # Set state token in cache (not session)
-        from django.core.cache import cache
-        cache_key = f'linkedin_oauth_state_{self.user.id}'
-        cache.set(cache_key, 'test_state_token', timeout=600)
+        # Mock cache to return state token
+        mock_cache.get.return_value = 'test_state_token'
+        mock_cache.set.return_value = True
+        mock_cache.delete.return_value = True
         
         # Make callback request
         response = self.client.post('/api/auth/oauth/linkedin/callback', {
@@ -80,12 +83,11 @@ class LinkedInOAuthTests(APITestCase):
         self.assertEqual(integration.linkedin_id, 'linkedin123')
         self.assertEqual(integration.import_status, 'synced')
     
-    def test_oauth_callback_invalid_state(self):
+    @patch('core.views.cache')
+    def test_oauth_callback_invalid_state(self, mock_cache):
         """Test OAuth callback with invalid state token"""
-        # Set state token in session
-        session = self.client.session
-        session['linkedin_oauth_state'] = 'correct_state'
-        session.save()
+        # Mock cache to return correct state (different from what we send)
+        mock_cache.get.return_value = 'correct_state'
         
         # Try with wrong state
         response = self.client.post('/api/auth/oauth/linkedin/callback', {
