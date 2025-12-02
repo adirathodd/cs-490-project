@@ -21,6 +21,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.core.management import call_command
+from django.http import HttpResponse
 from django.utils.text import slugify
 from django.conf import settings
 from django.utils.text import slugify
@@ -48,7 +49,9 @@ from core.serializers import (
     ResumeVersionListSerializer,
     ResumeVersionCompareSerializer,
     ResumeVersionMergeSerializer,
+    ResumeVersionEditSerializer,
     ResumeShareListSerializer,
+    ResumeShareSerializer,
     MentorshipRequestSerializer,
     MentorshipRequestCreateSerializer,
     MentorshipRelationshipSerializer,
@@ -173,7 +176,7 @@ from core.models import (
     ContactSuggestion,
     DiscoverySearch,
 )
-from core import google_import, tasks, response_coach, interview_followup, calendar_sync
+from core import google_import, tasks, response_coach, interview_followup, calendar_sync, resume_ai
 from core.interview_checklist import build_checklist_tasks
 from core.interview_success import InterviewSuccessForecastService, InterviewSuccessScorer
 from core.research.enrichment import fallback_domain
@@ -11717,10 +11720,11 @@ def resume_share_list_create(request):
     profile = request.user.profile
     
     if request.method == 'GET':
-        # Get all shares for user's resume versions
+        from django.db.models import Q
         shares = ResumeShare.objects.filter(
-            resume_version__candidate=profile
-        ).select_related('resume_version')
+            Q(resume_version__candidate=profile) |
+            Q(cover_letter_document__candidate=profile)
+        ).select_related('resume_version', 'cover_letter_document')
         
         serializer = ResumeShareListSerializer(shares, many=True)
         return Response({'shares': serializer.data})
@@ -11728,54 +11732,71 @@ def resume_share_list_create(request):
     elif request.method == 'POST':
         from core.serializers import CreateResumeShareSerializer, ResumeShareSerializer
         from django.contrib.auth.hashers import make_password
-        
+
         serializer = CreateResumeShareSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Get resume version and verify ownership
-        try:
-            version = ResumeVersion.objects.get(
-                id=serializer.validated_data['resume_version_id'],
-                candidate=profile
-            )
-        except ResumeVersion.DoesNotExist:
-            return Response(
-                {'error': 'Resume version not found or you do not have permission'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        # Create share
+
+        version_id = serializer.validated_data.get('resume_version_id')
+        cover_letter_id = serializer.validated_data.get('cover_letter_document_id')
+        version = None
+        cover_letter_doc = None
+
+        if version_id:
+            try:
+                version = ResumeVersion.objects.get(id=version_id, candidate=profile)
+            except ResumeVersion.DoesNotExist:
+                return Response(
+                    {'error': 'Resume version not found or you do not have permission'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            try:
+                cover_letter_doc = Document.objects.get(
+                    id=cover_letter_id,
+                    candidate=profile,
+                    doc_type='cover_letter'
+                )
+            except Document.DoesNotExist:
+                return Response(
+                    {'error': 'Cover letter document not found or you do not have permission'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
         share_data = {
-            'resume_version': version,
             'privacy_level': serializer.validated_data.get('privacy_level', 'public'),
             'allow_comments': serializer.validated_data.get('allow_comments', True),
             'allow_download': serializer.validated_data.get('allow_download', False),
+            'allow_edit': serializer.validated_data.get('allow_edit', False),
             'require_reviewer_info': serializer.validated_data.get('require_reviewer_info', True),
             'allowed_emails': serializer.validated_data.get('allowed_emails', []),
             'allowed_domains': serializer.validated_data.get('allowed_domains', []),
             'expires_at': serializer.validated_data.get('expires_at'),
             'share_message': serializer.validated_data.get('share_message', ''),
         }
-        
-        # Hash password if provided
+
+        if version:
+            share_data['resume_version'] = version
+        else:
+            share_data['cover_letter_document'] = cover_letter_doc
+
         password = serializer.validated_data.get('password')
         if password:
             share_data['password_hash'] = make_password(password)
-        
+
         share = ResumeShare.objects.create(**share_data)
-        
-        # Create notification
+
         from core.models import FeedbackNotification
+        document_label = version.version_name if version else cover_letter_doc.document_name
         FeedbackNotification.objects.create(
             user=request.user,
             notification_type='share_accessed',
-            title='Resume Share Link Created',
-            message=f'You created a share link for "{version.version_name}"',
+            title='Document Share Link Created',
+            message=f'You created a share link for "{document_label}"',
             share=share,
-            action_url=f'/resume-versions?share={share.id}'
+            action_url='/documents'
         )
-        
+
         return Response(
             ResumeShareSerializer(share, context={'request': request}).data,
             status=status.HTTP_201_CREATED
@@ -11793,9 +11814,14 @@ def resume_share_detail(request, share_id):
     profile = request.user.profile
     
     try:
-        share = ResumeShare.objects.select_related('resume_version').get(
-            id=share_id,
-            resume_version__candidate=profile
+        from django.db.models import Q
+        share = (
+            ResumeShare.objects.select_related('resume_version', 'cover_letter_document')
+            .filter(
+                Q(resume_version__candidate=profile) | Q(cover_letter_document__candidate=profile),
+                id=share_id
+            )
+            .get()
         )
     except ResumeShare.DoesNotExist:
         return Response(
@@ -11813,7 +11839,7 @@ def resume_share_detail(request, share_id):
         # Update allowed fields
         allowed_fields = [
             'privacy_level', 'allowed_emails', 'allowed_domains',
-            'allow_comments', 'allow_download', 'require_reviewer_info',
+            'allow_comments', 'allow_download', 'allow_edit', 'require_reviewer_info',
             'expires_at', 'is_active', 'share_message'
         ]
         
@@ -11838,77 +11864,216 @@ def resume_share_detail(request, share_id):
         )
 
 
-@api_view(['GET', 'POST'])
-@permission_classes([AllowAny])
-def shared_resume_view(request, share_token):
+def _get_share_owner_user(share: ResumeShare):
+    """Return the owner user for a share, whether resume or cover letter."""
+    if share.resume_version and getattr(share.resume_version, 'candidate', None):
+        return share.resume_version.candidate.user
+    if share.cover_letter_document and getattr(share.cover_letter_document, 'candidate', None):
+        return share.cover_letter_document.candidate.user
+    return None
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def reviewer_resume_shares(request):
     """
-    Public endpoint to view a shared resume
-    Handles access control based on privacy settings
-    GET: Initial load (may return access requirements)
-    POST: Submit access credentials (password, reviewer info)
+    GET: List shares that include the authenticated reviewer by email/domain.
     """
-    from core.serializers import ResumeVersionSerializer, ShareAccessLogSerializer
-    from django.contrib.auth.hashers import check_password
-    
+    from core.serializers import ResumeShareSerializer
+
+    reviewer_email = (request.user.email or '').lower()
+    if not reviewer_email:
+        return Response({'shares': []})
+
+    domain = reviewer_email.split('@')[1] if '@' in reviewer_email else ''
+    candidates = ResumeShare.objects.filter(is_active=True).select_related('resume_version__candidate__user')
+    matches = []
+
+    for share in candidates:
+        owner_user = _get_share_owner_user(share)
+        if owner_user == request.user:
+            continue
+        if share.is_expired():
+            continue
+        if share.privacy_level == 'private':
+            continue
+
+        allowed_emails = [e.lower() for e in (share.allowed_emails or []) if e]
+        allowed_domains = [d.lower() for d in (share.allowed_domains or []) if d]
+
+        if share.privacy_level == 'email_verified':
+            if reviewer_email in allowed_emails or (domain and domain in allowed_domains):
+                matches.append(share)
+        elif share.privacy_level in ['public', 'password']:
+            matches.append(share)
+
+    serializer = ResumeShareSerializer(matches, many=True, context={'request': request})
+    return Response({'shares': serializer.data})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def reviewer_feedback_stats(request):
+    """
+    Return aggregated reviewer stats: total reviews submitted and how many were marked resolved.
+    """
+    email = (request.user.email or '').strip().lower()
+    if not email:
+        return Response({'reviews_given': 0, 'reviews_implemented': 0})
+
+    feedback_qs = ResumeFeedback.objects.filter(reviewer_email__iexact=email)
+    total_reviews = feedback_qs.count()
+    implemented_reviews = feedback_qs.filter(is_resolved=True).count()
+
+    return Response(
+        {
+            'reviews_given': total_reviews,
+            'reviews_implemented': implemented_reviews,
+        }
+    )
+
+
+def _normalize_email(email: Optional[str]) -> str:
+    return (email or '').strip().lower()
+
+
+def _is_email_allowed(share: ResumeShare, reviewer_email: str) -> bool:
+    normalized_email = _normalize_email(reviewer_email)
+    if not normalized_email:
+        return False
+
+    allowed_emails = [email.lower() for email in (share.allowed_emails or []) if email]
+    allowed_domains = [domain.lower() for domain in (share.allowed_domains or []) if domain]
+
+    if allowed_emails and normalized_email in allowed_emails:
+        return True
+
+    if allowed_domains and '@' in normalized_email:
+        _, domain_part = normalized_email.split('@', 1)
+        if domain_part.lower() in allowed_domains:
+            return True
+
+    return not allowed_emails and not allowed_domains
+
+
+def _load_shared_resume(share_token):
     try:
         share = ResumeShare.objects.select_related('resume_version').get(
             share_token=share_token
         )
     except ResumeShare.DoesNotExist:
-        return Response(
-            {'error': 'Share link not found'},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    
-    # Check if share is accessible
+        return None, Response({'error': 'Share link not found'}, status=status.HTTP_404_NOT_FOUND)
+
     if not share.is_accessible():
         if share.is_expired():
-            return Response(
-                {'error': 'This share link has expired'},
-                status=status.HTTP_410_GONE
-            )
-        return Response(
-            {'error': 'This share link is no longer active'},
-            status=status.HTTP_403_FORBIDDEN
+            return None, Response({'error': 'This share link has expired'}, status=status.HTTP_410_GONE)
+        return None, Response({'error': 'This share link is no longer active'}, status=status.HTTP_403_FORBIDDEN)
+
+    if share.privacy_level == 'private':
+        return None, Response({'error': 'This share link is private'}, status=status.HTTP_403_FORBIDDEN)
+
+    return share, None
+
+
+def _document_payload(doc):
+    """Build lightweight payload for shared documents."""
+    if not doc:
+        return None
+    return {
+        'id': doc.id,
+        'document_name': doc.document_name,
+        'version_number': str(doc.version),
+        'document_type': doc.doc_type,
+        'document_url': doc.document_url,
+    }
+
+
+@api_view(['POST', 'PUT'])
+@permission_classes([AllowAny])
+def shared_resume_view(request, share_token):
+    """
+    Public endpoint to view or edit a shared resume.
+    POST: Validate access credentials and return resume + share metadata.
+    PUT: Apply updates when edit access is enabled.
+    """
+    from django.contrib.auth.hashers import check_password
+    from core.models import ShareAccessLog
+
+    share, error_response = _load_shared_resume(share_token)
+    if error_response:
+        return error_response
+
+    if request.method == 'PUT':
+        if not share.allow_edit or share.cover_letter_document and not share.resume_version:
+            return Response({'error': 'Editing this share is not supported'}, status=status.HTTP_403_FORBIDDEN)
+        if not request.user or not request.user.is_authenticated:
+            return Response({'error': 'Login is required to edit this resume'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        reviewer_email = _normalize_email(request.user.email)
+        reviewer_name = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.email or 'Reviewer'
+
+        if share.privacy_level == 'email_verified':
+            if not reviewer_email:
+                return Response(
+                    {'error': 'Email required', 'requires_email': True},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            if not _is_email_allowed(share, reviewer_email):
+                return Response(
+                    {'error': 'Your email is not authorized to edit this resume'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        if share.privacy_level == 'password':
+            password = request.data.get('password')
+            if not password or not check_password(password, share.password_hash):
+                return Response({'error': 'Invalid password'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        serializer = ResumeVersionEditSerializer(
+            share.resume_version,
+            data=request.data,
+            partial=True,
+            context={'request': request}
         )
-    
-    # Handle password protection
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        updated_version = serializer.save()
+
+        ShareAccessLog.objects.create(
+            share=share,
+            reviewer_name=reviewer_name,
+            reviewer_email=reviewer_email,
+            reviewer_ip=request.META.get('REMOTE_ADDR'),
+            action='edit'
+        )
+
+        return Response(ResumeVersionSerializer(updated_version, context={'request': request}).data)
+
+    password = request.data.get('password') or request.query_params.get('password')
+    reviewer_email = (request.data.get('reviewer_email') or request.query_params.get('reviewer_email') or '').strip()
+    reviewer_name = request.data.get('reviewer_name') or request.query_params.get('reviewer_name') or ''
+
     if share.privacy_level == 'password':
-        password = request.data.get('password') or request.query_params.get('password')
         if not password or not check_password(password, share.password_hash):
             return Response(
                 {'error': 'Invalid password', 'requires_password': True},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-    
-    # Handle email verification
-    reviewer_email = request.data.get('reviewer_email') or request.query_params.get('reviewer_email')
-    
+
     if share.privacy_level == 'email_verified':
         if not reviewer_email:
             return Response(
                 {'error': 'Email required', 'requires_email': True},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-        
-        # Check if email is allowed
-        email_allowed = False
-        if share.allowed_emails and reviewer_email.lower() in [e.lower() for e in share.allowed_emails]:
-            email_allowed = True
-        elif share.allowed_domains:
-            email_domain = reviewer_email.split('@')[1] if '@' in reviewer_email else ''
-            if email_domain.lower() in [d.lower() for d in share.allowed_domains]:
-                email_allowed = True
-        
-        if not email_allowed:
+        if not _is_email_allowed(share, reviewer_email):
             return Response(
                 {'error': 'Your email is not authorized to access this resume'},
                 status=status.HTTP_403_FORBIDDEN
             )
-    
-    # Require reviewer info if configured
+
     if share.require_reviewer_info:
-        reviewer_name = request.data.get('reviewer_name') or request.query_params.get('reviewer_name')
         if not reviewer_name or not reviewer_email:
             return Response(
                 {
@@ -11917,32 +12082,133 @@ def shared_resume_view(request, share_token):
                 },
                 status=status.HTTP_401_UNAUTHORIZED
             )
-    
-    # Log access
-    from core.models import ShareAccessLog
-    reviewer_ip = request.META.get('REMOTE_ADDR')
+
     ShareAccessLog.objects.create(
         share=share,
-        reviewer_name=request.data.get('reviewer_name', ''),
+        reviewer_name=reviewer_name,
         reviewer_email=reviewer_email or '',
-        reviewer_ip=reviewer_ip,
+        reviewer_ip=request.META.get('REMOTE_ADDR'),
         action='view'
     )
-    
-    # Increment view count
+
     share.increment_view_count()
-    
-    # Return resume data
-    return Response({
-        'share': {
-            'id': str(share.id),
-            'version_name': share.resume_version.version_name,
-            'share_message': share.share_message,
-            'allow_comments': share.allow_comments,
-            'allow_download': share.allow_download,
-        },
-        'resume': ResumeVersionSerializer(share.resume_version).data
-    })
+
+    share_payload = ResumeShareSerializer(share, context={'request': request}).data
+    payload = {'share': share_payload}
+    if share.resume_version:
+        payload['resume'] = ResumeVersionSerializer(share.resume_version, context={'request': request}).data
+    else:
+        payload['document'] = _document_payload(share.cover_letter_document)
+
+    return Response(payload)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def shared_resume_pdf(request, share_token):
+    """
+    GET: Return the compiled PDF bytes for a shared resume version.
+    """
+    from django.contrib.auth.hashers import check_password
+    from core.models import ShareAccessLog
+
+    share, error_response = _load_shared_resume(share_token)
+    if error_response:
+        return error_response
+
+    reviewer_email = request.query_params.get('reviewer_email', '').strip()
+    reviewer_name = request.query_params.get('reviewer_name', '').strip()
+    password = request.query_params.get('password')
+
+    if share.privacy_level == 'password':
+        if not password or not check_password(password, share.password_hash):
+            return Response(
+                {'error': 'Invalid password', 'requires_password': True},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+    if share.privacy_level == 'email_verified':
+        if not reviewer_email:
+            return Response(
+                {'error': 'Email required', 'requires_email': True},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        if not _is_email_allowed(share, reviewer_email):
+            return Response(
+                {'error': 'Your email is not authorized to access this resume'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+    if share.require_reviewer_info:
+        if not reviewer_name or not reviewer_email:
+            return Response(
+                {
+                    'error': 'Please provide your name and email',
+                    'requires_reviewer_info': True
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+    if share.cover_letter_document:
+        from django.http import FileResponse
+        import os
+
+        doc = share.cover_letter_document
+        if not doc.file_upload:
+            return Response(
+                {'error': 'PDF content not available for this document'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        file_path = doc.file_upload.path
+        if not os.path.exists(file_path):
+            return Response(
+                {'error': 'Document file missing'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        content_type = 'application/pdf' if file_path.lower().endswith('.pdf') else 'application/octet-stream'
+        filename = doc.document_name or os.path.basename(file_path)
+        response = FileResponse(open(file_path, 'rb'), content_type=content_type)
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        response['X-Frame-Options'] = 'ALLOWALL'
+        return response
+
+    latex = share.resume_version.latex_content
+    if not latex:
+        return Response(
+            {'error': 'PDF content not available for this resume'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    try:
+        pdf_base64 = resume_ai.compile_latex_pdf(latex)
+    except resume_ai.ResumeAIError as exc:
+        return Response(
+            {'error': {'code': 'compilation_failed', 'message': str(exc)}},
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+    except Exception as exc:
+        logger.exception('Unexpected error compiling shared resume PDF: %s', exc)
+        return Response(
+            {'error': {'code': 'compilation_failed', 'message': 'Unexpected compilation error.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+    pdf_bytes = base64.b64decode(pdf_base64)
+    ShareAccessLog.objects.create(
+        share=share,
+        reviewer_name=reviewer_name or reviewer_email or 'Reviewer',
+        reviewer_email=reviewer_email or '',
+        reviewer_ip=request.META.get('REMOTE_ADDR'),
+        action='view'
+    )
+    share.increment_view_count()
+
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = 'inline; filename=shared_resume.pdf'
+    response['X-Frame-Options'] = 'ALLOWALL'
+    return response
 
 
 @api_view(['POST'])
@@ -11991,16 +12257,22 @@ def create_feedback(request):
                 status=status.HTTP_401_UNAUTHORIZED
             )
     
-    # Create feedback
-    feedback = ResumeFeedback.objects.create(
-        share=share,
-        resume_version=share.resume_version,
-        reviewer_name=serializer.validated_data['reviewer_name'],
-        reviewer_email=serializer.validated_data['reviewer_email'],
-        reviewer_title=serializer.validated_data.get('reviewer_title', ''),
-        overall_feedback=serializer.validated_data['overall_feedback'],
-        rating=serializer.validated_data.get('rating')
-    )
+    # Determine target document or version
+    target_version = share.resume_version
+    target_document = share.cover_letter_document
+    feedback_kwargs = {
+        'share': share,
+        'reviewer_name': serializer.validated_data['reviewer_name'],
+        'reviewer_email': serializer.validated_data['reviewer_email'],
+        'reviewer_title': serializer.validated_data.get('reviewer_title', ''),
+        'overall_feedback': serializer.validated_data['overall_feedback'],
+        'rating': serializer.validated_data.get('rating'),
+    }
+    if target_version:
+        feedback_kwargs['resume_version'] = target_version
+    elif target_document:
+        feedback_kwargs['cover_letter_document'] = target_document
+    feedback = ResumeFeedback.objects.create(**feedback_kwargs)
     
     # Log access
     from core.models import ShareAccessLog
@@ -12012,16 +12284,29 @@ def create_feedback(request):
         action='comment'
     )
     
-    # Create notification for resume owner
-    FeedbackNotification.objects.create(
-        user=share.resume_version.candidate.user,
-        notification_type='new_feedback',
-        title=f'New Feedback on {share.resume_version.version_name}',
-        message=f'{feedback.reviewer_name} left feedback on your resume.',
-        feedback=feedback,
-        share=share,
-        action_url=f'/resume-versions?feedback={feedback.id}'
-    )
+    # Create notification for owner (resume or cover letter)
+    owner_user = None
+    document_label = None
+    action_url = '/documents'
+    if target_version:
+        owner_user = target_version.candidate.user
+        document_label = target_version.version_name or 'Resume'
+        action_url = f'/resume-versions?feedback={feedback.id}'
+    elif target_document:
+        owner_user = target_document.candidate.user
+        document_label = target_document.document_name or 'Cover letter'
+        action_url = f'/cover-letter/ai?feedback={feedback.id}'
+
+    if owner_user:
+        FeedbackNotification.objects.create(
+            user=owner_user,
+            notification_type='new_feedback',
+            title=f'New Feedback on {document_label}',
+            message=f'{feedback.reviewer_name} left feedback on your document.',
+            feedback=feedback,
+            share=share,
+            action_url=action_url
+        )
     
     return Response(
         ResumeFeedbackSerializer(feedback).data,
@@ -12102,13 +12387,14 @@ def feedback_list(request):
     Supports filtering by status, version, etc.
     """
     from core.serializers import ResumeFeedbackListSerializer
+    from django.db.models import Q
     
     profile = request.user.profile
     
-    # Get all feedback for user's resumes
+    # Get all feedback for user's resumes or cover letters
     feedback_qs = ResumeFeedback.objects.filter(
-        resume_version__candidate=profile
-    ).select_related('resume_version', 'share')
+        Q(resume_version__candidate=profile) | Q(cover_letter_document__candidate=profile)
+    ).select_related('resume_version', 'share', 'cover_letter_document')
     
     # Apply filters
     status_filter = request.query_params.get('status')
@@ -12118,6 +12404,10 @@ def feedback_list(request):
     version_id = request.query_params.get('version_id')
     if version_id:
         feedback_qs = feedback_qs.filter(resume_version__id=version_id)
+
+    document_id = request.query_params.get('document_id')
+    if document_id:
+        feedback_qs = feedback_qs.filter(cover_letter_document__id=document_id)
     
     is_resolved = request.query_params.get('is_resolved')
     if is_resolved is not None:
