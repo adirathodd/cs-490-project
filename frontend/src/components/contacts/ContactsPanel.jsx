@@ -654,8 +654,8 @@ const ContactsPanel = ({ open, onClose, inline, openCreate, onReminderChange }) 
               <form onSubmit={async (e) => {
                 e.preventDefault();
                 setCreateError('');
-                if (!newContact.name && !newContact.email) {
-                  setCreateError('Please provide at least a name or email.');
+                if (!newContact.email) {
+                  setCreateError('Email is required to create a contact.');
                   return;
                 }
                 setCreating(true);
@@ -715,8 +715,13 @@ const ContactsPanel = ({ open, onClose, inline, openCreate, onReminderChange }) 
               }}>
                 <div className="form-row" style={{ padding: 32 }}>
                   <div className="form-group">
-                    <label>Full Name <span className="required">*</span></label>
+                    <label>Full Name</label>
                     <input type="text" name="name" value={newContact.name} onChange={(e) => setNewContact((p) => ({ ...p, name: e.target.value }))} placeholder="Full name" />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Email <span className="required">*</span></label>
+                    <input type="email" name="email" value={newContact.email} onChange={(e) => setNewContact((p) => ({ ...p, email: e.target.value }))} placeholder="Work email (required)" required />
                   </div>
 
                   <div className="form-group">

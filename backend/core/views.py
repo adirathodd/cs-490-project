@@ -2224,6 +2224,367 @@ def dismiss_contact_reminder(request, reminder_id):
         return Response({"error": "Reminder not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
+def _contact_display_name(contact: Contact) -> str:
+    """Consistently format a contact's name for maintenance responses."""
+    return contact.display_name or f"{contact.first_name} {contact.last_name}".strip() or contact.email or "Contact"
+
+
+def _collect_contact_interests(contact: Contact, notes: List[ContactNote]) -> List[str]:
+    """Merge interests from contact metadata and note entries."""
+    interests = []
+    try:
+        meta_interests = contact.metadata.get('interests', []) if isinstance(contact.metadata, dict) else []
+        if isinstance(meta_interests, list):
+            interests.extend([str(x) for x in meta_interests if x])
+    except Exception:
+        pass
+    for note in notes:
+        try:
+            if isinstance(note.interests, list):
+                interests.extend([str(x) for x in note.interests if x])
+        except Exception:
+            continue
+    # Return unique interests preserving order
+    seen = set()
+    deduped = []
+    for item in interests:
+        if item.lower() in seen:
+            continue
+        seen.add(item.lower())
+        deduped.append(item)
+    return deduped
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def relationship_maintenance_overview(request):
+    """Provide AI-lite relationship maintenance guidance and templates."""
+    now = timezone.now()
+    recent_window = now - timedelta(days=30)
+    contacts = Contact.objects.filter(owner=request.user).prefetch_related(
+        'interactions',
+        'notes',
+        'reminders',
+        'job_links__job',
+    ).select_related('company')
+
+    industry_news_bank = {
+        'technology': [
+            {"headline": "AI adoption trends for Q1", "angle": "Share a concise POV on how it affects their team"},
+            {"headline": "Cloud cost optimization wins", "angle": "Offer a one-liner on a quick saving you saw"},
+        ],
+        'finance': [
+            {"headline": "Rate changes and hiring outlook", "angle": "Ask how it impacts their roadmap"},
+            {"headline": "Fintech partnership momentum", "angle": "Share a relevant case study link"},
+        ],
+        'healthcare': [
+            {"headline": "Interoperability progress (FHIR)", "angle": "Send a helpful resource on patient data flow"},
+            {"headline": "Clinical AI guardrails", "angle": "Ask their take on responsible rollout"},
+        ],
+    }
+
+    templates = {
+        "birthday": [
+            "Happy birthday, {name}! Hope you get a chance to celebrate. If you're up for it, let's catch up soon.",
+            "{name}, wishing you a great birthday! Sharing one highlight from my side this month - would love to hear yours.",
+        ],
+        "congratulations": [
+            "Huge congrats on the new role at {company}! I'd love to hear what you'll be tackling first.",
+            "Saw your announcement - congratulations! If I can support the transition in any way, let me know.",
+        ],
+        "updates": [
+            "Quick update from me: {update}. How are things on your side?",
+            "Thought of you after reading about {topic}. Would love to swap updates this week.",
+        ],
+    }
+
+    check_in_suggestions = []
+    outreach_suggestions = []
+    health_summaries = []
+    reciprocity = []
+    news_shares = []
+    strengthening_actions = []
+    opportunity_contacts = []
+    total_job_links = 0
+
+    for contact in contacts:
+        name = _contact_display_name(contact)
+        interactions = list(contact.interactions.all().order_by('-date')[:50])
+        notes = list(contact.notes.all()[:20])
+        interests = _collect_contact_interests(contact, notes)
+        last_touch = contact.last_interaction or (interactions[0].date if interactions else contact.created_at)
+        days_since_touch = (now - last_touch).days if last_touch else None
+        recent_interactions = [i for i in interactions if i.date and i.date >= recent_window]
+        engagement_freq = len(recent_interactions)  # touches in the last 30 days
+
+        importance = (contact.relationship_strength or 0) >= 7 or contact.relationship_type in (
+            'mentor', 'manager', 'hiring_manager', 'sponsor', 'referrer', 'recruiter'
+        )
+        cadence_days = 30 if importance else 7
+        next_due = now + timedelta(days=7)
+        if last_touch:
+            candidate = last_touch + timedelta(days=cadence_days)
+            if candidate < next_due:
+                next_due = candidate
+        if next_due <= now + timedelta(days=14):
+            check_in_suggestions.append({
+                "contact_id": str(contact.id),
+                "contact_name": name,
+                "due_date": next_due.isoformat(),
+                "recurrence": "monthly" if importance else "weekly",
+                "message": f"Check in with {name} to keep the relationship warm.",
+                "reason": "High-priority relationship" if importance else "Due for a light touchpoint",
+            })
+
+        interest_topic = interests[0] if interests else (contact.industry or contact.company_name or "something relevant")
+        context_bits = []
+        if contact.title:
+            context_bits.append(contact.title)
+        if contact.company_name:
+            context_bits.append(f"at {contact.company_name}")
+        if contact.industry and contact.industry.lower() not in interest_topic.lower():
+            context_bits.append(contact.industry)
+        context = " ".join(context_bits)
+        outreach_message = (
+            f"Hi {name.split(' ')[0] or name}, I was reviewing {interest_topic} updates and thought of you"
+            f"{(' ' + context) if context else ''}. "
+            "I pulled one idea tailored to your focus—let me know if it's helpful or if I can support something on your plate."
+        )
+        outreach_suggestions.append({
+            "contact_id": str(contact.id),
+            "contact_name": name,
+            "channel": "email" if contact.email else "message",
+            "message": outreach_message,
+            "interest": interest_topic,
+            "last_interaction": last_touch.isoformat() if last_touch else None,
+        })
+
+        health_score = 50
+        health_score += min(30, (contact.relationship_strength or 0) * 3)
+        health_score += min(15, len(recent_interactions) * 2)
+        if days_since_touch:
+            health_score -= min(20, max(0, days_since_touch - 14) / 2)
+        health_score = max(5, min(100, int(health_score)))
+        engagement_status = "high" if engagement_freq >= 2 else "steady" if engagement_freq >= 1 else "at-risk"
+        health_summaries.append({
+            "contact_id": str(contact.id),
+            "contact_name": name,
+            "health_score": health_score,
+            "engagement_frequency_per_month": engagement_freq,
+            "last_interaction": last_touch.isoformat() if last_touch else None,
+            "status": engagement_status,
+        })
+
+        gives = 0
+        asks = 0
+        for interaction in interactions:
+            meta = interaction.metadata if isinstance(interaction.metadata, dict) else {}
+            if meta.get('direction') in ('give', 'support') or meta.get('value_provided'):
+                gives += 1
+            if meta.get('direction') == 'ask' or meta.get('request_made'):
+                asks += 1
+        outstanding = sum(1 for i in interactions if i.follow_up_needed)
+        balance = gives - asks
+        reciprocity_status = "balanced"
+        if balance > 1:
+            reciprocity_status = "you've provided more"
+        elif balance < -1:
+            reciprocity_status = "they've provided more"
+        reciprocity.append({
+            "contact_id": str(contact.id),
+            "contact_name": name,
+            "given": gives,
+            "received": asks,
+            "outstanding_follow_ups": outstanding,
+            "balance": balance,
+            "status": reciprocity_status,
+        })
+
+        industry_key = (contact.industry or getattr(contact.company, 'industry', '') or '').lower()
+        news_candidates = industry_news_bank.get(industry_key) or industry_news_bank.get('technology', [])
+        # Personalize with company or role when we have it
+        if news_candidates:
+            pick = news_candidates[hash(str(contact.id)) % len(news_candidates)]
+            personalized_headline = pick["headline"]
+            personalized_angle = pick["angle"]
+            if contact.company_name:
+                personalized_angle = f"{pick['angle']} Tie it to {contact.company_name}'s priorities."
+            if contact.role or contact.title:
+                personalized_headline = f"{pick['headline']} for {contact.role or contact.title}"
+            news_shares.append({
+                "contact_id": str(contact.id),
+                "contact_name": name,
+                "industry": contact.industry or getattr(contact.company, 'industry', '') or 'general',
+                "headline": personalized_headline,
+                "angle": personalized_angle,
+            })
+
+        if days_since_touch is None or days_since_touch > 45:
+            action = "Schedule a 20-minute catch-up next week and share one useful insight."
+        elif health_score < 60:
+            action = "Send a resource tailored to their role and ask one thoughtful question."
+        else:
+            action = "Offer a small collaboration: a mutual intro, quick feedback, or co-draft."
+        if contact.company_name:
+            action += f" Anchor it to something {contact.company_name} cares about."
+        if contact.relationship_type in ('mentor', 'manager', 'hiring_manager'):
+            action = "Share a concise progress update and ask for one piece of feedback tied to their expertise."
+        elif contact.relationship_type in ('client',):
+            action = "Share a tangible win relevant to their objectives and propose a short sync to align on next steps."
+        strengthening_actions.append({
+            "contact_id": str(contact.id),
+            "contact_name": name,
+            "action": action,
+            "why": "Keeps reciprocity balanced" if balance < 0 else "Reinforces momentum",
+        })
+
+        job_links_count = contact.job_links.count()
+        if job_links_count:
+            total_job_links += job_links_count
+            opportunity_contacts.append({
+                "contact_id": str(contact.id),
+                "contact_name": name,
+                "linked_jobs": job_links_count,
+                "recent_interactions": len(recent_interactions),
+                "health_score": health_score,
+            })
+
+    impact = {
+        "contacts_with_job_links": len(opportunity_contacts),
+        "total_job_links": total_job_links,
+        "top_relationships": sorted(
+            opportunity_contacts,
+            key=lambda x: (x['linked_jobs'], x['recent_interactions']),
+            reverse=True
+        )[:5],
+    }
+
+    return Response({
+        "check_in_suggestions": check_in_suggestions,
+        "personalized_outreach": outreach_suggestions,
+        "relationship_health": health_summaries,
+        "templates": templates,
+        "reciprocity": reciprocity,
+        "industry_news": news_shares,
+        "strengthening_actions": strengthening_actions,
+        "opportunity_impact": impact,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def generate_check_in_reminders(request):
+    """Create recurring check-in reminders for important/aging contacts."""
+    contact_ids = request.data.get('contact_ids')
+    qs = Contact.objects.filter(owner=request.user)
+    if contact_ids:
+        qs = qs.filter(id__in=contact_ids)
+
+    now = timezone.now()
+    created = []
+    skipped = []
+    for contact in qs:
+        name = _contact_display_name(contact)
+        importance = (contact.relationship_strength or 0) >= 7 or contact.relationship_type in (
+            'mentor', 'manager', 'hiring_manager', 'sponsor', 'referrer', 'recruiter'
+        )
+        cadence_days = 30 if importance else 7
+        last_touch = contact.last_interaction or contact.created_at or now
+        due_date = now + timedelta(days=7)
+
+        has_upcoming = contact.reminders.filter(
+            owner=request.user,
+            completed=False,
+            due_date__gte=now - timedelta(days=1),
+            due_date__lte=now + timedelta(days=14)
+        ).exists()
+        if has_upcoming:
+            skipped.append(str(contact.id))
+            continue
+
+        reminder = Reminder.objects.create(
+            contact=contact,
+            owner=request.user,
+            message=f"Check in with {name} to keep the relationship warm.",
+            due_date=due_date,
+            recurrence="monthly" if importance else "weekly",
+        )
+        created.append(reminder)
+
+    return Response({
+        "created_count": len(created),
+        "created": ReminderSerializer(created, many=True).data,
+        "skipped": skipped,
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def log_personalized_outreach(request, contact_id):
+    """Record a personalized outreach touchpoint to track engagement (no outbound message is sent)."""
+    try:
+        contact = Contact.objects.get(id=contact_id, owner=request.user)
+    except Contact.DoesNotExist:
+        return Response({"error": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    message = (request.data.get('message') or '').strip()
+    channel = (request.data.get('channel') or 'message').lower()
+    intent = (request.data.get('intent') or 'relationship_maintenance').lower()
+    if not message:
+        return Response({"error": "message is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    summary = f"{intent.title()} via {channel}: {message[:180]}"
+    interaction = Interaction.objects.create(
+        contact=contact,
+        owner=request.user,
+        type='outreach',
+        summary=summary,
+        metadata={
+            "channel": channel,
+            "intent": intent,
+            "source": "relationship_maintenance",
+        },
+        follow_up_needed=False,
+    )
+    contact.last_interaction = timezone.now()
+    contact.save(update_fields=['last_interaction'])
+
+    email_sent = False
+    email_error = None
+    if contact.email and channel == 'email':
+        try:
+            from django.core.mail import send_mail
+            backend = getattr(settings, "EMAIL_BACKEND", "") or ""
+            non_delivery_backends = (
+                "console.EmailBackend",
+                "dummy.EmailBackend",
+                "filebased.EmailBackend",
+                "locmem.EmailBackend",
+            )
+            if any(b in backend for b in non_delivery_backends):
+                email_error = f"EMAIL_BACKEND={backend} does not send real mail; configure an SMTP backend."
+            else:
+                sender = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or request.user.email or 'noreply@example.com'
+                send_mail(
+                    subject="Quick nudge",
+                    message=message,
+                    from_email=sender,
+                    recipient_list=[contact.email],
+                    fail_silently=False,
+                )
+                email_sent = True
+        except Exception as exc:
+            email_error = str(exc)
+            logger.warning("Failed to send outreach email to %s: %s", contact.email, email_error)
+
+    return Response({
+        "interaction": InteractionSerializer(interaction).data,
+        "status": "logged",
+        "email_sent": email_sent,
+        "email_error": email_error,
+    }, status=status.HTTP_201_CREATED)
+
+
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def delete_mutual_connection(request, contact_id, mutual_id):
