@@ -3936,13 +3936,6 @@ const AiResumeGenerator = () => {
                       </button>
                       <button
                         type="button"
-                        className="ghost share-toggle-btn"
-                        onClick={() => setSharePanelOpen((prev) => !prev)}
-                      >
-                        <Icon name="share" size="sm" /> {sharePanelOpen ? 'Hide share' : 'Share for review'}
-                      </button>
-                      <button
-                        type="button"
                         className="collapse-toggle"
                         onClick={() => handleCollapseAll(!allVisibleCollapsed)}
                         disabled={!visibleSections.length}
