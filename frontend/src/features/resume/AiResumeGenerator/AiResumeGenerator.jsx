@@ -7,7 +7,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { jobsAPI, resumeAIAPI, resumeExportAPI, resumeVersionAPI } from '../../../services/api';
+import { jobsAPI, resumeAIAPI, resumeExportAPI, resumeVersionAPI, resumeSharingAPI, feedbackAPI } from '../../../services/api';
 import Icon from '../../../components/common/Icon';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import './AiResumeGenerator.css';
@@ -1657,12 +1657,25 @@ const AiResumeGenerator = () => {
   const [versionDescription, setVersionDescription] = useState('');
   const [isSavingVersion, setIsSavingVersion] = useState(false);
   const [saveVersionError, setSaveVersionError] = useState('');
+  const [sharePanelOpen, setSharePanelOpen] = useState(false);
+  const [shareEmail, setShareEmail] = useState('');
+  const [shareAllowEdit, setShareAllowEdit] = useState(true);
+  const [shareDeadline, setShareDeadline] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareError, setShareError] = useState('');
+  const [shareLink, setShareLink] = useState('');
   
   // UC-052: Load existing versions
   const [savedVersions, setSavedVersions] = useState([]);
   const [selectedVersionId, setSelectedVersionId] = useState(null);
   const [currentVersionId, setCurrentVersionId] = useState(null);
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+  const [versionFeedback, setVersionFeedback] = useState([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackActionLoadingId, setFeedbackActionLoadingId] = useState(null);
+  const [feedbackActionStatus, setFeedbackActionStatus] = useState({});
+  const [feedbackError, setFeedbackError] = useState('');
   
   // Template management state
   const [customTemplates, setCustomTemplates] = useState(() => {
@@ -2539,13 +2552,15 @@ const AiResumeGenerator = () => {
         job_opportunity: selectedJobDetail?.id || null,
       };
 
-      await resumeVersionAPI.createVersion(versionData);
+      const createdVersion = await resumeVersionAPI.createVersion(versionData);
 
       // Success - close modal and reset
       setShowSaveVersionModal(false);
       setVersionName('');
       setVersionDescription('');
       setSaveVersionError('');
+      setCurrentVersionId(createdVersion.id);
+      setSelectedVersionId(createdVersion.id);
       
       // Reload versions list
       const data = await resumeVersionAPI.listVersions(false);
@@ -2561,11 +2576,58 @@ const AiResumeGenerator = () => {
     }
   };
 
+  const handleShareForReview = async () => {
+    const shareVersionId = currentVersionId || selectedVersionId;
+    if (!shareVersionId) {
+      setShareError('Save a resume version before sharing it.');
+      return;
+    }
+
+    if (!shareEmail.trim()) {
+      setShareError('Enter a reviewer email address.');
+      return;
+    }
+
+    setShareLoading(true);
+    setShareError('');
+    setShareLink('');
+
+    try {
+      const payload = {
+        resume_version_id: shareVersionId,
+        privacy_level: 'email_verified',
+        allowed_emails: [shareEmail.trim()],
+        allow_comments: true,
+        allow_download: shareAllowEdit,
+        allow_edit: shareAllowEdit,
+        require_reviewer_info: false,
+        share_message: shareMessage.trim(),
+      };
+
+      if (shareDeadline) {
+        const deadlineDate = new Date(shareDeadline);
+        if (!Number.isNaN(deadlineDate.getTime())) {
+          payload.expires_at = deadlineDate.toISOString();
+        }
+      }
+
+      const share = await resumeSharingAPI.createShare(payload);
+      setShareLink(share.share_url);
+      setShareError('');
+    } catch (error) {
+      console.error('Share creation failed:', error);
+      setShareError(error?.message || 'Failed to send share link.');
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
   // UC-052: Load a saved version into the editor
   const handleLoadVersion = async (versionId) => {
     if (!versionId) {
       setCurrentVersionId(null);
       setSelectedVersionId(null);
+      loadVersionFeedback(null);
       return;
     }
 
@@ -2617,6 +2679,7 @@ const AiResumeGenerator = () => {
       // Set current version ID for tracking updates
       setCurrentVersionId(versionId);
       setSelectedVersionId(versionId);
+      loadVersionFeedback(versionId);
       
       alert(`Loaded version: ${version.version_name}`);
     } catch (error) {
@@ -2656,6 +2719,63 @@ const AiResumeGenerator = () => {
       alert('Failed to update version. Please try again.');
     }
   };
+
+  const loadVersionFeedback = useCallback(
+    async (versionId) => {
+      if (!versionId) {
+        setVersionFeedback([]);
+        return;
+      }
+
+      setFeedbackLoading(true);
+      setFeedbackError('');
+
+      try {
+        const data = await feedbackAPI.listFeedback({ version_id: versionId });
+        setVersionFeedback(data.feedback || []);
+      } catch (error) {
+        console.error('Failed to load feedback:', error);
+        setFeedbackError(error?.message || 'Unable to load reviewer feedback.');
+        setVersionFeedback([]);
+      } finally {
+        setFeedbackLoading(false);
+      }
+    },
+    []
+  );
+
+  const handleMarkFeedbackUsed = async (feedbackId) => {
+    if (!feedbackId) return;
+    setFeedbackActionLoadingId(feedbackId);
+    setFeedbackActionStatus((prev) => ({
+      ...prev,
+      [feedbackId]: { message: '', type: '' }
+    }));
+
+    try {
+      await feedbackAPI.resolveFeedback(feedbackId);
+      const versionId = currentVersionId || selectedVersionId;
+      await loadVersionFeedback(versionId);
+      setFeedbackActionStatus((prev) => ({
+        ...prev,
+        [feedbackId]: { message: 'Feedback marked as used.', type: 'success' }
+      }));
+    } catch (error) {
+      setFeedbackActionStatus((prev) => ({
+        ...prev,
+        [feedbackId]: {
+          message: error?.message || 'Unable to mark feedback as used.',
+          type: 'error'
+        }
+      }));
+    } finally {
+      setFeedbackActionLoadingId(null);
+    }
+  };
+
+  useEffect(() => {
+    loadVersionFeedback(currentVersionId || selectedVersionId);
+  }, [currentVersionId, selectedVersionId, loadVersionFeedback]);
 
   const jobKeywords = chipify(
     result?.job?.derived_keywords ||
@@ -3816,6 +3936,13 @@ const AiResumeGenerator = () => {
                       </button>
                       <button
                         type="button"
+                        className="ghost share-toggle-btn"
+                        onClick={() => setSharePanelOpen((prev) => !prev)}
+                      >
+                        <Icon name="share" size="sm" /> {sharePanelOpen ? 'Hide share' : 'Share for review'}
+                      </button>
+                      <button
+                        type="button"
                         className="collapse-toggle"
                         onClick={() => handleCollapseAll(!allVisibleCollapsed)}
                         disabled={!visibleSections.length}
@@ -3823,9 +3950,178 @@ const AiResumeGenerator = () => {
                         <Icon name={allVisibleCollapsed ? 'chevronDown' : 'chevronUp'} size="sm" />{' '}
                         {allVisibleCollapsed ? 'Expand sections' : 'Collapse sections'}
                       </button>
-                    </div>
+                      </div>
 
-                    <div className="template-manager">
+                      {sharePanelOpen && (
+                        <div className="share-panel">
+                          <div className="share-panel__header">
+                            <div>
+                              <h4>Share this version</h4>
+                              <p className="muted">
+                                Invite a reviewer to comment or edit this resume version.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="ghost small"
+                              onClick={() => setSharePanelOpen(false)}
+                            >
+                              Close
+                            </button>
+                          </div>
+                          <div className="share-panel__body">
+                            <label>
+                              Reviewer email
+                              <input
+                                type="email"
+                                value={shareEmail}
+                                onChange={(e) => setShareEmail(e.target.value)}
+                                placeholder="reviewer@example.com"
+                                disabled={shareLoading}
+                              />
+                            </label>
+                            <div className="share-options">
+                              <label>
+                                <input
+                                  type="checkbox"
+                                  checked={shareAllowEdit}
+                                  onChange={(e) => setShareAllowEdit(e.target.checked)}
+                                  disabled={shareLoading}
+                                />
+                                Allow reviewer to edit and download
+                              </label>
+                            </div>
+                            <label>
+                              Deadline (optional)
+                              <input
+                                type="datetime-local"
+                                value={shareDeadline}
+                                onChange={(e) => setShareDeadline(e.target.value)}
+                                disabled={shareLoading}
+                              />
+                            </label>
+                            <label>
+                              Message (optional)
+                              <textarea
+                                rows={2}
+                                value={shareMessage}
+                                onChange={(e) => setShareMessage(e.target.value)}
+                                disabled={shareLoading}
+                                placeholder="Share context or focus areas"
+                              />
+                            </label>
+                          </div>
+                          <div className="share-panel__actions">
+                            <button
+                              type="button"
+                              className="primary"
+                              onClick={handleShareForReview}
+                              disabled={
+                                shareLoading ||
+                                !shareEmail.trim() ||
+                                (!currentVersionId && !selectedVersionId)
+                              }
+                            >
+                              {shareLoading ? (
+                                <>
+                                  <LoadingSpinner size="sm" /> Sharing...
+                                </>
+                              ) : (
+                                <>
+                                  <Icon name="send" size="sm" /> Send share link
+                                </>
+                              )}
+                            </button>
+                            {shareLink && (
+                              <button
+                                type="button"
+                                className="ghost"
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(shareLink);
+                                  } catch (err) {
+                                    console.error('Clipboard copy failed', err);
+                                  }
+                                }}
+                              >
+                                <Icon name="copy" size="sm" /> Copy link
+                              </button>
+                            )}
+                          </div>
+                          {shareError && <p className="inline-error">{shareError}</p>}
+                          {shareLink && (
+                            <p className="share-panel__link">
+                              Share link ready: <a href={shareLink} target="_blank" rel="noreferrer">{shareLink}</a>
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {(versionFeedback.length || feedbackLoading || feedbackError) && (
+                        <div className="ai-feedback-panel">
+                          <div className="panel-header">
+                            <strong>Reviewer feedback</strong>
+                            {feedbackLoading && (
+                              <span className="muted">Loading…</span>
+                            )}
+                          </div>
+                          {feedbackError && (
+                            <p className="inline-error">{feedbackError}</p>
+                          )}
+                          {!feedbackLoading && !feedbackError && versionFeedback.length === 0 && (
+                            <p className="muted">No feedback recorded yet.</p>
+                          )}
+                          {!feedbackLoading && versionFeedback.length > 0 && (
+                            <ul className="feedback-list">
+                              {versionFeedback.map((fb) => (
+                                <li key={fb.id}>
+                                  <p>
+                                    <strong>{fb.reviewer_name || 'Reviewer'}</strong>
+                                    {fb.rating ? ` – ${fb.rating}/5` : ''}
+                                  </p>
+                                  <p className="feedback-text">{fb.overall_feedback}</p>
+                                  <p className="feedback-meta">
+                                    <span className="status-chip">
+                                      {fb.is_resolved ? 'Resolved' : fb.status || 'Pending'}
+                                    </span>
+                                    {new Date(fb.created_at).toLocaleDateString()}
+                                    {fb.reviewer_title ? ` – ${fb.reviewer_title}` : ''}
+                                 </p>
+                                  {!fb.is_resolved && (
+                                    <div className="ai-feedback-panel__actions">
+                                      <button
+                                        type="button"
+                                        className="btn-secondary tiny"
+                                        onClick={() => handleMarkFeedbackUsed(fb.id)}
+                                        disabled={feedbackActionLoadingId === fb.id}
+                                      >
+                                        {feedbackActionLoadingId === fb.id ? (
+                                          <LoadingSpinner size="sm" />
+                                        ) : (
+                                          'Mark as used'
+                                        )}
+                                      </button>
+                                    </div>
+                                  )}
+                                  {feedbackActionStatus[fb.id]?.message && (
+                                    <p
+                                      className={`feedback-status-message ${
+                                        feedbackActionStatus[fb.id].type === 'error'
+                                          ? 'feedback-status-message--error'
+                                          : 'feedback-status-message--success'
+                                      }`}
+                                    >
+                                      {feedbackActionStatus[fb.id].message}
+                                    </p>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="template-manager">
                       <div className="template-controls">
                         <div className="template-select-group">
                           <label htmlFor="template-select">
