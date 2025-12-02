@@ -171,72 +171,79 @@ const InformationalInterviews = () => {
 
   return (
     <div className="informational-interviews-container">
-      <div className="informational-interviews-header">
-        <h1>Informational Interviews</h1>
-        <p className="subtitle">Request and manage informational interviews to gain industry insights and build relationships</p>
-        <button 
-          className="btn btn-primary"
-          onClick={() => setShowCreateModal(true)}
-        >
-          + New Interview Request
-        </button>
-      </div>
-
-      {error && <div className="alert alert-danger">{error}</div>}
-      
-      {notification && (
-        <div className={`notification notification-${notification.type}`}>
-          {notification.message}
+      <div style={{ padding: 16 }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', marginBottom: 12 }}>
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700 }}>Informational Interviews</h1>
+          <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
+            Request and manage informational interviews to gain industry insights and build relationships
+          </p>
         </div>
-      )}
-
-      {/* Analytics Summary */}
-      {analytics && (
-        <div className="analytics-summary">
-          <div className="analytics-card">
-            <div className="analytics-value">{analytics.overview?.total || 0}</div>
-            <div className="analytics-label">Total Interviews</div>
-          </div>
-          <div className="analytics-card">
-            <div className="analytics-value">{analytics.success_metrics?.scheduled || 0}</div>
-            <div className="analytics-label">Scheduled</div>
-          </div>
-          <div className="analytics-card">
-            <div className="analytics-value">{analytics.success_metrics?.completed || 0}</div>
-            <div className="analytics-label">Completed</div>
-          </div>
-          <div className="analytics-card">
-            <div className="analytics-value">{analytics.success_metrics?.response_rate || 0}%</div>
-            <div className="analytics-label">Response Rate</div>
-          </div>
-          <div className="analytics-card">
-            <div className="analytics-value">{analytics.impact?.led_to_job_application || 0}</div>
-            <div className="analytics-label">Led to Applications</div>
-          </div>
-        </div>
-      )}
-
-      {/* Filter Tabs */}
-      <div className="filter-tabs">
-        <button 
-          className={`filter-tab ${filter === 'all' ? 'active' : ''}`}
-          onClick={() => handleFilterChange('all')}
-        >
-          All
-        </button>
-        {statusOptions.map(status => (
+        <div style={{ maxWidth: 1200, margin: '0 auto 24px', display: 'flex', justifyContent: 'flex-end' }}>
           <button 
-            key={status.value}
-            className={`filter-tab ${filter === status.value ? 'active' : ''}`}
-            onClick={() => handleFilterChange(status.value)}
+            className="btn btn-primary"
+            onClick={() => setShowCreateModal(true)}
           >
-            {status.label}
+            + New Interview Request
           </button>
-        ))}
+        </div>
       </div>
 
-      {/* Interviews List */}
-      <div className="interviews-list">
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px' }}>
+        {error && <div className="alert alert-danger">{error}</div>}
+        
+        {notification && (
+          <div className={`notification notification-${notification.type}`}>
+            {notification.message}
+          </div>
+        )}
+
+        {/* Analytics Summary */}
+        {analytics && (
+          <div className="analytics-summary">
+            <div className="analytics-card">
+              <div className="analytics-value">{analytics.overview?.total || 0}</div>
+              <div className="analytics-label">Total Interviews</div>
+            </div>
+            <div className="analytics-card">
+              <div className="analytics-value">{analytics.success_metrics?.scheduled || 0}</div>
+              <div className="analytics-label">Scheduled</div>
+            </div>
+            <div className="analytics-card">
+              <div className="analytics-value">{analytics.success_metrics?.completed || 0}</div>
+              <div className="analytics-label">Completed</div>
+            </div>
+            <div className="analytics-card">
+              <div className="analytics-value">{analytics.success_metrics?.response_rate || 0}%</div>
+              <div className="analytics-label">Response Rate</div>
+            </div>
+            <div className="analytics-card">
+              <div className="analytics-value">{analytics.impact?.led_to_job_application || 0}</div>
+              <div className="analytics-label">Led to Applications</div>
+            </div>
+          </div>
+        )}
+
+        {/* Filter Tabs */}
+        <div className="filter-tabs">
+          <button 
+            className={`filter-tab ${filter === 'all' ? 'active' : ''}`}
+            onClick={() => handleFilterChange('all')}
+          >
+            All
+          </button>
+          {statusOptions.map(status => (
+            <button 
+              key={status.value}
+              className={`filter-tab ${filter === status.value ? 'active' : ''}`}
+              onClick={() => handleFilterChange(status.value)}
+            >
+              {status.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Interviews List */}
+        <div className="interviews-list">
         {!interviews || interviews.length === 0 ? (
           <div className="empty-state">
             <p>No informational interviews found.</p>
@@ -301,6 +308,7 @@ const InformationalInterviews = () => {
             </div>
           ))
         )}
+      </div>
       </div>
 
       {/* Create Modal */}
