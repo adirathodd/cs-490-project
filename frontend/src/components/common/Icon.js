@@ -178,6 +178,11 @@ const iconMap = {
   layout: FaThLarge,
   mic: FaMicrophone,
   microphone: FaMicrophone,
+  play: FaPlay,
+  pause: FaPause,
+  stop: FaStop,
+  'book-open': FaBookOpen,
+  scale: FaBalanceScale,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {
