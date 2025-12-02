@@ -124,9 +124,9 @@ const ReferencesList = ({ references, onEdit, onDelete, onRequestReference, onSh
                 className="btn-secondary"
                 onClick={() => onShowAppreciations(reference)}
                 title="View appreciation history"
-                style={{ padding: '8px' }}
+                style={{ padding: '8px 12px' }}
               >
-                <Icon name="heart" size="sm" />
+                <Icon name="heart" size="sm" /> Thanks
               </button>
             )}
             <button
