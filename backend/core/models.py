@@ -4702,6 +4702,18 @@ class MentorshipRequest(models.Model):
     def __str__(self):
         return f"{self.requester_id} -> {self.receiver_id} ({self.status})"
 
+    def get_mentee_profile(self):
+        """Return the CandidateProfile that will be mentored in this request."""
+        if self.role_for_requester == 'mentor':
+            return self.receiver
+        return self.requester
+
+    def get_mentor_user(self):
+        """Return the Django user who will act as mentor in this request."""
+        if self.role_for_requester == 'mentor':
+            return getattr(self.requester, 'user', None)
+        return getattr(self.receiver, 'user', None)
+
 
 class MentorshipSharingPreference(models.Model):
     """Per-mentor sharing toggles that mentees control."""
