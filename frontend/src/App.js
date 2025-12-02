@@ -38,6 +38,7 @@ import ReferencesPage from './components/references/ReferencesPage';
 import MentorshipDashboard from './components/mentorship/MentorshipDashboard';
 import ReferralManagement from './components/referrals/ReferralManagement';
 import MentorshipMenteeDashboard from './components/mentorship/MenteeDashboard';
+import PeerSupportHub from './components/community/PeerSupportHub';
 import MarketIntelligence from './components/tools/MarketIntelligence';
 import SalaryProgression from './components/tools/SalaryProgression';
 import { CompanyInsights } from './features/company';
@@ -362,6 +363,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <ContactsPage />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/peer-support"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <PeerSupportHub />
               </PrivateRoute>
             }
           />
