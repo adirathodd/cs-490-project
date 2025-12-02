@@ -98,6 +98,22 @@ export const contactsAPI = {
     const res = await api.patch(`${base}/reminders/${reminderId}/dismiss`);
     return res.data;
   },
+
+  maintenanceInsights: async () => {
+    const res = await api.get(`${base}/maintenance/overview`);
+    return res.data;
+  },
+  
+  generateCheckInReminders: async (contactIds = []) => {
+    const payload = contactIds.length ? { contact_ids: contactIds } : {};
+    const res = await api.post(`${base}/maintenance/generate-reminders`, payload);
+    return res.data;
+  },
+  
+  logOutreach: async (contactId, payload) => {
+    const res = await api.post(`${base}/${contactId}/outreach`, payload);
+    return res.data;
+  },
   
   // Company links
   companyLinks: async (contactId) => {

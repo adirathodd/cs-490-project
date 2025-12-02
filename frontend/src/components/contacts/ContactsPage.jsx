@@ -6,6 +6,7 @@ import Icon from '../common/Icon';
 import { contactsAPI } from '../../services/contactsAPI';
 import ImportStatusModal from './ImportStatusModal';
 import { useLocation } from 'react-router-dom';
+import RelationshipMaintenancePanel from './RelationshipMaintenancePanel';
 
 const ContactsPage = () => {
   const navigate = useNavigate();
@@ -14,11 +15,13 @@ const ContactsPage = () => {
   const calendarRef = useRef(null);
   const location = useLocation();
   const [importJobToShow, setImportJobToShow] = useState(null);
+  const [calendarRefreshToken, setCalendarRefreshToken] = useState(0);
 
   const handleRefreshCalendar = useCallback(() => {
     if (calendarRef.current && calendarRef.current.refresh) {
       calendarRef.current.refresh();
     }
+    setCalendarRefreshToken((t) => t + 1);
   }, []);
 
   const handleImport = async () => {
@@ -113,9 +116,10 @@ const ContactsPage = () => {
             />
           </div>
           <div>
-            <ContactsCalendar ref={calendarRef} />
+            <ContactsCalendar ref={calendarRef} refreshSignal={calendarRefreshToken} />
           </div>
         </div>
+        <RelationshipMaintenancePanel onReminderChange={handleRefreshCalendar} />
         {importJobToShow && (
           <ImportStatusModal jobId={importJobToShow} onClose={closeImportModal} />
         )}
