@@ -16,6 +16,87 @@ jest.mock('../../../services/api', () => ({
 
 import { networkingAPI } from '../../../services/api';
 
+const buildAnalytics = (overrides = {}) => ({
+  overview: {
+    total_events: 1,
+    attended_events: 1,
+    total_connections: 0,
+    high_value_connections: 0,
+    goals_achievement_rate: 0,
+    follow_up_completion_rate: 0,
+    manual_outreach_attempts_30d: 0,
+    interactions_logged_30d: 0,
+    strong_relationships: 0,
+    ...(overrides.overview || {}),
+  },
+  activity_volume: {
+    events_planned: 0,
+    events_registered: 0,
+    events_attended: 0,
+    followups_open: 0,
+    followups_completed_30d: 0,
+    connections_added_60d: 0,
+    interactions_logged_30d: 0,
+    outreach_attempts_30d: 0,
+    ...(overrides.activity_volume || {}),
+  },
+  relationship_health: {
+    avg_relationship_strength: 0,
+    recent_relationship_strength: 0,
+    relationship_trend: 0,
+    engaged_contacts_60d: 0,
+    high_value_ratio: 0,
+    ...(overrides.relationship_health || {}),
+  },
+  referral_pipeline: {
+    referrals_requested: 0,
+    referrals_received: 0,
+    referrals_used: 0,
+    networking_sourced_jobs: 0,
+    networking_offers: 0,
+    introductions_created: 0,
+    opportunities_from_interviews: 0,
+    ...(overrides.referral_pipeline || {}),
+  },
+  event_roi: {
+    total_spend: 0,
+    connections_per_event: 0,
+    followups_per_connection: 0,
+    cost_per_connection: 0,
+    cost_per_high_value_connection: 0,
+    paid_events_count: 0,
+    paid_connections: 0,
+    paid_high_value_connections: 0,
+    ...(overrides.event_roi || {}),
+  },
+  conversion_rates: {
+    connection_to_followup_rate: 0,
+    follow_up_completion_rate: 0,
+    outreach_response_rate: 0,
+    networking_to_application_rate: 0,
+    referral_conversion_rate: 0,
+    ...(overrides.conversion_rates || {}),
+  },
+  insights: {
+    strengths: [],
+    focus: [],
+    recommendations: [],
+    ...(overrides.insights || {}),
+  },
+  industry_benchmarks: {
+    industry: 'general',
+    benchmarks: {
+      outreach_to_meeting_rate: 0,
+      follow_up_completion: 0,
+      high_value_ratio: 0,
+      connections_per_event: 0,
+      referral_conversion: 0,
+      ...(overrides.industry_benchmarks?.benchmarks || {}),
+    },
+  },
+  ...(overrides || {}),
+});
+
 describe('NetworkingEvents component (simple smoke tests)', () => {
   beforeEach(() => {
     // default mock implementations
@@ -33,7 +114,7 @@ describe('NetworkingEvents component (simple smoke tests)', () => {
       }
     ]);
 
-    networkingAPI.getAnalytics.mockResolvedValue({ overview: { total_events: 1, total_connections: 0, high_value_connections: 0, goals_achievement_rate: 0, follow_up_completion_rate: 0 } });
+    networkingAPI.getAnalytics.mockResolvedValue(buildAnalytics());
   });
 
   afterEach(() => {
