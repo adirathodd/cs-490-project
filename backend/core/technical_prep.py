@@ -1346,14 +1346,12 @@ def _derive_role_context(job) -> Dict[str, bool]:
                         matched = True
                         break
                     continue
-                if len(variant) <= 3:
-                    if variant in word_tokens:
-                        matched = True
-                        break
-                else:
-                    if variant in word_tokens or variant in combined_blob:
-                        matched = True
-                        break
+                if variant in word_tokens:
+                    matched = True
+                    break
+                if variant + 's' in word_tokens:
+                    matched = True
+                    break
             if matched:
                 return True
         return False
