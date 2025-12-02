@@ -197,6 +197,40 @@
   padding: 10px;
 }
 
+.detail-section-card {
+  background: #f8fafc;
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
+}
+
+.connections-table table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.connections-table th,
+.connections-table td {
+  text-align: left;
+  padding: 12px;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.connections-table th {
+  background: #f1f5f9;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #0f172a;
+}
+
+.connections-table tr:hover {
+  background: #f8fafc;
+}
+
 .employment-header {
   display: flex;
   justify-content: space-between;

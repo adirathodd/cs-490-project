@@ -196,6 +196,8 @@ const NetworkingEvents = () => {
       resetGoalForm();
       setGoalFormVisible(false);
       loadEventDetails(selectedEvent.id, 'goals');
+      loadEvents();
+      loadAnalytics();
     } catch (err) {
       console.error('Failed to add goal:', err);
       setError('Failed to add goal');
@@ -208,6 +210,8 @@ const NetworkingEvents = () => {
         achieved: !currentStatus,
       });
       loadEventDetails(selectedEvent.id, activeTab || 'goals');
+      loadEvents();
+      loadAnalytics();
     } catch (err) {
       console.error('Failed to update goal:', err);
       setError('Failed to update goal');
@@ -230,6 +234,8 @@ const NetworkingEvents = () => {
       resetConnectionForm();
       setConnectionFormVisible(false);
       loadEventDetails(selectedEvent.id, 'connections');
+      loadEvents();
+      loadAnalytics();
     } catch (err) {
       console.error('Failed to add connection:', err);
       setError('Failed to add connection');
@@ -250,6 +256,8 @@ const NetworkingEvents = () => {
       resetFollowUpForm();
       setFollowUpFormVisible(false);
       loadEventDetails(selectedEvent.id, 'followups');
+      loadEvents();
+      loadAnalytics();
     } catch (err) {
       console.error('Failed to add follow-up:', err);
       setError('Failed to add follow-up');
@@ -266,6 +274,8 @@ const NetworkingEvents = () => {
         });
       }
       loadEventDetails(selectedEvent.id, 'followups');
+      loadEvents();
+      loadAnalytics();
     } catch (err) {
       console.error('Failed to update follow-up:', err);
       setError('Failed to update follow-up');
@@ -397,6 +407,15 @@ const NetworkingEvents = () => {
   const benchmarks = analytics?.industry_benchmarks || {};
   const bestChannel = analytics?.best_channel;
   const bestChannelLabel = bestChannel ? formatBadgeLabel(bestChannel.event_type) : '';
+  const strengthsList = insights?.strengths?.length
+    ? insights.strengths
+    : ['You are building momentum—keep follow-ups within 48 hours to compound trust.'];
+  const focusList = insights?.focus?.length
+    ? insights.focus
+    : ['Increase high-value intros by targeting decision makers and asking for mutual value.'];
+  const recommendationsList = insights?.recommendations?.length
+    ? insights.recommendations
+    : ['Pilot 2 low-cost niche events and track high-value introductions per dollar.'];
 
   return (
     <div className="employment-container">
@@ -970,7 +989,7 @@ const NetworkingEvents = () => {
 
               <div className="tab-content">
                 {activeTab === 'goals' && (
-                  <div>
+                  <div className="detail-section-card">
                     <div className="section-header">
                       <div className="section-copy">
                         <h3>Networking Goals</h3>
@@ -1063,7 +1082,7 @@ const NetworkingEvents = () => {
                 )}
 
                 {activeTab === 'connections' && (
-                  <div>
+                  <div className="detail-section-card">
                     <div className="section-header">
                       <div className="section-copy">
                         <h3>Connections Made</h3>
@@ -1205,7 +1224,7 @@ const NetworkingEvents = () => {
                 )}
 
                 {activeTab === 'followups' && (
-                  <div>
+                  <div className="detail-section-card">
                     <div className="section-header">
                       <div className="section-copy">
                         <h3>Follow-Up Actions</h3>
