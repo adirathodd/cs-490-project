@@ -177,6 +177,7 @@ const Dashboard = () => {
                 const applicationCards = [
                   { key: 'jobs', icon: <Icon name="briefcase" size="lg" ariaLabel="Jobs" />, title: 'Jobs', desc: 'Track opportunities you want to apply for', action: () => navigate('/jobs'), actionText: 'Add Job Entry' },
                   { key: 'documents', icon: <Icon name="file-text" size="lg" ariaLabel="Documents" />, title: 'Documents', desc: 'Manage resumes, cover letters, and application materials', action: () => navigate('/documents'), actionText: 'Manage Documents' },
+                  { key: 'analytics', icon: <Icon name="bar-chart" size="lg" ariaLabel="Analytics" />, title: 'Analytics', desc: 'Track your job search progress with detailed analytics and insights', action: () => navigate('/analytics'), actionText: 'View Analytics' },
                 ];
 
                 const toolsCards = [
@@ -202,7 +203,6 @@ const Dashboard = () => {
                 ];
 
                 const communityCards = [
-                  { key: 'analytics', icon: <Icon name="bar-chart" size="lg" ariaLabel="Analytics" />, title: 'Analytics', desc: 'Track your job search progress with detailed analytics and insights', action: () => navigate('/analytics'), actionText: 'View Analytics' },
                   { key: 'peer_support', icon: <Icon name="users" size="lg" ariaLabel="Peer Support" />, title: 'Peer Support', desc: 'Connect with peers, share experiences, and support each other', action: () => navigate('/peer-support'), actionText: 'Join Peers' },
                   { key: 'mentorship', icon: <Icon name="lightbulb" size="lg" ariaLabel="Mentorship" />, title: 'Mentorship', desc: 'Find mentors or become a mentor to guide others in their career journey', action: () => navigate('/mentorship'), actionText: 'Explore Mentorship' },
                 ];
