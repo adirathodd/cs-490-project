@@ -27,7 +27,7 @@ class LinkedInOAuthTests(APITestCase):
         self.profile = CandidateProfile.objects.create(user=self.user)
         self.client.force_authenticate(user=self.user)
     
-    @patch('core.views.cache')
+    @patch('django.core.cache.cache')
     def test_oauth_initiate(self, mock_cache):
         """Test LinkedIn OAuth initialization"""
         mock_cache.set.return_value = True
@@ -36,7 +36,7 @@ class LinkedInOAuthTests(APITestCase):
         self.assertIn('auth_url', response.data)
         self.assertIn('linkedin.com', response.data['auth_url'])
     
-    @patch('core.views.cache')
+    @patch('django.core.cache.cache')
     @patch('core.linkedin_integration.fetch_linkedin_profile')
     @patch('core.linkedin_integration.exchange_code_for_tokens')
     def test_oauth_callback_success(self, mock_exchange, mock_fetch, mock_cache):
@@ -83,7 +83,7 @@ class LinkedInOAuthTests(APITestCase):
         self.assertEqual(integration.linkedin_id, 'linkedin123')
         self.assertEqual(integration.import_status, 'synced')
     
-    @patch('core.views.cache')
+    @patch('django.core.cache.cache')
     def test_oauth_callback_invalid_state(self, mock_cache):
         """Test OAuth callback with invalid state token"""
         # Mock cache to return correct state (different from what we send)
