@@ -119,6 +119,25 @@ const ReferralManagement = () => {
     }
   };
 
+  const handleDelete = async (id, jobTitle) => {
+    if (!window.confirm(`Are you sure you want to delete the referral request for ${jobTitle}? This action cannot be undone.`)) {
+      return;
+    }
+    
+    setCardLoading((s) => ({ ...s, [id]: true }));
+    try {
+      await referralAPI.remove(id);
+      await fetchReferrals();
+      await fetchAnalytics();
+      setSuccess('Referral deleted successfully!');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (err) {
+      setError('Failed to delete referral: ' + err.message);
+    } finally {
+      setCardLoading((s) => ({ ...s, [id]: false }));
+    }
+  };
+
   const handleCreateNew = () => {
     setShowForm(true);
   };
@@ -316,6 +335,18 @@ const ReferralManagement = () => {
                     </button>
                   )}
 
+                  {/* Delete button available for all statuses */}
+                  <button 
+                    className="btn btn-sm btn-danger-outline" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(referral.id, referral.job_title);
+                    }} 
+                    disabled={cardLoading[referral.id]}
+                    title="Delete referral request"
+                  >
+                    <Icon name="trash" size="14" />
+                  </button>
                 </div>
               </div>
             ))}
