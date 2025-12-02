@@ -1,6 +1,8 @@
 import React from 'react';
 import {
   FaUser,
+  FaUserPlus,
+  FaCoffee,
   FaSignOutAlt,
   FaEdit,
   FaHome,
@@ -72,6 +74,9 @@ import {
   FaPlay,
   FaPause,
   FaStop,
+  FaLinkedin,
+  FaHeart,
+  FaComment,
   FaBalanceScale,
   FaBookOpen,
   FaArrowUp,
@@ -93,6 +98,8 @@ const sizeMap = {
 
 const iconMap = {
   user: FaUser,
+  'user-plus': FaUserPlus,
+  coffee: FaCoffee,
   signout: FaSignOutAlt,
   edit: FaEdit,
   'edit-3': FaPen,
@@ -181,8 +188,12 @@ const iconMap = {
   play: FaPlay,
   pause: FaPause,
   stop: FaStop,
+  linkedin: FaLinkedin,
+  heart: FaHeart,
+  'message-circle': FaComment,
   'book-open': FaBookOpen,
   scale: FaBalanceScale,
+  'arrow-up': FaArrowUp,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {

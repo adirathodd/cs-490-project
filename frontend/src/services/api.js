@@ -3178,6 +3178,68 @@ export const mockInterviewAPI = {
   },
 };
 
+// LinkedIn Integration API (UC-089)
+export const linkedInAPI = {
+  // OAuth flow
+  initiateOAuth: async () => {
+    try {
+      const response = await api.get('/auth/oauth/linkedin/initiate');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to initiate LinkedIn OAuth' };
+    }
+  },
+
+  completeOAuth: async (code, state) => {
+    try {
+      const response = await api.post('/auth/oauth/linkedin/callback', { code, state });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to complete LinkedIn OAuth' };
+    }
+  },
+
+  // Integration status
+  getIntegrationStatus: async () => {
+    try {
+      const response = await api.get('/linkedin/integration-status');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to get integration status' };
+    }
+  },
+
+  // Profile optimization
+  getProfileOptimization: async () => {
+    try {
+      const response = await api.post('/linkedin/profile-optimization');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to get profile optimization' };
+    }
+  },
+
+  // Networking message generation
+  generateNetworkingMessage: async (params) => {
+    try {
+      const response = await api.post('/linkedin/networking-message', params);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to generate message' };
+    }
+  },
+
+  // Content strategy
+  getContentStrategy: async () => {
+    try {
+      const response = await api.get('/linkedin/content-strategy');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data || { message: 'Failed to get content strategy' };
+    }
+  },
+};
+
 // Export for module compatibility
 try {
   if (typeof module !== 'undefined' && module.exports) {
@@ -3191,6 +3253,7 @@ try {
     module.exports.goalsAPI = goalsAPI;
     module.exports.mockInterviewAPI = mockInterviewAPI;
     module.exports.questionBankAPI = questionBankAPI;
+    module.exports.linkedInAPI = linkedInAPI;
   }
 } catch (e) {
   // ignore

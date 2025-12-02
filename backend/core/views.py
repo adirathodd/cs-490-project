@@ -164,6 +164,7 @@ from core.models import (
     ReferenceTemplate,
     ReferenceAppreciation,
     ReferencePortfolio,
+    LinkedInIntegration,
 
     TeamMember,
     SupporterInvite,
@@ -386,12 +387,25 @@ def referrals_generate_message(request):
     # Return a richer AI suggestion payload used by the frontend so
     # components can safely read nested fields without crashing.
     name = request.data.get('referral_source_name', 'Friend')
-    job = request.data.get('job_title') or request.data.get('job_id') or 'this role'
+    
+    # Get job title - if job_id is provided, look up the actual job title
+    job_title = request.data.get('job_title')
+    if not job_title:
+        job_id = request.data.get('job_id')
+        if job_id:
+            try:
+                job_entry = JobEntry.objects.get(id=job_id)
+                job_title = f"{job_entry.position_title} at {job_entry.company_name}"
+            except JobEntry.DoesNotExist:
+                job_title = 'this role'
+        else:
+            job_title = 'this role'
+    
     tone = request.data.get('tone', 'professional')
-    message = f"Hi {name},\n\nI'm exploring opportunities for {job} and wondered if you'd be willing to introduce me or pass my resume along. I appreciate any help you can provide.\n\nThanks!"
+    message = f"Hi {name},\n\nI'm exploring opportunities for {job_title} and wondered if you'd be willing to introduce me or pass my resume along. I appreciate any help you can provide.\n\nThanks!"
 
     suggestion = {
-        'subject_line': f'Referral request for {job}',
+        'subject_line': f'Referral request for {job_title}',
         'message': message,
         'tone': tone,
         'timing_guidance': {
@@ -15742,6 +15756,370 @@ def _generate_goal_recommendations(user, goals):
         })
     
     return recommendations
+
+
+# ==============================================================================
+# UC-089: LinkedIn Integration and Guidance
+# ==============================================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def linkedin_oauth_initiate(request):
+    """
+    Generate LinkedIn OAuth authorization URL
+    
+    Returns:
+        {
+            "auth_url": "https://www.linkedin.com/oauth/v2/authorization?..."
+        }
+    """
+    try:
+        from core.linkedin_integration import build_linkedin_auth_url
+        from django.core.cache import cache
+        import secrets
+        
+        # Generate and store state token for CSRF protection
+        state_token = secrets.token_urlsafe(32)
+        
+        # Store state token in cache associated with user (expires in 10 minutes)
+        cache_key = f'linkedin_oauth_state_{request.user.id}'
+        cache.set(cache_key, state_token, 600)
+        
+        logger.info(f"LinkedIn OAuth initiate - user_id: {request.user.id}, cache_key: {cache_key}, state: {state_token[:20]}...")
+        
+        # Build redirect URI (callback URL) - point to frontend /linkedin route
+        # LinkedIn will redirect to /linkedin with code and state params
+        
+        # For local development, always use http://localhost:3000/linkedin
+        # For production, use environment variable or request host
+        redirect_uri = "http://localhost:3000/linkedin"
+        
+        # Log the redirect URI being used
+        logger.info(f"LinkedIn OAuth initiate - redirect_uri: {redirect_uri}")
+        
+        # Generate authorization URL
+        auth_url = build_linkedin_auth_url(redirect_uri, state_token)
+        
+        return Response({'auth_url': auth_url}, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception('LinkedIn OAuth initiation error')
+        return Response(
+            {'error': {'message': str(e), 'code': 'oauth_init_failed'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def linkedin_oauth_callback(request):
+    """
+    Handle LinkedIn OAuth callback and import profile data
+    
+    Request body:
+        {
+            "code": "authorization_code",
+            "state": "state_token"
+        }
+    
+    Returns:
+        {
+            "message": "LinkedIn profile imported successfully",
+            "profile": { ... profile data ... }
+        }
+    """
+    try:
+        from core.linkedin_integration import exchange_code_for_tokens, fetch_linkedin_profile
+        from django.core.cache import cache
+        
+        code = request.data.get('code')
+        state = request.data.get('state')
+        
+        # Log callback data
+        logger.info(f"LinkedIn OAuth callback - code: {code[:20] if code else 'None'}..., state: {state[:20] if state else 'None'}...")
+        
+        if not code or not state:
+            logger.warning(f"LinkedIn OAuth callback - Missing params - code: {bool(code)}, state: {bool(state)}")
+            return Response(
+                {'error': {'message': 'Missing code or state parameter', 'code': 'missing_params'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verify state token (CSRF protection) from cache
+        cache_key = f'linkedin_oauth_state_{request.user.id}'
+        stored_state = cache.get(cache_key)
+        
+        logger.info(f"LinkedIn OAuth callback - user_id: {request.user.id}, cache_key: {cache_key}, stored_state exists: {bool(stored_state)}, states match: {stored_state == state if stored_state else 'N/A'}")
+        if stored_state:
+            logger.info(f"LinkedIn OAuth callback - stored_state: {stored_state[:20]}..., received_state: {state[:20]}...")
+        
+        if not stored_state or stored_state != state:
+            logger.warning(f"LinkedIn OAuth callback - Invalid state token for user {request.user.id}")
+            return Response(
+                {'error': {'message': 'Invalid state token', 'code': 'invalid_state'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Clear state token from cache
+        cache.delete(cache_key)
+        
+        # Exchange authorization code for access token
+        # Use the same redirect URI as initiation - must match exactly
+        redirect_uri = "http://localhost:3000/linkedin"
+        
+        logger.info(f"LinkedIn OAuth callback - Using redirect_uri: {redirect_uri}")
+        
+        tokens = exchange_code_for_tokens(code, redirect_uri)
+        
+        # Fetch profile data from LinkedIn
+        profile_data = fetch_linkedin_profile(tokens['access_token'])
+        
+        # Calculate token expiration
+        expires_in = tokens.get('expires_in', 5184000)  # Default 60 days
+        token_expires_at = timezone.now() + timedelta(seconds=expires_in)
+        
+        # Update or create LinkedIn integration record
+        integration, created = LinkedInIntegration.objects.update_or_create(
+            user=request.user,
+            defaults={
+                'access_token': tokens['access_token'],
+                'refresh_token': tokens.get('refresh_token', ''),
+                'token_expires_at': token_expires_at,
+                'linkedin_id': profile_data.get('linkedin_id', ''),
+                'linkedin_profile_url': f"https://www.linkedin.com/in/{profile_data.get('linkedin_id', '')}",
+                'import_status': 'synced',
+                'last_sync_date': timezone.now(),
+                'last_error': ''
+            }
+        )
+        
+        # Update user profile with LinkedIn data
+        profile = request.user.profile
+        
+        # Import headline if available
+        if profile_data.get('headline') and not profile.headline:
+            profile.headline = profile_data['headline'][:160]  # Respect field limit
+        
+        # Import profile picture URL if available
+        if profile_data.get('profile_picture_url') and not profile.profile_picture:
+            profile.portfolio_url = profile_data['profile_picture_url']
+        
+        # Update LinkedIn URL
+        profile.linkedin_url = integration.linkedin_profile_url
+        profile.linkedin_imported = True
+        profile.linkedin_import_date = timezone.now()
+        profile.save()
+        
+        # Update user name if not already set
+        if profile_data.get('first_name') and not request.user.first_name:
+            request.user.first_name = profile_data['first_name']
+        if profile_data.get('last_name') and not request.user.last_name:
+            request.user.last_name = profile_data['last_name']
+        if request.user.first_name or request.user.last_name:
+            request.user.save()
+        
+        # Serialize and return updated profile
+        serializer = UserProfileSerializer(profile)
+        
+        return Response({
+            'message': 'LinkedIn profile imported successfully',
+            'profile': serializer.data,
+            'integration_status': integration.import_status
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception('LinkedIn OAuth callback error')
+        return Response(
+            {'error': {'message': str(e), 'code': 'oauth_callback_failed'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def linkedin_profile_optimization(request):
+    """
+    Get AI-powered LinkedIn profile optimization suggestions
+    
+    Returns:
+        {
+            "suggestions": "Formatted optimization suggestions",
+            "generated_by": "ai" | "fallback"
+        }
+    """
+    try:
+        from core.linkedin_ai import LinkedInAI
+        
+        profile = request.user.profile
+        
+        # Gather user's skills
+        skills = list(profile.skills.values_list('skill__name', flat=True)[:15])
+        
+        # Initialize AI service
+        ai_service = LinkedInAI()
+        
+        # Generate optimization suggestions
+        suggestions = ai_service.generate_profile_optimization_suggestions(
+            current_headline=profile.headline,
+            current_summary=profile.summary,
+            target_roles=profile.preferred_roles or [],
+            skills=skills
+        )
+        
+        return Response(suggestions, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception('LinkedIn profile optimization error')
+        return Response(
+            {'error': {'message': str(e), 'code': 'optimization_failed'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def linkedin_networking_message(request):
+    """
+    Generate AI-powered LinkedIn networking message
+    
+    Request body:
+        {
+            "recipient_name": "John Doe",
+            "recipient_title": "Software Engineer",
+            "company_name": "Tech Corp",
+            "context": "We met at conference",
+            "purpose": "connection_request",  // or informational_interview, job_inquiry, etc.
+            "tone": "professional"  // or casual, warm
+        }
+    
+    Returns:
+        {
+            "message": "Generated message text",
+            "character_count": 250,
+            "purpose": "connection_request",
+            "tone": "professional"
+        }
+    """
+    try:
+        from core.linkedin_ai import LinkedInAI
+        
+        # Extract parameters
+        recipient_name = request.data.get('recipient_name', '')
+        recipient_title = request.data.get('recipient_title', '')
+        company_name = request.data.get('company_name', '')
+        context = request.data.get('context', '')
+        purpose = request.data.get('purpose', 'connection_request')
+        tone = request.data.get('tone', 'professional')
+        
+        if not recipient_name:
+            return Response(
+                {'error': {'message': 'recipient_name is required', 'code': 'missing_recipient_name'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Initialize AI service
+        ai_service = LinkedInAI()
+        
+        # Generate networking message
+        message_data = ai_service.generate_networking_message(
+            recipient_name=recipient_name,
+            recipient_title=recipient_title,
+            company_name=company_name,
+            connection_context=context,
+            purpose=purpose,
+            tone=tone
+        )
+        
+        return Response(message_data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception('LinkedIn networking message generation error')
+        return Response(
+            {'error': {'message': str(e), 'code': 'message_generation_failed'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def linkedin_content_strategy(request):
+    """
+    Get LinkedIn content sharing strategy guidance
+    
+    Returns:
+        {
+            "strategy": "Formatted content strategy",
+            "key_tips": ["tip1", "tip2", ...],
+            "recommended_frequency": "2-3 posts per week"
+        }
+    """
+    try:
+        from core.linkedin_ai import LinkedInAI
+        
+        profile = request.user.profile
+        
+        # Gather user's expertise areas (top skills)
+        skills = list(profile.skills.values_list('skill__name', flat=True)[:10])
+        
+        # Initialize AI service
+        ai_service = LinkedInAI()
+        
+        # Generate content strategy
+        strategy = ai_service.generate_content_strategy(
+            industry=profile.industry,
+            career_goals=', '.join(profile.preferred_roles[:3]) if profile.preferred_roles else '',
+            expertise_areas=skills
+        )
+        
+        return Response(strategy, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception('LinkedIn content strategy error')
+        return Response(
+            {'error': {'message': str(e), 'code': 'strategy_generation_failed'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def linkedin_integration_status(request):
+    """
+    Get LinkedIn integration status for current user
+    
+    Returns:
+        {
+            "connected": true/false,
+            "status": "synced",
+            "linkedin_profile_url": "https://...",
+            "last_sync_date": "2025-11-29T..."
+        }
+    """
+    try:
+        integration = LinkedInIntegration.objects.filter(user=request.user).first()
+        
+        if not integration:
+            return Response({
+                'connected': False,
+                'status': 'not_connected',
+                'linkedin_profile_url': '',
+                'last_sync_date': None
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            'connected': integration.import_status in ['connected', 'synced'],
+            'status': integration.import_status,
+            'linkedin_profile_url': integration.linkedin_profile_url,
+            'last_sync_date': integration.last_sync_date,
+            'linkedin_id': integration.linkedin_id
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.exception('LinkedIn integration status error')
+        return Response(
+            {'error': {'message': str(e), 'code': 'status_check_failed'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 # ================================================================================

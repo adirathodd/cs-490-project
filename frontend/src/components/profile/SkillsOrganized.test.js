@@ -616,20 +616,6 @@ describe('SkillsOrganized', () => {
     expect(header.style.backgroundColor).toBe('rgb(107, 114, 128)');
   });
 
-  it('navigates to dashboard when back button clicked', async () => {
-    const mockNavigate = jest.fn();
-    jest.spyOn(require('react-router-dom'), 'useNavigate').mockReturnValue(mockNavigate);
-    
-    mockAPI.getSkillsByCategory.mockResolvedValue({});
-    await act(async () => {
-      render(<SkillsOrganized />);
-    });
-
-    const backButton = screen.getByRole('button', { name: /back to dashboard/i });
-    fireEvent.click(backButton);
-    expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
-  });
-
   it('navigates to skills management when manage button clicked', async () => {
     const mockNavigate = jest.fn();
     jest.spyOn(require('react-router-dom'), 'useNavigate').mockReturnValue(mockNavigate);

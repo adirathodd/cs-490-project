@@ -107,6 +107,26 @@ const ReferralDetailModal = ({ referral, onClose, onUpdate }) => {
     }
   };
 
+  const handleDelete = async () => {
+    if (!window.confirm(`Are you sure you want to delete this referral request for ${referral.job_title}? This action cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      await referralAPI.remove(referral.id);
+      setSuccess('Referral deleted successfully!');
+      setTimeout(() => {
+        onUpdate();
+        onClose();
+      }, 500);
+    } catch (err) {
+      setError('Failed to delete referral: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString();
@@ -422,13 +442,19 @@ const ReferralDetailModal = ({ referral, onClose, onUpdate }) => {
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>
-            Close
+          <button className="btn btn-danger" onClick={handleDelete} disabled={loading}>
+            <Icon name="trash" size="16" />
+            Delete
           </button>
-          <button className="btn btn-outline" onClick={() => setShowEditForm(true)}>
-            <Icon name="edit" size="16" />
-            Edit
-          </button>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+            <button className="btn btn-secondary" onClick={onClose}>
+              Close
+            </button>
+            <button className="btn btn-outline" onClick={() => setShowEditForm(true)}>
+              <Icon name="edit" size="16" />
+              Edit
+            </button>
+          </div>
         </div>
       </div>
 

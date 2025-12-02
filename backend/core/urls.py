@@ -403,4 +403,12 @@ urlpatterns = [
     path('informational-interviews/<uuid:pk>/generate-outreach', views.informational_interviews_generate_outreach, name='informational-interviews-generate-outreach'),
     path('informational-interviews/<uuid:pk>/generate-preparation', views.informational_interviews_generate_preparation, name='informational-interviews-generate-preparation'),
 
+    # UC-089: LinkedIn Integration and Guidance
+    path('auth/oauth/linkedin/initiate', views.linkedin_oauth_initiate, name='linkedin-oauth-initiate'),
+    path('auth/oauth/linkedin/callback', views.linkedin_oauth_callback, name='linkedin-oauth-callback'),
+    path('linkedin/profile-optimization', views.linkedin_profile_optimization, name='linkedin-profile-optimization'),
+    path('linkedin/networking-message', views.linkedin_networking_message, name='linkedin-networking-message'),
+    path('linkedin/content-strategy', views.linkedin_content_strategy, name='linkedin-content-strategy'),
+    path('linkedin/integration-status', views.linkedin_integration_status, name='linkedin-integration-status'),
+
 ]
