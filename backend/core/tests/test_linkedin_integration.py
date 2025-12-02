@@ -54,10 +54,10 @@ class LinkedInOAuthTests(APITestCase):
             'email': 'john@example.com'
         }
         
-        # Set state token in session
-        session = self.client.session
-        session['linkedin_oauth_state'] = 'test_state_token'
-        session.save()
+        # Set state token in cache (not session)
+        from django.core.cache import cache
+        cache_key = f'linkedin_oauth_state_{self.user.id}'
+        cache.set(cache_key, 'test_state_token', timeout=600)
         
         # Make callback request
         response = self.client.post('/api/auth/oauth/linkedin/callback', {

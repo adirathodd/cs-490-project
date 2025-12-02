@@ -68,11 +68,6 @@ class CandidateProfile(models.Model):
     preferred_roles = models.JSONField(default=list, blank=True)
     portfolio_url = models.URLField(blank=True)
     visibility = models.CharField(max_length=20, default="private")  # private|shared|public
-    
-    # UC-089: LinkedIn Integration
-    linkedin_url = models.URLField(blank=True, help_text="LinkedIn profile URL")
-    linkedin_imported = models.BooleanField(default=False)
-    linkedin_import_date = models.DateTimeField(null=True, blank=True)
     # UC-042: Default materials selection
     # Default resume/cover letter documents to prefill on new applications/jobs
     default_resume_doc = models.ForeignKey(
@@ -89,6 +84,13 @@ class CandidateProfile(models.Model):
         default=20,
         help_text='User-defined goal for applications per month',
     )
+    supporter_mood_score = models.PositiveSmallIntegerField(null=True, blank=True, help_text="Optional 1-10 score for supporter visibility")
+    supporter_mood_note = models.TextField(blank=True, help_text="Optional note on how the candidate is feeling for supporters")
+    
+    # UC-089: LinkedIn integration fields
+    linkedin_url = models.URLField(blank=True, help_text='LinkedIn profile URL')
+    linkedin_imported = models.BooleanField(default=False)
+    linkedin_import_date = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         indexes = [models.Index(fields=["user"])]
@@ -148,6 +150,81 @@ class AccountDeletionRequest(models.Model):
     def mark_consumed(self):
         self.consumed = True
         self.save(update_fields=['consumed'])
+
+
+class LinkedInIntegration(models.Model):
+    """UC-089: LinkedIn OAuth integration and profile import tracking"""
+    
+    STATUS_CHOICES = [
+        ('not_connected', 'Not Connected'),
+        ('connected', 'Connected'),
+        ('synced', 'Synced'),
+        ('error', 'Error'),
+    ]
+    
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name='linkedin_integration'
+    )
+    
+    # OAuth tokens
+    access_token = models.TextField(blank=True)
+    refresh_token = models.TextField(blank=True)
+    token_expires_at = models.DateTimeField(null=True, blank=True)
+    
+    # Imported profile data
+    linkedin_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
+    linkedin_profile_url = models.URLField(blank=True)
+    
+    # Import metadata
+    last_sync_date = models.DateTimeField(null=True, blank=True)
+    import_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_connected')
+    last_error = models.TextField(blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['user']),
+            models.Index(fields=['linkedin_id']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.email} - LinkedIn ({self.import_status})"
+    
+    def mark_connected(self, access_token, refresh_token='', expires_at=None, linkedin_id='', profile_url=''):
+        """Mark the integration as connected with OAuth data"""
+        self.access_token = access_token
+        self.refresh_token = refresh_token
+        self.token_expires_at = expires_at
+        self.linkedin_id = linkedin_id
+        self.linkedin_profile_url = profile_url
+        self.import_status = 'connected'
+        self.last_error = ''
+        self.save()
+    
+    def mark_synced(self):
+        """Mark profile data as synced"""
+        self.last_sync_date = timezone.now()
+        self.import_status = 'synced'
+        self.save(update_fields=['last_sync_date', 'import_status', 'updated_at'])
+    
+    def mark_error(self, error_message):
+        """Mark integration as having an error"""
+        self.import_status = 'error'
+        self.last_error = error_message
+        self.save(update_fields=['import_status', 'last_error', 'updated_at'])
+    
+    def disconnect(self):
+        """Disconnect and clear OAuth data"""
+        self.access_token = ''
+        self.refresh_token = ''
+        self.token_expires_at = None
+        self.import_status = 'not_connected'
+        self.last_error = ''
+        self.save()
 
 class Company(models.Model):
     name = models.CharField(max_length=180)
@@ -337,6 +414,106 @@ class ContactJobLink(models.Model):
     contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='job_links')
     job = models.ForeignKey(JobOpportunity, on_delete=models.CASCADE, related_name='contact_links')
     relationship_to_job = models.CharField(max_length=120, blank=True)
+
+
+class DiscoverySearch(models.Model):
+    """UC-092: Discovery search parameters for contact suggestions."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='discovery_searches'
+    )
+    target_companies = models.JSONField(default=list, blank=True)
+    target_roles = models.JSONField(default=list, blank=True)
+    target_industries = models.JSONField(default=list, blank=True)
+    target_locations = models.JSONField(default=list, blank=True)
+    include_alumni = models.BooleanField(default=True)
+    include_mutual_connections = models.BooleanField(default=True)
+    include_industry_leaders = models.BooleanField(default=True)
+    results_count = models.IntegerField(default=0)
+    contacted_count = models.IntegerField(default=0)
+    connected_count = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_refreshed = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = 'Discovery searches'
+        ordering = ['-created_at']
+
+
+class ContactSuggestion(models.Model):
+    SUGGESTION_TYPES = [
+        ('target_company', 'Target Company Employee'),
+        ('alumni', 'Alumni Connection'),
+        ('industry_leader', 'Industry Leader/Influencer'),
+        ('mutual_connection', 'Mutual Connection'),
+        ('conference_speaker', 'Conference Speaker/Event Participant'),
+        ('similar_role', 'Similar Role Professional'),
+    ]
+    STATUS_CHOICES = [
+        ('suggested', 'Suggested'),
+        ('contacted', 'Contacted'),
+        ('connected', 'Connected'),
+        ('dismissed', 'Dismissed'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='contact_suggestions'
+    )
+    suggested_name = models.CharField(max_length=255)
+    suggested_title = models.CharField(max_length=220, blank=True)
+    suggested_company = models.CharField(max_length=180, blank=True)
+    suggested_linkedin_url = models.URLField(blank=True)
+    suggested_location = models.CharField(max_length=160, blank=True)
+    suggested_industry = models.CharField(max_length=120, blank=True)
+    suggestion_type = models.CharField(max_length=30, choices=SUGGESTION_TYPES)
+    relevance_score = models.FloatField(default=0.0, help_text='0.0-1.0 relevance score')
+    reason = models.TextField(help_text='Why this contact is suggested')
+    connection_path = models.JSONField(blank=True, default=list, help_text='Intermediate contacts')
+    mutual_connections = models.JSONField(blank=True, default=list)
+    shared_institution = models.CharField(max_length=200, blank=True)
+    shared_degree = models.CharField(max_length=200, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='suggested')
+    contacted_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(blank=True, default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    related_company = models.ForeignKey(
+        Company,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    related_job = models.ForeignKey(
+        'JobOpportunity',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='contact_suggestions'
+    )
+    connected_contact = models.ForeignKey(
+        'Contact',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='originated_from_suggestion'
+    )
+
+    class Meta:
+        ordering = ['-relevance_score', '-created_at']
+        indexes = [
+            models.Index(fields=['user', 'status', '-relevance_score'], name='core_contac_user_id_035ce8_idx'),
+            models.Index(fields=['user', 'suggestion_type', '-created_at'], name='core_contac_user_id_2c8626_idx'),
+            models.Index(fields=['-relevance_score'], name='core_contac_relevan_d9bd1d_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.suggested_name} ({self.suggestion_type})"
 
 
 class InformationalInterview(models.Model):
@@ -917,6 +1094,67 @@ class TeamMember(models.Model):
         unique_together = [("candidate", "user")]
         indexes = [models.Index(fields=["candidate", "is_active"])]
 
+
+class SupporterInvite(models.Model):
+    """Invite and lightweight access control for family/supporter dashboards."""
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="supporter_invites")
+    email = models.EmailField()
+    name = models.CharField(max_length=120, blank=True)
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    permissions = models.JSONField(default=dict, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    last_access_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    paused_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["candidate", "is_active"]),
+            models.Index(fields=["email"]),
+        ]
+
+    def __str__(self):
+        return f"Supporter {self.email} for {self.candidate.user.username}"
+
+
+class SupporterEncouragement(models.Model):
+    """Simple encouragement messages sent by supporters."""
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="supporter_encouragements")
+    supporter = models.ForeignKey(SupporterInvite, on_delete=models.SET_NULL, null=True, blank=True, related_name="encouragements")
+    supporter_name = models.CharField(max_length=120, blank=True)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["candidate", "-created_at"]),
+        ]
+
+
+class SupporterChatMessage(models.Model):
+    """Two-way chat between candidate and supporters (lightweight feed)."""
+    ROLE_CHOICES = [
+        ("supporter", "Supporter"),
+        ("candidate", "Candidate"),
+    ]
+
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="supporter_messages")
+    supporter = models.ForeignKey(SupporterInvite, on_delete=models.SET_NULL, null=True, blank=True, related_name="messages")
+    sender_role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    sender_name = models.CharField(max_length=120, blank=True)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["candidate", "-created_at"]),
+        ]
 
 class SharedNote(models.Model):
     """Collaborative notes and feedback on applications"""
@@ -2736,81 +2974,6 @@ class CalendarIntegration(models.Model):
         self.save(update_fields=['last_error', 'status', 'updated_at'])
 
 
-class LinkedInIntegration(models.Model):
-    """UC-089: LinkedIn OAuth integration and profile import tracking"""
-    
-    STATUS_CHOICES = [
-        ('not_connected', 'Not Connected'),
-        ('connected', 'Connected'),
-        ('synced', 'Synced'),
-        ('error', 'Error'),
-    ]
-    
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.CASCADE, 
-        related_name='linkedin_integration'
-    )
-    
-    # OAuth tokens
-    access_token = models.TextField(blank=True)
-    refresh_token = models.TextField(blank=True)
-    token_expires_at = models.DateTimeField(null=True, blank=True)
-    
-    # Imported profile data
-    linkedin_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
-    linkedin_profile_url = models.URLField(blank=True)
-    
-    # Import metadata
-    last_sync_date = models.DateTimeField(null=True, blank=True)
-    import_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_connected')
-    last_error = models.TextField(blank=True)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        indexes = [
-            models.Index(fields=['user']),
-            models.Index(fields=['linkedin_id']),
-        ]
-    
-    def __str__(self):
-        return f"{self.user.email} - LinkedIn ({self.import_status})"
-    
-    def mark_connected(self, access_token, refresh_token='', expires_at=None, linkedin_id='', profile_url=''):
-        """Mark the integration as connected with OAuth data"""
-        self.access_token = access_token
-        self.refresh_token = refresh_token
-        self.token_expires_at = expires_at
-        self.linkedin_id = linkedin_id
-        self.linkedin_profile_url = profile_url
-        self.import_status = 'connected'
-        self.last_error = ''
-        self.save()
-    
-    def mark_synced(self):
-        """Mark profile data as synced"""
-        self.last_sync_date = timezone.now()
-        self.import_status = 'synced'
-        self.save(update_fields=['last_sync_date', 'import_status', 'updated_at'])
-    
-    def mark_error(self, error_message):
-        """Mark integration as having an error"""
-        self.import_status = 'error'
-        self.last_error = error_message
-        self.save(update_fields=['import_status', 'last_error', 'updated_at'])
-    
-    def disconnect(self):
-        """Disconnect and clear OAuth data"""
-        self.access_token = ''
-        self.refresh_token = ''
-        self.token_expires_at = None
-        self.import_status = 'not_connected'
-        self.last_error = ''
-        self.save()
-
-
 class ResumeVersion(models.Model):
     """UC-052: Resume Version Management
     
@@ -3532,7 +3695,9 @@ class ResumeShare(models.Model):
     resume_version = models.ForeignKey(
         ResumeVersion,
         on_delete=models.CASCADE,
-        related_name='shares'
+        related_name='shares',
+        null=True,
+        blank=True,
     )
     
     # Sharing configuration
@@ -3574,6 +3739,10 @@ class ResumeShare(models.Model):
         default=False,
         help_text="Allow reviewers to download the resume"
     )
+    allow_edit = models.BooleanField(
+        default=False,
+        help_text="Allow reviewers to edit the resume themselves"
+    )
     require_reviewer_info = models.BooleanField(
         default=True,
         help_text="Require reviewers to provide name/email before accessing"
@@ -3593,6 +3762,15 @@ class ResumeShare(models.Model):
         help_text="Deactivate to disable access without deleting"
     )
     
+    cover_letter_document = models.ForeignKey(
+        Document,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cover_letter_shares',
+        help_text="Cover letter document shared with reviewers"
+    )
+
     # Metadata
     share_message = models.TextField(
         blank=True,
@@ -3626,10 +3804,19 @@ class ResumeShare(models.Model):
         """Increment the view count atomically"""
         self.view_count = models.F('view_count') + 1
         self.save(update_fields=['view_count'])
+        # Refresh so subsequent serialization sees the real integer value
+        self.refresh_from_db(fields=['view_count'])
     
     def __str__(self):
         status = "Active" if self.is_accessible() else "Inactive"
-        return f"{self.resume_version.version_name} - {status} ({self.privacy_level})"
+        label = None
+        if self.resume_version:
+            label = self.resume_version.version_name
+        elif self.cover_letter_document:
+            label = self.cover_letter_document.document_name
+        else:
+            label = 'Document'
+        return f"{label} - {status} ({self.privacy_level})"
 
 
 class ShareAccessLog(models.Model):
@@ -3656,6 +3843,7 @@ class ShareAccessLog(models.Model):
             ('view', 'Viewed'),
             ('download', 'Downloaded'),
             ('comment', 'Commented'),
+            ('edit', 'Edited'),
         ],
         default='view'
     )
@@ -3692,8 +3880,17 @@ class ResumeFeedback(models.Model):
     )
     resume_version = models.ForeignKey(
         ResumeVersion,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='feedback_received'
+    )
+    cover_letter_document = models.ForeignKey(
+        Document,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cover_letter_feedback'
     )
     
     # Reviewer information
@@ -3745,6 +3942,7 @@ class ResumeFeedback(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=['resume_version', '-created_at']),
+            models.Index(fields=['cover_letter_document', '-created_at']),
             models.Index(fields=['share', '-created_at']),
             models.Index(fields=['status', '-created_at']),
             models.Index(fields=['reviewer_email', '-created_at']),
