@@ -383,9 +383,6 @@ const SkillsOrganized = () => {
       <div className="skills-organized-header">
         <div className="header-top">
           <div className="header-left">
-            <button className="btn-back" onClick={() => navigate('/dashboard')}>
-              ← Back to Dashboard
-            </button>
             <h2>Skills - Organized by Category</h2>
           </div>
           <div className="header-actions">

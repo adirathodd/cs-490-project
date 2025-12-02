@@ -46,6 +46,7 @@ import { AiResumeGenerator } from './features/resume';
 import { AiCoverLetterGenerator } from './features/cover-letter';
 import ResumeVersionControl from './components/resume/ResumeVersionControl';
 import SharedResumeView from './components/resume/SharedResumeView';
+import { LinkedInIntegration } from './components/linkedin';
 import ResumeReviewTools from './components/resume/ResumeReviewTools';
 import TeamDashboard from './components/team/TeamDashboard';
 import ScrollToTop from './components/common/ScrollToTop';
@@ -556,6 +557,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <ResumeVersionControl />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/linkedin"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <LinkedInIntegration />
               </PrivateRoute>
             }
           />

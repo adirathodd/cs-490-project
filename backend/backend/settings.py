@@ -301,6 +301,21 @@ FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', 'dummy-google-client-id')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', 'dummy-google-client-secret')
 
+# LinkedIn OAuth for Profile Integration (UC-089)
+LINKEDIN_CLIENT_ID = os.environ.get('LINKEDIN_CLIENT_ID', '')
+LINKEDIN_CLIENT_SECRET = os.environ.get('LINKEDIN_CLIENT_SECRET', '')
+
 # Celery (background tasks) broker URL; default to Redis in docker-compose if present
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', os.environ.get('REDIS_URL', 'redis://redis:6379/0'))
 CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', CELERY_BROKER_URL)
+
+# Django Cache - use Redis for caching (including OAuth state tokens)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': os.environ.get('REDIS_URL', 'redis://redis:6379/1'),  # Use DB 1 for cache
+        'OPTIONS': {
+            'db': '1',
+        }
+    }
+}

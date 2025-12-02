@@ -247,12 +247,6 @@ const Skills = () => {
 
   return (
     <div className="skills-container">
-      <div className="skills-header">
-        <button className="btn-back" onClick={() => navigate('/dashboard')}>
-          ← Back to Dashboard
-        </button>
-      </div>
-      
       <div className="skills-actions-bar">
         <h2><Icon name="idea" size="md" ariaLabel="My Skills" /> My Skills</h2>
         <div className="header-actions">

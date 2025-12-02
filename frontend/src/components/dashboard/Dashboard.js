@@ -161,6 +161,7 @@ const Dashboard = () => {
                   { id: 'Applications', label: 'Applications' },
                   { id: 'Tools', label: 'Tools' },
                   { id: 'Networking', label: 'Networking' },
+                  { id: 'Community', label: 'Community' },
                 ];
 
                 // Card sets for each section (same as rendered previously)
@@ -176,11 +177,15 @@ const Dashboard = () => {
                 const applicationCards = [
                   { key: 'jobs', icon: <Icon name="briefcase" size="lg" ariaLabel="Jobs" />, title: 'Jobs', desc: 'Track opportunities you want to apply for', action: () => navigate('/jobs'), actionText: 'Add Job Entry' },
                   { key: 'documents', icon: <Icon name="file-text" size="lg" ariaLabel="Documents" />, title: 'Documents', desc: 'Manage resumes, cover letters, and application materials', action: () => navigate('/documents'), actionText: 'Manage Documents' },
+                  { key: 'analytics', icon: <Icon name="bar-chart" size="lg" ariaLabel="Analytics" />, title: 'Analytics', desc: 'Track your job search progress with detailed analytics and insights', action: () => navigate('/analytics'), actionText: 'View Analytics' },
                 ];
 
                 const toolsCards = [
+                  { key: 'linkedin', icon: <Icon name="linkedin" size="lg" ariaLabel="LinkedIn Integration" />, title: 'LinkedIn Integration', desc: 'Connect your profile, get optimization tips, and generate networking messages', action: () => navigate('/linkedin'), actionText: 'Open LinkedIn Tools' },
                   { key: 'ai_resume', icon: <Icon name="sparkles" size="lg" ariaLabel="AI Resume" />, title: 'AI Resume', desc: 'Generate an AI-optimized resume', action: () => navigate('/resume/ai'), actionText: 'Open AI Resume' },
+                  { key: 'resume_versions', icon: <Icon name="gitBranch" size="lg" ariaLabel="Resume Versions" />, title: 'Resume Version Control', desc: 'Manage different versions of your resume and track changes', action: () => navigate('/resume/versions'), actionText: 'Manage Versions' },
                   { key: 'ai_cover_letter', icon: <Icon name="sparkles" size="lg" ariaLabel="AI Cover Letter" />, title: 'AI Cover Letter', desc: 'Generate tailored cover letters using AI', action: () => navigate('/cover-letter/ai'), actionText: 'Open AI Cover Letter' },
+                  { key: 'document_review', icon: <Icon name="file-text" size="lg" ariaLabel="Document Review" />, title: 'Document Review', desc: 'Get AI-powered feedback on your resumes and cover letters', action: () => navigate('/tools/document-review'), actionText: 'Review Documents' },
                   { key: 'market_intelligence', icon: <Icon name="chart" size="lg" ariaLabel="Market Intelligence" />, title: 'Market Intelligence', desc: 'Track market trends, salaries, and skill demand', action: () => navigate('/tools/market-intelligence'), actionText: 'Open Market Intelligence' },
                   { key: 'salary_progression', icon: <Icon name="dollar" size="lg" ariaLabel="Salary Progression" />, title: 'Salary Progression', desc: 'Analyze offers, market positioning, and negotiation wins', action: () => navigate('/tools/salary-progression'), actionText: 'Open Salary Analytics' },
                   { key: 'mock_interview', icon: <Icon name="mic" size="lg" color="#000000" ariaLabel="Mock Interview" />, title: 'Mock Interview Practice', desc: 'Practice full interview sessions with AI feedback', action: () => navigate('/mock-interview'), actionText: 'Start Mock Interview' },
@@ -188,6 +193,7 @@ const Dashboard = () => {
 
                 const networkingCards = [
                   { key: 'contacts', icon: <Icon name="users" size="lg" ariaLabel="Contacts" />, title: 'Contacts', desc: 'Manage your professional contacts, notes and reminders', action: () => navigate('/contacts'), actionText: 'Manage Contacts' },
+                  { key: 'contact_discovery', icon: <Icon name="search" size="lg" ariaLabel="Contact Discovery" />, title: 'Discover Contacts', desc: 'Find and import professional contacts from various sources', action: () => navigate('/contact-discovery'), actionText: 'Discover Contacts' },
                   { key: 'events', icon: <Icon name="calendar" size="lg" ariaLabel="Networking Events" />, title: 'Networking Events', desc: 'Track events, set goals, and manage professional connections', action: () => navigate('/networking'), actionText: 'Manage Events' },
                   { key: 'networking_campaigns', icon: <Icon name="target" size="lg" ariaLabel="Networking Campaigns" />, title: 'Networking Campaigns', desc: 'Plan targeted outreach, A/B test copy, and tie results to job outcomes', action: () => navigate('/networking/campaigns'), actionText: 'Manage Campaigns' },
                   { key: 'informational-interviews', icon: <Icon name="message-circle" size="lg" ariaLabel="Informational Interviews" />, title: 'Informational Interviews', desc: 'Request and manage informational interviews to gain industry insights', action: () => navigate('/informational-interviews'), actionText: 'Manage Interviews' },
@@ -196,12 +202,18 @@ const Dashboard = () => {
                   { key: 'supporters', icon: <Icon name="heart" size="lg" ariaLabel="Supporters" />, title: 'Family & Supporters', desc: 'Invite supporters to view a redacted progress dashboard and send encouragement', action: () => navigate('/supporters'), actionText: 'Manage Supporters' },
                 ];
 
+                const communityCards = [
+                  { key: 'peer_support', icon: <Icon name="users" size="lg" ariaLabel="Peer Support" />, title: 'Peer Support', desc: 'Connect with peers, share experiences, and support each other', action: () => navigate('/peer-support'), actionText: 'Join Peers' },
+                  { key: 'mentorship', icon: <Icon name="lightbulb" size="lg" ariaLabel="Mentorship" />, title: 'Mentorship', desc: 'Find mentors or become a mentor to guide others in their career journey', action: () => navigate('/mentorship'), actionText: 'Explore Mentorship' },
+                ];
+
                 const cardsFor = (id) => {
                   switch (id) {
                     case 'Profile': return profileCards;
                     case 'Applications': return applicationCards;
                     case 'Tools': return toolsCards;
                     case 'Networking': return networkingCards;
+                    case 'Community': return communityCards;
                     default: return profileCards;
                   }
                 };
