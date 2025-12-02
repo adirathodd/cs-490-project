@@ -346,6 +346,12 @@ class ContactSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
     
+    def validate(self, attrs):
+        """Require email on create to support outreach nudges."""
+        if self.instance is None and not attrs.get('email'):
+            raise serializers.ValidationError({"email": "Email is required to create a contact."})
+        return super().validate(attrs)
+
     def validate_summary(self, value):
         """Validate summary is within 500 character limit."""
         if len(value) > 500:
@@ -4125,4 +4131,3 @@ class InformationalInterviewListSerializer(serializers.ModelSerializer):
         if obj.pk:
             return obj.connected_jobs.count()
         return 0
-

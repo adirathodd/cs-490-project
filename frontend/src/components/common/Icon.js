@@ -69,6 +69,9 @@ import {
   FaThLarge,
   FaBullseye,
   FaMicrophone,
+  FaBalanceScale,
+  FaBookOpen,
+  FaArrowUp,
 } from 'react-icons/fa';
 
 // Simple, centralized Icon wrapper used across the app.
@@ -155,6 +158,7 @@ const iconMap = {
   'align-left': FaAlignLeft,
   book: FaBook,
   activity: FaChartLine,
+  'trending-up': FaArrowUp,
   star: FaStar,
   copy: FaCopy,
   gitBranch: FaCodeBranch,
@@ -171,6 +175,8 @@ const iconMap = {
   layout: FaThLarge,
   mic: FaMicrophone,
   microphone: FaMicrophone,
+  'book-open': FaBookOpen,
+  scale: FaBalanceScale,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {

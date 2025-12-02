@@ -48,6 +48,12 @@ const ContactsCalendar = forwardRef((props, ref) => {
   };
 
   useEffect(() => { load(); }, []);
+  // Allow external refresh via prop change
+  useEffect(() => {
+    if (props.refreshSignal) {
+      load();
+    }
+  }, [props.refreshSignal]);
   
   // Expose refresh method to parent component
   useImperativeHandle(ref, () => ({
