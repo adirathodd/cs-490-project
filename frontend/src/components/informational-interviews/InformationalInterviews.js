@@ -247,9 +247,9 @@ const InformationalInterviews = () => {
             <div key={interview.id} className="interview-card">
               <div className="interview-header">
                 <div className="interview-contact">
-                  <h3>{interview.contact_details?.display_name || 'Unknown Contact'}</h3>
-                  <p className="contact-title">{interview.contact_details?.title || 'No title'}</p>
-                  <p className="contact-company">{interview.contact_details?.company_name || 'No company'}</p>
+                  <h3>{interview.contact_name || interview.contact_details?.display_name || 'Unknown Contact'}</h3>
+                  <p className="contact-title">{interview.contact_title || interview.contact_details?.title || 'No title'}</p>
+                  <p className="contact-company">{interview.contact_company || interview.contact_details?.company_name || 'No company'}</p>
                 </div>
                 <div className="interview-status">
                   <span 
@@ -592,7 +592,7 @@ const InterviewDetailsModal = ({ interview, statusOptions, outcomeOptions, onClo
           </div>
         )}
         <div className="modal-header">
-          <h2>{interview.contact_name} - Interview Details</h2>
+          <h2>{interview.contact_name || interview.contact_details?.display_name || 'Unknown Contact'} - Interview Details</h2>
           <button className="close-btn" onClick={onClose}>&times;</button>
         </div>
 
@@ -622,9 +622,9 @@ const InterviewDetailsModal = ({ interview, statusOptions, outcomeOptions, onClo
             <div className="overview-tab">
               <div className="detail-section">
                 <h3>Contact Information</h3>
-                <p><strong>Name:</strong> {interview.contact_details?.display_name || 'Not available'}</p>
-                <p><strong>Title:</strong> {interview.contact_details?.title || 'Not specified'}</p>
-                <p><strong>Company:</strong> {interview.contact_details?.company_name || 'Not specified'}</p>
+                <p><strong>Name:</strong> {interview.contact_name || interview.contact_details?.display_name || 'Not available'}</p>
+                <p><strong>Title:</strong> {interview.contact_title || interview.contact_details?.title || 'Not specified'}</p>
+                <p><strong>Company:</strong> {interview.contact_company || interview.contact_details?.company_name || 'Not specified'}</p>
                 <p><strong>Email:</strong> {interview.contact_details?.email || 'Not specified'}</p>
                 {interview.contact_details?.phone && <p><strong>Phone:</strong> {interview.contact_details.phone}</p>}
                 {interview.contact_details?.linkedin_url && (
