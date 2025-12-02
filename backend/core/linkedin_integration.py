@@ -12,10 +12,12 @@ logger = logging.getLogger(__name__)
 
 LINKEDIN_OAUTH_URL = 'https://www.linkedin.com/oauth/v2/authorization'
 LINKEDIN_TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken'
-LINKEDIN_PROFILE_URL = 'https://api.linkedin.com/v2/me'
+LINKEDIN_PROFILE_URL = 'https://api.linkedin.com/v2/userinfo'  # OpenID Connect endpoint
 LINKEDIN_EMAIL_URL = 'https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))'
 
-LINKEDIN_SCOPES = ['r_liteprofile', 'r_emailaddress']
+# Updated scopes for LinkedIn API v2
+# Use profile and email (OpenID Connect scopes) or r_basicprofile and r_emailaddress
+LINKEDIN_SCOPES = ['openid', 'profile', 'email']
 
 
 class LinkedInOAuthError(Exception):
@@ -105,45 +107,46 @@ def fetch_linkedin_profile(access_token: str) -> Dict[str, any]:
     headers = {'Authorization': f'Bearer {access_token}'}
     
     try:
-        # Fetch basic profile
+        # Fetch basic profile using OpenID Connect userinfo endpoint
         profile_response = requests.get(LINKEDIN_PROFILE_URL, headers=headers, timeout=10)
         profile_response.raise_for_status()
         profile_data = profile_response.json()
         
-        # Fetch email address
-        email = None
-        try:
-            email_response = requests.get(LINKEDIN_EMAIL_URL, headers=headers, timeout=10)
-            if email_response.status_code == 200:
-                email_data = email_response.json()
-                elements = email_data.get('elements', [])
-                if elements:
-                    email = elements[0].get('handle~', {}).get('emailAddress')
-        except Exception as e:
-            logger.warning(f"Failed to fetch LinkedIn email: {e}")
+        # OpenID Connect userinfo response format
+        # {
+        #   "sub": "linkedin_user_id",
+        #   "name": "Full Name",
+        #   "given_name": "First",
+        #   "family_name": "Last",
+        #   "picture": "https://...",
+        #   "email": "user@example.com",
+        #   "email_verified": true
+        # }
         
-        # Extract profile picture URL
-        profile_picture_url = None
-        profile_picture = profile_data.get('profilePicture', {})
-        if profile_picture:
-            display_image = profile_picture.get('displayImage~', {})
-            elements = display_image.get('elements', [])
-            if elements:
-                identifiers = elements[-1].get('identifiers', [])  # Get largest image
-                if identifiers:
-                    profile_picture_url = identifiers[0].get('identifier')
+        # Extract name components
+        full_name = profile_data.get('name', '')
+        first_name = profile_data.get('given_name', '')
+        last_name = profile_data.get('family_name', '')
+        
+        # If name components aren't available, try to split full name
+        if not first_name and full_name:
+            name_parts = full_name.split(' ', 1)
+            first_name = name_parts[0]
+            last_name = name_parts[1] if len(name_parts) > 1 else ''
         
         return {
-            'linkedin_id': profile_data.get('id'),
-            'first_name': profile_data.get('localizedFirstName', ''),
-            'last_name': profile_data.get('localizedLastName', ''),
-            'headline': profile_data.get('localizedHeadline', ''),
-            'profile_picture_url': profile_picture_url,
-            'email': email
+            'linkedin_id': profile_data.get('sub', ''),  # LinkedIn user ID
+            'first_name': first_name,
+            'last_name': last_name,
+            'headline': '',  # Not available in OpenID Connect endpoint
+            'profile_picture_url': profile_data.get('picture'),
+            'email': profile_data.get('email')
         }
         
     except requests.RequestException as e:
         logger.error(f"LinkedIn profile fetch failed: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            logger.error(f"Response status: {e.response.status_code}, body: {e.response.text}")
         raise LinkedInOAuthError(f'Failed to fetch profile: {str(e)}')
 
 

@@ -1,6 +1,8 @@
 import React from 'react';
 import {
   FaUser,
+  FaUserPlus,
+  FaCoffee,
   FaSignOutAlt,
   FaEdit,
   FaHome,
@@ -87,6 +89,8 @@ const sizeMap = {
 
 const iconMap = {
   user: FaUser,
+  'user-plus': FaUserPlus,
+  coffee: FaCoffee,
   signout: FaSignOutAlt,
   edit: FaEdit,
   'edit-3': FaPen,

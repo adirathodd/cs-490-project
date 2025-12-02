@@ -94,11 +94,6 @@ const Profile = () => {
   if (error) {
     return (
       <div className="profile-container">
-        <div className="page-backbar">
-          <button className="btn-back" onClick={() => navigate('/dashboard')}>
-            ← Back to Dashboard
-          </button>
-        </div>
         <div className="profile-error">
           <div className="profile-error-icon"><Icon name="info" size="lg" ariaLabel="Error" /></div>
           <div className="profile-error-message">{error}</div>
@@ -113,17 +108,6 @@ const Profile = () => {
 
   return (
     <div className="profile-container">
-      <div className="page-backbar">
-        <a
-          className="btn-back"
-          href="/dashboard"
-          aria-label="Back to dashboard"
-          title="Back to dashboard"
-        >
-          ← Back to Dashboard
-        </a>
-      </div>
-
       {/* Profile Header */}
       <div className="profile-header-section">
         <div className="profile-header-content">

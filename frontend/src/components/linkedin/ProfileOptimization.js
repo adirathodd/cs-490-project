@@ -9,15 +9,38 @@ const ProfileOptimization = () => {
   const [suggestions, setSuggestions] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [integrationStatus, setIntegrationStatus] = useState(null);
+
+  const checkIntegrationStatus = async () => {
+    try {
+      const status = await linkedInAPI.getIntegrationStatus();
+      setIntegrationStatus(status);
+      return status;
+    } catch (err) {
+      console.error('Failed to check LinkedIn integration status:', err);
+      return null;
+    }
+  };
 
   const fetchSuggestions = async () => {
     setLoading(true);
     setError('');
 
     try {
+      // Check if LinkedIn is connected first
+      const status = integrationStatus || await checkIntegrationStatus();
+      
+      if (!status?.connected) {
+        setError('');
+        setLoading(false);
+        return;
+      }
+
       const data = await linkedInAPI.getProfileOptimization();
+      console.log('Profile optimization data received:', data);
       setSuggestions(data);
     } catch (err) {
+      console.error('Profile optimization error:', err);
       setError(err.message || 'Failed to load optimization suggestions');
     } finally {
       setLoading(false);
@@ -25,7 +48,13 @@ const ProfileOptimization = () => {
   };
 
   useEffect(() => {
-    fetchSuggestions();
+    const init = async () => {
+      const status = await checkIntegrationStatus();
+      if (status?.connected) {
+        fetchSuggestions();
+      }
+    };
+    init();
   }, []);
 
   if (loading) {
@@ -33,6 +62,24 @@ const ProfileOptimization = () => {
       <div className="linkedin-optimization-loading">
         <LoadingSpinner />
         <p>Analyzing your profile...</p>
+      </div>
+    );
+  }
+
+  // Show not connected message if LinkedIn isn't connected
+  if (integrationStatus && !integrationStatus.connected) {
+    return (
+      <div className="linkedin-not-connected">
+        <Icon name="link-off" size="lg" />
+        <h3>LinkedIn Profile Not Connected</h3>
+        <p>Please connect your LinkedIn profile first to get personalized optimization suggestions.</p>
+        <button 
+          onClick={() => window.location.href = '/linkedin'} 
+          className="primary-btn"
+        >
+          <Icon name="linkedin" size="sm" />
+          Go to Connect Profile
+        </button>
       </div>
     );
   }
@@ -65,7 +112,7 @@ const ProfileOptimization = () => {
 
       {suggestions && (
         <div className="optimization-content">
-          <GuidanceRenderer content={suggestions.suggestions} />
+          <GuidanceRenderer text={suggestions.suggestions} />
           
           {suggestions.generated_by === 'ai' && (
             <div className="ai-badge">

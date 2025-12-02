@@ -21,7 +21,13 @@ class LinkedInAI:
         """Initialize the AI service with Gemini configuration"""
         self.api_key = getattr(settings, 'GEMINI_API_KEY', None)
         self.model = getattr(settings, 'GEMINI_MODEL', 'gemini-2.0-flash-exp')
+        
+        logger.info(f"LinkedInAI initializing - API key present: {bool(self.api_key)}, Model: {self.model}, genai available: {bool(genai)}")
+        
         self.client = genai.Client(api_key=self.api_key) if (self.api_key and genai) else None
+        
+        if not self.client:
+            logger.warning("Gemini client not initialized - missing API key or genai module")
     
     def generate_profile_optimization_suggestions(
         self,
@@ -75,7 +81,23 @@ Format as structured, actionable advice with clear sections."""
                 }
             )
             
-            content = response.text
+            # Extract text from response robustly
+            content = getattr(response, 'text', None) or getattr(response, 'output_text', None)
+            if not content:
+                candidates = getattr(response, 'candidates', None) or []
+                if candidates:
+                    try:
+                        first_part = candidates[0].content.parts[0]
+                        content = getattr(first_part, 'text', '') or str(first_part)
+                    except (IndexError, AttributeError, TypeError) as e:
+                        logger.error(f"Error extracting from candidates: {e}")
+                        content = ''
+            
+            if not content:
+                logger.error("No content in Gemini response for profile optimization")
+                return self._fallback_profile_suggestions()
+            
+            logger.info(f"Gemini API success - generated {len(content)} characters")
             
             return {
                 'suggestions': content,
@@ -84,6 +106,7 @@ Format as structured, actionable advice with clear sections."""
             }
         except Exception as e:
             logger.error(f"Gemini API error in profile optimization: {e}")
+            logger.exception("Full Gemini error traceback:")
             return self._fallback_profile_suggestions()
     
     def generate_networking_message(
@@ -123,33 +146,83 @@ Format as structured, actionable advice with clear sections."""
         
         purpose_desc = purpose_guidance.get(purpose, purpose)
         
-        prompt = f"""Generate a LinkedIn message for {purpose_desc}:
-
-**Recipient:** {recipient_name} {f"({recipient_title})" if recipient_title else ""}
-{f"**Company:** {company_name}" if company_name else ""}
-{f"**Context:** {connection_context}" if connection_context else ""}
-**Tone:** {tone}
-
-Requirements:
+        # Build prompt with only non-empty fields
+        prompt_parts = [f"Generate a LinkedIn message for {purpose_desc}.\n"]
+        
+        # Add recipient details
+        recipient_info = f"**Recipient:** {recipient_name}"
+        if recipient_title:
+            recipient_info += f", {recipient_title}"
+        if company_name:
+            recipient_info += f" at {company_name}"
+        prompt_parts.append(recipient_info)
+        
+        # Add context if provided
+        if connection_context:
+            prompt_parts.append(f"**Context/Connection:** {connection_context}")
+        
+        prompt_parts.append(f"**Desired Tone:** {tone}")
+        
+        # Add detailed requirements
+        prompt_parts.append("""
+**Requirements:**
 - Keep under 300 characters for connection requests, 500 for InMail
-- Personalized and authentic (no generic templates)
-- Clear purpose
-- Professional yet approachable
-- Include a specific call-to-action
+- Use the recipient's specific details (name, title, company) in the message
+- Reference the provided context to make it personal and relevant
+- Avoid generic phrases like "I came across your profile" or "your background is impressive"
+- Include a specific, actionable call-to-action relevant to the purpose
+- Match the specified tone throughout
+- Be authentic and conversational, not templated
 
-Generate only the message text, no subject line or additional commentary."""
+Generate ONLY the message text - no subject line, no additional commentary, no quotes around the message.""")
+        
+        prompt = "\n".join(prompt_parts)
+        
+        logger.info(f"Generating networking message with prompt length: {len(prompt)} chars")
+        logger.debug(f"Prompt: {prompt}")
 
         try:
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=prompt,
                 config={
-                    'temperature': 0.8,
-                    'max_output_tokens': 300
+                    'temperature': 0.9,
+                    'max_output_tokens': 200
                 }
             )
             
-            message = response.text.strip()
+            # Extract text from response robustly (same method as mock_interview.py)
+            message = getattr(response, 'text', None) or getattr(response, 'output_text', None)
+            
+            logger.debug(f"Response.text value: {message}")
+            logger.debug(f"Response has candidates: {hasattr(response, 'candidates')}")
+            
+            if not message:
+                candidates = getattr(response, 'candidates', None) or []
+                logger.debug(f"Number of candidates: {len(candidates)}")
+                
+                if candidates:
+                    try:
+                        logger.debug(f"First candidate: {candidates[0]}")
+                        logger.debug(f"Candidate content: {candidates[0].content if hasattr(candidates[0], 'content') else 'N/A'}")
+                        
+                        first_part = candidates[0].content.parts[0]
+                        logger.debug(f"First part: {first_part}")
+                        logger.debug(f"First part type: {type(first_part)}")
+                        
+                        message = getattr(first_part, 'text', '') or str(first_part)
+                        logger.debug(f"Extracted message from parts: {message[:100] if message else 'empty'}")
+                    except (IndexError, AttributeError, TypeError) as e:
+                        logger.error(f"Error extracting from candidates: {e}")
+                        logger.exception("Candidate extraction error:")
+                        message = ''
+            
+            if not message:
+                logger.error("No content in Gemini response")
+                return self._fallback_networking_message(recipient_name, purpose)
+            
+            message = message.strip()
+            logger.info(f"Generated message successfully: {len(message)} chars")
             
             return {
                 'message': message,
@@ -160,6 +233,7 @@ Generate only the message text, no subject line or additional commentary."""
             }
         except Exception as e:
             logger.error(f"Gemini API error in networking message: {e}")
+            logger.exception("Full traceback:")
             return self._fallback_networking_message(recipient_name, purpose)
     
     def generate_content_strategy(

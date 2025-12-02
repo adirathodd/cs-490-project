@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import LinkedInConnect from './LinkedInConnect';
 import ProfileOptimization from './ProfileOptimization';
 import NetworkingMessageGenerator from './NetworkingMessageGenerator';
+import GuidanceRenderer from '../common/GuidanceRenderer';
 import Icon from '../common/Icon';
 import './LinkedIn.css';
 
@@ -10,6 +11,8 @@ const LinkedInIntegration = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('connect');
   const [showMessageGenerator, setShowMessageGenerator] = useState(false);
+
+  console.log('LinkedInIntegration - activeTab:', activeTab);
 
   const tabs = [
     { id: 'connect', label: 'Connect Profile', icon: 'link' },
@@ -21,10 +24,6 @@ const LinkedInIntegration = () => {
   return (
     <div className="linkedin-integration-page">
       <div className="page-header">
-        <button className="btn-back" onClick={() => navigate('/dashboard')}>
-          <Icon name="arrow-left" size="sm" />
-          Back to Dashboard
-        </button>
         <h1>
           <Icon name="linkedin" size="lg" />
           LinkedIn Integration
@@ -118,6 +117,7 @@ const LinkedInIntegration = () => {
 
         {activeTab === 'strategy' && (
           <div className="tab-panel">
+            {console.log('Rendering ContentStrategyView')}
             <ContentStrategyView />
           </div>
         )}
@@ -131,16 +131,46 @@ const ContentStrategyView = () => {
   const [strategy, setStrategy] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [integrationStatus, setIntegrationStatus] = useState(null);
+
+  const checkIntegrationStatus = async () => {
+    try {
+      const { linkedInAPI } = require('../../services/api');
+      const status = await linkedInAPI.getIntegrationStatus();
+      setIntegrationStatus(status);
+      return status;
+    } catch (err) {
+      console.error('Failed to check LinkedIn integration status:', err);
+      return null;
+    }
+  };
 
   const fetchStrategy = async () => {
+    console.log('fetchStrategy called');
     setLoading(true);
     setError('');
 
     try {
+      // Check if LinkedIn is connected first
+      const status = integrationStatus || await checkIntegrationStatus();
+      console.log('Integration status:', status);
+      
+      if (!status?.connected) {
+        console.log('LinkedIn not connected, skipping fetch');
+        setError('');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Fetching content strategy...');
       const { linkedInAPI } = require('../../services/api');
       const data = await linkedInAPI.getContentStrategy();
+      console.log('Content strategy data:', data);
+      console.log('Strategy text type:', typeof data.strategy);
+      console.log('Strategy text preview:', data.strategy?.substring(0, 100));
       setStrategy(data);
     } catch (err) {
+      console.error('Error fetching strategy:', err);
       setError(err.message || 'Failed to load content strategy');
     } finally {
       setLoading(false);
@@ -148,7 +178,16 @@ const ContentStrategyView = () => {
   };
 
   React.useEffect(() => {
-    fetchStrategy();
+    console.log('ContentStrategyView mounted');
+    const init = async () => {
+      console.log('Initializing content strategy...');
+      const status = await checkIntegrationStatus();
+      console.log('Init status check:', status);
+      if (status?.connected) {
+        fetchStrategy();
+      }
+    };
+    init();
   }, []);
 
   if (loading) {
@@ -156,6 +195,24 @@ const ContentStrategyView = () => {
       <div className="loading-state">
         <Icon name="loader" size="lg" className="spinning" />
         <p>Loading content strategy...</p>
+      </div>
+    );
+  }
+
+  // Show not connected message if LinkedIn isn't connected
+  if (integrationStatus && !integrationStatus.connected) {
+    return (
+      <div className="linkedin-not-connected">
+        <Icon name="link-off" size="lg" />
+        <h3>LinkedIn Profile Not Connected</h3>
+        <p>Please connect your LinkedIn profile first to get content strategy recommendations.</p>
+        <button 
+          onClick={() => window.location.href = '/linkedin'} 
+          className="primary-btn"
+        >
+          <Icon name="linkedin" size="sm" />
+          Go to Connect Profile
+        </button>
       </div>
     );
   }
@@ -189,9 +246,7 @@ const ContentStrategyView = () => {
 
       <div className="strategy-content">
         <div className="strategy-main">
-          <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
-            {strategy.strategy}
-          </pre>
+          <GuidanceRenderer text={strategy.strategy} />
         </div>
 
         <div className="strategy-sidebar">

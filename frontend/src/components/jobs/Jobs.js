@@ -998,16 +998,6 @@ const companyDropdownRef = useRef(null);
   if (loading) {
     return (
       <div className="education-container">
-        <div className="page-backbar">
-          <a
-            className="btn-back"
-            href="/dashboard"
-            aria-label="Back to dashboard"
-            title="Back to dashboard"
-          >
-            ← Back to Dashboard
-          </a>
-        </div>
         <p style={{ marginTop: '20px' }}>Loading jobs...</p>
       </div>
     );
@@ -1015,18 +1005,6 @@ const companyDropdownRef = useRef(null);
 
   return (
     <div className="education-container">
-      {/* 1. Back to dashboard button */}
-      <div className="page-backbar">
-        <a
-          className="btn-back"
-          href="/dashboard"
-          aria-label="Back to dashboard"
-          title="Back to dashboard"
-        >
-          ← Back to Dashboard
-        </a>
-      </div>
-
       <h2>Job Tracker</h2>
 
       {/* 2. Job Tracker section name and description */}

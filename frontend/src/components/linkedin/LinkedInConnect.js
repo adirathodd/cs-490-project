@@ -101,6 +101,20 @@ const LinkedInConnect = ({ onSuccess }) => {
             )}
           </div>
         </div>
+        
+        <div className="reconnect-section">
+          <button
+            className="reconnect-btn"
+            onClick={handleConnect}
+            disabled={loading}
+          >
+            <Icon name="refresh-cw" size="sm" />
+            Reconnect LinkedIn Profile
+          </button>
+          <p className="reconnect-info">
+            Connect a different LinkedIn account or refresh your profile data
+          </p>
+        </div>
       </div>
     );
   }

@@ -14594,14 +14594,27 @@ def linkedin_oauth_initiate(request):
     """
     try:
         from core.linkedin_integration import build_linkedin_auth_url
+        from django.core.cache import cache
         import secrets
         
         # Generate and store state token for CSRF protection
         state_token = secrets.token_urlsafe(32)
-        request.session['linkedin_oauth_state'] = state_token
         
-        # Build redirect URI (callback URL)
-        redirect_uri = request.build_absolute_uri('/api/auth/oauth/linkedin/callback')
+        # Store state token in cache associated with user (expires in 10 minutes)
+        cache_key = f'linkedin_oauth_state_{request.user.id}'
+        cache.set(cache_key, state_token, 600)
+        
+        logger.info(f"LinkedIn OAuth initiate - user_id: {request.user.id}, cache_key: {cache_key}, state: {state_token[:20]}...")
+        
+        # Build redirect URI (callback URL) - point to frontend /linkedin route
+        # LinkedIn will redirect to /linkedin with code and state params
+        
+        # For local development, always use http://localhost:3000/linkedin
+        # For production, use environment variable or request host
+        redirect_uri = "http://localhost:3000/linkedin"
+        
+        # Log the redirect URI being used
+        logger.info(f"LinkedIn OAuth initiate - redirect_uri: {redirect_uri}")
         
         # Generate authorization URL
         auth_url = build_linkedin_auth_url(redirect_uri, state_token)
@@ -14636,29 +14649,45 @@ def linkedin_oauth_callback(request):
     """
     try:
         from core.linkedin_integration import exchange_code_for_tokens, fetch_linkedin_profile
+        from django.core.cache import cache
         
         code = request.data.get('code')
         state = request.data.get('state')
         
+        # Log callback data
+        logger.info(f"LinkedIn OAuth callback - code: {code[:20] if code else 'None'}..., state: {state[:20] if state else 'None'}...")
+        
         if not code or not state:
+            logger.warning(f"LinkedIn OAuth callback - Missing params - code: {bool(code)}, state: {bool(state)}")
             return Response(
                 {'error': {'message': 'Missing code or state parameter', 'code': 'missing_params'}},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Verify state token (CSRF protection)
-        stored_state = request.session.get('linkedin_oauth_state')
+        # Verify state token (CSRF protection) from cache
+        cache_key = f'linkedin_oauth_state_{request.user.id}'
+        stored_state = cache.get(cache_key)
+        
+        logger.info(f"LinkedIn OAuth callback - user_id: {request.user.id}, cache_key: {cache_key}, stored_state exists: {bool(stored_state)}, states match: {stored_state == state if stored_state else 'N/A'}")
+        if stored_state:
+            logger.info(f"LinkedIn OAuth callback - stored_state: {stored_state[:20]}..., received_state: {state[:20]}...")
+        
         if not stored_state or stored_state != state:
+            logger.warning(f"LinkedIn OAuth callback - Invalid state token for user {request.user.id}")
             return Response(
                 {'error': {'message': 'Invalid state token', 'code': 'invalid_state'}},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Clear state token
-        request.session.pop('linkedin_oauth_state', None)
+        # Clear state token from cache
+        cache.delete(cache_key)
         
         # Exchange authorization code for access token
-        redirect_uri = request.build_absolute_uri('/api/auth/oauth/linkedin/callback')
+        # Use the same redirect URI as initiation - must match exactly
+        redirect_uri = "http://localhost:3000/linkedin"
+        
+        logger.info(f"LinkedIn OAuth callback - Using redirect_uri: {redirect_uri}")
+        
         tokens = exchange_code_for_tokens(code, redirect_uri)
         
         # Fetch profile data from LinkedIn
