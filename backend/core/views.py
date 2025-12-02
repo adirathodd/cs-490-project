@@ -278,10 +278,33 @@ def referrals_list_create(request):
     if not job_id:
         return Response({'detail': 'job is required'}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Try to find JobOpportunity first, then fall back to JobEntry
+    job = None
     try:
         job = JobOpportunity.objects.get(pk=job_id)
     except JobOpportunity.DoesNotExist:
-        return Response({'detail': 'Job opportunity not found'}, status=status.HTTP_400_BAD_REQUEST)
+        # Try JobEntry and create/find a corresponding JobOpportunity
+        try:
+            job_entry = JobEntry.objects.get(pk=job_id)
+            # Find or create a Company for this job entry
+            company = Company.objects.filter(name__iexact=job_entry.company_name).first()
+            if not company:
+                domain = (job_entry.company_name or '').lower().replace(' ', '-')
+                company = Company.objects.create(name=job_entry.company_name, domain=domain)
+            # Find or create a JobOpportunity matching this job entry
+            job, _ = JobOpportunity.objects.get_or_create(
+                company=company,
+                title=job_entry.title,
+                defaults={
+                    'company_name': job_entry.company_name,
+                    'location': job_entry.location,
+                    'employment_type': job_entry.job_type,
+                    'description': job_entry.description,
+                    'external_url': job_entry.posting_url,
+                }
+            )
+        except JobEntry.DoesNotExist:
+            return Response({'detail': 'Job not found'}, status=status.HTTP_400_BAD_REQUEST)
 
     application, _ = Application.objects.get_or_create(candidate=candidate, job=job)
 
@@ -328,11 +351,23 @@ def referrals_list_create(request):
     except Exception:
         notes = data.get('notes', '') or ''
 
+    # Map frontend status values to backend model status values
+    STATUS_MAP_FROM_FRONTEND = {
+        'draft': 'potential',
+        'pending': 'potential',
+        'sent': 'requested',
+        'accepted': 'received',
+        'completed': 'used',
+        'declined': 'declined',
+    }
+    input_status = data.get('status', 'requested')
+    backend_status = STATUS_MAP_FROM_FRONTEND.get(input_status, input_status)
+
     referral = Referral.objects.create(
         application=application,
         contact=contact,
         notes=notes,
-        status=data.get('status', 'requested'),
+        status=backend_status,
         requested_date=timezone.now().date(),
     )
 
@@ -395,7 +430,7 @@ def referrals_generate_message(request):
         if job_id:
             try:
                 job_entry = JobEntry.objects.get(id=job_id)
-                job_title = f"{job_entry.position_title} at {job_entry.company_name}"
+                job_title = f"{job_entry.title} at {job_entry.company_name}"
             except JobEntry.DoesNotExist:
                 job_title = 'this role'
         else:
@@ -439,8 +474,19 @@ def referral_detail(request, referral_id):
     if request.method == 'PATCH':
         data = request.data or {}
         allowed = ['status', 'notes', 'requested_date', 'completed_date']
+        # Map frontend status values to backend model status values
+        STATUS_MAP_FROM_FRONTEND = {
+            'draft': 'potential',
+            'pending': 'potential',
+            'sent': 'requested',
+            'accepted': 'received',
+            'completed': 'used',
+            'declined': 'declined',
+        }
         for k, v in data.items():
             if k in allowed:
+                if k == 'status' and v in STATUS_MAP_FROM_FRONTEND:
+                    v = STATUS_MAP_FROM_FRONTEND[v]
                 setattr(referral, k, v)
         referral.save()
         serializer = ReferralSerializer(referral, context={'request': request})

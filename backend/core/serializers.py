@@ -108,6 +108,15 @@ class ReferralSerializer(serializers.ModelSerializer):
     while mapping to the existing `Referral` model which links to an
     `Application` and a `Contact`.
     """
+    # Status mapping between backend model and frontend expectations
+    STATUS_MAP_TO_FRONTEND = {
+        'potential': 'draft',
+        'requested': 'sent',
+        'received': 'accepted',
+        'used': 'completed',
+        'declined': 'declined',
+    }
+
     id = serializers.ReadOnlyField()
     job = serializers.SerializerMethodField()
     job_title = serializers.SerializerMethodField()
@@ -116,14 +125,34 @@ class ReferralSerializer(serializers.ModelSerializer):
     request_message = serializers.SerializerMethodField()
     relationship_strength = serializers.SerializerMethodField()
     notes = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+    request_sent_date = serializers.SerializerMethodField()
+    days_since_sent = serializers.SerializerMethodField()
 
     class Meta:
         model = Referral
         fields = [
             'id', 'job', 'job_title', 'job_company', 'status',
             'referral_source_display_name', 'relationship_strength',
-            'request_message', 'notes', 'requested_date', 'completed_date'
+            'request_message', 'notes', 'requested_date', 'completed_date',
+            'request_sent_date', 'days_since_sent'
         ]
+
+    def get_status(self, obj):
+        """Map backend status to frontend-expected status."""
+        return self.STATUS_MAP_TO_FRONTEND.get(obj.status, obj.status)
+
+    def get_request_sent_date(self, obj):
+        """Return the date when the referral request was sent."""
+        return obj.requested_date
+
+    def get_days_since_sent(self, obj):
+        """Return the number of days since the referral was sent."""
+        if obj.requested_date:
+            from django.utils import timezone
+            today = timezone.now().date()
+            return (today - obj.requested_date).days
+        return None
 
     def get_job(self, obj):
         try:
