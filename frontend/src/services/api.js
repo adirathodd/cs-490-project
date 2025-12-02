@@ -683,6 +683,20 @@ export const jobsAPI = {
     }
   },
 
+  // Interview practice question bank (alias to questionBankAPI)
+  getJobQuestionBank: async (jobId, refresh = false) => {
+    return questionBankAPI.getQuestionBank(jobId, refresh);
+  },
+
+  logQuestionPractice: async (jobId, data) => {
+    return questionBankAPI.logQuestionPractice(jobId, data);
+  },
+  getQuestionPracticeHistory: async (jobId, questionId) => {
+    return questionBankAPI.getQuestionPracticeHistory(jobId, questionId);
+  },
+  coachQuestionResponse: async (jobId, data) => {
+    return questionBankAPI.coachQuestionResponse(jobId, data);
+  },
   logTechnicalPrepAttempt: async (id, data) => {
     try {
       const response = await api.post(`/jobs/${id}/technical-prep/practice/`, data);
@@ -759,6 +773,10 @@ export const jobsAPI = {
   getAnalytics: async (params = {}) => {
     const response = await api.get('/jobs/analytics', { params });
     return response.data; // Enhanced analytics data
+  },
+  getCompetitiveAnalysis: async (params = {}) => {
+    const response = await api.get('/jobs/competitive-analysis', { params });
+    return response.data;
   },
   updateAnalyticsGoals: async (payload) => {
     const response = await api.patch('/jobs/analytics/goals', payload);
@@ -1837,6 +1855,8 @@ export const coverLetterExportAPI = {
 // - `import { authAPI } from './services/api'` (named import)
 // and also exposes other API groups as properties for callers that expect `api.authAPI`.
 const _defaultExport = {
+  // Expose the raw axios instance for direct API calls
+  ...api,
   // spread authAPI methods to the top-level for backwards compatibility
   ...authAPI,
   // include grouped namespaces as properties
@@ -1908,15 +1928,21 @@ try {
     _defaultExport.materialsAPI = materialsAPI;
     _defaultExport.salaryAPI = salaryAPI;
     _defaultExport.resumeAIAPI = resumeAIAPI;
-    _defaultExport.resumeExportAPI = resumeExportAPI;
-    _defaultExport.coverLetterExportAPI = coverLetterExportAPI;
-    _defaultExport.interviewsAPI = interviewsAPI;
-    _defaultExport.calendarAPI = calendarAPI;
+  _defaultExport.resumeExportAPI = resumeExportAPI;
+  _defaultExport.coverLetterExportAPI = coverLetterExportAPI;
+  _defaultExport.interviewsAPI = interviewsAPI;
+  _defaultExport.calendarAPI = calendarAPI;
+  _defaultExport.logQuestionPractice = jobsAPI.logQuestionPractice;
+  _defaultExport.coachQuestionResponse = jobsAPI.coachQuestionResponse;
+  if (questionBankAPI?.getQuestionBank) {
+    jobsAPI.getJobQuestionBank = questionBankAPI.getQuestionBank;
+    _defaultExport.getJobQuestionBank = jobsAPI.getJobQuestionBank;
   }
-  if (typeof module !== 'undefined' && module && module.exports) {
-    module.exports = _defaultExport;
-    module.exports.authAPI = authAPI;
-    module.exports.jobsAPI = jobsAPI;
+}
+if (typeof module !== 'undefined' && module && module.exports) {
+  module.exports = _defaultExport;
+  module.exports.authAPI = authAPI;
+  module.exports.jobsAPI = jobsAPI;
     module.exports.materialsAPI = materialsAPI;
     module.exports.salaryAPI = salaryAPI;
     module.exports.resumeAIAPI = resumeAIAPI;
@@ -2135,6 +2161,25 @@ export const resumeSharingAPI = {
     }
   },
 
+  // List shares available to the logged-in reviewer
+  listReviewerShares: async () => {
+    try {
+      const response = await api.get('/resume-shares/reviewer/');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch shared resumes' };
+    }
+  },
+
+  getReviewerStats: async () => {
+    try {
+      const response = await api.get('/resume-shares/reviewer/stats/');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch reviewer stats' };
+    }
+  },
+
   // View shared resume (public endpoint)
   viewSharedResume: async (shareToken, accessData = {}) => {
     try {
@@ -2161,6 +2206,27 @@ export const resumeSharingAPI = {
         requires_email: errorData.requires_email || false,
         ...errorData
       };
+    }
+  },
+  // Download PDF for shared resume (with auth context)
+  previewSharePdf: async (shareToken, accessData = {}) => {
+    try {
+      const response = await api.get(`/shared-resume/${shareToken}/pdf/`, {
+        params: accessData,
+        responseType: 'arraybuffer',
+      });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load shared PDF' };
+    }
+  },
+  // Update shared resume (if editing is enabled on the share)
+  editSharedResume: async (shareToken, data) => {
+    try {
+      const response = await api.put(`/shared-resume/${shareToken}/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update shared resume' };
     }
   },
 };
@@ -2759,6 +2825,24 @@ export const mentorshipAPI = {
       throw error.error || error.response?.data || { message: 'Failed to send message' };
     }
   },
+};
+
+export const supportersAPI = {
+  listInvites: () => api.get('/supporters').then((res) => res.data),
+  createInvite: (payload) => api.post('/supporters', payload).then((res) => res.data),
+  updateInvite: (inviteId, payload) => api.patch(`/supporters/${inviteId}`, payload).then((res) => res.data),
+  deleteInvite: (inviteId) => api.delete(`/supporters/${inviteId}`).then((res) => res.data),
+  fetchDashboard: (token, params = {}) =>
+    api.get('/supporters/dashboard', { params: { token, ...params } }).then((res) => res.data),
+  sendEncouragement: (token, payload) =>
+    api.post('/supporters/encouragements', { token, ...payload }).then((res) => res.data),
+  listEncouragements: () => api.get('/supporters/encouragements/list').then((res) => res.data),
+  fetchChat: (token) => api.get('/supporters/chat', { params: { token } }).then((res) => res.data),
+  sendChat: (token, payload) => api.post('/supporters/chat', { token, ...payload }).then((res) => res.data),
+  candidateChat: () => api.get('/supporters/chat/candidate').then((res) => res.data),
+  candidateSendChat: (payload) => api.post('/supporters/chat/candidate', payload).then((res) => res.data),
+  getMood: () => api.get('/supporters/mood').then((res) => res.data),
+  updateMood: (payload) => api.patch('/supporters/mood', payload).then((res) => res.data),
 };
 
 // UC-095: Referral / Reference requests API

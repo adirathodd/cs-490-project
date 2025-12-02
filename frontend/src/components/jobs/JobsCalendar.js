@@ -11,7 +11,7 @@ export default function JobsCalendar() {
   const load = async () => {
     setLoading(true);
     try {
-      // Load deadlines
+      // Load deadlines (allow errors to bubble so we can surface them)
       const deadlines = await jobsAPI.getUpcomingDeadlines(50);
       console.log('Loaded deadlines:', deadlines);
       
@@ -148,8 +148,12 @@ export default function JobsCalendar() {
         </div>
       )}
       
-      {loading && <p>Loading…</p>}
-      {error && <div style={{ color: 'red' }}>{error}</div>}
+      {loading && <p>Loading...</p>}
+      {error && (
+        <div role="alert" style={{ color: 'red' }}>
+          Failed to load calendar items
+        </div>
+      )}
       {!loading && items.length === 0 && <p>No upcoming deadlines or interviews</p>}
       
       <div>

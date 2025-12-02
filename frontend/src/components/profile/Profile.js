@@ -64,7 +64,7 @@ const Profile = () => {
       if (currentUser && profile) {
         try {
           const response = await authAPI.getProfilePicture();
-          if (response.profile_picture_url) {
+          if (response && response.profile_picture_url) {
             const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
             const fullUrl = response.profile_picture_url.startsWith('http') 
               ? response.profile_picture_url 

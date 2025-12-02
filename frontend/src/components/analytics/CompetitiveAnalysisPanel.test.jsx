@@ -1,0 +1,111 @@
+import React from 'react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import '@testing-library/jest-dom';
+
+// Mock Recharts to avoid jsdom/canvas issues
+jest.mock('recharts', () => ({
+  ResponsiveContainer: ({ children }) => <div>{children}</div>,
+  LineChart: ({ children }) => <div>{children}</div>,
+  BarChart: ({ children }) => <div>{children}</div>,
+  Line: () => null,
+  Bar: () => null,
+  XAxis: () => null,
+  YAxis: () => null,
+  Tooltip: () => null,
+  Legend: () => null,
+  CartesianGrid: () => null,
+  PieChart: ({ children }) => <div>{children}</div>,
+  Pie: () => null,
+}));
+
+// Mock Icon to keep markup simple
+jest.mock('../common/Icon', () => {
+  return function Icon({ name, ...rest }) {
+    return (
+      <span data-testid={`icon-${name}`} {...rest}>
+        {name}
+      </span>
+    );
+  };
+});
+
+jest.mock('../../services/api', () => ({
+  jobsAPI: {
+    getCompetitiveAnalysis: jest.fn(),
+  },
+}));
+
+const { jobsAPI } = require('../../services/api');
+const CompetitiveAnalysisPanel = require('./CompetitiveAnalysisPanel').default;
+
+const basePayload = {
+  cohort: { industry: 'Technology', experience_level: 'entry', sample_size: 5 },
+  user_metrics: { apps_per_week: 2, response_rate: 50, interview_rate: 40, offer_rate: 10 },
+  peer_benchmarks: { apps_per_week: 3, response_rate: 60, interview_rate: 50, offer_rate: 20 },
+  employment: { user: { avg_positions: 1, avg_years: 0.5 }, peers: { avg_positions: 2, avg_years: 3 } },
+  skill_gaps: [{ name: 'Ruby', prevalence: 60 }],
+  differentiators: [{ name: 'Go', note: 'Less common peer skill to highlight' }],
+  recommendations: {
+    deterministic: ['Peers average 3.0 applications/week; increase your pace from 2.0.'],
+    ai: ['Here are 3 concise tips: - Showcase React and SQL depth.'],
+  },
+  progression: {
+    sample_size: 1,
+    metrics: { apps_per_week: 3, response_rate: 70, interview_rate: 60, offer_rate: 20 },
+    skill_gaps: [{ name: 'Kubernetes', prevalence: 50 }],
+  },
+};
+
+const renderPanel = async (payload = basePayload) => {
+  jobsAPI.getCompetitiveAnalysis.mockResolvedValueOnce(payload);
+  render(<CompetitiveAnalysisPanel />);
+  await screen.findByText(/Competitive Analysis/i);
+};
+
+describe('CompetitiveAnalysisPanel', () => {
+  beforeEach(() => {
+    jobsAPI.getCompetitiveAnalysis.mockReset();
+  });
+
+  it('shows metrics, deltas, employment, progression, skills, and recommendations', async () => {
+    await renderPanel();
+    const userVals = await screen.findAllByText(/You:\s*1/i);
+    expect(userVals.length).toBeGreaterThan(0);
+    expect(await screen.findByText(/Average positions held/i)).toBeInTheDocument();
+    const peersVals = await screen.findAllByText(/Peers:\s*2/i);
+    expect(peersVals.length).toBeGreaterThan(0);
+
+
+
+    expect(await screen.findByText(/Next-step skills to add/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Kubernetes - 50% of higher-level peers/i)).toBeInTheDocument();
+
+    expect(await screen.findByText(/Ruby - 60% of peers have this skill/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Go - Less common peer skill to highlight/i)).toBeInTheDocument();
+
+    expect(await screen.findByText(/Showcase React and SQL depth/i)).toBeInTheDocument();
+  });
+
+  it('shows fallback when progression metrics are unavailable', async () => {
+    const payload = { ...basePayload, progression: {} };
+    await renderPanel(payload);
+    expect(await screen.findByText(/Not enough higher-level peers yet/i)).toBeInTheDocument();
+  });
+
+  it('applies filters and passes params to API', async () => {
+    await renderPanel();
+
+    jobsAPI.getCompetitiveAnalysis.mockResolvedValueOnce(basePayload);
+    fireEvent.change(await screen.findByLabelText(/Start Date/i), { target: { value: '2025-01-01' } });
+    fireEvent.change(await screen.findByLabelText(/Salary Min/i), { target: { value: '50' } });
+    fireEvent.click(await screen.findByLabelText(/Full-time/i));
+    fireEvent.click(await screen.findByRole('button', { name: /Apply Filters/i }));
+
+    await waitFor(() => expect(jobsAPI.getCompetitiveAnalysis).toHaveBeenCalledTimes(2));
+    const params = jobsAPI.getCompetitiveAnalysis.mock.calls[1][0];
+    expect(params.start_date).toBe('2025-01-01');
+    expect(params.salary_min).toBe(50);
+    expect(params.job_types).not.toContain('ft');
+  });
+});
+

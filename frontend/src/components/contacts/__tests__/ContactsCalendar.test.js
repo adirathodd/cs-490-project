@@ -24,10 +24,11 @@ describe('ContactsCalendar', () => {
     jest.clearAllMocks();
   });
 
-  it('renders loading state initially', () => {
-    contactsAPI.getAllReminders.mockImplementation(() => new Promise(() => {}));
+  it('renders loading state initially', async () => {
+    contactsAPI.getAllReminders.mockResolvedValue([]);
     render(<ContactsCalendar />);
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    await waitFor(() => expect(contactsAPI.getAllReminders).toHaveBeenCalled());
   });
 
   it('displays reminders grouped by date', async () => {

@@ -32,8 +32,8 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
   const fetchProfilePicture = async () => {
     try {
       setLoading(true);
-  const response = await authAPI.getProfilePicture();
-      if (response.profile_picture_url) {
+      const response = await authAPI.getProfilePicture();
+      if (response?.profile_picture_url) {
         setProfilePicture(response.profile_picture_url);
       }
     } catch (err) {

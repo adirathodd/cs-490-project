@@ -29,11 +29,16 @@ import SalaryNegotiation from './components/jobs/SalaryNegotiation';
 import Goals from './components/goals/Goals';
 import ContactsPage from './components/contacts/ContactsPage';
 import NetworkingEvents from './components/networking/NetworkingEvents';
+import NetworkingCampaigns from './components/networking/NetworkingCampaigns';
+import Supporters from './components/networking/Supporters';
+import SupporterPublic from './components/networking/SupporterPublic';
 import InformationalInterviews from './components/informational-interviews/InformationalInterviews';
+import ContactDiscovery from './components/contact-discovery/ContactDiscovery';
 import ReferencesPage from './components/references/ReferencesPage';
 import MentorshipDashboard from './components/mentorship/MentorshipDashboard';
 import ReferralManagement from './components/referrals/ReferralManagement';
 import MentorshipMenteeDashboard from './components/mentorship/MenteeDashboard';
+import PeerSupportHub from './components/community/PeerSupportHub';
 import MarketIntelligence from './components/tools/MarketIntelligence';
 import SalaryProgression from './components/tools/SalaryProgression';
 import { CompanyInsights } from './features/company';
@@ -42,6 +47,7 @@ import { AiCoverLetterGenerator } from './features/cover-letter';
 import ResumeVersionControl from './components/resume/ResumeVersionControl';
 import SharedResumeView from './components/resume/SharedResumeView';
 import { LinkedInIntegration } from './components/linkedin';
+import ResumeReviewTools from './components/resume/ResumeReviewTools';
 import ScrollToTop from './components/common/ScrollToTop';
 import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
@@ -62,6 +68,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/supporter" element={<SupporterPublic />} />
           
           {/* Public shared resume view */}
           <Route path="/shared-resume/:shareToken" element={<SharedResumeView />} />
@@ -362,6 +369,17 @@ function App() {
           />
 
           <Route
+            path="/peer-support"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <PeerSupportHub />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
             path="/networking"
             element={
               <PrivateRoute>
@@ -372,12 +390,42 @@ function App() {
             }
           />
           <Route
+            path="/networking/campaigns"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <NetworkingCampaigns />
+              </PrivateRoute>
+            }
+          />
+          <Route
             path="/informational-interviews"
             element={
               <PrivateRoute>
                 <NavBar />
                 <Breadcrumbs />
                 <InformationalInterviews />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/contact-discovery"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ContactDiscovery />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/supporters"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <Supporters />
               </PrivateRoute>
             }
           />
@@ -509,6 +557,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <LinkedInIntegration />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/tools/document-review"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ResumeReviewTools />
               </PrivateRoute>
             }
           />

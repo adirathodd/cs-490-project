@@ -71,6 +71,9 @@ import {
   FaThLarge,
   FaBullseye,
   FaMicrophone,
+  FaPlay,
+  FaPause,
+  FaStop,
 } from 'react-icons/fa';
 
 // Simple, centralized Icon wrapper used across the app.
@@ -175,6 +178,9 @@ const iconMap = {
   layout: FaThLarge,
   mic: FaMicrophone,
   microphone: FaMicrophone,
+  play: FaPlay,
+  pause: FaPause,
+  stop: FaStop,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {

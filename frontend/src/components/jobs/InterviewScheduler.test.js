@@ -384,9 +384,7 @@ describe('InterviewScheduler (UC-071: Interview Scheduling)', () => {
   });
 
   test('handles API error gracefully', async () => {
-    interviewsAPI.createInterview.mockRejectedValueOnce({
-      message: 'Network error',
-    });
+    interviewsAPI.createInterview.mockRejectedValue(new Error('Network error'));
 
     render(
       <InterviewScheduler

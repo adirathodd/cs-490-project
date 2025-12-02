@@ -48,26 +48,28 @@ class Migration(migrations.Migration):
                 'ordering': ['-scheduled_at', '-created_at'],
             },
         ),
-        migrations.RenameIndex(
-            model_name='interviewsuccessprediction',
-            new_name='core_interv_intervi_9bc100_idx',
-            old_name='core_succ_pred_interview_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='interviewsuccessprediction',
-            new_name='core_interv_candida_178a75_idx',
-            old_name='core_succ_pred_candidate_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='interviewsuccessprediction',
-            new_name='core_interv_job_id_1a36cc_idx',
-            old_name='core_succ_pred_job_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='interviewsuccessprediction',
-            new_name='core_interv_is_late_d6548a_idx',
-            old_name='core_succ_pred_latest_idx',
-        ),
+        # Note: RenameIndex operations commented out to allow migrations to work on fresh databases
+        # These indexes will use the new naming convention from migration 0055
+        # migrations.RenameIndex(
+        #     model_name='interviewsuccessprediction',
+        #     new_name='core_interv_intervi_9bc100_idx',
+        #     old_name='core_succ_pred_interview_idx',
+        # ),
+        # migrations.RenameIndex(
+        #     model_name='interviewsuccessprediction',
+        #     new_name='core_interv_candida_178a75_idx',
+        #     old_name='core_succ_pred_candidate_idx',
+        # ),
+        # migrations.RenameIndex(
+        #     model_name='interviewsuccessprediction',
+        #     new_name='core_interv_job_id_1a36cc_idx',
+        #     old_name='core_succ_pred_job_idx',
+        # ),
+        # migrations.RenameIndex(
+        #     model_name='interviewsuccessprediction',
+        #     new_name='core_interv_is_late_d6548a_idx',
+        #     old_name='core_succ_pred_latest_idx',
+        # ),
         migrations.AddField(
             model_name='informationalinterview',
             name='connected_jobs',

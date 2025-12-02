@@ -1048,7 +1048,7 @@ const companyDropdownRef = useRef(null);
             }}
             onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
-            style={responsiveActionButtonStyle}
+            style={{ ...responsiveActionButtonStyle, backgroundColor: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd' }}
             title="Set default resume and cover letter for new jobs"
           >
             <Icon name="file-text" size="sm" />
@@ -1060,7 +1060,7 @@ const companyDropdownRef = useRef(null);
             onClick={() => setShowAutomation(!showAutomation)}
             onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
-            style={responsiveActionButtonStyle}
+            style={{ ...responsiveActionButtonStyle, backgroundColor: '#f3e8ff', color: '#7e22ce', border: '1px solid #d8b4fe' }}
             title="Manage application automation and scheduled submissions"
           >
             <Icon name="settings" size="sm" />
@@ -1080,7 +1080,7 @@ const companyDropdownRef = useRef(null);
             }}
             onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
-            style={responsiveActionButtonStyle}
+            style={{ ...responsiveActionButtonStyle, backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}
             title="View jobs ranked by match percentage"
             disabled={loadingMatchScores}
           >
@@ -1096,7 +1096,7 @@ const companyDropdownRef = useRef(null);
             }}
             onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
-            style={{ ...responsiveActionButtonStyle, minWidth: '160px' }}
+            style={{ ...responsiveActionButtonStyle, minWidth: '160px', backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}
           >
             <Icon name={showArchived ? 'briefcase' : 'archive'} size="sm" />
             {showArchived ? 'Active Jobs' : 'Archived Jobs'}
@@ -1108,8 +1108,9 @@ const companyDropdownRef = useRef(null);
             aria-label="Job statistics"
             onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
-            style={{ ...responsiveActionButtonStyle, textDecoration: 'none' }}
+            style={{ ...responsiveActionButtonStyle, textDecoration: 'none', backgroundColor: '#eef2ff', color: '#4338ca', border: '1px solid #c7d2fe' }}
           >
+            <Icon name="bar-chart" size="sm" />
             Statistics
           </a>
           <a
@@ -1119,8 +1120,9 @@ const companyDropdownRef = useRef(null);
             aria-label="Open job status pipeline"
             onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
-            style={{ ...responsiveActionButtonStyle, textDecoration: 'none' }}
+            style={{ ...responsiveActionButtonStyle, textDecoration: 'none', backgroundColor: '#ecfeff', color: '#0e7490', border: '1px solid #a5f3fc' }}
           >
+            <Icon name="gitBranch" size="sm" />
             Pipeline →
           </a>
           <a
@@ -1130,8 +1132,9 @@ const companyDropdownRef = useRef(null);
             aria-label="Browse cover letter templates"
             onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
-            style={{ textDecoration: 'none' }}
+            style={{ ...responsiveActionButtonStyle, textDecoration: 'none', backgroundColor: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3' }}
           >
+            <Icon name="file-text" size="sm" />
             Cover Letters →
           </a>
           <button 
@@ -2177,7 +2180,7 @@ const companyDropdownRef = useRef(null);
                       <div className="education-item-dates" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{ width: 10, height: 10, borderRadius: 4, background: color }} aria-hidden />
                         {/* Keep this exact text for existing tests */}
-                        <span className="status">Deadline: {item.application_deadline}</span>
+                        <span className="status" data-testid="application-deadline">Deadline: {item.application_deadline}</span>
                         {diff != null && (
                           <span style={{ fontSize: 12, color: '#444' }}>
                             {diff < 0 ? `Overdue by ${Math.abs(diff)}d` : `${diff}d left`}

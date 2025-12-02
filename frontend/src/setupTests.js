@@ -1,3 +1,4 @@
+import React from 'react';
 // jest-dom adds custom jest matchers for asserting on DOM nodes.
 // allows you to do things like:
 // expect(element).toHaveTextContent(/react/i)
@@ -28,6 +29,27 @@ if (typeof window !== 'undefined') {
 	window.scrollTo = jest.fn();
 }
 
+// Lightweight mocks for libraries not available in Jest/jsdom
+jest.mock('@fullcalendar/react', () => () => <div data-testid="fullcalendar" />);
+jest.mock('@fullcalendar/list', () => () => null);
+jest.mock('@fullcalendar/daygrid', () => () => null);
+jest.mock('@fullcalendar/timegrid', () => () => null);
+jest.mock('@fullcalendar/interaction', () => () => null);
+jest.mock('recharts', () => ({
+	ResponsiveContainer: ({ children }) => <div>{children}</div>,
+	LineChart: ({ children }) => <div>{children}</div>,
+	BarChart: ({ children }) => <div>{children}</div>,
+	PieChart: ({ children }) => <div>{children}</div>,
+	Line: () => null,
+	Bar: () => null,
+	Pie: () => null,
+	XAxis: () => null,
+	YAxis: () => null,
+	Tooltip: () => null,
+	Legend: () => null,
+	CartesianGrid: () => null,
+}));
+
 // Mock Firebase services to avoid initializing real SDK in tests
 jest.mock('./services/firebase', () => ({
 	__esModule: true,
@@ -51,7 +73,6 @@ jest.mock('./services/firebase', () => ({
 	confirmPasswordReset: jest.fn(),
 }));
 
-
 // Mock API module via the manual mock
 jest.mock('./services/api');
 
@@ -69,6 +90,19 @@ beforeEach(() => {
 	jobsAPI.getUpcomingDeadlines.mockResolvedValue([]);
 	jobsAPI.getJobStats.mockResolvedValue({ daily_applications: [], counts: {} });
 	jobsAPI.getAnalytics.mockResolvedValue({ counts: {}, monthly_applications: [], daily_applications: [], response_rate_percent: 0 });
+	if (!jobsAPI.getCompetitiveAnalysis) {
+		jobsAPI.getCompetitiveAnalysis = jest.fn();
+	}
+	jobsAPI.getCompetitiveAnalysis.mockResolvedValue({
+		cohort: { industry: 'General', experience_level: 'mid', sample_size: 0 },
+		user_metrics: {},
+		peer_benchmarks: {},
+		skill_gaps: [],
+		differentiators: [],
+		recommendations: { deterministic: [], ai: [] },
+		progression: {},
+		employment: {},
+	});
 	jobsAPI.bulkUpdateStatus.mockResolvedValue({ updated: 0 });
 	interviewsAPI.getActiveReminders.mockResolvedValue([]);
 	interviewsAPI.dismissReminder.mockResolvedValue({});
@@ -77,7 +111,73 @@ beforeEach(() => {
 	interviewsAPI.getPerformanceAnalytics.mockResolvedValue({});
 	interviewsAPI.getPerformanceTracking.mockResolvedValue({});
 	networkingAPI.getEvents.mockResolvedValue([]);
-	networkingAPI.getAnalytics.mockResolvedValue({ overview: {} });
+	networkingAPI.getAnalytics.mockResolvedValue({
+		overview: {
+			total_events: 0,
+			attended_events: 0,
+			total_connections: 0,
+			high_value_connections: 0,
+			goals_achievement_rate: 0,
+			follow_up_completion_rate: 0,
+			manual_outreach_attempts_30d: 0,
+			interactions_logged_30d: 0,
+			strong_relationships: 0,
+		},
+		activity_volume: {
+			events_planned: 0,
+			events_registered: 0,
+			events_attended: 0,
+			followups_open: 0,
+			followups_completed_30d: 0,
+			connections_added_60d: 0,
+			interactions_logged_30d: 0,
+			outreach_attempts_30d: 0,
+		},
+		relationship_health: {
+			avg_relationship_strength: 0,
+			recent_relationship_strength: 0,
+			relationship_trend: 0,
+			engaged_contacts_60d: 0,
+			high_value_ratio: 0,
+		},
+		referral_pipeline: {
+			referrals_requested: 0,
+			referrals_received: 0,
+			referrals_used: 0,
+			networking_sourced_jobs: 0,
+			networking_offers: 0,
+			introductions_created: 0,
+			opportunities_from_interviews: 0,
+		},
+		event_roi: {
+			total_spend: 0,
+			connections_per_event: 0,
+			followups_per_connection: 0,
+			cost_per_connection: 0,
+			cost_per_high_value_connection: 0,
+			paid_events_count: 0,
+			paid_connections: 0,
+			paid_high_value_connections: 0,
+		},
+		conversion_rates: {
+			connection_to_followup_rate: 0,
+			follow_up_completion_rate: 0,
+			outreach_response_rate: 0,
+			networking_to_application_rate: 0,
+			referral_conversion_rate: 0,
+		},
+		insights: { strengths: [], focus: [], recommendations: [] },
+		industry_benchmarks: {
+			industry: 'general',
+			benchmarks: {
+				outreach_to_meeting_rate: 0,
+				follow_up_completion: 0,
+				high_value_ratio: 0,
+				connections_per_event: 0,
+				referral_conversion: 0,
+			},
+		},
+	});
 	resumeExportAPI.getThemes.mockResolvedValue({ themes: [] });
 	resumeExportAPI.exportResume.mockResolvedValue({ filename: 'resume.pdf' });
 });

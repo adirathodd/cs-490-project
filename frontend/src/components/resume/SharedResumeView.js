@@ -25,6 +25,67 @@ const SharedResumeView = () => {
   // Form states
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [editMode, setEditMode] = useState(true);
+  const [editFields, setEditFields] = useState({
+    version_name: '',
+    description: '',
+    latex_content: ''
+  });
+  const [editContent, setEditContent] = useState({
+    summary_headline: '',
+    summary: '',
+    skills_to_highlight: [],
+    ats_keywords: [],
+    experience_sections: [],
+    project_sections: [],
+    education_highlights: []
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  const normalizeContentArray = (items = []) =>
+    Array.isArray(items) ? items.filter((value) => value !== null && value !== undefined) : [];
+
+  const normalizeExperienceSections = (sections = []) =>
+    normalizeContentArray(sections).map((section) => ({
+      role: section.role || '',
+      company: section.company || '',
+      location: section.location || '',
+      dates: section.dates || '',
+      bullets: normalizeContentArray(section.bullets).length
+        ? normalizeContentArray(section.bullets)
+        : ['']
+    }));
+
+  const normalizeProjectSections = (sections = []) =>
+    normalizeContentArray(sections).map((project) => ({
+      title: project.title || '',
+      description: project.description || '',
+      bullets: normalizeContentArray(project.bullets).length
+        ? normalizeContentArray(project.bullets)
+        : ['']
+    }));
+
+  const normalizeEducationHighlights = (highlights = []) =>
+    normalizeContentArray(highlights).map((highlight) => ({
+      notes: highlight.notes || '',
+      source_education_id: highlight.source_education_id || null
+    }));
+
+  const normalizeShareContent = (content = {}) => {
+    const variation = content.variation || content || {};
+
+    return {
+      summary_headline: variation.summary_headline || variation.label || '',
+      summary: variation.summary || '',
+      skills_to_highlight: normalizeContentArray(variation.skills_to_highlight),
+      ats_keywords: normalizeContentArray(variation.ats_keywords),
+      experience_sections: normalizeExperienceSections(variation.experience_sections),
+      project_sections: normalizeProjectSections(variation.project_sections),
+      education_highlights: normalizeEducationHighlights(variation.education_highlights)
+    };
+  };
   
   // Name/Email collection states
   const [reviewerName, setReviewerName] = useState('');
@@ -54,6 +115,19 @@ const SharedResumeView = () => {
     }
   }, [shareToken, currentUser, authLoading]); // Reload when user changes (after login)
 
+  useEffect(() => {
+    if (shareData?.share?.allow_edit && shareData?.resume) {
+      setEditFields({
+        version_name: shareData.resume.version_name || '',
+        description: shareData.resume.description || '',
+        latex_content: shareData.resume.latex_content || ''
+      });
+      setEditContent(normalizeShareContent(shareData.resume.content));
+    } else {
+      setEditMode(false);
+    }
+  }, [shareData]);
+
   const loadSharedResume = async (accessData = {}) => {
     setLoading(true);
     setError('');
@@ -75,6 +149,8 @@ const SharedResumeView = () => {
       setRequiresPassword(false);
       setAccessDenied(false);
       setLoading(false);
+      setEditMode(false);
+      setEditError('');
       
       // Load existing feedback if comments are allowed
       if (data.share?.allow_comments) {
@@ -177,6 +253,214 @@ const SharedResumeView = () => {
       }
     }
     setIsSubmitting(false);
+  };
+
+  const handleEditFieldChange = (field, value) => {
+    setEditFields((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const updateEditContent = (updater) => {
+    setEditContent((prev) => updater(prev));
+  };
+
+  const handleSkillChange = (index, value) => {
+    updateEditContent((prev) => {
+      const skills = [...prev.skills_to_highlight];
+      skills[index] = value;
+      return { ...prev, skills_to_highlight: skills };
+    });
+  };
+
+  const addSkill = () => {
+    updateEditContent((prev) => ({ ...prev, skills_to_highlight: [...prev.skills_to_highlight, ''] }));
+  };
+
+  const removeSkill = (index) => {
+    updateEditContent((prev) => ({
+      ...prev,
+      skills_to_highlight: prev.skills_to_highlight.filter((_, idx) => idx !== index)
+    }));
+  };
+
+  const handleKeywordChange = (index, value) => {
+    updateEditContent((prev) => {
+      const keywords = [...prev.ats_keywords];
+      keywords[index] = value;
+      return { ...prev, ats_keywords: keywords };
+    });
+  };
+
+  const addKeyword = () => {
+    updateEditContent((prev) => ({ ...prev, ats_keywords: [...prev.ats_keywords, ''] }));
+  };
+
+  const removeKeyword = (index) => {
+    updateEditContent((prev) => ({
+      ...prev,
+      ats_keywords: prev.ats_keywords.filter((_, idx) => idx !== index)
+    }));
+  };
+
+  const handleExperienceFieldChange = (sectionIndex, field, value) => {
+    updateEditContent((prev) => {
+      const sections = [...prev.experience_sections];
+      sections[sectionIndex] = { ...sections[sectionIndex], [field]: value };
+      return { ...prev, experience_sections: sections };
+    });
+  };
+
+  const addExperienceSection = () => {
+    updateEditContent((prev) => ({
+      ...prev,
+      experience_sections: [
+        ...prev.experience_sections,
+        { role: '', company: '', location: '', dates: '', bullets: [''] }
+      ]
+    }));
+  };
+
+  const removeExperienceSection = (index) => {
+    updateEditContent((prev) => ({
+      ...prev,
+      experience_sections: prev.experience_sections.filter((_, idx) => idx !== index)
+    }));
+  };
+
+  const handleExperienceBulletChange = (sectionIndex, bulletIndex, value) => {
+    updateEditContent((prev) => {
+      const sections = [...prev.experience_sections];
+      const bullets = [...(sections[sectionIndex]?.bullets || [])];
+      bullets[bulletIndex] = value;
+      sections[sectionIndex] = { ...sections[sectionIndex], bullets };
+      return { ...prev, experience_sections: sections };
+    });
+  };
+
+  const addExperienceBullet = (sectionIndex) => {
+    updateEditContent((prev) => {
+      const sections = [...prev.experience_sections];
+      const bullets = [...(sections[sectionIndex]?.bullets || [])];
+      bullets.push('');
+      sections[sectionIndex] = { ...sections[sectionIndex], bullets };
+      return { ...prev, experience_sections: sections };
+    });
+  };
+
+  const removeExperienceBullet = (sectionIndex, bulletIndex) => {
+    updateEditContent((prev) => {
+      const sections = [...prev.experience_sections];
+      const bullets = [...(sections[sectionIndex]?.bullets || [])];
+      bullets.splice(bulletIndex, 1);
+      sections[sectionIndex] = {
+        ...sections[sectionIndex],
+        bullets: bullets.length ? bullets : ['']
+      };
+      return { ...prev, experience_sections: sections };
+    });
+  };
+
+  const handleProjectFieldChange = (index, field, value) => {
+    updateEditContent((prev) => {
+      const projects = [...prev.project_sections];
+      projects[index] = { ...projects[index], [field]: value };
+      return { ...prev, project_sections: projects };
+    });
+  };
+
+  const addProjectSection = () => {
+    updateEditContent((prev) => ({
+      ...prev,
+      project_sections: [...prev.project_sections, { title: '', description: '', bullets: [''] }]
+    }));
+  };
+
+  const removeProjectSection = (index) => {
+    updateEditContent((prev) => ({
+      ...prev,
+      project_sections: prev.project_sections.filter((_, idx) => idx !== index)
+    }));
+  };
+
+  const handleProjectBulletChange = (sectionIndex, bulletIndex, value) => {
+    updateEditContent((prev) => {
+      const projects = [...prev.project_sections];
+      const bullets = [...(projects[sectionIndex]?.bullets || [])];
+      bullets[bulletIndex] = value;
+      projects[sectionIndex] = { ...projects[sectionIndex], bullets };
+      return { ...prev, project_sections: projects };
+    });
+  };
+
+  const addProjectBullet = (sectionIndex) => {
+    updateEditContent((prev) => {
+      const projects = [...prev.project_sections];
+      const bullets = [...(projects[sectionIndex]?.bullets || [])];
+      bullets.push('');
+      projects[sectionIndex] = { ...projects[sectionIndex], bullets };
+      return { ...prev, project_sections: projects };
+    });
+  };
+
+  const removeProjectBullet = (sectionIndex, bulletIndex) => {
+    updateEditContent((prev) => {
+      const projects = [...prev.project_sections];
+      const bullets = [...(projects[sectionIndex]?.bullets || [])];
+      bullets.splice(bulletIndex, 1);
+      projects[sectionIndex] = {
+        ...projects[sectionIndex],
+        bullets: bullets.length ? bullets : ['']
+      };
+      return { ...prev, project_sections: projects };
+    });
+  };
+
+  const handleEducationNotesChange = (index, value) => {
+    updateEditContent((prev) => {
+      const highlights = [...prev.education_highlights];
+      highlights[index] = { ...highlights[index], notes: value };
+      return { ...prev, education_highlights: highlights };
+    });
+  };
+
+  const addEducationHighlight = () => {
+    updateEditContent((prev) => ({
+      ...prev,
+      education_highlights: [...prev.education_highlights, { notes: '', source_education_id: null }]
+    }));
+  };
+
+  const removeEducationHighlight = (index) => {
+    updateEditContent((prev) => ({
+      ...prev,
+      education_highlights: prev.education_highlights.filter((_, idx) => idx !== index)
+    }));
+  };
+  const handleEditSave = async () => {
+    if (!shareData?.share?.allow_edit) return;
+
+    setSavingEdit(true);
+    setEditError('');
+
+    const payload = {
+      version_name: editFields.version_name,
+      description: editFields.description,
+      latex_content: editFields.latex_content,
+      content: editContent
+    };
+
+    if (requiresPassword && password) {
+      payload.password = password;
+    }
+
+    try {
+      const updatedResume = await resumeSharingAPI.editSharedResume(shareToken, payload);
+      setShareData((prev) => (prev ? { ...prev, resume: updatedResume } : prev));
+      setEditMode(false);
+    } catch (err) {
+      setEditError(err.message || 'Failed to save edits. Please try again.');
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const handleFeedbackSubmit = async (e) => {
@@ -433,8 +717,386 @@ const SharedResumeView = () => {
             )}
           </div>
 
+          {share.allow_edit && (
+            <div className="shared-resume-columns">
+              <div className="resume-preview-column">
+                <div className="resume-section resume-preview-panel">
+                  <h3>Resume preview</h3>
+                  {resume.pdf_url ? (
+                    <iframe
+                      src={resume.pdf_url}
+                      title="Resume Preview"
+                      className="shared-resume-editor__iframe"
+                    />
+                  ) : (
+                    <div className="resume-preview-latex">
+                      <LaTeXRenderer latexContent={resume.latex_content} />
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="resume-editor-column">
+                <div className="shared-resume-editor">
+                  <div className="shared-resume-editor__header">
+                    <div>
+                      <p className="muted" style={{ marginBottom: '4px' }}>Editor mode</p>
+                      <h3 style={{ margin: 0 }}>Edit this shared version</h3>
+                      <p className="muted" style={{ marginTop: '4px' }}>
+                        Make changes directly inside the app; edits are synced back to the owner.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setEditMode((prev) => !prev)}
+                    >
+                      {editMode ? 'Hide editor' : 'Show editor'}
+                    </button>
+                  </div>
+
+                  {editMode && (
+                    <form className="shared-resume-editor__form" onSubmit={(e) => e.preventDefault()}>
+                  <label>
+                    <span>Version name</span>
+                    <input
+                      className="input"
+                      type="text"
+                      value={editFields.version_name}
+                      onChange={(e) => handleEditFieldChange('version_name', e.target.value)}
+                      disabled={savingEdit}
+                    />
+                  </label>
+
+                  <label>
+                    <span>Description</span>
+                    <textarea
+                      className="input"
+                      rows="3"
+                      value={editFields.description}
+                      onChange={(e) => handleEditFieldChange('description', e.target.value)}
+                      disabled={savingEdit}
+                    />
+                  </label>
+
+                  <label>
+                    <span>Raw LaTeX / JSON</span>
+                    <textarea
+                      className="input"
+                      rows="4"
+                      value={editFields.latex_content}
+                      onChange={(e) => handleEditFieldChange('latex_content', e.target.value)}
+                      disabled={savingEdit}
+                    />
+                  </label>
+
+                  <div className="editor-section">
+                    <label>
+                      <span>Summary headline</span>
+                      <input
+                        className="input"
+                        type="text"
+                        value={editContent.summary_headline}
+                        onChange={(e) => updateEditContent((prev) => ({
+                          ...prev,
+                          summary_headline: e.target.value
+                        }))}
+                        disabled={savingEdit}
+                      />
+                    </label>
+                    <label>
+                      <span>Summary paragraph</span>
+                      <textarea
+                        className="input"
+                        rows="4"
+                        value={editContent.summary}
+                        onChange={(e) => updateEditContent((prev) => ({
+                          ...prev,
+                          summary: e.target.value
+                        }))}
+                        disabled={savingEdit}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="editor-section">
+                    <div className="section-header">
+                      <label>
+                        <Icon name="zap" size="sm" /> Skills to highlight
+                      </label>
+                      <button type="button" className="ghost tiny" onClick={addSkill}>
+                        Add skill
+                      </button>
+                    </div>
+                    <div className="tag-grid">
+                      {(editContent.skills_to_highlight.length ? editContent.skills_to_highlight : ['']).map(
+                        (skill, index) => (
+                          <div key={`skill-${index}`} className="tag-input">
+                            <input
+                              className="input"
+                              type="text"
+                              placeholder="Skill name"
+                              value={skill}
+                              onChange={(e) => handleSkillChange(index, e.target.value)}
+                              disabled={savingEdit}
+                            />
+                            <button
+                              type="button"
+                              className="ghost danger tiny"
+                              onClick={() => removeSkill(index)}
+                              disabled={savingEdit}
+                            >
+                              <Icon name="x" size="sm" />
+                            </button>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="editor-section">
+                    <div className="section-header">
+                      <label>
+                        <Icon name="target" size="sm" /> ATS keywords
+                      </label>
+                      <button type="button" className="ghost tiny" onClick={addKeyword}>
+                        Add keyword
+                      </button>
+                    </div>
+                    <div className="tag-grid">
+                      {(editContent.ats_keywords.length ? editContent.ats_keywords : ['']).map(
+                        (keyword, index) => (
+                          <div key={`keyword-${index}`} className="tag-input">
+                            <input
+                              className="input"
+                              type="text"
+                              placeholder="ATS keyword"
+                              value={keyword}
+                              onChange={(e) => handleKeywordChange(index, e.target.value)}
+                              disabled={savingEdit}
+                            />
+                            <button
+                              type="button"
+                              className="ghost danger tiny"
+                              onClick={() => removeKeyword(index)}
+                              disabled={savingEdit}
+                            >
+                              <Icon name="x" size="sm" />
+                            </button>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="editor-section">
+                    <div className="section-header">
+                      <label>
+                        <Icon name="briefcase" size="sm" /> Experience sections
+                      </label>
+                      <button type="button" className="ghost tiny" onClick={addExperienceSection}>
+                        Add experience
+                      </button>
+                    </div>
+                    {editContent.experience_sections.map((section, index) => (
+                      <div key={`exp-${index}`} className="paragraph-group">
+                        <div className="paragraph-header">
+                          <span className="paragraph-number">Experience {index + 1}</span>
+                          <button
+                            type="button"
+                            className="ghost danger tiny"
+                            onClick={() => removeExperienceSection(index)}
+                            disabled={savingEdit}
+                          >
+                            <Icon name="trash-2" size={14} />
+                          </button>
+                        </div>
+                        <input
+                          className="input"
+                          type="text"
+                          placeholder="Role"
+                          value={section.role}
+                          onChange={(e) => handleExperienceFieldChange(index, 'role', e.target.value)}
+                          disabled={savingEdit}
+                        />
+                        <input
+                          className="input"
+                          type="text"
+                          placeholder="Company"
+                          value={section.company}
+                          onChange={(e) => handleExperienceFieldChange(index, 'company', e.target.value)}
+                          disabled={savingEdit}
+                        />
+                        <input
+                          className="input"
+                          type="text"
+                          placeholder="Location"
+                          value={section.location}
+                          onChange={(e) => handleExperienceFieldChange(index, 'location', e.target.value)}
+                          disabled={savingEdit}
+                        />
+                        <input
+                          className="input"
+                          type="text"
+                          placeholder="Dates"
+                          value={section.dates}
+                          onChange={(e) => handleExperienceFieldChange(index, 'dates', e.target.value)}
+                          disabled={savingEdit}
+                        />
+                        <div className="section-header secondary">
+                          <label>Bullets</label>
+                          <button
+                            type="button"
+                            className="ghost tiny"
+                            onClick={() => addExperienceBullet(index)}
+                            disabled={savingEdit}
+                          >
+                            <Icon name="plus" size={12} /> Add bullet
+                          </button>
+                        </div>
+                        {section.bullets.map((bullet, bulletIndex) => (
+                          <textarea
+                            key={`exp-bullet-${index}-${bulletIndex}`}
+                            className="input"
+                            rows="3"
+                            placeholder="Achievement & impact"
+                            value={bullet}
+                            onChange={(e) => handleExperienceBulletChange(index, bulletIndex, e.target.value)}
+                            disabled={savingEdit}
+                          />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="editor-section">
+                    <div className="section-header">
+                      <label>
+                        <Icon name="folder" size="sm" /> Project sections
+                      </label>
+                      <button type="button" className="ghost tiny" onClick={addProjectSection}>
+                        Add project
+                      </button>
+                    </div>
+                    {editContent.project_sections.map((project, index) => (
+                      <div key={`proj-${index}`} className="paragraph-group">
+                        <div className="paragraph-header">
+                          <span className="paragraph-number">Project {index + 1}</span>
+                          <button
+                            type="button"
+                            className="ghost danger tiny"
+                            onClick={() => removeProjectSection(index)}
+                            disabled={savingEdit}
+                          >
+                            <Icon name="trash-2" size={14} />
+                          </button>
+                        </div>
+                        <input
+                          className="input"
+                          type="text"
+                          placeholder="Project title"
+                          value={project.title}
+                          onChange={(e) => handleProjectFieldChange(index, 'title', e.target.value)}
+                          disabled={savingEdit}
+                        />
+                        <textarea
+                          className="input"
+                          rows="3"
+                          placeholder="Project description"
+                          value={project.description}
+                          onChange={(e) => handleProjectFieldChange(index, 'description', e.target.value)}
+                          disabled={savingEdit}
+                        />
+                        <div className="section-header secondary">
+                          <label>Project bullets</label>
+                          <button
+                            type="button"
+                            className="ghost tiny"
+                            onClick={() => addProjectBullet(index)}
+                            disabled={savingEdit}
+                          >
+                            <Icon name="plus" size={12} /> Add bullet
+                          </button>
+                        </div>
+                        {project.bullets.map((bullet, bulletIndex) => (
+                          <textarea
+                            key={`proj-bullet-${index}-${bulletIndex}`}
+                            className="input"
+                            rows="3"
+                            placeholder="Describe the work"
+                            value={bullet}
+                            onChange={(e) => handleProjectBulletChange(index, bulletIndex, e.target.value)}
+                            disabled={savingEdit}
+                          />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="editor-section">
+                    <div className="section-header">
+                      <label>
+                        <Icon name="book-open" size="sm" /> Education highlights
+                      </label>
+                      <button type="button" className="ghost tiny" onClick={addEducationHighlight}>
+                        Add education highlight
+                      </button>
+                    </div>
+                    {editContent.education_highlights.map((highlight, index) => (
+                      <div key={`edu-${index}`} className="paragraph-group">
+                        <div className="paragraph-header">
+                          <span className="paragraph-number">Highlight {index + 1}</span>
+                          <button
+                            type="button"
+                            className="ghost danger tiny"
+                            onClick={() => removeEducationHighlight(index)}
+                            disabled={savingEdit}
+                          >
+                            <Icon name="trash-2" size={14} />
+                          </button>
+                        </div>
+                        <textarea
+                          className="input"
+                          rows="3"
+                          placeholder="Education highlight or note"
+                          value={highlight.notes}
+                          onChange={(e) => handleEducationNotesChange(index, e.target.value)}
+                          disabled={savingEdit}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  {editError && (
+                    <div className="error-message" style={{ marginBottom: '12px' }}>
+                      <Icon name="alert-circle" size="sm" /> {editError}
+                    </div>
+                  )}
+
+                  <div className="form-actions" style={{ marginTop: '12px' }}>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={handleEditSave}
+                      disabled={savingEdit}
+                    >
+                      {savingEdit ? (
+                        <>
+                          <Icon name="loader" size="sm" /> Saving edits...
+                        </>
+                      ) : (
+                        'Save edits'
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
           {/* Display PDF if available */}
-          {resume.pdf_url && (
+          {!share.allow_edit && resume.pdf_url && (
             <div className="resume-section">
               <h3>Resume Preview</h3>
               <div className="pdf-preview">
@@ -453,7 +1115,7 @@ const SharedResumeView = () => {
           )}
 
           {/* Only show LaTeX if no PDF is available */}
-          {!resume.pdf_url && resume.latex_content && (
+          {!share.allow_edit && !resume.pdf_url && resume.latex_content && (
             <div className="resume-section">
               <h3>Resume Content</h3>
               <LaTeXRenderer latexContent={resume.latex_content} />

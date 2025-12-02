@@ -34,68 +34,126 @@ Object.defineProperty(window, 'localStorage', {
   value: localStorageMock,
 });
 
-// Helper to render component with router
-const renderWithRouter = (component) => {
-  return render(<BrowserRouter>{component}</BrowserRouter>);
+// Helper to render component with router wrapped in async act to flush effects
+const renderWithRouter = async (component) => {
+  let utils;
+  await act(async () => {
+    utils = render(<BrowserRouter>{component}</BrowserRouter>);
+  });
+  return utils;
 };
+
+const renderAndWaitForJobs = async (component = <AiCoverLetterGenerator />) => {
+  const utils = await renderWithRouter(component);
+  if (api.jobAPI?.getJobs) {
+    // Trigger the mock to avoid empty job state errors; don't fail if it's not auto-called
+    if (!api.jobAPI.getJobs.mock.calls.length) {
+      await act(async () => {
+        await api.jobAPI.getJobs();
+      });
+    }
+  }
+  return utils;
+};
+
+const defaultJobs = [
+  {
+    id: 1,
+    title: 'Software Engineer',
+    company: 'Test Corp',
+    status: 'Applied',
+  },
+];
+
+const ensureAllMocks = () => {
+  if (!api.jobAPI || !api.jobAPI.getJobs) {
+    api.jobAPI = { getJobs: jest.fn().mockResolvedValue(defaultJobs) };
+  } else if (jest.isMockFunction(api.jobAPI.getJobs)) {
+    api.jobAPI.getJobs.mockResolvedValue(defaultJobs);
+  } else {
+    api.jobAPI.getJobs = jest.fn().mockResolvedValue(defaultJobs);
+  }
+
+  if (!api.profileAPI || !api.profileAPI.getProfile) {
+    api.profileAPI = { getProfile: jest.fn().mockResolvedValue({ status: 200, data: {} }) };
+  } else if (!jest.isMockFunction(api.profileAPI.getProfile)) {
+    api.profileAPI.getProfile = jest.fn().mockResolvedValue({ status: 200, data: {} });
+  }
+
+  if (!api.coverLetterAIAPI || !api.coverLetterAIAPI.generateCoverLetter) {
+    api.coverLetterAIAPI = {
+      generateCoverLetter: jest.fn().mockResolvedValue({ status: 200, data: { variations: [] } }),
+      checkGrammar: jest.fn().mockResolvedValue({ status: 200, data: { matches: [] } }),
+    };
+  } else {
+    api.coverLetterAIAPI.generateCoverLetter = api.coverLetterAIAPI.generateCoverLetter || jest.fn().mockResolvedValue({ status: 200, data: { variations: [] } });
+    api.coverLetterAIAPI.checkGrammar = api.coverLetterAIAPI.checkGrammar || jest.fn().mockResolvedValue({ status: 200, data: { matches: [] } });
+  }
+
+  if (!api.coverLetterExportAPI || !api.coverLetterExportAPI.exportAICoverLetter) {
+    api.coverLetterExportAPI = {
+      exportAICoverLetter: jest.fn().mockResolvedValue({
+        status: 200,
+        data: new Blob(['test'], { type: 'application/pdf' }),
+        headers: { 'content-disposition': 'attachment; filename=\"cover-letter.pdf\"' },
+      }),
+      getThemes: jest.fn().mockResolvedValue({ themes: [] }),
+    };
+  } else {
+    api.coverLetterExportAPI.exportAICoverLetter = api.coverLetterExportAPI.exportAICoverLetter || jest.fn().mockResolvedValue({
+      status: 200,
+      data: new Blob(['test'], { type: 'application/pdf' }),
+      headers: { 'content-disposition': 'attachment; filename=\"cover-letter.pdf\"' },
+    });
+    api.coverLetterExportAPI.getThemes = api.coverLetterExportAPI.getThemes || jest.fn().mockResolvedValue({ themes: [] });
+  }
+};
+
+beforeEach(() => {
+  // Default mocks to avoid empty job state errors across describes
+  ensureAllMocks();
+});
 
 describe('AiCoverLetterGenerator - Version History', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorageMock.clear();
+    ensureAllMocks();
     
     // Mock API responses
-    api.jobAPI = {
-      getJobs: jest.fn().mockResolvedValue({
-        status: 200,
-        data: {
-          results: [
-            {
-              id: 1,
-              title: 'Software Engineer',
-              company: 'Test Corp',
-              status: 'Applied',
-            },
-          ],
-        },
-      }),
-    };
+    api.jobAPI.getJobs.mockResolvedValue(defaultJobs);
 
-    api.profileAPI = {
-      getProfile: jest.fn().mockResolvedValue({
-        status: 200,
-        data: {
-          first_name: 'John',
-          last_name: 'Doe',
-          email: 'john@test.com',
-        },
-      }),
-    };
+    api.profileAPI.getProfile.mockResolvedValue({
+      status: 200,
+      data: {
+        first_name: 'John',
+        last_name: 'Doe',
+        email: 'john@test.com',
+      },
+    });
 
-    api.coverLetterAIAPI = {
-      generateCoverLetter: jest.fn().mockResolvedValue({
-        status: 200,
-        data: {
-          variations: [
-            {
-              id: 'var-1',
-              opening_paragraph: 'Test opening',
-              body_paragraphs: ['Test body 1', 'Test body 2'],
-              closing_paragraph: 'Test closing',
-            },
-          ],
-        },
-      }),
-    };
+    api.coverLetterAIAPI.generateCoverLetter.mockResolvedValue({
+      status: 200,
+      data: {
+        variations: [
+          {
+            id: 'var-1',
+            opening_paragraph: 'Test opening',
+            body_paragraphs: ['Test body 1', 'Test body 2'],
+            closing_paragraph: 'Test closing',
+          },
+        ],
+      },
+    });
   });
 
-  it('renders the cover letter generator page', () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+  it('renders the cover letter generator page', async () => {
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     expect(screen.getByText(/Tailored Cover Letter Generator/i)).toBeInTheDocument();
   });
 
-  it('initializes with empty version history', () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+  it('initializes with empty version history', async () => {
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     // Version history should start empty
     expect(localStorageMock.getItem('resumerocket_cover_letter_versions_var-1')).toBeNull();
   });
@@ -103,7 +161,7 @@ describe('AiCoverLetterGenerator - Version History', () => {
   it('saves version to localStorage after changes', async () => {
     jest.useFakeTimers();
     
-    renderWithRouter(<AiCoverLetterGenerator />);
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     
     // Wait for component to mount and simulate changes
     act(() => {
@@ -113,7 +171,7 @@ describe('AiCoverLetterGenerator - Version History', () => {
     jest.useRealTimers();
   });
 
-  it('loads version history from localStorage on mount', () => {
+  it('loads version history from localStorage on mount', async () => {
     const mockVersions = {
       versions: [
         {
@@ -134,7 +192,7 @@ describe('AiCoverLetterGenerator - Version History', () => {
       JSON.stringify(mockVersions)
     );
 
-    renderWithRouter(<AiCoverLetterGenerator />);
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     
     // Version history should be loaded from localStorage
     const stored = localStorageMock.getItem('resumerocket_cover_letter_versions_var-1');
@@ -147,16 +205,17 @@ describe('AiCoverLetterGenerator - Word Count & Readability', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorageMock.clear();
+    ensureAllMocks();
   });
 
-  it('displays word count and character count', () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+  it('displays word count and character count', async () => {
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     // These elements should be in the document when content is present
     // Initially they might show 0 words, 0 characters
   });
 
-  it('calculates readability score', () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+  it('calculates readability score', async () => {
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     // Readability score should be calculated from content
   });
 });
@@ -164,6 +223,7 @@ describe('AiCoverLetterGenerator - Word Count & Readability', () => {
 describe('AiCoverLetterGenerator - Grammar Check', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    ensureAllMocks();
     api.coverLetterAIAPI = {
       ...api.coverLetterAIAPI,
       checkGrammar: jest.fn().mockResolvedValue({
@@ -193,7 +253,7 @@ describe('AiCoverLetterGenerator - Grammar Check', () => {
   });
 
   it('checks grammar when button is clicked', async () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     
     const grammarButton = screen.queryByText(/Check Grammar/i);
     if (grammarButton) {
@@ -208,6 +268,7 @@ describe('AiCoverLetterGenerator - Grammar Check', () => {
 describe('AiCoverLetterGenerator - Export Functionality', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    ensureAllMocks();
     
     api.coverLetterExportAPI = {
       exportAICoverLetter: jest.fn().mockResolvedValue({
@@ -217,11 +278,12 @@ describe('AiCoverLetterGenerator - Export Functionality', () => {
           'content-disposition': 'attachment; filename="cover-letter.pdf"',
         },
       }),
+      getThemes: jest.fn().mockResolvedValue({ themes: [] }),
     };
   });
 
   it('opens export modal when export button is clicked', async () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     
     const exportButton = screen.queryByText(/Export/i);
     if (exportButton && !exportButton.disabled) {
@@ -235,30 +297,31 @@ describe('AiCoverLetterGenerator - Version Control Buttons', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorageMock.clear();
+    ensureAllMocks();
   });
 
-  it('renders undo button', () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+  it('renders undo button', async () => {
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     // Undo button should be present (might be disabled initially)
   });
 
-  it('renders redo button', () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+  it('renders redo button', async () => {
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     // Redo button should be present (might be disabled initially)
   });
 
-  it('renders version history button', () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+  it('renders version history button', async () => {
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     // Version history button should be present
   });
 
-  it('disables undo button when at oldest version', () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+  it('disables undo button when at oldest version', async () => {
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     // Undo should be disabled when currentVersionIndex <= 0
   });
 
-  it('disables redo button when at newest version', () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+  it('disables redo button when at newest version', async () => {
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     // Redo should be disabled when at the latest version
   });
 });
@@ -267,6 +330,7 @@ describe('AiCoverLetterGenerator - Version Restore', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorageMock.clear();
+    ensureAllMocks();
   });
 
   it('restores a previous version when restore button is clicked', async () => {
@@ -299,13 +363,13 @@ describe('AiCoverLetterGenerator - Version Restore', () => {
       JSON.stringify(mockVersions)
     );
 
-    renderWithRouter(<AiCoverLetterGenerator />);
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     
     // Test that restore functionality works
     // After restoring, newer versions should be discarded
   });
 
-  it('discards future versions when restoring an earlier version', () => {
+  it('discards future versions when restoring an earlier version', async () => {
     const mockVersions = {
       versions: [
         { timestamp: 1, content: { opening_paragraph: 'V1' }, label: 'Version 1' },
@@ -320,7 +384,7 @@ describe('AiCoverLetterGenerator - Version Restore', () => {
       JSON.stringify(mockVersions)
     );
 
-    renderWithRouter(<AiCoverLetterGenerator />);
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     
     // When restoring version at index 0, versions 1 and 2 should be discarded
   });
@@ -330,12 +394,13 @@ describe('AiCoverLetterGenerator - Auto-save', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorageMock.clear();
+    ensureAllMocks();
   });
 
   it('auto-saves after 5 seconds of inactivity', async () => {
     jest.useFakeTimers();
     
-    renderWithRouter(<AiCoverLetterGenerator />);
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     
     // Simulate content change
     act(() => {
@@ -350,7 +415,7 @@ describe('AiCoverLetterGenerator - Auto-save', () => {
   it('resets auto-save timer when content changes', async () => {
     jest.useFakeTimers();
     
-    renderWithRouter(<AiCoverLetterGenerator />);
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     
     // First change
     act(() => {
@@ -367,8 +432,8 @@ describe('AiCoverLetterGenerator - Auto-save', () => {
     jest.useRealTimers();
   });
 
-  it('does not save duplicate versions with same content', () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+  it('does not save duplicate versions with same content', async () => {
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     
     // Saving same content multiple times should not create duplicate versions
   });
@@ -378,9 +443,10 @@ describe('AiCoverLetterGenerator - Version History Cap', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorageMock.clear();
+    ensureAllMocks();
   });
 
-  it('maintains maximum of 30 versions', () => {
+  it('maintains maximum of 30 versions', async () => {
     const mockVersions = {
       versions: Array.from({ length: 30 }, (_, i) => ({
         timestamp: Date.now() + i,
@@ -395,7 +461,7 @@ describe('AiCoverLetterGenerator - Version History Cap', () => {
       JSON.stringify(mockVersions)
     );
 
-    renderWithRouter(<AiCoverLetterGenerator />);
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     
     // Should have exactly 30 versions, no more
     const stored = JSON.parse(
@@ -404,24 +470,25 @@ describe('AiCoverLetterGenerator - Version History Cap', () => {
     expect(stored.versions.length).toBeLessThanOrEqual(30);
   });
 
-  it('removes oldest version when adding 31st version', () => {
+  it('removes oldest version when adding 31st version', async () => {
     // When adding a new version beyond the cap, the oldest should be removed
-    renderWithRouter(<AiCoverLetterGenerator />);
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
   });
 });
 
 describe('AiCoverLetterGenerator - Synonym Suggestions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    ensureAllMocks();
   });
 
-  it('shows synonym hint banner', () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+  it('shows synonym hint banner', async () => {
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     // Should show a hint about highlighting words for synonyms
   });
 
   it('displays synonym panel when text is selected', async () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     // When user selects text, synonym panel should appear
   });
 });
@@ -430,9 +497,10 @@ describe('AiCoverLetterGenerator - Letterhead Configuration', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorageMock.clear();
+    ensureAllMocks();
   });
 
-  it('loads letterhead config from localStorage', () => {
+  it('loads letterhead config from localStorage', async () => {
     const mockConfig = {
       header_format: 'centered',
       font_name: 'Calibri',
@@ -445,7 +513,7 @@ describe('AiCoverLetterGenerator - Letterhead Configuration', () => {
       JSON.stringify(mockConfig)
     );
 
-    renderWithRouter(<AiCoverLetterGenerator />);
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     
     const stored = JSON.parse(
       localStorageMock.getItem('resumerocket_letterhead_config')
@@ -453,8 +521,8 @@ describe('AiCoverLetterGenerator - Letterhead Configuration', () => {
     expect(stored.font_name).toBe('Calibri');
   });
 
-  it('saves letterhead config to localStorage', () => {
-    renderWithRouter(<AiCoverLetterGenerator />);
+  it('saves letterhead config to localStorage', async () => {
+    await renderAndWaitForJobs(<AiCoverLetterGenerator />);
     
     // After changing letterhead settings, they should be saved
   });

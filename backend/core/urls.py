@@ -81,6 +81,24 @@ urlpatterns = [
     path('networking-events/<uuid:event_id>/follow-ups/<uuid:follow_up_id>/complete', views.event_follow_up_complete, name='event-follow-up-complete'),
     path('networking-events/analytics', views.networking_analytics, name='networking-analytics'),
 
+    # UC-092: Industry Contact Discovery
+    path('contact-suggestions', views.contact_suggestions_list_create, name='contact-suggestions-list-create'),
+    path('contact-suggestions/<uuid:pk>', views.contact_suggestion_detail, name='contact-suggestion-detail'),
+    path('contact-suggestions/<uuid:pk>/convert', views.contact_suggestion_convert_to_contact, name='contact-suggestion-convert'),
+    path('discovery-searches', views.discovery_searches_list_create, name='discovery-searches-list-create'),
+    path('discovery-searches/<uuid:pk>', views.discovery_search_detail, name='discovery-search-detail'),
+    path('discovery/analytics', views.discovery_analytics, name='discovery-analytics'),
+
+    # Supporters (family/friends) access
+    path('supporters', views.supporter_invites, name='supporter-invites'),
+    path('supporters/<int:invite_id>', views.supporter_invite_detail, name='supporter-invite-detail'),
+    path('supporters/dashboard', views.supporter_dashboard, name='supporter-dashboard'),
+    path('supporters/encouragements', views.supporter_encouragement, name='supporter-encouragement'),
+    path('supporters/encouragements/list', views.supporter_encouragements_for_candidate, name='supporter-encouragements-for-candidate'),
+    path('supporters/chat', views.supporter_chat, name='supporter-chat'),
+    path('supporters/chat/candidate', views.supporter_chat_candidate, name='supporter-chat-candidate'),
+    path('supporters/mood', views.supporter_mood, name='supporter-mood'),
+
     # Mentorship & collaboration
     path('mentorship/requests', views.mentorship_requests_view, name='mentorship-requests'),
     path('mentorship/requests/<uuid:request_id>/respond', views.respond_to_mentorship_request, name='mentorship-request-respond'),
@@ -143,6 +161,7 @@ urlpatterns = [
     path('jobs/import-from-url', views.import_job_from_url, name='import-job-from-url'),
     path('jobs/stats', views.jobs_stats, name='jobs-stats'),
     path('jobs/analytics', analytics_views.cover_letter_analytics_view, name='cover-letter-analytics'),
+    path('jobs/competitive-analysis', analytics_views.competitive_analysis_view, name='competitive-analysis'),
     path('jobs/success-analysis', views.application_success_analysis, name='application-success-analysis'),  # UC-097
     path('jobs/analytics/goals', analytics_views.update_application_targets_view, name='analytics-goals'),
     path('jobs/bulk-status', views.jobs_bulk_status, name='jobs-bulk-status'),
@@ -286,7 +305,10 @@ urlpatterns = [
     # UC-052: Resume Sharing and Feedback endpoints
     path('resume-shares/', views.resume_share_list_create, name='resume-share-list-create'),
     path('resume-shares/<uuid:share_id>/', views.resume_share_detail, name='resume-share-detail'),
+    path('resume-shares/reviewer/', views.reviewer_resume_shares, name='resume-share-reviewer'),
+    path('resume-shares/reviewer/stats/', views.reviewer_feedback_stats, name='reviewer-feedback-stats'),
     path('shared-resume/<str:share_token>/', views.shared_resume_view, name='shared-resume-view'),
+    path('shared-resume/<str:share_token>/pdf/', views.shared_resume_pdf, name='shared-resume-pdf'),
     path('feedback/', views.feedback_list, name='feedback-list'),
     path('feedback/create/', views.create_feedback, name='create-feedback'),
     path('feedback/<uuid:feedback_id>/', views.feedback_detail, name='feedback-detail'),
