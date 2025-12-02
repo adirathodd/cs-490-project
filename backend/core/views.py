@@ -383,12 +383,25 @@ def referrals_generate_message(request):
     # Return a richer AI suggestion payload used by the frontend so
     # components can safely read nested fields without crashing.
     name = request.data.get('referral_source_name', 'Friend')
-    job = request.data.get('job_title') or request.data.get('job_id') or 'this role'
+    
+    # Get job title - if job_id is provided, look up the actual job title
+    job_title = request.data.get('job_title')
+    if not job_title:
+        job_id = request.data.get('job_id')
+        if job_id:
+            try:
+                job_entry = JobEntry.objects.get(id=job_id)
+                job_title = f"{job_entry.position_title} at {job_entry.company_name}"
+            except JobEntry.DoesNotExist:
+                job_title = 'this role'
+        else:
+            job_title = 'this role'
+    
     tone = request.data.get('tone', 'professional')
-    message = f"Hi {name},\n\nI'm exploring opportunities for {job} and wondered if you'd be willing to introduce me or pass my resume along. I appreciate any help you can provide.\n\nThanks!"
+    message = f"Hi {name},\n\nI'm exploring opportunities for {job_title} and wondered if you'd be willing to introduce me or pass my resume along. I appreciate any help you can provide.\n\nThanks!"
 
     suggestion = {
-        'subject_line': f'Referral request for {job}',
+        'subject_line': f'Referral request for {job_title}',
         'message': message,
         'tone': tone,
         'timing_guidance': {
