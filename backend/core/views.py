@@ -583,6 +583,53 @@ def _ensure_sharing_preference(team_member):
     return preference
 
 
+def _send_mentorship_request_email(mentorship_request):
+    """Send a notification email to the receiver when a mentorship request is created."""
+    receiver_user = getattr(getattr(mentorship_request, 'receiver', None), 'user', None)
+    requester_user = getattr(getattr(mentorship_request, 'requester', None), 'user', None)
+    receiver_email = (getattr(receiver_user, 'email', '') or '').strip()
+    if not receiver_email:
+        return
+
+    requester_name = (getattr(requester_user, 'get_full_name', lambda: '')() or getattr(requester_user, 'email', '') or 'A candidate').strip()
+    receiver_name = (getattr(receiver_user, 'get_full_name', lambda: '')() or receiver_email).strip()
+    role_for_requester = getattr(mentorship_request, 'role_for_requester', 'mentee')
+    if role_for_requester == 'mentor':
+        intro_line = f"{requester_name} would like to mentor you on ResumeRocket."
+    else:
+        intro_line = f"{requester_name} is requesting your mentorship on ResumeRocket."
+
+    dashboard_base = getattr(settings, 'FRONTEND_BASE_URL', 'http://localhost:3000').rstrip('/')
+    dashboard_url = f"{dashboard_base}/mentorship"
+
+    message_lines = [
+        f"Hi {receiver_name},",
+        "",
+        intro_line,
+    ]
+    request_message = (mentorship_request.message or '').strip()
+    if request_message:
+        message_lines.extend([
+            "",
+            "Personal note:",
+            request_message,
+        ])
+    message_lines.extend([
+        "",
+        f"Review and respond to this request: {dashboard_url}",
+        "",
+        "Thanks,",
+        "ResumeRocket",
+    ])
+
+    subject = "New mentorship request on ResumeRocket"
+    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None)
+    try:
+        send_mail(subject, "\n".join(message_lines), from_email, [receiver_email], fail_silently=False)
+    except Exception as exc:
+        logger.warning("Failed to send mentorship request email to %s: %s", receiver_email, exc)
+
+
 def _build_goal_summary(goal_list):
     total = len(goal_list)
     active = sum(1 for goal in goal_list if goal.status == 'active')
@@ -13939,6 +13986,7 @@ def mentorship_requests_view(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     mentorship_request = serializer.save()
+    _send_mentorship_request_email(mentorship_request)
     response_serializer = MentorshipRequestSerializer(mentorship_request, context={'request': request})
     return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
