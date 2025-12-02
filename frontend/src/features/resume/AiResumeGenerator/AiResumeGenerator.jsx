@@ -7,7 +7,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { jobsAPI, resumeAIAPI, resumeExportAPI, resumeVersionAPI, resumeSharingAPI, feedbackAPI } from '../../../services/api';
+import { jobsAPI, resumeAIAPI, resumeExportAPI, resumeVersionAPI, resumeSharingAPI, feedbackAPI, materialsAPI } from '../../../services/api';
 import Icon from '../../../components/common/Icon';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import './AiResumeGenerator.css';
@@ -3786,6 +3786,39 @@ const AiResumeGenerator = () => {
                     disabled={!activeVariation || livePreviewLoading}
                   >
                     <Icon name="refresh" size="sm" /> Refresh preview
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={async () => {
+                      if (!livePreviewPdfUrl) return;
+                      try {
+                        // Fetch the current PDF preview and upload as a document
+                        const resp = await fetch(livePreviewPdfUrl);
+                        if (!resp.ok) throw new Error('Unable to fetch PDF preview');
+                        const blob = await resp.blob();
+                        // Ask the user for a filename
+                        const defaultName = (activeVariation?.label || 'AI Resume').trim();
+                        const userName = window.prompt('Enter a name for this resume (without extension):', defaultName) || defaultName;
+                        const safeName = userName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_\-]/g, '').slice(0, 100) || 'AI_Resume';
+                        const file = new File([blob], `${safeName}.pdf`, { type: 'application/pdf' });
+                        const version = (activeVariation?.version || 1);
+                        const name = safeName;
+                        await materialsAPI.uploadDocument({
+                          file,
+                          document_type: 'resume',
+                          document_name: name,
+                          version_number: String(version),
+                        });
+                        alert(`Saved to Documents as ${safeName}.pdf`);
+                      } catch (e) {
+                        console.error('Failed to save document', e);
+                        alert('Failed to save document. Please try again.');
+                      }
+                    }}
+                    disabled={!activeVariation || !livePreviewPdfUrl}
+                  >
+                    <Icon name="save" size="sm" /> Save to Documents
                   </button>
                 </div>
               </aside>

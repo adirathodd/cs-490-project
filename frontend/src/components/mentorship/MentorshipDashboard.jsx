@@ -138,6 +138,10 @@ const MentorshipDashboard = () => {
   const [selectedMentorForSharing, setSelectedMentorForSharing] = useState('');
   const [shareSettings, setShareSettings] = useState(null);
   const [shareSections, setShareSections] = useState(Object.keys(sectionLabels).reduce((acc, key) => ({ ...acc, [key]: false }), {}));
+  const shareSectionsRef = React.useRef(shareSections);
+  useEffect(() => {
+    shareSectionsRef.current = shareSections;
+  }, [shareSections]);
   const [jobSharingMode, setJobSharingMode] = useState('selected');
   const [shareApplications, setShareApplications] = useState([]);
   const [shareLoading, setShareLoading] = useState(false);
@@ -334,8 +338,9 @@ const MentorshipDashboard = () => {
     if (!selectedMentorForSharing) return;
     setSavingShare(true);
     setShareFeedback({ success: '', error: '' });
+    const currentSections = shareSectionsRef.current || shareSections;
     const payload = {
-      ...shareSections,
+      ...currentSections,
       share_job_applications: jobSharingMode !== 'none',
       job_sharing_mode: jobSharingMode,
     };
