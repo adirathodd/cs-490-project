@@ -17,6 +17,23 @@ from core.models import (
     MockInterviewSession,
 )
 
+POSITIVE_OUTCOMES = {'excellent', 'good'}
+NEGATIVE_OUTCOMES = {'rejected', 'poor'}
+
+
+def _confidence_from_outcome(outcome: str) -> float:
+    """Map interview outcomes to a 1-5 confidence score."""
+    normalized = (outcome or '').lower()
+    mapping = {
+        'excellent': 5,
+        'good': 4,
+        'average': 3,
+        'poor': 2,
+        'rejected': 1,
+        'withdrew': 2,
+    }
+    return mapping.get(normalized, 3)
+
 
 class InterviewPerformanceTracker:
     """Tracks and analyzes interview performance over time."""
@@ -46,10 +63,10 @@ class InterviewPerformanceTracker:
             total_interviews=Count('id'),
             offers=Count(Case(
                 # Map excellent/good outcomes to offers
-                When(outcome__in=['excellent', 'good'], then=1),
+                When(outcome__in=list(POSITIVE_OUTCOMES), then=1),
             )),
             rejections=Count(Case(
-                When(outcome__in=['rejected', 'poor'], then=1),
+                When(outcome__in=list(NEGATIVE_OUTCOMES), then=1),
             )),
             pending=Count(Case(
                 When(outcome='', then=1),
@@ -61,6 +78,7 @@ class InterviewPerformanceTracker:
             total = data['total_interviews']
             offers = data['offers']
             conversion_rate = round((offers / total * 100), 2) if total > 0 else 0
+            rejection_rate = round((data['rejections'] / total * 100), 2) if total > 0 else 0
             
             results.append({
                 'period': data['period'].isoformat() if data['period'] else None,
@@ -69,6 +87,7 @@ class InterviewPerformanceTracker:
                 'rejections': data['rejections'],
                 'pending': data['pending'],
                 'conversion_rate': conversion_rate,
+                'rejection_rate': rejection_rate,
             })
         
         return results
@@ -87,8 +106,16 @@ class InterviewPerformanceTracker:
                 continue
             
             # Map excellent/good to offers
-            offers = interviews.filter(outcome__in=['excellent', 'good']).count()
-            rejections = interviews.filter(outcome__in=['rejected', 'poor']).count()
+            offers = interviews.filter(outcome__in=POSITIVE_OUTCOMES).count()
+            rejections = interviews.filter(outcome__in=NEGATIVE_OUTCOMES).count()
+            confidence_scores = [
+                _confidence_from_outcome(outcome)
+                for outcome in interviews.values_list('outcome', flat=True)
+            ]
+            avg_confidence = round(
+                sum(confidence_scores) / len(confidence_scores),
+                1
+            ) if confidence_scores else 0
             
             results.append({
                 'format': format_type,
@@ -96,6 +123,7 @@ class InterviewPerformanceTracker:
                 'total_interviews': total,
                 'offers': offers,
                 'rejections': rejections,
+                'avg_confidence': avg_confidence,
                 'conversion_rate': round((offers / total * 100), 2) if total > 0 else 0,
             })
         
@@ -178,13 +206,22 @@ class InterviewPerformanceTracker:
             if total == 0:
                 continue
             
-            offers = interviews.filter(outcome='offer_received').count()
+            offers = interviews.filter(outcome__in=POSITIVE_OUTCOMES).count()
+            confidence_scores = [
+                _confidence_from_outcome(outcome)
+                for outcome in interviews.values_list('outcome', flat=True)
+            ]
+            avg_confidence = round(
+                sum(confidence_scores) / len(confidence_scores),
+                1
+            ) if confidence_scores else 0
             
             results.append({
                 'industry': industry,
                 'total_interviews': total,
                 'offers': offers,
-                'conversion_rate': round((offers / total * 100), 2),
+                'conversion_rate': round((offers / total * 100), 2) if total > 0 else 0,
+                'avg_confidence': avg_confidence,
             })
         
         results.sort(key=lambda x: x['conversion_rate'], reverse=True)
@@ -227,65 +264,74 @@ class InterviewPerformanceTracker:
                 else:
                     improvement_areas['communication'] += 1
         
+        total_improvement_mentions = sum(improvement_areas.values())
+        improvement_list = []
+        for key, count in sorted(improvement_areas.items(), key=lambda x: x[1], reverse=True):
+            if count <= 0:
+                continue
+            percentage = round(
+                (count / total_improvement_mentions * 100),
+                1
+            ) if total_improvement_mentions else 0
+            improvement_list.append({
+                'area': key.replace('_', ' ').title(),
+                'count': count,
+                'percentage': percentage,
+            })
+        positive_list = [
+            {'theme': key.replace('_', ' ').title(), 'count': count}
+            for key, count in sorted(positive_themes.items(), key=lambda x: x[1], reverse=True)
+            if count > 0
+        ]
         return {
-            'improvement_areas': [
-                {'theme': k.replace('_', ' ').title(), 'count': v}
-                for k, v in sorted(improvement_areas.items(), key=lambda x: x[1], reverse=True)
-                if v > 0
-            ],
-            'positive_themes': [
-                {'theme': k.replace('_', ' ').title(), 'count': v}
-                for k, v in sorted(positive_themes.items(), key=lambda x: x[1], reverse=True)
-                if v > 0
-            ],
+            'improvement_areas': improvement_list,
+            'positive_themes': positive_list,
             'total_feedback_analyzed': len(interviews_with_feedback),
         }
     
     def monitor_confidence_progression(self):
         """Monitor confidence progression over time."""
-        # Since InterviewSchedule doesn't have confidence_level,
-        # we'll use mock session scores as a proxy
         thirty_days_ago = timezone.now() - timedelta(days=30)
         sixty_days_ago = timezone.now() - timedelta(days=60)
-        
-        last_30_days = self.mock_sessions.filter(
-            started_at__gte=thirty_days_ago,
-            status='completed'
+
+        def _confidence_values(queryset):
+            return [
+                _confidence_from_outcome(outcome)
+                for outcome in queryset.values_list('outcome', flat=True)
+            ]
+
+        current_values = _confidence_values(
+            self.interviews.filter(scheduled_at__gte=thirty_days_ago)
         )
-        
-        previous_30_days = self.mock_sessions.filter(
-            started_at__gte=sixty_days_ago,
-            started_at__lt=thirty_days_ago,
-            status='completed'
+        previous_values = _confidence_values(
+            self.interviews.filter(
+                scheduled_at__gte=sixty_days_ago,
+                scheduled_at__lt=thirty_days_ago,
+            )
         )
-        
-        current_avg = last_30_days.aggregate(avg=Avg('overall_score'))['avg'] or 0
-        previous_avg = previous_30_days.aggregate(avg=Avg('overall_score'))['avg'] or 0
-        
-        # Calculate trend
-        trend = 'stable'
+
+        current_avg = round(sum(current_values) / len(current_values), 1) if current_values else 0
+        previous_avg = round(sum(previous_values) / len(previous_values), 1) if previous_values else 0
+
         change_percent = 0
         if previous_avg > 0:
-            change_percent = round(((current_avg - previous_avg) / previous_avg * 100), 1)
-            if change_percent > 10:
-                trend = 'improving'
-            elif change_percent < -10:
-                trend = 'declining'
-        
-        # Get progression data points
-        progression_data = []
-        for session in self.mock_sessions.filter(status='completed').order_by('started_at')[:30]:
-            progression_data.append({
-                'date': session.started_at.date().isoformat() if session.started_at else None,
-                'score': session.overall_score or 0,
+            change_percent = round(((current_avg - previous_avg) / previous_avg) * 100, 1)
+
+        timeline = []
+        interviews = self.interviews.exclude(scheduled_at__isnull=True).order_by('scheduled_at')[:30]
+        for interview in interviews:
+            timeline.append({
+                'date': interview.scheduled_at.date().isoformat(),
+                'interview_type': interview.interview_type or 'unknown',
+                'confidence_level': _confidence_from_outcome(interview.outcome),
+                'outcome': (interview.outcome or 'pending'),
             })
-        
+
         return {
-            'current_period_average': round(current_avg, 1),
-            'previous_period_average': round(previous_avg, 1),
-            'change_percent': change_percent,
-            'trend': trend,
-            'progression_data': progression_data,
+            'current_avg_confidence': current_avg,
+            'previous_avg_confidence': previous_avg,
+            'trend_percentage': change_percent,
+            'confidence_progression': timeline,
         }
     
     def generate_coaching_recommendations(self):
@@ -295,7 +341,7 @@ class InterviewPerformanceTracker:
         # Check conversion rate
         total_interviews = self.interviews.count()
         if total_interviews > 0:
-            offers = self.interviews.filter(outcome__in=['excellent', 'good']).count()
+            offers = self.interviews.filter(outcome__in=POSITIVE_OUTCOMES).count()
             conversion_rate = (offers / total_interviews * 100)
             
             if conversion_rate < 20:
@@ -350,7 +396,7 @@ class InterviewPerformanceTracker:
         """Benchmark performance against successful patterns."""
         # Calculate user's metrics
         total_interviews = self.interviews.count()
-        offers = self.interviews.filter(outcome__in=['excellent', 'good']).count()
+        offers = self.interviews.filter(outcome__in=POSITIVE_OUTCOMES).count()
         conversion_rate = (offers / total_interviews * 100) if total_interviews > 0 else 0
         
         mock_count = self.mock_sessions.filter(status='completed').count()
@@ -391,3 +437,101 @@ class InterviewPerformanceTracker:
             'coaching_recommendations': self.generate_coaching_recommendations(),
             'benchmark_comparison': self.benchmark_against_patterns(),
         }
+
+
+def build_interview_performance_analytics(tracker: InterviewPerformanceTracker) -> Dict[str, Any]:
+    """High-level analytics snapshot for UC-080."""
+    conversion_trend = tracker.get_conversion_rates_over_time()
+    format_performance = tracker.analyze_by_interview_format()
+    industry_performance = tracker.analyze_by_industry()
+    practice_insights = tracker.track_mock_to_real_improvement()
+    feedback = tracker.track_feedback_themes()
+    recommendations = tracker.generate_coaching_recommendations()
+    benchmark = tracker.benchmark_against_patterns()
+
+    total_interviews = tracker.interviews.count()
+    total_offers = tracker.interviews.filter(outcome__in=POSITIVE_OUTCOMES).count()
+    conversion_rate = round((total_offers / total_interviews * 100), 1) if total_interviews else 0
+
+    best_period = conversion_trend[-1] if conversion_trend else None
+    first_period = conversion_trend[0] if conversion_trend else None
+    trend_delta = 0
+    if best_period and first_period and len(conversion_trend) > 1:
+        trend_delta = round(best_period['conversion_rate'] - first_period['conversion_rate'], 1)
+
+    most_effective_format = format_performance[0] if format_performance else None
+    weakest_format = format_performance[-1] if len(format_performance) > 1 else most_effective_format
+
+    strongest_industry = industry_performance[0] if industry_performance else None
+    weakest_industry = industry_performance[-1] if len(industry_performance) > 1 else strongest_industry
+
+    summary = {
+        'total_interviews': total_interviews,
+        'offers': total_offers,
+        'conversion_rate': conversion_rate,
+        'trend_delta': trend_delta,
+        'most_effective_format': most_effective_format,
+        'least_effective_format': weakest_format,
+        'strongest_industry': strongest_industry,
+        'weakest_industry': weakest_industry,
+    }
+
+    strengths = []
+    if most_effective_format:
+        strengths.append({
+            'type': 'format',
+            'label': most_effective_format['format_label'],
+            'value': most_effective_format['conversion_rate'],
+        })
+    if feedback['positive_themes']:
+        strengths.extend([
+            {'type': 'feedback', 'label': theme['theme'], 'value': theme['count']}
+            for theme in feedback['positive_themes'][:3]
+        ])
+
+    improvement_areas = []
+    if weakest_format and weakest_format is not most_effective_format:
+        improvement_areas.append({
+            'type': 'format',
+            'label': weakest_format['format_label'],
+            'value': weakest_format['conversion_rate'],
+        })
+    if feedback['improvement_areas']:
+        improvement_areas.extend([
+            {'type': 'feedback', 'label': area['area'], 'value': area['percentage']}
+            for area in feedback['improvement_areas'][:3]
+        ])
+
+    insights = []
+    if trend_delta > 0:
+        insights.append(f'Interview conversion rate improved by {trend_delta} points over the observed period.')
+    elif trend_delta < 0:
+        insights.append('Interview conversion rate is trending downward. Review practice cadence and preparation routines.')
+
+    if practice_insights.get('improvement_trend', 0) > 0:
+        insights.append('Mock interview performance is trending upward—keep the current practice cadence.')
+    elif practice_insights.get('improvement_trend', 0) < 0:
+        insights.append('Mock interview scores decreased recently. Revisit feedback items before next sessions.')
+
+    if most_effective_format and weakest_format and most_effective_format != weakest_format:
+        diff = most_effective_format['conversion_rate'] - weakest_format['conversion_rate']
+        if diff >= 10:
+            insights.append(
+                f"{most_effective_format['format_label']} interviews outperform {weakest_format['format_label']} by {round(diff, 1)} points."
+            )
+
+    return {
+        'summary': summary,
+        'conversion_trend': conversion_trend,
+        'format_performance': format_performance,
+        'industry_performance': industry_performance,
+        'practice_insights': practice_insights,
+        'feedback_themes': feedback,
+        'strengths_and_gaps': {
+            'strengths': strengths,
+            'improvement_opportunities': improvement_areas,
+        },
+        'recommendations': recommendations,
+        'benchmark_comparison': benchmark,
+        'insights': insights,
+    }

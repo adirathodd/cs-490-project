@@ -181,6 +181,10 @@ from core.models import (
 from core import google_import, tasks, response_coach, interview_followup, calendar_sync, resume_ai
 from core.interview_checklist import build_checklist_tasks
 from core.interview_success import InterviewSuccessForecastService, InterviewSuccessScorer
+from core.interview_performance_tracking import (
+    InterviewPerformanceTracker,
+    build_interview_performance_analytics,
+)
 from core.research.enrichment import fallback_domain
 from core.question_bank import build_question_bank
 from core.technical_prep import (
@@ -11523,26 +11527,46 @@ def interview_performance_tracking(request):
     - Benchmarking against successful patterns
     """
     try:
-        from core.interview_performance_tracking import InterviewPerformanceTracker
-        
         candidate = request.user.profile
-        tracker = InterviewPerformanceTracker(candidate)
-        
-        # Get complete performance analysis
-        analysis = tracker.get_complete_analysis()
-        
-        return Response(analysis, status=status.HTTP_200_OK)
-        
     except CandidateProfile.DoesNotExist:
         return Response(
             {'error': {'code': 'profile_not_found', 'message': 'Candidate profile not found.'}},
             status=status.HTTP_404_NOT_FOUND
         )
+
+    try:
+        tracker = InterviewPerformanceTracker(candidate)
+        analysis = tracker.get_complete_analysis()
+        return Response(analysis, status=status.HTTP_200_OK)
     except Exception as e:
         logger.exception(f"Error in interview_performance_tracking: {e}")
         return Response(
             {'error': {'code': 'internal_error', 'message': 'Failed to generate performance tracking analysis.'}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def interview_performance_analytics(request):
+    """UC-080: Interview Performance Analytics dashboard payload."""
+    try:
+        candidate = request.user.profile
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Candidate profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    try:
+        tracker = InterviewPerformanceTracker(candidate)
+        analytics = build_interview_performance_analytics(tracker)
+        return Response(analytics, status=status.HTTP_200_OK)
+    except Exception as exc:
+        logger.exception('Error in interview_performance_analytics: %s', exc)
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to load interview analytics.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
 

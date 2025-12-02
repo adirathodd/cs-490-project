@@ -267,6 +267,7 @@ urlpatterns = [
     path('interviews/events/', views.interview_events_list_create, name='interview-events-list-create'),
     path('interviews/events/<int:pk>/', views.interview_event_detail, name='interview-event-detail'),
     path('interviews/success-forecast/', views.interview_success_forecast, name='interview-success-forecast'),
+    path('interviews/performance-analytics/', views.interview_performance_analytics, name='interview-performance-analytics'),  # UC-080
     path('interviews/performance-tracking/', views.interview_performance_tracking, name='interview-performance-tracking'),  # UC-098
 
     # UC-081: Pre-Interview Preparation Checklist endpoints
