@@ -9,12 +9,14 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from core.models import (
-    CandidateProfile, Skill, CandidateSkill, Education, Certification, 
-    Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory, 
+    CandidateProfile, Skill, CandidateSkill, Education, Certification,
+    Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory,
     CoverLetterTemplate, InterviewSchedule, InterviewPreparationTask, InterviewEvent, CalendarIntegration, QuestionResponseCoaching,
     ResumeVersion, ResumeVersionChange, ResumeShare, ShareAccessLog,
     ResumeFeedback, FeedbackComment, FeedbackNotification, SupporterInvite, SupporterEncouragement, SupporterChatMessage,
-    TeamMember, MentorshipRequest, MentorshipSharingPreference, MentorshipSharedApplication,
+    TeamMember, TeamAccount, TeamMembership, TeamInvitation, TeamCandidateAccess, TeamMessage,
+    TeamSharedJob, TeamJobComment,
+    MentorshipRequest, MentorshipSharingPreference, MentorshipSharedApplication,
     MentorshipGoal, MentorshipMessage,
     MarketIntelligence, MockInterviewSession, MockInterviewQuestion, MockInterviewSummary,
 )
@@ -4270,7 +4272,7 @@ class InformationalInterviewListSerializer(serializers.ModelSerializer):
     contact_title = serializers.CharField(source='contact.title', read_only=True)
     tags_count = serializers.SerializerMethodField()
     connected_jobs_count = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = InformationalInterview
         fields = [
@@ -4280,13 +4282,300 @@ class InformationalInterviewListSerializer(serializers.ModelSerializer):
             'led_to_job_application', 'led_to_referral', 'led_to_introduction',
             'created_at'
         ]
-    
+
     def get_tags_count(self, obj):
         if obj.pk:
             return obj.tags.count()
         return 0
-    
+
     def get_connected_jobs_count(self, obj):
         if obj.pk:
             return obj.connected_jobs.count()
         return 0
+
+
+# ======================
+# Team Accounts & Collaboration
+# ======================
+
+
+class TeamMembershipSerializer(serializers.ModelSerializer):
+    user_profile = serializers.SerializerMethodField()
+    candidate_profile = CandidatePublicProfileSerializer(read_only=True)
+
+    class Meta:
+        model = TeamMembership
+        fields = [
+            'id',
+            'team',
+            'user',
+            'role',
+            'permission_level',
+            'is_active',
+            'joined_at',
+            'last_accessed_at',
+            'invited_by',
+            'candidate_profile',
+            'user_profile',
+        ]
+        read_only_fields = ['id', 'team', 'user', 'joined_at', 'last_accessed_at', 'invited_by', 'user_profile']
+
+    def _serialize_user(self, user):
+        profile = getattr(user, 'profile', None)
+        if profile:
+            return CandidatePublicProfileSerializer(profile, context=self.context).data
+        full_name = user.get_full_name() or user.email or ''
+        return {
+            'user_id': user.id,
+            'full_name': full_name,
+            'email': user.email,
+            'headline': '',
+            'experience_level': '',
+            'city': '',
+            'state': '',
+        }
+
+    def get_user_profile(self, obj):
+        return self._serialize_user(obj.user)
+
+
+class TeamInvitationSerializer(serializers.ModelSerializer):
+    invited_by_profile = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamInvitation
+        fields = [
+            'id',
+            'team',
+            'email',
+            'role',
+            'permission_level',
+            'status',
+            'token',
+            'expires_at',
+            'accepted_at',
+            'created_at',
+            'invited_by_profile',
+        ]
+        read_only_fields = [
+            'id',
+            'team',
+            'status',
+            'token',
+            'accepted_at',
+            'created_at',
+            'invited_by_profile',
+        ]
+
+    def get_invited_by_profile(self, obj):
+        if not obj.invited_by:
+            return None
+        profile = getattr(obj.invited_by, 'profile', None)
+        if profile:
+            return CandidatePublicProfileSerializer(profile, context=self.context).data
+        return {
+            'user_id': obj.invited_by.id,
+            'full_name': obj.invited_by.get_full_name() or obj.invited_by.email,
+            'email': obj.invited_by.email,
+        }
+
+
+class TeamAccountSerializer(serializers.ModelSerializer):
+    owner_profile = serializers.SerializerMethodField()
+    membership_role = serializers.SerializerMethodField()
+    membership_permission = serializers.SerializerMethodField()
+    member_counts = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamAccount
+        fields = [
+            'id',
+            'name',
+            'subscription_plan',
+            'subscription_status',
+            'seat_limit',
+            'billing_email',
+            'next_billing_date',
+            'trial_ends_at',
+            'created_at',
+            'updated_at',
+            'owner_profile',
+            'membership_role',
+            'membership_permission',
+            'member_counts',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'owner_profile', 'membership_role', 'membership_permission', 'member_counts']
+
+    def _get_membership(self, obj):
+        request = self.context.get('request')
+        if not request:
+            return None
+        return TeamMembership.objects.filter(team=obj, user=request.user, is_active=True).first()
+
+    def get_owner_profile(self, obj):
+        profile = getattr(obj.owner, 'profile', None)
+        if profile:
+            return CandidatePublicProfileSerializer(profile, context=self.context).data
+        return {
+            'user_id': obj.owner.id,
+            'full_name': obj.owner.get_full_name() or obj.owner.email,
+            'email': obj.owner.email,
+        }
+
+    def get_membership_role(self, obj):
+        membership = self._get_membership(obj)
+        return membership.role if membership else None
+
+    def get_membership_permission(self, obj):
+        membership = self._get_membership(obj)
+        return membership.permission_level if membership else None
+
+    def get_member_counts(self, obj):
+        qs = obj.memberships.filter(is_active=True)
+        return {
+            'total': qs.count(),
+            'admins': qs.filter(role='admin').count(),
+            'mentors': qs.filter(role='mentor').count(),
+            'candidates': qs.filter(role='candidate').count(),
+        }
+
+
+class TeamCandidateAccessSerializer(serializers.ModelSerializer):
+    member = TeamMembershipSerializer(source='granted_to', read_only=True)
+    candidate = CandidatePublicProfileSerializer(read_only=True)
+
+    class Meta:
+        model = TeamCandidateAccess
+        fields = [
+            'id',
+            'team',
+            'candidate',
+            'member',
+            'permission_level',
+            'can_view_profile',
+            'can_view_progress',
+            'can_edit_goals',
+            'created_at',
+            'updated_at',
+        ]
+    read_only_fields = ['id', 'team', 'member', 'candidate', 'created_at', 'updated_at']
+
+
+class TeamMessageSerializer(serializers.ModelSerializer):
+    author_profile = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamMessage
+        fields = [
+            'id',
+            'team',
+            'author',
+            'message',
+            'message_type',
+            'pinned',
+            'created_at',
+            'author_profile',
+        ]
+        read_only_fields = ['id', 'team', 'author', 'created_at', 'author_profile']
+
+    def get_author_profile(self, obj):
+        profile = getattr(obj.author, 'profile', None)
+        if profile:
+            return CandidatePublicProfileSerializer(profile, context=self.context).data
+        return {
+            'user_id': obj.author.id,
+            'full_name': obj.author.get_full_name() or obj.author.email,
+            'email': obj.author.email,
+        }
+
+
+class TeamDashboardSerializer(serializers.Serializer):
+    """Shape aggregate insights returned by dashboard endpoint."""
+
+    member_counts = serializers.DictField(child=serializers.IntegerField(), required=False)
+    pipeline = serializers.DictField(child=serializers.IntegerField(), required=False)
+    progress = serializers.DictField(child=serializers.FloatField(), required=False)
+    messaging = serializers.DictField(child=serializers.IntegerField(), required=False)
+    recent_activity = serializers.ListField(child=serializers.DictField(), required=False)
+
+
+class TeamJobCommentSerializer(serializers.ModelSerializer):
+    author_profile = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamJobComment
+        fields = [
+            'id',
+            'shared_job',
+            'author',
+            'content',
+            'created_at',
+            'updated_at',
+            'author_profile',
+        ]
+        read_only_fields = ['id', 'shared_job', 'author', 'created_at', 'updated_at', 'author_profile']
+
+    def get_author_profile(self, obj):
+        profile = getattr(obj.author, 'profile', None)
+        if profile:
+            return {
+                'user_id': obj.author.id,
+                'full_name': profile.get_full_name() or obj.author.get_full_name() or obj.author.email,
+                'headline': getattr(profile, 'headline', ''),
+            }
+        return {
+            'user_id': obj.author.id,
+            'full_name': obj.author.get_full_name() or obj.author.email,
+            'headline': '',
+        }
+
+
+class TeamSharedJobSerializer(serializers.ModelSerializer):
+    shared_by_profile = serializers.SerializerMethodField()
+    job_details = serializers.SerializerMethodField()
+    comments = TeamJobCommentSerializer(many=True, read_only=True)
+    comment_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamSharedJob
+        fields = [
+            'id',
+            'team',
+            'job',
+            'shared_by',
+            'note',
+            'shared_at',
+            'shared_by_profile',
+            'job_details',
+            'comments',
+            'comment_count',
+        ]
+        read_only_fields = ['id', 'team', 'shared_by', 'shared_at', 'shared_by_profile', 'job_details', 'comments', 'comment_count']
+
+    def get_shared_by_profile(self, obj):
+        profile = getattr(obj.shared_by, 'profile', None)
+        if profile:
+            return {
+                'user_id': obj.shared_by.id,
+                'full_name': profile.get_full_name() or obj.shared_by.get_full_name() or obj.shared_by.email,
+            }
+        return {
+            'user_id': obj.shared_by.id,
+            'full_name': obj.shared_by.get_full_name() or obj.shared_by.email,
+        }
+
+    def get_job_details(self, obj):
+        job = obj.job
+        return {
+            'id': job.id,
+            'title': job.title,
+            'company': job.company_name,
+            'location': job.location or '',
+            'status': job.status,
+            'url': job.posting_url or '',
+            'salary_min': job.salary_min,
+            'salary_max': job.salary_max,
+        }
+
+    def get_comment_count(self, obj):
+        return obj.comments.count()

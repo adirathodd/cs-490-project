@@ -67,6 +67,18 @@
   color: #fff;
 }
 
+.nav-link.nav-cta {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #0f172a;
+  border-color: rgba(245, 158, 11, 0.4);
+  font-weight: 700;
+}
+
+.nav-link.nav-cta:hover {
+  background: #f59e0b;
+  color: #0f172a;
+}
+
 .nav-link.active {
   background: #334155; /* slate-700 */
   color: #fff;
@@ -439,5 +451,4 @@
 
 
 /* Contacts floating button */
-
 

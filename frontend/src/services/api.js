@@ -3244,6 +3244,188 @@ export const linkedInAPI = {
   },
 };
 
+// Team accounts & collaboration
+export const teamAPI = {
+  listAccounts: async () => {
+    try {
+      const response = await api.get('/team/accounts');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load team accounts' };
+    }
+  },
+  createAccount: async (payload) => {
+    try {
+      const response = await api.post('/team/accounts', payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Unable to create team' };
+    }
+  },
+  getAccount: async (teamId) => {
+    try {
+      const response = await api.get(`/team/accounts/${teamId}`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load team details' };
+    }
+  },
+  updateSubscription: async (teamId, payload) => {
+    try {
+      const response = await api.patch(`/team/accounts/${teamId}/subscription`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update subscription' };
+    }
+  },
+  listInvitations: async (teamId) => {
+    try {
+      const response = await api.get(`/team/accounts/${teamId}/invites`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load invites' };
+    }
+  },
+  inviteMember: async (teamId, payload) => {
+    try {
+      const response = await api.post(`/team/accounts/${teamId}/invites`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to send invite' };
+    }
+  },
+  acceptInvite: async (token) => {
+    try {
+      const response = await api.post(`/team/invites/${token}/accept`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to accept invite' };
+    }
+  },
+  updateMember: async (membershipId, payload) => {
+    try {
+      const response = await api.patch(`/team/memberships/${membershipId}`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update member' };
+    }
+  },
+  listAccess: async (teamId) => {
+    try {
+      const response = await api.get(`/team/accounts/${teamId}/access`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load access controls' };
+    }
+  },
+  upsertAccess: async (teamId, payload) => {
+    try {
+      const response = await api.post(`/team/accounts/${teamId}/access`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update access' };
+    }
+  },
+  getDashboard: async (teamId) => {
+    try {
+      const response = await api.get(`/team/accounts/${teamId}/dashboard`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load dashboard' };
+    }
+  },
+  getReports: async (teamId) => {
+    try {
+      const response = await api.get(`/team/accounts/${teamId}/reports`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load reports' };
+    }
+  },
+  listMessages: async (teamId) => {
+    try {
+      const response = await api.get(`/team/accounts/${teamId}/messages`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load team messages' };
+    }
+  },
+  postMessage: async (teamId, payload) => {
+    try {
+      const response = await api.post(`/team/accounts/${teamId}/messages`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to send message' };
+    }
+  },
+  getMyPendingInvites: async () => {
+    try {
+      const response = await api.get('/team/my-invites');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load pending invitations' };
+    }
+  },
+  // Shared Jobs
+  getMyShareableJobs: async () => {
+    try {
+      const response = await api.get('/team/my-shareable-jobs');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load your jobs' };
+    }
+  },
+  listSharedJobs: async (teamId) => {
+    try {
+      const response = await api.get(`/team/accounts/${teamId}/shared-jobs`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load shared jobs' };
+    }
+  },
+  shareJob: async (teamId, payload) => {
+    try {
+      const response = await api.post(`/team/accounts/${teamId}/share-job`, payload);
+      return response.data;
+    } catch (error) {
+      const errMsg = error.response?.data?.error || 'Failed to share job';
+      throw { message: errMsg };
+    }
+  },
+  unshareJob: async (teamId, sharedJobId) => {
+    try {
+      const response = await api.delete(`/team/accounts/${teamId}/shared-jobs/${sharedJobId}`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to unshare job' };
+    }
+  },
+  listSharedJobComments: async (teamId, sharedJobId) => {
+    try {
+      const response = await api.get(`/team/accounts/${teamId}/shared-jobs/${sharedJobId}/comments`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load comments' };
+    }
+  },
+  addSharedJobComment: async (teamId, sharedJobId, content) => {
+    try {
+      const response = await api.post(`/team/accounts/${teamId}/shared-jobs/${sharedJobId}/comments`, { content });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to add comment' };
+    }
+  },
+  deleteSharedJobComment: async (teamId, sharedJobId, commentId) => {
+    try {
+      const response = await api.delete(`/team/accounts/${teamId}/shared-jobs/${sharedJobId}/comments/${commentId}`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete comment' };
+    }
+  },
+};
+
 // Export for module compatibility
 try {
   if (typeof module !== 'undefined' && module.exports) {
@@ -3258,6 +3440,7 @@ try {
     module.exports.mockInterviewAPI = mockInterviewAPI;
     module.exports.questionBankAPI = questionBankAPI;
     module.exports.linkedInAPI = linkedInAPI;
+    module.exports.teamAPI = teamAPI;
   }
 } catch (e) {
   // ignore

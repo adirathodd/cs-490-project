@@ -5,6 +5,7 @@ from django.urls import path, re_path
 from core import views
 from core import analytics_views
 from core import market_views
+from core import team_views
 
 app_name = 'core'
 
@@ -114,6 +115,25 @@ urlpatterns = [
     path('mentorship/goals/<uuid:goal_id>', views.mentorship_goal_detail, name='mentorship-goal-detail'),
     path('mentorship/relationships/<int:team_member_id>/progress-report', views.mentorship_progress_report, name='mentorship-progress-report'),
     path('mentorship/relationships/<int:team_member_id>/messages', views.mentorship_messages, name='mentorship-messages'),
+
+    # Team accounts & collaboration
+    path('team/accounts', team_views.team_accounts, name='team-accounts'),
+    path('team/my-invites', team_views.my_pending_invites, name='team-my-invites'),
+    path('team/my-shareable-jobs', team_views.my_shareable_jobs, name='team-my-shareable-jobs'),
+    path('team/accounts/<int:team_id>', team_views.team_account_detail, name='team-account-detail'),
+    path('team/accounts/<int:team_id>/subscription', team_views.team_subscription_update, name='team-subscription-update'),
+    path('team/accounts/<int:team_id>/invites', team_views.team_invites, name='team-invites'),
+    path('team/invites/<str:token>/accept', team_views.team_accept_invite, name='team-accept-invite'),
+    path('team/memberships/<int:membership_id>', team_views.team_membership_detail, name='team-membership-detail'),
+    path('team/accounts/<int:team_id>/access', team_views.team_candidate_access, name='team-candidate-access'),
+    path('team/accounts/<int:team_id>/dashboard', team_views.team_dashboard, name='team-dashboard'),
+    path('team/accounts/<int:team_id>/messages', team_views.team_messages, name='team-messages'),
+    path('team/accounts/<int:team_id>/reports', team_views.team_reports, name='team-reports'),
+    path('team/accounts/<int:team_id>/shared-jobs', team_views.team_shared_jobs, name='team-shared-jobs'),
+    path('team/accounts/<int:team_id>/share-job', team_views.share_job_with_team, name='team-share-job'),
+    path('team/accounts/<int:team_id>/shared-jobs/<int:shared_job_id>', team_views.unshare_job_from_team, name='team-unshare-job'),
+    path('team/accounts/<int:team_id>/shared-jobs/<int:shared_job_id>/comments', team_views.shared_job_comments, name='team-shared-job-comments'),
+    path('team/accounts/<int:team_id>/shared-jobs/<int:shared_job_id>/comments/<int:comment_id>', team_views.delete_shared_job_comment, name='team-delete-shared-job-comment'),
 
     # Profile Picture endpoints (UC-022)
     path('profile/picture', views.get_profile_picture, name='get-profile-picture'),
