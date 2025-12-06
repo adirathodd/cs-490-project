@@ -26,7 +26,7 @@ def test_import_job_from_url_success_and_retryable(monkeypatch, django_user_mode
 
     monkeypatch.setattr('core.job_import_utils.import_job_from_url', fake_import_success)
 
-    url = reverse('core:import-job-from-url')
+    url = reverse('import-job-from-url')
     resp = client.post(url, data={'url': 'https://example.com/job/1'}, format='json')
     assert resp.status_code == 200
     assert resp.data.get('status') == 'success'
@@ -65,7 +65,7 @@ def test_job_match_score_cached_and_post(monkeypatch, django_user_model):
     )
 
     # GET should return cached result
-    get_url = reverse('core:job-match-score', args=[job.id])
+    get_url = reverse('job-match-score', args=[job.id])
     resp = client.get(get_url)
     assert resp.status_code == 200
     assert resp.data.get('cached') is True or 'cached' in resp.data

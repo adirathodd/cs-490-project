@@ -17,7 +17,7 @@ def test_contacts_import_start_and_callback_and_mutuals(monkeypatch, django_user
     monkeypatch.setattr("core.google_import.build_google_auth_url", lambda redirect, state: "https://auth.example/?state=" + state)
 
     # Start import -> should return a URL to redirect client to
-    url = reverse("core:contacts-import-start")
+    url = reverse("contacts-import-start")
     resp = client.post(url, data={})
     assert resp.status_code in (200, 201, 202, 302)
     # If body contains url, ensure it's our mocked URL
@@ -38,13 +38,13 @@ def test_contacts_import_start_and_callback_and_mutuals(monkeypatch, django_user
     # Monkeypatch background task so it doesn't run asynchronously
     monkeypatch.setattr("core.tasks.process_import_job", lambda *a, **k: None)
 
-    callback_url = reverse("core:contacts-import-callback")
+    callback_url = reverse("contacts-import-callback")
     # Use a valid UUID hex to satisfy validation in views
     resp = client.post(callback_url, data={"job_id": import_job_id.hex, "code": "fakecode"}, format="json")
     assert resp.status_code in (200, 201, 202)
 
     # Hit mutuals endpoint with a random contact id — should not 500
-    mutuals_url = reverse("core:contact-mutuals", args=[str(uuid.uuid4())])
+    mutuals_url = reverse("contact-mutuals", args=[str(uuid.uuid4())])
     resp = client.get(mutuals_url)
     assert resp.status_code in (200, 404)
 
@@ -56,7 +56,7 @@ def test_resume_export_endpoint_smoke(monkeypatch, django_user_model):
     client = APIClient()
     client.force_authenticate(user=user)
 
-    url = reverse("core:resume-export")
+    url = reverse("resume-export")
     resp = client.get(url)
     # When profile is missing the view intentionally returns 404
     assert resp.status_code == 404

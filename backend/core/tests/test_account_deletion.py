@@ -18,13 +18,13 @@ class TestAccountDeletion:
         self.client.force_authenticate(user=self.user)
 
     def test_request_deletion_creates_token_and_sends_200(self):
-        url = reverse('core:request-account-deletion')
+        url = reverse('request-account-deletion')
         response = self.client.post(url)
         assert response.status_code == 200
         assert AccountDeletionRequest.objects.filter(user=self.user, consumed=False).exists()
 
     def test_request_deletion_token_expires_in_one_hour(self):
-        url = reverse('core:request-account-deletion')
+        url = reverse('request-account-deletion')
         before = timezone.now()
         response = self.client.post(url)
         assert response.status_code == 200
@@ -40,7 +40,7 @@ class TestAccountDeletion:
         skill = Skill.objects.create(name='Python')
         CandidateSkill.objects.create(candidate=self.profile, skill=skill, level='beginner')
         # Confirm via POST
-        url = reverse('core:confirm-account-deletion', kwargs={'token': deletion.token})
+        url = reverse('confirm-account-deletion', kwargs={'token': deletion.token})
         response = self.client.post(url)
         assert response.status_code == 200
         assert User.objects.filter(username='testuid').count() == 0
@@ -49,6 +49,6 @@ class TestAccountDeletion:
 
     def test_request_deletion_requires_auth(self):
         self.client.force_authenticate(user=None)
-        url = reverse('core:request-account-deletion')
+        url = reverse('request-account-deletion')
         response = self.client.post(url)
         assert response.status_code == 401

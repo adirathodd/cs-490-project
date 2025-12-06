@@ -48,7 +48,7 @@ class TestAICoverLetterEndpoint:
             job_type='ft',
             industry='Software',
         )
-        self.url = reverse('core:job-cover-letter-generate', kwargs={'job_id': self.job.id})
+        self.url = reverse('job-cover-letter-generate', kwargs={'job_id': self.job.id})
         self.client.force_authenticate(user=self.user)
 
     def test_ai_cover_letter_requires_api_key(self, settings):
@@ -112,7 +112,7 @@ class TestAICoverLetterEndpoint:
 
     def test_ai_cover_letter_job_not_found(self, settings):
         settings.GEMINI_API_KEY = 'test-key'
-        bad_url = reverse('core:job-cover-letter-generate', kwargs={'job_id': self.job.id + 1})
+        bad_url = reverse('job-cover-letter-generate', kwargs={'job_id': self.job.id + 1})
         resp = self.client.post(bad_url, {'tone': 'professional'}, format='json')
         assert resp.status_code == 404
 

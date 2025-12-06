@@ -12,7 +12,7 @@ def test_contacts_search_and_delete(django_user_model):
     client.force_authenticate(user=user)
 
     # Create two contacts
-    url = reverse("core:contacts-list-create")
+    url = reverse("contacts-list-create")
     resp1 = client.post(url, data={"first_name": "Alice", "last_name": "Smith", "email": "alice@example.com", "company_name": "Acme"}, format="json")
     resp2 = client.post(url, data={"first_name": "Bob", "last_name": "Jones", "email": "bob@example.com", "company_name": "OtherCo"}, format="json")
     assert resp1.status_code == 201 and resp2.status_code == 201
@@ -26,7 +26,7 @@ def test_contacts_search_and_delete(django_user_model):
     assert id1 in results and id2 not in results
 
     # Delete contact 2
-    del_url = reverse("core:contact-detail", args=[id2])
+    del_url = reverse("contact-detail", args=[id2])
     del_resp = client.delete(del_url)
     assert del_resp.status_code == 204
 
@@ -45,7 +45,7 @@ def test_contacts_import_callback_no_code_and_enqueue_branch(monkeypatch, django
 
     job = ImportJob.objects.create(owner=user)
 
-    callback_url = reverse("core:contacts-import-callback")
+    callback_url = reverse("contacts-import-callback")
 
     # Post with job_id but no code -> should return job info
     resp = client.post(callback_url, data={"job_id": job.id.hex}, format="json")

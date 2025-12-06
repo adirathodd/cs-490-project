@@ -65,9 +65,9 @@ class TestAIResumeEndpoint:
             job_type='ft',
             industry='Software',
         )
-        self.url = reverse('core:job-resume-generate', kwargs={'job_id': self.job.id})
-        self.tailor_url = reverse('core:tailor-experience', kwargs={'job_id': self.job.id, 'experience_id': self.work.id})
-        self.tailor_bullet_url = reverse('core:tailor-experience-bullet', kwargs={'job_id': self.job.id, 'experience_id': self.work.id})
+        self.url = reverse('job-resume-generate', kwargs={'job_id': self.job.id})
+        self.tailor_url = reverse('tailor-experience', kwargs={'job_id': self.job.id, 'experience_id': self.work.id})
+        self.tailor_bullet_url = reverse('tailor-experience-bullet', kwargs={'job_id': self.job.id, 'experience_id': self.work.id})
         self.client.force_authenticate(user=self.user)
 
     def test_ai_resume_requires_api_key(self, settings):
@@ -146,7 +146,7 @@ class TestAIResumeEndpoint:
 
     def test_ai_resume_job_not_found(self, settings):
         settings.GEMINI_API_KEY = 'test-key'
-        bad_url = reverse('core:job-resume-generate', kwargs={'job_id': self.job.id + 1})
+        bad_url = reverse('job-resume-generate', kwargs={'job_id': self.job.id + 1})
         resp = self.client.post(bad_url, {'tone': 'impact'}, format='json')
         assert resp.status_code == 404
 

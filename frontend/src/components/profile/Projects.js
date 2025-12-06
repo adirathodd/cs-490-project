@@ -327,7 +327,6 @@ const Projects = () => {
           ← Back to Dashboard
         </a>
       </div>
-        <h1 className="projects-page-title">Projects</h1>
         <div style={{ marginLeft: 'auto', marginTop: '6px' }}>
           <a className="btn-back" href="/projects/portfolio" title="View Portfolio" style={{ display: 'inline-block', marginTop: '6px' }}>
             View Portfolio →

@@ -13,7 +13,7 @@ def test_resume_export_txt_success(django_user_model):
     client = APIClient()
     client.force_authenticate(user=user)
 
-    url = reverse("core:resume-export") + "?format=txt"
+    url = reverse("resume-export") + "?format=txt"
     resp = client.get(url)
     assert resp.status_code == 200
     # Content should be plain text

@@ -5208,3 +5208,179 @@ class TeamJobComment(models.Model):
 
     def __str__(self):
         return f"TeamJobComment({self.shared_job_id}, by={self.author_id})"
+
+
+# 
+# 
+# =
+# EMAIL INTEGRATION MODELS (UC-113)
+# 
+# 
+# =
+
+
+class GmailIntegration(models.Model):
+    """UC-113: Gmail OAuth integration for email scanning"""
+    
+    STATUS_CHOICES = [
+        ('disconnected', 'Disconnected'),
+        ('pending', 'Pending Authorization'),
+        ('connected', 'Connected'),
+        ('scanning', 'Scanning'),
+        ('error', 'Error'),
+    ]
+    
+    SCAN_FREQUENCY_CHOICES = [
+        ('realtime', 'Real-time (as received)'),
+        ('hourly', 'Every Hour'),
+        ('daily', 'Daily'),
+        ('manual', 'Manual Only'),
+    ]
+    
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='gmail_integration'
+    )
+    
+    # OAuth tokens
+    access_token = models.TextField(blank=True)
+    refresh_token = models.TextField(blank=True)
+    token_expires_at = models.DateTimeField(null=True, blank=True)
+    scopes = models.JSONField(default=list, blank=True)
+    
+    # Gmail account info
+    gmail_address = models.EmailField(blank=True)
+    gmail_history_id = models.CharField(max_length=100, blank=True)  # For incremental sync
+    
+    # User preferences
+    scan_enabled = models.BooleanField(default=False)
+    scan_frequency = models.CharField(max_length=20, choices=SCAN_FREQUENCY_CHOICES, default='daily')
+    auto_update_status = models.BooleanField(default=False)  # Auto-apply suggested status updates
+    
+    # Scanning metadata
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='disconnected')
+    last_scan_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True)
+    emails_scanned_count = models.IntegerField(default=0)
+    rate_limit_reset_at = models.DateTimeField(null=True, blank=True, help_text='When the rate limit resets')
+    
+    # OAuth state token
+    state_token = models.CharField(max_length=128, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['user']),
+            models.Index(fields=['status', 'scan_enabled']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} - Gmail ({self.status})"
+
+
+class ApplicationEmail(models.Model):
+    """UC-113: Emails related to job applications"""
+    
+    EMAIL_TYPE_CHOICES = [
+        ('application_sent', 'Application Sent'),
+        ('acknowledgment', 'Application Acknowledged'),
+        ('recruiter_outreach', 'Recruiter Outreach'),
+        ('interview_invitation', 'Interview Invitation'),
+        ('interview_confirmation', 'Interview Confirmation'),
+        ('interview_reminder', 'Interview Reminder'),
+        ('rejection', 'Rejection'),
+        ('offer', 'Offer Letter'),
+        ('follow_up', 'Follow-up'),
+        ('other', 'Other'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='application_emails'
+    )
+    job = models.ForeignKey(
+        'JobEntry',
+        on_delete=models.CASCADE,
+        related_name='emails',
+        null=True,
+        blank=True
+    )
+    
+    # Email metadata
+    gmail_message_id = models.CharField(max_length=255, unique=True, db_index=True)
+    thread_id = models.CharField(max_length=255, blank=True, db_index=True)
+    
+    # Email content
+    subject = models.CharField(max_length=500)
+    sender_email = models.EmailField()
+    sender_name = models.CharField(max_length=255, blank=True)
+    received_at = models.DateTimeField()
+    snippet = models.TextField(blank=True)  # Email preview/snippet
+    body_text = models.TextField(blank=True)  # Plain text body
+    
+    # Classification
+    email_type = models.CharField(max_length=30, choices=EMAIL_TYPE_CHOICES, default='other')
+    confidence_score = models.FloatField(default=0.0)  # 0-1 ML confidence
+    is_application_related = models.BooleanField(default=False)
+    
+    # Status suggestions
+    suggested_job_status = models.CharField(max_length=20, blank=True)  # From Application.STATUS
+    status_applied = models.BooleanField(default=False)
+    
+    # User interaction
+    is_linked = models.BooleanField(default=False)  # User confirmed link to job
+    is_dismissed = models.BooleanField(default=False)  # User dismissed suggestion
+    user_notes = models.TextField(blank=True)
+    
+    # Metadata
+    labels = models.JSONField(default=list, blank=True)  # Gmail labels
+    attachments = models.JSONField(default=list, blank=True)  # Attachment info
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', '-received_at']),
+            models.Index(fields=['job', '-received_at']),
+            models.Index(fields=['is_application_related', '-received_at']),
+            models.Index(fields=['gmail_message_id']),
+            models.Index(fields=['thread_id']),
+        ]
+        ordering = ['-received_at']
+
+    def __str__(self):
+        return f"{self.subject[:50]} - {self.sender_email}"
+
+
+class EmailScanLog(models.Model):
+    """UC-113: Audit log for email scanning operations"""
+    
+    integration = models.ForeignKey(
+        'GmailIntegration',
+        on_delete=models.CASCADE,
+        related_name='scan_logs'
+    )
+    
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    
+    emails_processed = models.IntegerField(default=0)
+    emails_matched = models.IntegerField(default=0)
+    emails_linked = models.IntegerField(default=0)
+    
+    status = models.CharField(max_length=20)  # success, partial, error
+    error_message = models.TextField(blank=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['integration', '-started_at']),
+        ]
+
+    def __str__(self):
+        return f"EmailScanLog({self.integration_id}, {self.status})"
