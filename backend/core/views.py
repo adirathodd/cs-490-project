@@ -18136,3 +18136,42 @@ def dismiss_email(request, email_id):
     
     return Response({'status': 'dismissed'})
 
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def application_email_detail(request, email_id):
+    """Get detailed information about a specific email"""
+    from core.models import ApplicationEmail
+    from core.serializers import ApplicationEmailSerializer
+    
+    email = ApplicationEmail.objects.filter(id=email_id, user=request.user).first()
+    if not email:
+        return Response({'error': 'Email not found'}, status=404)
+    
+    return Response(ApplicationEmailSerializer(email).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def gmail_scan_logs(request):
+    """Get Gmail scan history logs"""
+    from core.models import GmailIntegration, EmailScanLog
+    
+    integration = GmailIntegration.objects.filter(user=request.user).first()
+    if not integration:
+        return Response([])
+    
+    logs = EmailScanLog.objects.filter(integration=integration).order_by('-scan_started_at')[:20]
+    
+    return Response([{
+        'id': log.id,
+        'scan_started_at': log.scan_started_at,
+        'scan_completed_at': log.scan_completed_at,
+        'emails_processed': log.emails_processed,
+        'emails_matched': log.emails_matched,
+        'emails_linked': log.emails_linked,
+        'status': log.status,
+        'error_message': log.error_message
+    } for log in logs])
+
+

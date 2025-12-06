@@ -10,9 +10,10 @@ const emailAPI = {
     return response.data;
   },
 
-  completeGmailAuth: async (code, redirectUri) => {
+  completeGmailAuth: async (code, state, redirectUri) => {
     const response = await api.post('/gmail/oauth/callback/', {
       code,
+      state,
       redirect_uri: redirectUri
     });
     return response.data;

@@ -48,10 +48,11 @@ describe('Email API Service', () => {
       };
       api.post.mockResolvedValue(mockResponse);
 
-      const result = await emailAPI.completeGmailAuth('code123', 'http://localhost:3000/callback');
+      const result = await emailAPI.completeGmailAuth('code123', 'state123', 'http://localhost:3000/callback');
 
       expect(api.post).toHaveBeenCalledWith('/gmail/oauth/callback/', {
         code: 'code123',
+        state: 'state123',
         redirect_uri: 'http://localhost:3000/callback'
       });
       expect(result).toEqual(mockResponse.data);
@@ -61,7 +62,7 @@ describe('Email API Service', () => {
       api.post.mockRejectedValue(new Error('Invalid code'));
 
       await expect(
-        emailAPI.completeGmailAuth('invalid', 'http://localhost:3000/callback')
+        emailAPI.completeGmailAuth('invalid', 'state123', 'http://localhost:3000/callback')
       ).rejects.toThrow('Invalid code');
     });
   });
