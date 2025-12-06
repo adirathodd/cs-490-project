@@ -31,7 +31,7 @@ class TestJobsStatsEndpoint:
         jp = JobEntry.objects.create(candidate=self.profile, title='Prev', company_name='P')
         JobEntry.objects.filter(pk=jp.pk).update(created_at=_dt.datetime(2025, 10, 31, 23, 0, 0, tzinfo=_dt.timezone.utc))
 
-        stats_url = reverse('core:jobs-stats')
+        stats_url = reverse('jobs-stats')
         resp = self.client.get(stats_url, {'month': '2025-11'})
         assert resp.status_code == 200
         payload = resp.json()
@@ -56,7 +56,7 @@ class TestJobsStatsEndpoint:
         d1 = JobEntry.objects.create(candidate=self.profile, title='Dec1', company_name='C')
         JobEntry.objects.filter(pk=d1.pk).update(created_at=_dt.datetime(2025, 12, 1, 9, 0, 0, tzinfo=_dt.timezone.utc))
 
-        stats_url = reverse('core:jobs-stats')
+        stats_url = reverse('jobs-stats')
         resp = self.client.get(stats_url, {'export': 'csv', 'month': '2025-11'})
         assert resp.status_code == 200
         content = resp.content.decode('utf-8')

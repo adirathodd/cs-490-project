@@ -37,7 +37,7 @@ class CoverLetterGenerationTests(APITestCase):
             'shared_analysis': {'tone_rationale': 'Matches tone well.'}
         }
 
-        url = reverse('core:job-cover-letter-generate', kwargs={'job_id': self.job.id})
+        url = reverse('job-cover-letter-generate', kwargs={'job_id': self.job.id})
         payload = {
             'tone': 'balanced',
             'variation_count': 1,
@@ -58,7 +58,7 @@ class CoverLetterGenerationTests(APITestCase):
         mock_run.assert_called_once()
 
     def test_generate_with_invalid_enums_returns_400(self):
-        url = reverse('core:job-cover-letter-generate', kwargs={'job_id': self.job.id})
+        url = reverse('job-cover-letter-generate', kwargs={'job_id': self.job.id})
         payload = {
             'tone': 'balanced',
             'variation_count': 1,

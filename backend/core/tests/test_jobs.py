@@ -19,7 +19,7 @@ class TestJobsAPI:
         self.client.force_authenticate(user=self.user)
 
     def test_create_list_delete_and_validation(self):
-        list_url = reverse('core:jobs-list-create')
+        list_url = reverse('jobs-list-create')
 
         # Initial list empty
         resp = self.client.get(list_url)
@@ -80,7 +80,7 @@ class TestJobsAPI:
         assert items[0]['id'] == job_id
 
         # Detail update and delete
-        detail_url = reverse('core:job-detail', kwargs={'job_id': job_id})
+        detail_url = reverse('job-detail', kwargs={'job_id': job_id})
         resp = self.client.patch(detail_url, {'location': 'NYC'}, format='json')
         assert resp.status_code == 200
         assert resp.json()['location'] == 'NYC'
@@ -90,7 +90,7 @@ class TestJobsAPI:
         assert JobEntry.objects.filter(id=job_id).count() == 0
 
     def test_list_with_filters_and_search_returns_enhanced_payload(self):
-        list_url = reverse('core:jobs-list-create')
+        list_url = reverse('jobs-list-create')
 
         today = timezone.localdate()
         JobEntry.objects.create(
@@ -185,7 +185,7 @@ class TestJobsAPI:
             ),
         ])
 
-        stats_url = reverse('core:jobs-stats')
+        stats_url = reverse('jobs-stats')
         resp = self.client.get(stats_url)
         assert resp.status_code == 200
 
@@ -196,7 +196,7 @@ class TestJobsAPI:
         assert counts.get('applied') == 1
         assert counts.get('interview') == 1
 
-        bulk_status_url = reverse('core:jobs-bulk-status')
+        bulk_status_url = reverse('jobs-bulk-status')
         ids = list(JobEntry.objects.values_list('id', flat=True))
         resp = self.client.post(bulk_status_url, {'ids': ids[:2], 'status': 'applied'}, format='json')
         assert resp.status_code == 200
@@ -231,7 +231,7 @@ class TestJobsAPI:
             job_type='ft',
         )
 
-        bulk_deadline_url = reverse('core:jobs-bulk-deadline')
+        bulk_deadline_url = reverse('jobs-bulk-deadline')
         new_deadline = (today + timedelta(days=90)).isoformat()
         resp = self.client.post(bulk_deadline_url, {'ids': [job1.id, job3.id], 'deadline': new_deadline}, format='json')
         assert resp.status_code == 200
@@ -245,7 +245,7 @@ class TestJobsAPI:
         resp = self.client.post(bulk_deadline_url, {'ids': [job2.id], 'deadline': 'invalid'}, format='json')
         assert resp.status_code == 400
 
-        upcoming_url = reverse('core:jobs-upcoming-deadlines')
+        upcoming_url = reverse('jobs-upcoming-deadlines')
         resp = self.client.get(upcoming_url)
         assert resp.status_code == 200
         upcoming = resp.json()

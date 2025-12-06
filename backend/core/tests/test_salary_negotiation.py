@@ -27,7 +27,7 @@ class TestSalaryNegotiationPrep:
         )
 
     def test_plan_is_generated_on_first_request(self):
-        url = reverse('core:salary-negotiation-prep', kwargs={'job_id': self.job.id})
+        url = reverse('salary-negotiation-prep', kwargs={'job_id': self.job.id})
         resp = self.client.get(url)
         assert resp.status_code == 200
         payload = resp.json()
@@ -38,7 +38,7 @@ class TestSalaryNegotiationPrep:
         assert plan['offer_guidance']
 
     def test_plan_refresh_accepts_offer_details(self):
-        url = reverse('core:salary-negotiation-prep', kwargs={'job_id': self.job.id})
+        url = reverse('salary-negotiation-prep', kwargs={'job_id': self.job.id})
         resp = self.client.post(
             url,
             {
@@ -58,7 +58,7 @@ class TestSalaryNegotiationPrep:
         assert plan['offer_guidance']['gaps']
 
     def test_outcome_logging_and_stats(self):
-        outcomes_url = reverse('core:salary-negotiation-outcomes', kwargs={'job_id': self.job.id})
+        outcomes_url = reverse('salary-negotiation-outcomes', kwargs={'job_id': self.job.id})
         resp = self.client.post(
             outcomes_url,
             {

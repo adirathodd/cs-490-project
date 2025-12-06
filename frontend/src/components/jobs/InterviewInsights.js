@@ -31,7 +31,7 @@ const InterviewInsights = ({ insights }) => {
       <div className="education-form-card">
         <div className="form-header">
           <h3>
-            <Icon name="target" size="md" /> Interview Insights
+            <Icon name="user-check" size="md" /> Interview Insights
           </h3>
         </div>
         <div style={{ padding: '32px' }}>

@@ -15,6 +15,7 @@ import SalaryResearch from './SalaryResearch';
 import SalaryNegotiation from './SalaryNegotiation';
 import TechnicalPrepSuite from './TechnicalPrepSuite';
 import InterviewSuccessForecast from './InterviewSuccessForecast';
+import ApplicationEmails from './ApplicationEmails';
 import './JobDetailView.css';
 
 const TAB_GROUPS = [
@@ -1352,6 +1353,11 @@ const JobDetailView = () => {
             )}
           </div>
         )}
+      </div>
+
+      {/* Application Emails */}
+      <div className="education-form-card">
+        <ApplicationEmails jobId={id} />
       </div>
 
       {/* Metadata */}

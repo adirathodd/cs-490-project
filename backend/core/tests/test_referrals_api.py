@@ -25,7 +25,7 @@ class ReferralStatusAPITests(APITestCase):
         self.referral = Referral.objects.create(application=self.application, contact=None, notes='{}', status='draft')
 
     def test_mark_sent(self):
-        url = reverse('core:referral-mark-sent', args=[str(self.referral.id)])
+        url = reverse('referral-mark-sent', args=[str(self.referral.id)])
         resp = self.client.post(url)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.referral.refresh_from_db()
@@ -33,10 +33,10 @@ class ReferralStatusAPITests(APITestCase):
 
     def test_mark_response_accepted(self):
         # First mark sent so response is meaningful
-        url_sent = reverse('core:referral-mark-sent', args=[str(self.referral.id)])
+        url_sent = reverse('referral-mark-sent', args=[str(self.referral.id)])
         self.client.post(url_sent)
 
-        url = reverse('core:referral-response', args=[str(self.referral.id)])
+        url = reverse('referral-response', args=[str(self.referral.id)])
         resp = self.client.post(url, data={'accepted': True}, format='json')
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.referral.refresh_from_db()
@@ -44,7 +44,7 @@ class ReferralStatusAPITests(APITestCase):
 
     def test_mark_completed_and_uncomplete(self):
         # mark completed
-        url_complete = reverse('core:referral-complete', args=[str(self.referral.id)])
+        url_complete = reverse('referral-complete', args=[str(self.referral.id)])
         resp = self.client.post(url_complete)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.referral.refresh_from_db()
@@ -52,7 +52,7 @@ class ReferralStatusAPITests(APITestCase):
         self.assertIsNotNone(self.referral.completed_date)
 
         # uncomplete
-        url_un = reverse('core:referral-uncomplete', args=[str(self.referral.id)])
+        url_un = reverse('referral-uncomplete', args=[str(self.referral.id)])
         resp2 = self.client.post(url_un)
         self.assertEqual(resp2.status_code, status.HTTP_200_OK)
         self.referral.refresh_from_db()

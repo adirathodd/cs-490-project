@@ -316,7 +316,6 @@ const Certifications = () => {
           ← Back to Dashboard
         </a>
       </div>
-        <h1 className="certifications-page-title">Certifications</h1>
       </div>
 
       <div className="certifications-header">

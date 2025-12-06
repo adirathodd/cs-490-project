@@ -287,7 +287,7 @@ class TestTechnicalPrepEndpoint:
     def test_response_includes_generation_metadata(self, settings):
         settings.GEMINI_API_KEY = 'fake-key'
 
-        url = reverse('core:job-technical-prep', kwargs={'job_id': self.job.id})
+        url = reverse('job-technical-prep', kwargs={'job_id': self.job.id})
         first_ts = timezone.make_aware(datetime(2024, 1, 1, 12, 0, 0))
         refresh_ts = timezone.make_aware(datetime(2024, 1, 1, 12, 30, 0))
         cached_read_ts = timezone.make_aware(datetime(2024, 1, 1, 13, 0, 0))
@@ -326,7 +326,7 @@ class TestTechnicalPrepEndpoint:
         settings.GEMINI_API_KEY = 'fake-key'
         self._seed_ready_cache()
 
-        url = reverse('core:job-technical-prep', kwargs={'job_id': self.job.id})
+        url = reverse('job-technical-prep', kwargs={'job_id': self.job.id})
         response = self.client.get(url)
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -349,11 +349,11 @@ class TestTechnicalPrepEndpoint:
         settings.GEMINI_API_KEY = 'fake-key'
         self._seed_ready_cache()
 
-        prep_url = reverse('core:job-technical-prep', kwargs={'job_id': self.job.id})
+        prep_url = reverse('job-technical-prep', kwargs={'job_id': self.job.id})
         prep_data = self.client.get(prep_url).json()
         challenge = prep_data['coding_challenges'][0]
 
-        practice_url = reverse('core:job-technical-prep-practice', kwargs={'job_id': self.job.id})
+        practice_url = reverse('job-technical-prep-practice', kwargs={'job_id': self.job.id})
         payload = {
             'challenge_id': challenge['id'],
             'challenge_title': challenge['title'],
@@ -388,7 +388,7 @@ class TestTechnicalPrepEndpoint:
             status='applied',
         )
 
-        url = reverse('core:job-technical-prep', kwargs={'job_id': consulting_job.id})
+        url = reverse('job-technical-prep', kwargs={'job_id': consulting_job.id})
         response = self.client.get(url)
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -408,7 +408,7 @@ class TestTechnicalPrepEndpoint:
             status='applied',
         )
 
-        url = reverse('core:job-technical-prep', kwargs={'job_id': engineer_job.id})
+        url = reverse('job-technical-prep', kwargs={'job_id': engineer_job.id})
         response = self.client.get(url)
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -429,7 +429,7 @@ class TestTechnicalPrepEndpoint:
             status='applied',
         )
 
-        url = reverse('core:job-technical-prep', kwargs={'job_id': api_pm_job.id})
+        url = reverse('job-technical-prep', kwargs={'job_id': api_pm_job.id})
         response = self.client.get(url)
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -464,7 +464,7 @@ class TestTechnicalPrepEndpoint:
             is_valid=True,
         )
 
-        url = reverse('core:job-technical-prep', kwargs={'job_id': consulting_job.id})
+        url = reverse('job-technical-prep', kwargs={'job_id': consulting_job.id})
         response = self.client.get(url)
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -475,7 +475,7 @@ class TestTechnicalPrepEndpoint:
 
     def test_endpoint_returns_fallback_when_cache_missing(self, settings):
         settings.GEMINI_API_KEY = 'fake-key'
-        url = reverse('core:job-technical-prep', kwargs={'job_id': self.job.id})
+        url = reverse('job-technical-prep', kwargs={'job_id': self.job.id})
         response = self.client.get(url)
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -486,7 +486,7 @@ class TestTechnicalPrepEndpoint:
     def test_refresh_request_queues_generation_without_invalidating_cache(self, settings):
         settings.GEMINI_API_KEY = 'fake-key'
         self._seed_ready_cache()
-        url = reverse('core:job-technical-prep', kwargs={'job_id': self.job.id})
+        url = reverse('job-technical-prep', kwargs={'job_id': self.job.id})
         response = self.client.get(f"{url}?refresh=true")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -527,7 +527,7 @@ class TestTechnicalPrepEndpoint:
             status='applied',
         )
 
-        url = reverse('core:job-technical-prep', kwargs={'job_id': analyst_job.id})
+        url = reverse('job-technical-prep', kwargs={'job_id': analyst_job.id})
         response = self.client.get(url)
         assert response.status_code == status.HTTP_200_OK
         data = response.json()

@@ -7,7 +7,7 @@ from core import analytics_views
 from core import market_views
 from core import team_views
 
-app_name = 'core'
+# app_name = 'core'  # Removed to avoid namespace issues with reverse() in tests
 
 urlpatterns = [
     # Authentication endpoints
@@ -431,5 +431,21 @@ urlpatterns = [
     path('linkedin/networking-message', views.linkedin_networking_message, name='linkedin-networking-message'),
     path('linkedin/content-strategy', views.linkedin_content_strategy, name='linkedin-content-strategy'),
     path('linkedin/integration-status', views.linkedin_integration_status, name='linkedin-integration-status'),
+
+    # UC-113: Email Integration for Application Tracking
+    path('gmail/oauth/start/', views.gmail_oauth_start, name='gmail-oauth-start'),
+    path('gmail/oauth/callback/', views.gmail_oauth_callback, name='gmail-oauth-callback'),
+    path('gmail/status/', views.gmail_integration_status, name='gmail-status'),
+    path('gmail/disconnect/', views.gmail_disconnect, name='gmail-disconnect'),
+    path('gmail/enable-scanning/', views.gmail_enable_scanning, name='gmail-enable-scanning'),
+    path('gmail/preferences/', views.gmail_update_preferences, name='gmail-update-preferences'),
+    path('gmail/scan/', views.gmail_scan_now, name='gmail-scan'),
+    path('gmail/scan-now/', views.gmail_scan_now, name='gmail-scan-now'),
+    path('gmail/scan-logs/', views.gmail_scan_logs, name='gmail-scan-logs'),
+    path('emails/', views.application_emails_list, name='application-emails-list'),
+    path('emails/<uuid:email_id>/', views.application_email_detail, name='application-email-detail'),
+    path('emails/<uuid:email_id>/link/', views.link_email_to_job, name='link-email-to-job'),
+    path('emails/<uuid:email_id>/apply-status/', views.apply_email_status_suggestion, name='apply-email-status'),
+    path('emails/<uuid:email_id>/dismiss/', views.dismiss_email, name='dismiss-email'),
 
 ]

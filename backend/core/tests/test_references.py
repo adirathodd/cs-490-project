@@ -281,7 +281,7 @@ class TestReferenceEndpoints:
     
     def test_list_references(self, authenticated_client, sample_reference):
         """Test listing references"""
-        url = reverse('core:references-list-create')
+        url = reverse('references-list-create')
         response = authenticated_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
@@ -301,7 +301,7 @@ class TestReferenceEndpoints:
             is_active=False
         )
         
-        url = reverse('core:references-list-create')
+        url = reverse('references-list-create')
         response = authenticated_client.get(url, {'is_active': 'true'})
         
         assert response.status_code == status.HTTP_200_OK
@@ -310,7 +310,7 @@ class TestReferenceEndpoints:
     
     def test_create_reference(self, authenticated_client):
         """Test creating a new reference"""
-        url = reverse('core:references-list-create')
+        url = reverse('references-list-create')
         data = {
             'name': 'New Reference',
             'title': 'Director',
@@ -328,7 +328,7 @@ class TestReferenceEndpoints:
     
     def test_get_reference_detail(self, authenticated_client, sample_reference):
         """Test retrieving reference detail"""
-        url = reverse('core:reference-detail', kwargs={'reference_id': sample_reference.id})
+        url = reverse('reference-detail', kwargs={'reference_id': sample_reference.id})
         response = authenticated_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
@@ -337,7 +337,7 @@ class TestReferenceEndpoints:
     
     def test_update_reference(self, authenticated_client, sample_reference):
         """Test updating a reference"""
-        url = reverse('core:reference-detail', kwargs={'reference_id': sample_reference.id})
+        url = reverse('reference-detail', kwargs={'reference_id': sample_reference.id})
         data = {'title': 'VP of Engineering'}
         
         response = authenticated_client.patch(url, data, format='json')
@@ -350,7 +350,7 @@ class TestReferenceEndpoints:
     
     def test_delete_reference(self, authenticated_client, sample_reference):
         """Test deleting a reference"""
-        url = reverse('core:reference-detail', kwargs={'reference_id': sample_reference.id})
+        url = reverse('reference-detail', kwargs={'reference_id': sample_reference.id})
         response = authenticated_client.delete(url)
         
         assert response.status_code == status.HTTP_204_NO_CONTENT
@@ -358,7 +358,7 @@ class TestReferenceEndpoints:
     
     def test_check_in_reference(self, authenticated_client, sample_reference):
         """Test checking in with a reference"""
-        url = reverse('core:reference-check-in', kwargs={'reference_id': sample_reference.id})
+        url = reverse('reference-check-in', kwargs={'reference_id': sample_reference.id})
         response = authenticated_client.post(url, {'months_ahead': 3}, format='json')
         
         assert response.status_code == status.HTTP_200_OK
@@ -382,7 +382,7 @@ class TestReferenceRequestEndpoints:
             request_status='pending'
         )
         
-        url = reverse('core:reference-requests-list-create')
+        url = reverse('reference-requests-list-create')
         response = authenticated_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
@@ -390,7 +390,7 @@ class TestReferenceRequestEndpoints:
     
     def test_create_request(self, authenticated_client, sample_reference):
         """Test creating a reference request"""
-        url = reverse('core:reference-requests-list-create')
+        url = reverse('reference-requests-list-create')
         data = {
             'reference': str(sample_reference.id),
             'company_name': 'New Tech Co',
@@ -409,7 +409,7 @@ class TestReferenceRequestEndpoints:
     
     def test_create_request_with_template(self, authenticated_client, sample_reference, sample_template):
         """Test creating request with template"""
-        url = reverse('core:reference-requests-list-create')
+        url = reverse('reference-requests-list-create')
         data = {
             'reference': str(sample_reference.id),
             'company_name': 'Template Co',
@@ -433,7 +433,7 @@ class TestReferenceRequestEndpoints:
             request_status='pending'
         )
         
-        url = reverse('core:reference-request-mark-sent', kwargs={'request_id': request.id})
+        url = reverse('reference-request-mark-sent', kwargs={'request_id': request.id})
         response = authenticated_client.post(url)
         
         assert response.status_code == status.HTTP_200_OK
@@ -452,7 +452,7 @@ class TestReferenceRequestEndpoints:
             request_status='sent'
         )
         
-        url = reverse('core:reference-request-mark-completed', kwargs={'request_id': request.id})
+        url = reverse('reference-request-mark-completed', kwargs={'request_id': request.id})
         data = {
             'feedback_received': 'Great feedback received',
             'reference_rating': 5
@@ -473,7 +473,7 @@ class TestReferenceTemplateEndpoints:
     
     def test_list_templates(self, authenticated_client, sample_template):
         """Test listing templates"""
-        url = reverse('core:reference-templates-list-create')
+        url = reverse('reference-templates-list-create')
         response = authenticated_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
@@ -481,7 +481,7 @@ class TestReferenceTemplateEndpoints:
     
     def test_create_template(self, authenticated_client):
         """Test creating a template"""
-        url = reverse('core:reference-templates-list-create')
+        url = reverse('reference-templates-list-create')
         data = {
             'name': 'New Template',
             'template_type': 'preparation_guide',
@@ -507,7 +507,7 @@ class TestReferenceAppreciationEndpoints:
             date=date.today()
         )
         
-        url = reverse('core:reference-appreciations-list-create')
+        url = reverse('reference-appreciations-list-create')
         response = authenticated_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
@@ -515,7 +515,7 @@ class TestReferenceAppreciationEndpoints:
     
     def test_create_appreciation(self, authenticated_client, sample_reference):
         """Test creating appreciation"""
-        url = reverse('core:reference-appreciations-list-create')
+        url = reverse('reference-appreciations-list-create')
         data = {
             'reference': str(sample_reference.id),
             'appreciation_type': 'coffee_meetup',
@@ -544,7 +544,7 @@ class TestReferencePortfolioEndpoints:
         )
         portfolio.references.add(sample_reference)
         
-        url = reverse('core:reference-portfolios-list-create')
+        url = reverse('reference-portfolios-list-create')
         response = authenticated_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
@@ -552,7 +552,7 @@ class TestReferencePortfolioEndpoints:
     
     def test_create_portfolio(self, authenticated_client, sample_reference):
         """Test creating portfolio"""
-        url = reverse('core:reference-portfolios-list-create')
+        url = reverse('reference-portfolios-list-create')
         data = {
             'name': 'New Portfolio',
             'description': 'For tech roles',
@@ -572,7 +572,7 @@ class TestReferenceAnalytics:
     
     def test_analytics_basic(self, authenticated_client, test_user, sample_reference):
         """Test basic analytics"""
-        url = reverse('core:reference-analytics')
+        url = reverse('reference-analytics')
         response = authenticated_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
@@ -602,7 +602,7 @@ class TestReferenceAnalytics:
             request_status='pending'
         )
         
-        url = reverse('core:reference-analytics')
+        url = reverse('reference-analytics')
         response = authenticated_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
@@ -618,7 +618,7 @@ class TestPreparationGuide:
     
     def test_generate_preparation_guide(self, authenticated_client, sample_reference):
         """Test generating preparation guide"""
-        url = reverse('core:reference-preparation-guide')
+        url = reverse('reference-preparation-guide')
         data = {
             'reference_id': str(sample_reference.id),
             'company_name': 'Tech Startup',
@@ -635,7 +635,7 @@ class TestPreparationGuide:
     
     def test_preparation_guide_missing_reference(self, authenticated_client):
         """Test preparation guide with missing reference"""
-        url = reverse('core:reference-preparation-guide')
+        url = reverse('reference-preparation-guide')
         data = {
             'reference_id': '00000000-0000-0000-0000-000000000000',
             'company_name': 'Test',
@@ -653,14 +653,14 @@ class TestAuthenticationRequired:
     
     def test_list_references_unauthenticated(self, api_client):
         """Test that unauthenticated requests are rejected"""
-        url = reverse('core:references-list-create')
+        url = reverse('references-list-create')
         response = api_client.get(url)
         
         assert response.status_code in [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
     
     def test_analytics_unauthenticated(self, api_client):
         """Test analytics requires authentication"""
-        url = reverse('core:reference-analytics')
+        url = reverse('reference-analytics')
         response = api_client.get(url)
         
         assert response.status_code in [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
@@ -687,7 +687,7 @@ class TestUserIsolation:
         
         # User1 should only see their reference
         api_client.force_authenticate(user=user1)
-        url = reverse('core:references-list-create')
+        url = reverse('references-list-create')
         response = api_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK

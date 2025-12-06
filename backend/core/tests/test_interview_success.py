@@ -88,7 +88,7 @@ class TestInterviewSuccessForecast:
         self.client.force_authenticate(self.user)
 
     def test_success_forecast_returns_probability_and_actions(self):
-        url = reverse('core:interview-success-forecast')
+        url = reverse('interview-success-forecast')
         response = self.client.get(url, {'job': self.job.id, 'refresh': 'true'})
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -103,11 +103,11 @@ class TestInterviewSuccessForecast:
         assert interview_payload['action_items']
 
     def test_accuracy_populates_when_outcome_recorded(self):
-        url = reverse('core:interview-success-forecast')
+        url = reverse('interview-success-forecast')
         # generate and store prediction snapshot
         self.client.get(url, {'job': self.job.id, 'refresh': 'true'})
 
-        complete_url = reverse('core:interview-complete', kwargs={'pk': self.interview.id})
+        complete_url = reverse('interview-complete', kwargs={'pk': self.interview.id})
         complete_response = self.client.post(complete_url, {'outcome': 'good'}, format='json')
         assert complete_response.status_code == status.HTTP_200_OK
 

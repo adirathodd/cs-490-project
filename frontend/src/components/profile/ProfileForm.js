@@ -4,6 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import { auth, fetchSignInMethodsForEmail, reauthenticateWithCredential, reauthenticateWithPopup, EmailAuthProvider, googleProvider, githubProvider } from '../../services/firebase';
 import { authAPI } from '../../services/api';
 import ProfilePictureUpload from './ProfilePictureUpload';
+import GmailSettings from './GmailSettings';
+import UnlinkedEmails from './UnlinkedEmails';
 import './ProfileForm.css';
 import Icon from '../common/Icon';
 
@@ -478,22 +480,8 @@ const ProfileForm = () => {
   return (
     <div className="profile-form-container">
       <div className="profile-form-card">
-        <div className="page-backbar">
-          <a
-            className="btn-back"
-            href="/dashboard"
-            onClick={handleBackClick}
-            aria-label="Back to dashboard"
-            title="Back to dashboard"
-            role="button"
-          >
-            ← Back to Dashboard
-          </a>
-        </div>
-
         <div className="profile-header">
           <div>
-            <h2>Basic Profile Information</h2>
             <p className="form-subtitle">Complete your professional profile to get started</p>
           </div>
         </div>
@@ -763,6 +751,24 @@ const ProfileForm = () => {
             </div>
           </div>
 
+          {/* Integrations Section */}
+          <div className="form-section">
+            <h3>
+              <Icon name="link" size="lg" />
+              Integrations
+            </h3>
+            <div className="integrations-wrapper">
+              <GmailSettings />
+            </div>
+          </div>
+
+          {/* Unlinked Emails Section */}
+          <div className="form-section">
+            <div className="integrations-wrapper">
+              <UnlinkedEmails />
+            </div>
+          </div>
+
           {/* Form Actions */}
           <div className="form-actions">
             <button
@@ -791,6 +797,7 @@ const ProfileForm = () => {
             </button>
           </div>
         </form>
+        
         {/* Delete Account Confirmation Dialog */}
         {showDeleteDialog && (
           <div className="modal-overlay delete-modal">

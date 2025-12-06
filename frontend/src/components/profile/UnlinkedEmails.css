@@ -1,0 +1,251 @@
+.unlinked-emails {
+  padding: 0;
+}
+
+.unlinked-emails h3 {
+  margin: 0 0 24px 0;
+  color: #1f2937;
+  font-size: 22px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 32px 0 32px;
+}
+
+.unlinked-emails-loading {
+  text-align: center;
+  padding: 40px 20px;
+  color: #6b7280;
+  font-size: 15px;
+  margin: 0 32px 32px 32px;
+}
+
+.no-unlinked-emails {
+  text-align: center;
+  padding: 60px 20px;
+  color: #6b7280;
+  background: #f9fafb;
+  border-radius: 8px;
+  margin: 0 32px 32px 32px;
+  border: 1px solid #e5e7eb;
+}
+
+.no-unlinked-emails svg {
+  margin: 0 auto 16px;
+  color: #10b981;
+  opacity: 0.7;
+}
+
+.no-unlinked-emails p {
+  margin: 0 0 8px 0;
+  font-size: 15px;
+  color: #4b5563;
+  font-weight: 500;
+}
+
+.no-unlinked-emails small {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.unlinked-emails-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0 32px 32px 32px;
+}
+
+.unlinked-email-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 20px;
+  transition: all 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.unlinked-email-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  border-color: #d1d5db;
+}
+
+.unlinked-email-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.unlinked-email-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.unlinked-email-meta strong {
+  font-size: 15px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.unlinked-email-date {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.email-type-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.email-type-badge.type-interview_invitation {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.email-type-badge.type-rejection {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.email-type-badge.type-offer {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.email-type-badge.type-recruiter_outreach {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.unlinked-email-subject {
+  font-size: 15px;
+  color: #374151;
+  font-weight: 500;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.unlinked-email-subject svg {
+  flex-shrink: 0;
+  color: #9ca3af;
+}
+
+.unlinked-email-snippet {
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.5;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  border-left: 3px solid #e5e7eb;
+}
+
+.unlinked-email-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+  align-items: center;
+}
+
+.job-selector {
+  flex: 9;
+  padding: 10px 14px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #374151;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.job-selector:hover:not(:disabled) {
+  border-color: #667eea;
+}
+
+.job-selector:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.job-selector:disabled {
+  background: #f3f4f6;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.btn-dismiss-small {
+  flex: 1;
+  padding: 10px 20px;
+  border: 1.5px solid #fca5a5;
+  border-radius: 8px;
+  background: white;
+  color: #dc2626;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.btn-dismiss-small:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #ef4444;
+}
+
+.btn-dismiss-small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.unlinked-email-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.confidence-score {
+  padding: 4px 8px;
+  background: #f3f4f6;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.view-in-gmail-small {
+  color: #667eea;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  transition: color 0.2s;
+  cursor: pointer;
+  position: relative;
+  z-index: 10;
+}
+
+.view-in-gmail-small:hover {
+  color: #764ba2;
+  text-decoration: underline;
+}
+
+.view-in-gmail-small svg {
+  flex-shrink: 0;
+}
