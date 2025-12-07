@@ -1,0 +1,169 @@
+/* UC-117: API Error Fallback Styles */
+
+.api-error-fallback {
+  max-width: 600px;
+  margin: 60px auto;
+  padding: 40px;
+  text-align: center;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.api-error-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+
+.api-error-title {
+  color: #333;
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.api-error-message {
+  color: #666;
+  font-size: 16px;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.api-error-fallback-content {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 24px 0;
+  text-align: left;
+}
+
+.api-error-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin: 24px 0;
+}
+
+.api-error-retry-btn {
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 12px 24px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.api-error-retry-btn:hover {
+  background: #0056b3;
+}
+
+.api-error-home-link {
+  display: inline-block;
+  color: #6c757d;
+  text-decoration: none;
+  padding: 12px 24px;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.api-error-home-link:hover {
+  background: #f8f9fa;
+  border-color: #adb5bd;
+}
+
+.api-error-help {
+  font-size: 14px;
+  color: #868e96;
+  margin-top: 24px;
+}
+
+.api-error-help a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.api-error-help a:hover {
+  text-decoration: underline;
+}
+
+/* Inline error banner for non-blocking errors */
+.api-error-banner {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.api-error-banner-icon {
+  font-size: 20px;
+}
+
+.api-error-banner-content {
+  flex: 1;
+}
+
+.api-error-banner-title {
+  font-weight: 600;
+  color: #856404;
+  margin: 0 0 4px 0;
+  font-size: 14px;
+}
+
+.api-error-banner-message {
+  color: #856404;
+  margin: 0;
+  font-size: 13px;
+}
+
+.api-error-banner-close {
+  background: none;
+  border: none;
+  color: #856404;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.api-error-banner-close:hover {
+  opacity: 0.7;
+}
+
+/* Critical error banner */
+.api-error-banner.critical {
+  background: #f8d7da;
+  border-color: #dc3545;
+}
+
+.api-error-banner.critical .api-error-banner-title,
+.api-error-banner.critical .api-error-banner-message,
+.api-error-banner.critical .api-error-banner-close {
+  color: #721c24;
+}
+
+/* Info banner */
+.api-error-banner.info {
+  background: #d1ecf1;
+  border-color: #17a2b8;
+}
+
+.api-error-banner.info .api-error-banner-title,
+.api-error-banner.info .api-error-banner-message,
+.api-error-banner.info .api-error-banner-close {
+  color: #0c5460;
+}

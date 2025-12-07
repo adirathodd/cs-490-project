@@ -10,6 +10,7 @@ from email.utils import parsedate_to_datetime
 from django.conf import settings
 from django.utils import timezone
 from core import google_import
+from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_GMAIL
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,9 @@ def fetch_messages(access_token, query='', max_results=50, page_token=None, max_
     
     for attempt in range(max_retries):
         try:
-            resp = requests.get(url, headers=headers, params=params, timeout=15)
+            service = get_or_create_service(SERVICE_GMAIL, 'Gmail API')
+            with track_api_call(service, endpoint='/users/me/messages', method='GET'):
+                resp = requests.get(url, headers=headers, params=params, timeout=15)
             
             # Handle authentication errors
             if resp.status_code == 401:
@@ -160,7 +163,9 @@ def get_message_detail(access_token, message_id, max_retries=3):
     
     for attempt in range(max_retries):
         try:
-            resp = requests.get(url, headers=headers, params=params, timeout=10)
+            service = get_or_create_service(SERVICE_GMAIL, 'Gmail API')
+            with track_api_call(service, endpoint=f'/users/me/messages/{message_id}', method='GET'):
+                resp = requests.get(url, headers=headers, params=params, timeout=10)
             
             # Handle authentication errors
             if resp.status_code == 401:

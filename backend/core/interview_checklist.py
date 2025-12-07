@@ -9,6 +9,7 @@ import hashlib
 
 import requests
 from django.conf import settings
+from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_GEMINI
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +59,10 @@ Now generate for {job_title} at {company_name}."""
     }
 
     try:
-        response = requests.post(endpoint, params={'key': api_key}, json=payload, timeout=20)
-        response.raise_for_status()
+        service = get_or_create_service(SERVICE_GEMINI, 'Google Gemini AI')
+        with track_api_call(service, endpoint=f'/models/{model}:generateContent', method='POST'):
+            response = requests.post(endpoint, params={'key': api_key}, json=payload, timeout=20)
+            response.raise_for_status()
         data = response.json()
         text = data['candidates'][0]['content']['parts'][0]['text'].strip()
         if text.startswith('```'):

@@ -1,5 +1,8 @@
 import axios from 'axios';
 
+// ⚠️ UC-117: Backend API monitoring tracks all external API calls.
+// See backend/core/api_monitoring.py for implementation details.
+
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
 // Create axios instance with base configuration

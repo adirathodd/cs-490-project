@@ -7,6 +7,7 @@ import logging
 from django.conf import settings
 from typing import Dict, Optional
 from urllib.parse import urlencode
+from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_LINKEDIN
 
 logger = logging.getLogger(__name__)
 
@@ -82,10 +83,14 @@ def exchange_code_for_tokens(code: str, redirect_uri: str) -> Dict[str, any]:
         'client_secret': client_secret
     }
     
+    # Get or create LinkedIn service for monitoring
+    service = get_or_create_service(SERVICE_LINKEDIN, 'linkedin')
+    
     try:
-        response = requests.post(LINKEDIN_TOKEN_URL, data=payload, timeout=10)
-        response.raise_for_status()
-        return response.json()
+        with track_api_call(service, endpoint='/oauth/v2/accessToken', method='POST'):
+            response = requests.post(LINKEDIN_TOKEN_URL, data=payload, timeout=10)
+            response.raise_for_status()
+            return response.json()
     except requests.RequestException as e:
         logger.error(f"LinkedIn token exchange failed: {e}")
         raise LinkedInOAuthError(f'Token exchange failed: {str(e)}')
@@ -106,11 +111,15 @@ def fetch_linkedin_profile(access_token: str) -> Dict[str, any]:
     """
     headers = {'Authorization': f'Bearer {access_token}'}
     
+    # Get or create LinkedIn service for monitoring
+    service = get_or_create_service(SERVICE_LINKEDIN, 'linkedin')
+    
     try:
         # Fetch basic profile using OpenID Connect userinfo endpoint
-        profile_response = requests.get(LINKEDIN_PROFILE_URL, headers=headers, timeout=10)
-        profile_response.raise_for_status()
-        profile_data = profile_response.json()
+        with track_api_call(service, endpoint='/v2/userinfo', method='GET'):
+            profile_response = requests.get(LINKEDIN_PROFILE_URL, headers=headers, timeout=10)
+            profile_response.raise_for_status()
+            profile_data = profile_response.json()
         
         # OpenID Connect userinfo response format
         # {

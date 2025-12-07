@@ -11,6 +11,7 @@ from django.conf import settings
 
 from core.models import CalendarIntegration
 from core import google_import
+from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_GOOGLE_CALENDAR
 
 logger = logging.getLogger(__name__)
 
@@ -140,12 +141,15 @@ def sync_interview_event(interview):
     payload = _build_event_payload(interview)
 
     try:
+        service = get_or_create_service(SERVICE_GOOGLE_CALENDAR, 'Google Calendar')
         if event_meta.external_event_id:
             url = f"{GOOGLE_CAL_BASE}/{calendar_id}/events/{event_meta.external_event_id}"
-            resp = requests.patch(url, headers=headers, json=payload, params={'sendUpdates': 'none'}, timeout=15)
+            with track_api_call(service, endpoint=f'/calendars/{calendar_id}/events', method='PATCH'):
+                resp = requests.patch(url, headers=headers, json=payload, params={'sendUpdates': 'none'}, timeout=15)
         else:
             url = f"{GOOGLE_CAL_BASE}/{calendar_id}/events"
-            resp = requests.post(url, headers=headers, json=payload, params={'sendUpdates': 'none'}, timeout=15)
+            with track_api_call(service, endpoint=f'/calendars/{calendar_id}/events', method='POST'):
+                resp = requests.post(url, headers=headers, json=payload, params={'sendUpdates': 'none'}, timeout=15)
         if resp.status_code >= 400:
             raise CalendarSyncError(f"Google Calendar API returned {resp.status_code}: {resp.text[:200]}")
         data = resp.json()
@@ -193,7 +197,9 @@ def remove_interview_event(interview):
     url = f"{GOOGLE_CAL_BASE}/{calendar_id}/events/{event_meta.external_event_id}"
     headers = {'Authorization': f'Bearer {access_token}'}
     try:
-        resp = requests.delete(url, headers=headers, params={'sendUpdates': 'none'}, timeout=15)
+        service = get_or_create_service(SERVICE_GOOGLE_CALENDAR, 'Google Calendar')
+        with track_api_call(service, endpoint=f'/calendars/{calendar_id}/events', method='DELETE'):
+            resp = requests.delete(url, headers=headers, params={'sendUpdates': 'none'}, timeout=15)
         if resp.status_code >= 400 and resp.status_code != 404:
             raise CalendarSyncError(f"Failed to delete Google event ({resp.status_code}): {resp.text[:200]}")
     except requests.RequestException as exc:
@@ -288,12 +294,14 @@ def list_google_events(
     page_params = params.copy()
     while True:
         try:
-            resp = requests.get(
-                f"{GOOGLE_CAL_BASE}/{calendar_id}/events",
-                headers=headers,
-                params=page_params,
-                timeout=15,
-            )
+            service = get_or_create_service(SERVICE_GOOGLE_CALENDAR, 'Google Calendar')
+            with track_api_call(service, endpoint=f'/calendars/{calendar_id}/events', method='GET'):
+                resp = requests.get(
+                    f"{GOOGLE_CAL_BASE}/{calendar_id}/events",
+                    headers=headers,
+                    params=page_params,
+                    timeout=15,
+                )
         except requests.RequestException as exc:
             raise CalendarSyncError(f"Network error talking to Google Calendar: {exc}") from exc
 

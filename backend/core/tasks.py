@@ -1,8 +1,12 @@
 """Background tasks for contact imports and reminders.
 This file provides a Celery task wrapper if Celery is configured. If Celery
 is not installed, functions can be called synchronously.
+
+⚠️  UC-117: All Celery tasks calling external APIs must use track_api_call()
+from core.api_monitoring. See examples in this file.
 """
 import logging
+from datetime import timedelta
 from django.db import models
 from django.db.models import F
 from django.utils import timezone
@@ -14,6 +18,7 @@ from core.models import (
 )
 from core.google_import import fetch_and_normalize, GooglePeopleAPIError
 from core.technical_prep import build_technical_prep
+from core import gmail_utils
 
 logger = logging.getLogger(__name__)
 
@@ -426,4 +431,387 @@ if CELERY_AVAILABLE:
 else:
     def scan_gmail_emails(integration_id):
         return _scan_gmail_sync(integration_id)
+
+
+# UC-117: API Monitoring Weekly Report Generation
+def _generate_weekly_api_report_sync():
+    """
+    Generate weekly API usage report and email to admin.
+    This should be called weekly (e.g., every Monday morning).
+    """
+    from datetime import date, timedelta
+    from django.core.mail import send_mail
+    from django.conf import settings
+    from django.db.models import Count, Avg, Sum, Q
+    from core.models import (
+        APIService, APIUsageLog, APIQuotaUsage, APIError, APIAlert, APIWeeklyReport
+    )
+    
+    logger.info("Starting weekly API monitoring report generation")
+    
+    # Calculate last week's date range
+    today = timezone.now().date()
+    week_end = today - timedelta(days=today.weekday())  # Last Sunday
+    week_start = week_end - timedelta(days=7)  # Previous Monday
+    
+    week_start_dt = timezone.make_aware(
+        timezone.datetime.combine(week_start, timezone.datetime.min.time())
+    )
+    week_end_dt = timezone.make_aware(
+        timezone.datetime.combine(week_end, timezone.datetime.min.time())
+    )
+    
+    # Check if report already exists
+    existing = APIWeeklyReport.objects.filter(
+        week_start=week_start,
+        week_end=week_end
+    ).first()
+    
+    if existing:
+        logger.info(f"Weekly report for {week_start} already exists")
+        return existing
+    
+    # Gather statistics for the week
+    logs = APIUsageLog.objects.filter(
+        request_at__gte=week_start_dt,
+        request_at__lt=week_end_dt
+    )
+    
+    overall_stats = logs.aggregate(
+        total=Count('id'),
+        errors=Count('id', filter=Q(success=False)),
+        avg_time=Avg('response_time_ms')
+    )
+    
+    total_requests = overall_stats['total'] or 0
+    total_errors = overall_stats['errors'] or 0
+    error_rate = (total_errors / total_requests * 100) if total_requests else 0
+    avg_response_time = overall_stats['avg_time'] or 0
+    
+    # Per-service statistics
+    services = APIService.objects.filter(is_active=True)
+    service_stats = {}
+    
+    for service in services:
+        service_logs = logs.filter(service=service)
+        service_agg = service_logs.aggregate(
+            total=Count('id'),
+            successful=Count('id', filter=Q(success=True)),
+            failed=Count('id', filter=Q(success=False)),
+            avg_time=Avg('response_time_ms')
+        )
+        
+        service_stats[service.name] = {
+            'total_requests': service_agg['total'] or 0,
+            'successful_requests': service_agg['successful'] or 0,
+            'failed_requests': service_agg['failed'] or 0,
+            'avg_response_time_ms': round(service_agg['avg_time'] or 0, 2),
+            'success_rate': (service_agg['successful'] / service_agg['total'] * 100) 
+                           if service_agg['total'] else 0
+        }
+    
+    # Top errors
+    top_errors_qs = APIError.objects.filter(
+        occurred_at__gte=week_start_dt,
+        occurred_at__lt=week_end_dt
+    ).values('error_type', 'service__name').annotate(
+        count=Count('id')
+    ).order_by('-count')[:10]
+    
+    top_errors = [
+        {
+            'error_type': e['error_type'],
+            'service': e['service__name'],
+            'count': e['count']
+        }
+        for e in top_errors_qs
+    ]
+    
+    # Services approaching limits
+    approaching_limit_qs = APIQuotaUsage.objects.filter(
+        period_start__gte=week_start_dt,
+        period_start__lt=week_end_dt,
+        quota_percentage_used__gte=75
+    ).select_related('service').order_by('-quota_percentage_used')[:10]
+    
+    services_approaching_limit = [
+        {
+            'service_name': q.service.name,
+            'percentage_used': q.quota_percentage_used,
+            'period_type': q.period_type
+        }
+        for q in approaching_limit_qs
+    ]
+    
+    # Alert summary
+    alerts_week = APIAlert.objects.filter(
+        triggered_at__gte=week_start_dt,
+        triggered_at__lt=week_end_dt
+    )
+    
+    total_alerts = alerts_week.count()
+    critical_alerts = alerts_week.filter(severity='critical').count()
+    
+    # Generate HTML content
+    html_content = _generate_report_html(
+        week_start=week_start,
+        week_end=week_end,
+        total_requests=total_requests,
+        total_errors=total_errors,
+        error_rate=error_rate,
+        avg_response_time=avg_response_time,
+        service_stats=service_stats,
+        top_errors=top_errors,
+        services_approaching_limit=services_approaching_limit,
+        total_alerts=total_alerts,
+        critical_alerts=critical_alerts
+    )
+    
+    # Generate text summary
+    summary_text = _generate_report_summary(
+        week_start=week_start,
+        week_end=week_end,
+        total_requests=total_requests,
+        total_errors=total_errors,
+        error_rate=error_rate,
+        service_stats=service_stats,
+        critical_alerts=critical_alerts
+    )
+    
+    # Create report record
+    report = APIWeeklyReport.objects.create(
+        week_start=week_start,
+        week_end=week_end,
+        total_requests=total_requests,
+        total_errors=total_errors,
+        error_rate=error_rate,
+        avg_response_time_ms=avg_response_time,
+        service_stats=service_stats,
+        top_errors=top_errors,
+        services_approaching_limit=services_approaching_limit,
+        total_alerts=total_alerts,
+        critical_alerts=critical_alerts,
+        html_content=html_content,
+        summary_text=summary_text
+    )
+    
+    logger.info(f"Weekly report created: {report.id}")
+    
+    # Send email
+    try:
+        admin_email = 'rocketresume@gmail.com'
+        subject = f'RocketResume API Monitoring Weekly Report - {week_start.strftime("%B %d, %Y")}'
+        
+        send_mail(
+            subject=subject,
+            message=summary_text,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[admin_email],
+            html_message=html_content,
+            fail_silently=False
+        )
+        
+        report.email_sent = True
+        report.email_sent_at = timezone.now()
+        report.save(update_fields=['email_sent', 'email_sent_at'])
+        
+        logger.info(f"Weekly report email sent to {admin_email}")
+        
+    except Exception as e:
+        logger.error(f"Failed to send weekly report email: {e}", exc_info=True)
+    
+    return report
+
+
+def _generate_report_html(
+    week_start, week_end, total_requests, total_errors, error_rate,
+    avg_response_time, service_stats, top_errors, services_approaching_limit,
+    total_alerts, critical_alerts
+):
+    """Generate HTML email content for weekly report."""
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 800px; margin: 0 auto; padding: 20px; }}
+            h1 {{ color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }}
+            h2 {{ color: #34495e; margin-top: 30px; }}
+            .summary {{ background: #ecf0f1; padding: 20px; border-radius: 5px; margin: 20px 0; }}
+            .stat {{ display: inline-block; margin: 10px 20px 10px 0; }}
+            .stat-label {{ font-weight: bold; color: #7f8c8d; }}
+            .stat-value {{ font-size: 1.5em; color: #2c3e50; }}
+            table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+            th {{ background: #3498db; color: white; padding: 12px; text-align: left; }}
+            td {{ padding: 10px; border-bottom: 1px solid #ddd; }}
+            tr:hover {{ background: #f5f5f5; }}
+            .alert {{ background: #e74c3c; color: white; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+            .warning {{ background: #f39c12; color: white; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+            .success {{ background: #27ae60; color: white; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+            .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #7f8c8d; font-size: 0.9em; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🚀 RocketResume API Monitoring Weekly Report</h1>
+            <p><strong>Report Period:</strong> {week_start.strftime("%B %d, %Y")} - {week_end.strftime("%B %d, %Y")}</p>
+            
+            <div class="summary">
+                <h2>📊 Overall Statistics</h2>
+                <div class="stat">
+                    <div class="stat-label">Total Requests</div>
+                    <div class="stat-value">{total_requests:,}</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Total Errors</div>
+                    <div class="stat-value">{total_errors:,}</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Error Rate</div>
+                    <div class="stat-value">{error_rate:.2f}%</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Avg Response Time</div>
+                    <div class="stat-value">{avg_response_time:.0f}ms</div>
+                </div>
+            </div>
+            
+            {f'<div class="alert">⚠️ <strong>{critical_alerts} Critical Alerts</strong> triggered this week!</div>' if critical_alerts > 0 else ''}
+            {f'<div class="warning">⚡ {total_alerts} alerts triggered this week</div>' if total_alerts > 0 else '<div class="success">✅ No alerts triggered this week</div>'}
+    """
+    
+    # Service breakdown
+    if service_stats:
+        html += """
+            <h2>🔧 Per-Service Statistics</h2>
+            <table>
+                <tr>
+                    <th>Service</th>
+                    <th>Total Requests</th>
+                    <th>Success Rate</th>
+                    <th>Avg Response Time</th>
+                </tr>
+        """
+        
+        for service_name, stats in sorted(service_stats.items(), key=lambda x: x[1]['total_requests'], reverse=True):
+            if stats['total_requests'] > 0:
+                html += f"""
+                <tr>
+                    <td><strong>{service_name}</strong></td>
+                    <td>{stats['total_requests']:,}</td>
+                    <td>{stats['success_rate']:.1f}%</td>
+                    <td>{stats['avg_response_time_ms']:.0f}ms</td>
+                </tr>
+                """
+        
+        html += "</table>"
+    
+    # Top errors
+    if top_errors:
+        html += """
+            <h2>🐛 Top Errors</h2>
+            <table>
+                <tr>
+                    <th>Error Type</th>
+                    <th>Service</th>
+                    <th>Count</th>
+                </tr>
+        """
+        
+        for error in top_errors:
+            html += f"""
+            <tr>
+                <td>{error['error_type']}</td>
+                <td>{error['service']}</td>
+                <td>{error['count']}</td>
+            </tr>
+            """
+        
+        html += "</table>"
+    
+    # Services approaching limits
+    if services_approaching_limit:
+        html += """
+            <h2>⚡ Services Approaching Rate Limits</h2>
+            <table>
+                <tr>
+                    <th>Service</th>
+                    <th>Usage %</th>
+                    <th>Period</th>
+                </tr>
+        """
+        
+        for service in services_approaching_limit:
+            html += f"""
+            <tr>
+                <td>{service['service_name']}</td>
+                <td><strong>{service['percentage_used']:.1f}%</strong></td>
+                <td>{service['period_type']}</td>
+            </tr>
+            """
+        
+        html += "</table>"
+    
+    html += """
+            <div class="footer">
+                <p>This is an automated weekly report from RocketResume API Monitoring System.</p>
+                <p>For more details, please access the admin dashboard in the application.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
+
+
+def _generate_report_summary(
+    week_start, week_end, total_requests, total_errors,
+    error_rate, service_stats, critical_alerts
+):
+    """Generate plain text summary for weekly report."""
+    
+    summary = f"""
+RocketResume API Monitoring Weekly Report
+==========================================
+
+Report Period: {week_start.strftime("%B %d, %Y")} - {week_end.strftime("%B %d, %Y")}
+
+Overall Statistics
+------------------
+- Total Requests: {total_requests:,}
+- Total Errors: {total_errors:,}
+- Error Rate: {error_rate:.2f}%
+- Critical Alerts: {critical_alerts}
+
+Service Breakdown
+-----------------
+"""
+    
+    for service_name, stats in sorted(service_stats.items(), key=lambda x: x[1]['total_requests'], reverse=True):
+        if stats['total_requests'] > 0:
+            summary += f"\n{service_name}:\n"
+            summary += f"  - Requests: {stats['total_requests']:,}\n"
+            summary += f"  - Success Rate: {stats['success_rate']:.1f}%\n"
+            summary += f"  - Avg Response Time: {stats['avg_response_time_ms']:.0f}ms\n"
+    
+    summary += """
+==========================================
+Access the admin dashboard for more details.
+"""
+    
+    return summary
+
+
+# Celery task wrapper for weekly report
+if CELERY_AVAILABLE:
+    @shared_task
+    def generate_weekly_api_report():
+        """Generate and email weekly API monitoring report."""
+        return _generate_weekly_api_report_sync()
+else:
+    def generate_weekly_api_report():
+        return _generate_weekly_api_report_sync()
 

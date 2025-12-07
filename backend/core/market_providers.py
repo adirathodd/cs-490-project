@@ -1,6 +1,7 @@
 import logging
 import requests
 from urllib.parse import urlencode
+from core.api_monitoring import track_api_call, get_or_create_service
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +20,10 @@ def fetch_remotive_jobs(search=None, category=None, location=None, limit=200):
         url = 'https://remotive.io/api/remote-jobs'
         if params:
             url = f"{url}?{urlencode(params)}"
-        resp = requests.get(url, timeout=10)
-        resp.raise_for_status()
+        service = get_or_create_service('market_data_remotive', 'Remotive Jobs API')
+        with track_api_call(service, endpoint='/api/remote-jobs', method='GET'):
+            resp = requests.get(url, timeout=10)
+            resp.raise_for_status()
         data = resp.json()
         jobs = data.get('jobs') or []
         return jobs[:limit]
@@ -41,8 +44,10 @@ def fetch_arbeitnow_jobs(search=None, location=None, limit=200):
             params['search'] = search
         if location:
             params['location'] = location
-        resp = requests.get(url, params=params, timeout=10)
-        resp.raise_for_status()
+        service = get_or_create_service('market_data_arbeitnow', 'ArbeitNow Jobs API')
+        with track_api_call(service, endpoint='/api/job-board-api', method='GET'):
+            resp = requests.get(url, params=params, timeout=10)
+            resp.raise_for_status()
         data = resp.json()
         # API returns data under 'data' key
         jobs = data.get('data') or []

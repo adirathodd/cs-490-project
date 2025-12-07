@@ -250,6 +250,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     last_name = serializers.CharField(source='user.last_name', max_length=150)
     full_name = serializers.SerializerMethodField()
     full_location = serializers.SerializerMethodField()
+    is_staff = serializers.BooleanField(source='user.is_staff', read_only=True)  # UC-117: Include admin status
+    is_superuser = serializers.BooleanField(source='user.is_superuser', read_only=True)  # UC-117: Include superuser status
     # Accept nested user data for updates (write-only)
     user = serializers.DictField(write_only=True, required=False)
     
@@ -260,7 +262,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'phone', 'city', 'state', 'full_location',
             'headline', 'summary', 'industry', 'experience_level',
             'location', 'years_experience', 'preferred_roles', 
-            'portfolio_url', 'visibility', 'user'
+            'portfolio_url', 'visibility', 'user',
+            'is_staff', 'is_superuser'  # UC-117: Admin status fields
         ]
     
     def get_full_name(self, obj):

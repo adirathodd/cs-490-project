@@ -18,6 +18,7 @@ import statistics
 from datetime import datetime, timedelta, date
 from django.conf import settings
 import requests
+from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_GEMINI
 
 logger = logging.getLogger(__name__)
 
@@ -919,12 +920,14 @@ def _generate_competitive_ai_recs(profile, user_metrics, peer_metrics, gaps, dif
         f"User snapshot: {snapshot}"
     )
     try:
-        resp = requests.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent".format(model=model),
-            params={'key': api_key},
-            json={'contents': [{'parts': [{'text': prompt}]}]},
-            timeout=10,
-        )
+        service = get_or_create_service(SERVICE_GEMINI, 'Google Gemini AI')
+        with track_api_call(service, endpoint=f'/models/{model}:generateContent', method='POST'):
+            resp = requests.post(
+                "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent".format(model=model),
+                params={'key': api_key},
+                json={'contents': [{'parts': [{'text': prompt}]}]},
+                timeout=10,
+            )
         data = resp.json()
         parts = data.get('candidates', [{}])[0].get('content', {}).get('parts', [])
         text = ' '.join([p.get('text', '') for p in parts]).strip()
