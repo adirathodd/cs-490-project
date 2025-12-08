@@ -3,6 +3,7 @@ import { linkedInAPI } from '../../services/api';
 import Icon from '../common/Icon';
 import LoadingSpinner from '../common/LoadingSpinner';
 import GuidanceRenderer from '../common/GuidanceRenderer';
+import APIErrorBanner from '../common/APIErrorBanner'; // UC-117: User-facing API error handling
 import './LinkedIn.css';
 
 const ProfileOptimization = () => {
@@ -41,7 +42,8 @@ const ProfileOptimization = () => {
       setSuggestions(data);
     } catch (err) {
       console.error('Profile optimization error:', err);
-      setError(err.message || 'Failed to load optimization suggestions');
+      // UC-117: Set structured error for user-facing display
+      setError(err);
     } finally {
       setLoading(false);
     }
@@ -85,14 +87,33 @@ const ProfileOptimization = () => {
   }
 
   if (error) {
+    // UC-117: User-facing error message with graceful fallback
     return (
-      <div className="linkedin-error">
-        <Icon name="alert-circle" size="lg" />
-        <p>{error}</p>
-        <button onClick={fetchSuggestions} className="retry-btn">
-          <Icon name="refresh-cw" size="sm" />
-          Try Again
-        </button>
+      <div className="profile-optimization-error-container">
+        <APIErrorBanner 
+          serviceName="LinkedIn API"
+          error={error}
+          severity="warning"
+          onRetry={fetchSuggestions}
+          dismissible={false}
+        />
+        <div className="fallback-content" style={{ 
+          background: '#f8f9fa', 
+          padding: '24px', 
+          borderRadius: '8px', 
+          marginTop: '20px' 
+        }}>
+          <h3>General Profile Optimization Tips</h3>
+          <p>While we work to restore LinkedIn integration, consider these optimization strategies:</p>
+          <ul style={{ textAlign: 'left', marginTop: '16px', lineHeight: '1.8' }}>
+            <li><strong>Profile Photo:</strong> Use a professional headshot with good lighting</li>
+            <li><strong>Headline:</strong> Highlight your key skills and career goals (not just job title)</li>
+            <li><strong>Summary:</strong> Write a compelling narrative about your experience and aspirations</li>
+            <li><strong>Experience:</strong> Include quantifiable achievements and impact metrics</li>
+            <li><strong>Skills:</strong> List 10-15 relevant skills and get endorsements from connections</li>
+            <li><strong>Recommendations:</strong> Request recommendations from colleagues and managers</li>
+          </ul>
+        </div>
       </div>
     );
   }

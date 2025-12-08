@@ -145,7 +145,7 @@ const SalaryResearch = ({ jobId: propJobId, embedded = false }) => {
         <div className="salary-research-header">
           <div>
             <h1 className="salary-research-title">
-              <Icon name="briefcase" size="lg" /> Salary Research
+              <Icon name="dollar-sign" size="lg" /> Salary Research
             </h1>
             <p className="salary-research-subtitle">
               Market insights for {job.title} at {job.company_name}

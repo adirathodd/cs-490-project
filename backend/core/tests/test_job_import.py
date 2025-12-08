@@ -11,6 +11,7 @@ from core.job_import_utils import (
 )
 
 
+@pytest.mark.django_db
 class TestJobImportUtils:
     """Test job import utility functions"""
     

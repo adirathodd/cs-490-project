@@ -6,8 +6,9 @@ from core import views
 from core import analytics_views
 from core import market_views
 from core import team_views
+from core import api_monitoring_views
 
-app_name = 'core'
+# app_name = 'core'  # Removed to avoid namespace issues with reverse() in tests
 
 urlpatterns = [
     # Authentication endpoints
@@ -37,6 +38,9 @@ urlpatterns = [
 
     # Education endpoints
     path('profile/education', views.education_list_create, name='education-list-create'),
+    # GitHub OAuth connect/callback (UC-114)
+    path('github/connect/', views.github_connect, name='github_connect'),
+    path('github/callback/', views.github_callback, name='github_callback'),
     path('profile/education/<int:education_id>', views.education_detail, name='education-detail'),
 
     # Projects endpoints
@@ -247,7 +251,9 @@ urlpatterns = [
     path('github/callback/', views.github_callback, name='github-callback'),
     path('github/repos/', views.github_repos, name='github-repos'),
     path('github/featured/', views.github_featured_repositories, name='github-featured'),
-    path('github/contrib/summary/', views.github_contributions_summary, name='github-contrib-summary'),
+        path('github/contrib/summary/', views.github_contributions_summary, name='github-contrib-summary'),
+        path('github/contrib/commits/', views.github_total_commits, name='github_total_commits'),
+        path('github/contrib/commits-by-repo/', views.github_commits_by_repo, name='github_commits_by_repo'),
     path('github/disconnect/', views.github_disconnect, name='github-disconnect'),
     
     # UC-063: Automated Company Research endpoints
@@ -439,5 +445,33 @@ urlpatterns = [
     path('linkedin/networking-message', views.linkedin_networking_message, name='linkedin-networking-message'),
     path('linkedin/content-strategy', views.linkedin_content_strategy, name='linkedin-content-strategy'),
     path('linkedin/integration-status', views.linkedin_integration_status, name='linkedin-integration-status'),
+
+    # UC-113: Email Integration for Application Tracking
+    path('gmail/oauth/start/', views.gmail_oauth_start, name='gmail-oauth-start'),
+    path('gmail/oauth/callback/', views.gmail_oauth_callback, name='gmail-oauth-callback'),
+    path('gmail/status/', views.gmail_integration_status, name='gmail-status'),
+    path('gmail/disconnect/', views.gmail_disconnect, name='gmail-disconnect'),
+    path('gmail/enable-scanning/', views.gmail_enable_scanning, name='gmail-enable-scanning'),
+    path('gmail/preferences/', views.gmail_update_preferences, name='gmail-update-preferences'),
+    path('gmail/scan/', views.gmail_scan_now, name='gmail-scan'),
+    path('gmail/scan-now/', views.gmail_scan_now, name='gmail-scan-now'),
+    path('gmail/scan-logs/', views.gmail_scan_logs, name='gmail-scan-logs'),
+    path('emails/', views.application_emails_list, name='application-emails-list'),
+    path('emails/<uuid:email_id>/', views.application_email_detail, name='application-email-detail'),
+    path('emails/<uuid:email_id>/link/', views.link_email_to_job, name='link-email-to-job'),
+    path('emails/<uuid:email_id>/apply-status/', views.apply_email_status_suggestion, name='apply-email-status'),
+    path('emails/<uuid:email_id>/dismiss/', views.dismiss_email, name='dismiss-email'),
+
+    # UC-117: API Rate Limiting and Error Handling Dashboard
+    path('admin/api-monitoring/dashboard/', api_monitoring_views.api_monitoring_dashboard, name='api-monitoring-dashboard'),
+    path('admin/api-monitoring/services/', api_monitoring_views.api_service_list, name='api-service-list'),
+    path('admin/api-monitoring/services/<int:service_id>/', api_monitoring_views.api_service_detail, name='api-service-detail'),
+    path('admin/api-monitoring/usage-logs/', api_monitoring_views.api_usage_logs, name='api-usage-logs'),
+    path('admin/api-monitoring/errors/', api_monitoring_views.api_error_logs, name='api-error-logs'),
+    path('admin/api-monitoring/alerts/', api_monitoring_views.api_alerts, name='api-alerts'),
+    path('admin/api-monitoring/alerts/<int:alert_id>/acknowledge/', api_monitoring_views.acknowledge_alert, name='acknowledge-alert'),
+    path('admin/api-monitoring/alerts/<int:alert_id>/resolve/', api_monitoring_views.resolve_alert, name='resolve-alert'),
+    path('admin/api-monitoring/weekly-reports/', api_monitoring_views.api_weekly_reports, name='api-weekly-reports'),
+    path('admin/api-monitoring/weekly-reports/<int:report_id>/', api_monitoring_views.api_weekly_report_detail, name='api-weekly-report-detail'),
 
 ]

@@ -66,6 +66,7 @@ def test_format_fetch_error_status_codes():
     assert 'rejected' in msg2 or 'blocking' in msg2
 
 
+@pytest.mark.django_db
 def test_fetch_job_soup_success(monkeypatch):
     class DummyResp:
         status_code = 200
@@ -83,6 +84,7 @@ def test_fetch_job_soup_success(monkeypatch):
     assert 'content' in soup.get_text()
 
 
+@pytest.mark.django_db
 def test_fetch_job_soup_proxy_fallback(monkeypatch):
     # First attempts raise HTTPError 403, then proxy succeeds
     class Resp403:

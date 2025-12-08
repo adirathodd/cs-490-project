@@ -253,7 +253,6 @@ const Documents = () => {
   return (
     <div className="education-container">
       <div className="education-header">
-        <h1><Icon name="file-text" size="lg" /> Application Materials</h1>
         {filter !== 'templates' && (
           <button
             className="btn-primary"

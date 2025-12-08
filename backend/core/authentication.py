@@ -14,6 +14,7 @@ from PIL import Image
 import io
 import re
 from django.core.exceptions import MultipleObjectsReturned
+from core.api_monitoring import track_api_call, get_or_create_service
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -208,7 +209,9 @@ class FirebaseAuthentication(authentication.BaseAuthentication):
                                     for u in urls_to_try:
                                         try:
                                             import requests
-                                            resp = requests.get(u, timeout=6)
+                                            service = get_or_create_service('photo_url_fetch', 'Photo URL Fetch')
+                                            with track_api_call(service, endpoint='/photo', method='GET'):
+                                                resp = requests.get(u, timeout=6)
                                             status_code = resp.status_code
                                             if status_code == 200:
                                                 content = resp.content

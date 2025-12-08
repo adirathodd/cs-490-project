@@ -19,6 +19,7 @@ from core.models import (
     MentorshipRequest, MentorshipSharingPreference, MentorshipSharedApplication,
     MentorshipGoal, MentorshipMessage,
     MarketIntelligence, MockInterviewSession, MockInterviewQuestion, MockInterviewSummary,
+    GmailIntegration, ApplicationEmail, EmailScanLog,
 )
 from core.models import (
     Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink,
@@ -249,6 +250,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     last_name = serializers.CharField(source='user.last_name', max_length=150)
     full_name = serializers.SerializerMethodField()
     full_location = serializers.SerializerMethodField()
+    is_staff = serializers.BooleanField(source='user.is_staff', read_only=True)  # UC-117: Include admin status
+    is_superuser = serializers.BooleanField(source='user.is_superuser', read_only=True)  # UC-117: Include superuser status
     # Accept nested user data for updates (write-only)
     user = serializers.DictField(write_only=True, required=False)
     
@@ -259,7 +262,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'phone', 'city', 'state', 'full_location',
             'headline', 'summary', 'industry', 'experience_level',
             'location', 'years_experience', 'preferred_roles', 
-            'portfolio_url', 'visibility', 'user'
+            'portfolio_url', 'visibility', 'user',
+            'is_staff', 'is_superuser'  # UC-117: Admin status fields
         ]
     
     def get_full_name(self, obj):
@@ -1917,6 +1921,85 @@ class CalendarIntegrationSerializer(serializers.ModelSerializer):
             'external_email', 'external_account_id', 'scopes',
             'last_synced_at', 'last_error', 'created_at', 'updated_at'
         ]
+
+
+# 
+# 
+# =
+# EMAIL INTEGRATION SERIALIZERS (UC-113)
+# 
+# 
+# =
+
+
+class GmailIntegrationSerializer(serializers.ModelSerializer):
+    """Serializer for Gmail integration settings"""
+    
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    scan_frequency_display = serializers.CharField(source='get_scan_frequency_display', read_only=True)
+    
+    class Meta:
+        model = GmailIntegration
+        fields = [
+            'id', 'status', 'status_display', 'scan_enabled', 'scan_frequency', 
+            'scan_frequency_display', 'auto_update_status', 'gmail_address', 
+            'last_scan_at', 'emails_scanned_count', 'last_error', 
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'status', 'status_display', 'gmail_address', 'last_scan_at', 
+            'emails_scanned_count', 'last_error', 'created_at', 'updated_at'
+        ]
+
+
+class ApplicationEmailSerializer(serializers.ModelSerializer):
+    """Serializer for application emails"""
+    
+    job_title = serializers.CharField(source='job.title', read_only=True, allow_null=True)
+    company_name = serializers.CharField(source='job.company_name', read_only=True, allow_null=True)
+    email_type_display = serializers.CharField(source='get_email_type_display', read_only=True)
+    gmail_url = serializers.SerializerMethodField()
+    
+    def get_gmail_url(self, obj):
+        """Generate Gmail URL from message ID
+        Note: Uses thread_id which is more reliable for opening in Gmail web interface
+        Falls back to a search if thread_id is not available
+        """
+        if obj.thread_id:
+            # Thread ID based URL - Gmail will open the conversation
+            return f"https://mail.google.com/mail/u/0/#all/{obj.thread_id}"
+        elif obj.gmail_message_id:
+            # Fallback to message ID
+            return f"https://mail.google.com/mail/u/0/#all/{obj.gmail_message_id}"
+        return None
+    
+    class Meta:
+        model = ApplicationEmail
+        fields = [
+            'id', 'job', 'job_title', 'company_name', 'subject', 'sender_email',
+            'sender_name', 'received_at', 'snippet', 'email_type', 'email_type_display',
+            'confidence_score', 'is_application_related', 'suggested_job_status', 
+            'status_applied', 'is_linked', 'is_dismissed', 'user_notes', 'created_at',
+            'gmail_url'
+        ]
+        read_only_fields = [
+            'id', 'sender_email', 'sender_name', 'received_at', 
+            'snippet', 'email_type', 'email_type_display', 'confidence_score', 
+            'is_application_related', 'suggested_job_status', 'created_at'
+        ]
+
+
+class EmailScanLogSerializer(serializers.ModelSerializer):
+    """Serializer for scan logs"""
+    
+    class Meta:
+        model = EmailScanLog
+        fields = '__all__'
+        read_only_fields = (
+            'id', 'integration', 'started_at', 'completed_at', 'status',
+            'emails_processed', 'emails_matched', 'error_message'
+        )
+
 
 
 class InterviewEventSerializer(serializers.ModelSerializer):

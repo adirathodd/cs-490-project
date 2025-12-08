@@ -322,9 +322,19 @@ const contactsAPI = {
 	delete: jestFn(),
 };
 
+// Mock for axios instance
+const axiosInstance = {
+	get: jest.fn(),
+	post: jest.fn(),
+	put: jest.fn(),
+	patch: jest.fn(),
+	delete: jest.fn(),
+	request: jest.fn(),
+};
+
 module.exports = {
 	__esModule: true,
-	default: {},
+	default: axiosInstance,
 	profileAPI,
 	authAPI,
 	skillsAPI,

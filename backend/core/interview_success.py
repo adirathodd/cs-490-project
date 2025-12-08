@@ -6,6 +6,8 @@ import json
 import logging
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
+
+from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_GEMINI
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.conf import settings
@@ -633,13 +635,15 @@ class InterviewSuccessForecastService:
         }
 
         try:
-            response = requests.post(
-                endpoint,
-                params={'key': self._gemini_api_key},
-                json=payload_body,
-                timeout=20,
-            )
-            response.raise_for_status()
+            service = get_or_create_service(SERVICE_GEMINI, 'Google Gemini AI')
+            with track_api_call(service, endpoint=f'/models/{self._gemini_model}:generateContent', method='POST'):
+                response = requests.post(
+                    endpoint,
+                    params={'key': self._gemini_api_key},
+                    json=payload_body,
+                    timeout=20,
+                )
+                response.raise_for_status()
             result = response.json()
             text = result['candidates'][0]['content']['parts'][0]['text'].strip()
             if text.startswith('```'):

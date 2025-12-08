@@ -1,3 +1,64 @@
+.section-divider {
+  margin: 24px 0;
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.03);
+}
+
+.card .card-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.card .card-meta {
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.card .card-actions {
+  margin-top: 10px;
+}
+
+/* Map GitHub cards to shared styles */
+.github-cards { composes: card-grid; }
+.github-card { composes: card; }
+.github-card .title { composes: card-title; }
+.github-card .meta { composes: card-meta; }
+.github-card .actions { composes: card-actions; }
+
+.stat-cards { composes: card-grid; }
+.stat-card { composes: card; }
+.stat-card .label { composes: card-meta; }
+.stat-card .value { font-size: 1.2rem; font-weight: 700; }
 .github-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -663,16 +724,19 @@ form {
   justify-content: space-between;
   align-items: flex-start;
   gap: 20px;
+  position: relative; /* allow absolute positioning of action buttons */
 }
 
 .project-title {
   flex: 1;
   min-width: 0;
+  padding-right: 56px; /* reserve exactly actions width (40) + gap (8) + buffer */
 }
 
 .project-main {
   flex: 2; /* allow main content more space so lines are longer */
   min-width: 0;
+  padding-right: 56px; /* reserve exactly actions width (40) + gap (8) + buffer */
 }
 
 .project-title h3 {
@@ -681,6 +745,17 @@ form {
   color: #111827;
   margin: 0 0 12px 0;
   line-height: 1.3;
+  overflow-wrap: break-word; /* prefer natural breaks */
+  word-break: normal;
+  hyphens: auto;
+}
+
+.project-title h3 a {
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: auto;
+  display: inline-block;
+  max-width: calc(100% - 4px); /* let text use full width minus tiny buffer */
 }
 
 .project-meta {
@@ -738,13 +813,27 @@ form {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+  position: absolute;
+  right: 16px;
+  top: 16px;
+}
+
+/* Vertical guide line from left edge of action box */
+.project-actions::before {
+  content: '';
+  position: absolute;
+  left: -10px; /* align just before the star box */
+  top: -4px;
+  bottom: -20px; /* extend into header area */
+  border-left: 1px solid var(--muted-border);
+  opacity: 0.8;
 }
 
 .action-button,
 .edit-button,
 .delete-button {
-  width: 44px;
-  height: 44px;
+  width: 40px; /* slightly smaller to free space */
+  height: 40px;
   background: var(--surface);
   border: 2px solid var(--muted-border);
   border-radius: 10px;
@@ -775,6 +864,18 @@ form {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   border-color: #ef4444;
   color: var(--on-primary);
+}
+
+/* Ensure back/portfolio buttons remain visible and match theme on this page */
+.projects-container .btn-back {
+  background: var(--surface-2);
+  border-color: var(--accent-purple);
+  color: var(--accent-purple);
+}
+.projects-container .btn-back:hover {
+  background: var(--surface);
+  border-color: var(--primary-gradient-start);
+  color: var(--primary-gradient-start);
 }
 
 .project-section {

@@ -13,7 +13,7 @@ def test_contacts_crud_and_related_endpoints(django_user_model):
     client.force_authenticate(user=user)
 
     # Create contact
-    url = reverse("core:contacts-list-create")
+    url = reverse("contacts-list-create")
     payload = {"first_name": "Jane", "last_name": "Doe", "email": "jane@example.com", "company_name": "Acme"}
     resp = client.post(url, data=payload, format="json")
     assert resp.status_code == 201
@@ -29,7 +29,7 @@ def test_contacts_crud_and_related_endpoints(django_user_model):
     assert contact_id in ids
 
     # Retrieve detail
-    detail_url = reverse("core:contact-detail", args=[contact_id])
+    detail_url = reverse("contact-detail", args=[contact_id])
     resp = client.get(detail_url)
     assert resp.status_code == 200
     assert resp.data.get("email") == "jane@example.com"
@@ -40,21 +40,21 @@ def test_contacts_crud_and_related_endpoints(django_user_model):
     assert patch_resp.data.get("display_name") == "Jane D."
 
     # Create an interaction
-    interactions_url = reverse("core:contact-interactions", args=[contact_id])
+    interactions_url = reverse("contact-interactions", args=[contact_id])
     interaction_payload = {"type": "call", "date": "2025-01-01T12:00:00Z", "duration_minutes": 20, "summary": "Intro call"}
     resp = client.post(interactions_url, data=interaction_payload, format="json")
     assert resp.status_code == 201
     assert resp.data.get("type") == "call"
 
     # Create a note
-    notes_url = reverse("core:contact-notes", args=[contact_id])
+    notes_url = reverse("contact-notes", args=[contact_id])
     note_payload = {"content": "Met at conference", "interests": "networking"}
     resp = client.post(notes_url, data=note_payload, format="json")
     assert resp.status_code == 201
     assert "Met at conference" in resp.data.get("content")
 
     # Create a reminder
-    reminders_url = reverse("core:contact-reminders", args=[contact_id])
+    reminders_url = reverse("contact-reminders", args=[contact_id])
     # Use UTC timestamp in Zulu format (no offset) to match API expectations
     due = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%SZ')
     reminder_payload = {"message": "Follow up on opportunity", "due_date": due}

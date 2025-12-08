@@ -42,6 +42,7 @@ def _load_local_env_file():
 _load_local_env_file()
 
 # Read secret key and debug flag from environment with sensible defaults
+# ⚠️  UC-117: All external API calls must use core.api_monitoring.track_api_call()
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'replace-me-in-production')
 
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
@@ -177,9 +178,18 @@ MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5MB
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # CORS settings
-CORS_ALLOW_ALL_ORIGINS = DEBUG  # Allow all in development
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+# When using credentials, do NOT use wildcard origins; explicitly list dev origins
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+    origin.strip() for origin in os.environ.get(
+        'CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000'
+    ).split(',') if origin.strip()
+]
+# Optional: allow Authorization header for Firebase token
+CORS_ALLOW_HEADERS = list(set([
+    'accept', 'accept-encoding', 'authorization', 'content-type', 'dnt', 'origin', 'user-agent', 'x-csrftoken', 'x-requested-with'
+]))
 
 # Trust the frontend origin for CSRF in development
 CSRF_TRUSTED_ORIGINS = ['http://localhost:3000']

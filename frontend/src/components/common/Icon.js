@@ -80,6 +80,8 @@ import {
   FaBalanceScale,
   FaBookOpen,
   FaArrowUp,
+  FaUserCheck,
+  FaCode,
 } from 'react-icons/fa';
 
 // Simple, centralized Icon wrapper used across the app.
@@ -150,6 +152,7 @@ const iconMap = {
   check: FaCheck,
   grip: FaGripVertical,
   dollar: FaDollarSign,
+  'dollar-sign': FaDollarSign,
   chart: FaChartLine,
   'corner-up-left': FaUndo,
   undo: FaUndo,
@@ -194,6 +197,8 @@ const iconMap = {
   'book-open': FaBookOpen,
   scale: FaBalanceScale,
   'arrow-up': FaArrowUp,
+  'user-check': FaUserCheck,
+  code: FaCode,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {

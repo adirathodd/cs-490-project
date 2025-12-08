@@ -31,7 +31,7 @@ class TestCareerGoalProgressAPI:
         )
 
     def test_update_progress_accepts_decimal_input(self):
-        url = reverse('core:update-goal-progress', kwargs={'pk': self.goal.id})
+        url = reverse('update-goal-progress', kwargs={'pk': self.goal.id})
 
         resp = self.client.post(url, {'current_value': '25.5'}, format='json')
 
@@ -45,7 +45,7 @@ class TestCareerGoalProgressAPI:
         assert float(data['current_value']) == pytest.approx(25.5, rel=1e-3)
 
     def test_update_progress_rejects_invalid_values(self):
-        url = reverse('core:update-goal-progress', kwargs={'pk': self.goal.id})
+        url = reverse('update-goal-progress', kwargs={'pk': self.goal.id})
 
         resp = self.client.post(url, {'current_value': 'abc'}, format='json')
         assert resp.status_code == 400

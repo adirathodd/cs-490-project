@@ -48,7 +48,7 @@ class TestProductivityAnalytics:
             total_duration_seconds=900,
         )
 
-        url = reverse('core:productivity-analytics')
+        url = reverse('productivity-analytics')
         resp = self.client.get(url)
         assert resp.status_code == 200
 

@@ -49,6 +49,7 @@ import ResumeVersionControl from './components/resume/ResumeVersionControl';
 import SharedResumeView from './components/resume/SharedResumeView';
 import { LinkedInIntegration } from './components/linkedin';
 import ResumeReviewTools from './components/resume/ResumeReviewTools';
+import GmailCallback from './components/profile/GmailCallback';
 import TeamDashboard from './components/team/TeamDashboard';
 import TeamInviteAccept from './components/team/TeamInviteAccept';
 import ScrollToTop from './components/common/ScrollToTop';
@@ -57,6 +58,7 @@ import ResetPassword from './components/auth/ResetPassword';
 import NavBar from './components/common/NavBar';
 import Breadcrumbs from './components/common/Breadcrumbs';
 import { MockInterviewContainer, QuestionBankBrowser, ResponseCoach, InterviewResearchBrief } from './components/interview';
+import APIMonitoringDashboard from './components/admin/APIMonitoringDashboard';
 import './App.css';
 
 function App() {
@@ -87,6 +89,9 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/supporter" element={<SupporterPublic />} />
+          
+          {/* Gmail OAuth callback */}
+          <Route path="/gmail-callback" element={<GmailCallback />} />
           
           {/* Public shared resume view */}
           <Route path="/shared-resume/:shareToken" element={<SharedResumeView />} />
@@ -464,6 +469,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <TeamDashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/admin/api-monitoring"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <APIMonitoringDashboard />
               </PrivateRoute>
             }
           />

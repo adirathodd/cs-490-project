@@ -27,6 +27,7 @@ from shutil import which
 import subprocess
 import tempfile
 import os
+from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_GEMINI
 
 from core.models import (
     CandidateSkill,
@@ -506,12 +507,16 @@ def call_gemini_api(prompt: str, api_key: str, *, model: str | None = None, time
     max_retries = 3
     base_backoff = 1.0
 
+    # Get or create Gemini service for monitoring
+    service = get_or_create_service(SERVICE_GEMINI, 'gemini')
+
     last_exc = None
     for attempt in range(1, max_retries + 1):
         try:
             # Avoid logging the API key by not including query params in logs
             safe_endpoint = endpoint
-            response = requests.post(endpoint, params={'key': api_key}, json=payload, timeout=timeout)
+            with track_api_call(service, endpoint=f'/v1beta/models/{model_name}:generateContent', method='POST'):
+                response = requests.post(endpoint, params={'key': api_key}, json=payload, timeout=timeout)
             # If we get a server error, treat as transient and retry
             if 500 <= response.status_code < 600:
                 logger.warning('Gemini API server error (status=%s) on attempt %s/%s', response.status_code, attempt, max_retries)

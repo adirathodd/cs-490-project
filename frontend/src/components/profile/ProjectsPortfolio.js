@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { projectsAPI } from '../../services/api';
+import { projectsAPI, githubAPI } from '../../services/api';
 import './ProjectsPortfolio.css';
 import Icon from '../common/Icon';
 
@@ -20,6 +20,9 @@ const ProjectsPortfolio = () => {
   const [sort, setSort] = useState(query.get('sort') || 'date_desc');
 
   const [items, setItems] = useState([]);
+  const [featuredRepos, setFeaturedRepos] = useState([]);
+  const [ghError, setGhError] = useState('');
+  const [ghLoading, setGhLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -55,6 +58,23 @@ const ProjectsPortfolio = () => {
       }
     })();
   }, [q, industry, status, tech, dateFrom, dateTo, sort, navigate]);
+
+  // Fetch featured GitHub repos for portfolio view
+  useEffect(() => {
+    (async () => {
+      setGhLoading(true);
+      setGhError('');
+      try {
+        const featured = await githubAPI.getFeatured();
+        setFeaturedRepos(featured.featured || []);
+      } catch (e) {
+        // Non-blocking: portfolio should still work without GitHub
+        setGhError('');
+      } finally {
+        setGhLoading(false);
+      }
+    })();
+  }, []);
 
   const industries = useMemo(() => {
     const set = new Set();
@@ -178,6 +198,29 @@ const ProjectsPortfolio = () => {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Featured GitHub Repositories in Portfolio */}
+      {ghLoading ? (
+        <div className="info">Loading GitHub...</div>
+      ) : (featuredRepos || []).length > 0 ? (
+        <div className="github-featured-section">
+          <h3 style={{ margin: '16px 0' }}><Icon name="github" size="sm" /> Featured GitHub Repositories</h3>
+          <div className="github-featured-grid">
+            {featuredRepos.map((fr) => (
+              <div key={fr.id} className="github-card">
+                <div className="title">
+                  <a href={fr.html_url} target="_blank" rel="noreferrer">{fr.full_name}</a>
+                </div>
+                <div className="meta">
+                  {(fr.primary_language || '—')} • ★ {fr.stars || 0}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="info">No featured GitHub repositories.</div>
       )}
     </div>
   );

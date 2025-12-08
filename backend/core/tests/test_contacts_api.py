@@ -14,7 +14,7 @@ def test_contacts_create_list_and_detail_flow():
     client.force_authenticate(user)
 
     # Create a contact
-    url = reverse('core:contacts-list-create')
+    url = reverse('contacts-list-create')
     payload = {'first_name': 'Alice', 'last_name': 'Smith', 'email': 'alice@example.com'}
     resp = client.post(url, payload, format='json')
     assert resp.status_code == 201
@@ -29,7 +29,7 @@ def test_contacts_create_list_and_detail_flow():
     assert any(i.get('id') == contact_id for i in items)
 
     # Get detail
-    detail_url = reverse('core:contact-detail', kwargs={'contact_id': contact_id})
+    detail_url = reverse('contact-detail', kwargs={'contact_id': contact_id})
     resp = client.get(detail_url)
     assert resp.status_code == 200
     detail = resp.json()
@@ -41,14 +41,14 @@ def test_contacts_create_list_and_detail_flow():
     assert resp.json().get('last_name') == 'Jones'
 
     # Create a note for the contact
-    notes_url = reverse('core:contact-notes', kwargs={'contact_id': contact_id})
+    notes_url = reverse('contact-notes', kwargs={'contact_id': contact_id})
     resp = client.post(notes_url, {'content': 'Met at conference'}, format='json')
     assert resp.status_code == 201
     note = resp.json()
     assert note.get('content') == 'Met at conference'
 
     # Create an interaction and confirm contact last_interaction updated
-    interactions_url = reverse('core:contact-interactions', kwargs={'contact_id': contact_id})
+    interactions_url = reverse('contact-interactions', kwargs={'contact_id': contact_id})
     resp = client.post(interactions_url, {'type': 'call', 'date': '2020-01-01', 'summary': 'Intro call'}, format='json')
     assert resp.status_code == 201
     # Refresh from DB

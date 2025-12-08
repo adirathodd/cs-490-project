@@ -1,5 +1,9 @@
 """
 Authentication views for Firebase-based user registration and login.
+
+⚠️  UC-117 REQUIREMENT: All external API calls must use track_api_call() ⚠️
+See core/api_monitoring.py for details. Wrap Gemini, LinkedIn, Gmail, and all
+external API calls with the monitoring context manager.
 """
 from typing import Any, Dict, List, Optional
 
@@ -22,12 +26,16 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.core.management import call_command
 from django.core.mail import send_mail
-from django.http import HttpResponse
-from django.utils.text import slugify
-from django.conf import settings
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect
 from django.utils.text import slugify
 from django.conf import settings
 from core.authentication import FirebaseAuthentication
+from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_GEMINI, SERVICE_GITHUB
+from django.views.decorators.http import require_GET
+import os
+import requests
+from urllib.parse import urlencode
+from core.models import GitHubAccount
 from core.serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
@@ -182,6 +190,7 @@ from core.models import (
     FeaturedRepository,
 )
 from core import google_import, tasks, response_coach, interview_followup, calendar_sync, resume_ai
+from core.tasks import CELERY_AVAILABLE
 from core.interview_checklist import build_checklist_tasks
 from core.interview_success import InterviewSuccessForecastService, InterviewSuccessScorer
 from core.interview_performance_tracking import (
@@ -202,6 +211,7 @@ from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 from core import google_import
 
 import uuid
+import secrets
 from rest_framework.permissions import AllowAny
 
 import json
@@ -573,7 +583,12 @@ def github_contributions_summary(request):
     profile = _get_candidate_profile_for_user(request.user)
     if not profile:
         return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-    account = getattr(profile, 'github_account', None)
+    try:
+        account = profile.github_account
+    except GitHubAccount.DoesNotExist:
+        account = None
+    except Exception:
+        account = None
     if not account:
         return Response({'connected': False, 'summary': {}})
 
@@ -602,6 +617,143 @@ def github_contributions_summary(request):
         logger.warning('GitHub contrib summary failed: %s', e)
 
     return Response({'connected': True, 'summary': summary})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def github_total_commits(request):
+    """Return total commit contributions for the authenticated viewer via GitHub GraphQL.
+
+    This uses viewer.contributionsCollection.totalCommitContributions which counts all commits
+    authored by the user across repositories (not limited to own repos) within the default year window.
+    Optionally accepts query params `from` and `to` (ISO datetimes) to set the range.
+    """
+    profile = _get_candidate_profile_for_user(request.user)
+    if not profile:
+        return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        account = profile.github_account
+    except GitHubAccount.DoesNotExist:
+        account = None
+    except Exception:
+        account = None
+    if not account:
+        return Response({'connected': False, 'total_commits': 0})
+
+    token = account.access_token
+    login = account.login
+    gql_url = 'https://api.github.com/graphql'
+    params = request.query_params
+    from_iso = params.get('from')
+    to_iso = params.get('to')
+    arg_parts = []
+    if from_iso:
+        arg_parts.append(f'from: "{from_iso}"')
+    if to_iso:
+        arg_parts.append(f'to: "{to_iso}"')
+    date_args = f"({', '.join(arg_parts)})" if arg_parts else ''
+
+    # Query using explicit user login to avoid any viewer/token edge cases
+    query_str = (
+        "query UserCommitContributions($login: String!) {\n"
+        "  user(login: $login) {\n"
+        "    login\n"
+        f"    contributionsCollection{date_args} {{\n"
+        "      totalCommitContributions\n"
+        "    }\n"
+        "  }\n"
+        "}\n"
+    )
+    query_payload = {'query': query_str, 'variables': {'login': login}}
+
+    headers = _github_headers(token)
+    headers['Accept'] = 'application/vnd.github+json'
+    # GitHub GraphQL requires Bearer scheme; REST allows 'token'
+    headers['Authorization'] = f'Bearer {token}'
+    try:
+        service = get_or_create_service(SERVICE_GITHUB, 'GitHub API')
+        with track_api_call(service, 'graphql_total_commits'):
+            r = requests.post(gql_url, json=query_payload, headers=headers, timeout=30)
+        if r.status_code != 200:
+            return Response({'error': 'GitHub GraphQL error', 'status': r.status_code, 'detail': r.text[:500]}, status=status.HTTP_502_BAD_GATEWAY)
+        data = r.json() or {}
+        errors = data.get('errors')
+        if errors:
+            return Response({'error': 'GitHub GraphQL error', 'detail': errors}, status=status.HTTP_502_BAD_GATEWAY)
+        user_obj = (data.get('data') or {}).get('user') or {}
+        coll = user_obj.get('contributionsCollection') or {}
+        total = int(coll.get('totalCommitContributions') or 0)
+        return Response({'connected': True, 'total_commits': total, 'login': user_obj.get('login')})
+    except Exception as e:
+        logger.exception('GitHub GraphQL total commits failed: %s', e)
+        return Response({'error': 'Failed to fetch total commits'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def github_commits_by_repo(request):
+    """Return commit counts authored by the connected user per repo and summed total.
+
+    Optional query params: from, to (ISO datetimes). Uses REST commits endpoint with author filter.
+    """
+    profile = _get_candidate_profile_for_user(request.user)
+    if not profile:
+        return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        account = profile.github_account
+    except GitHubAccount.DoesNotExist:
+        account = None
+    except Exception:
+        account = None
+    if not account:
+        return Response({'connected': False, 'repos': [], 'total_commits': 0})
+
+    token = account.access_token
+    login = account.login
+    params = request.query_params
+    since = params.get('from')
+    until = params.get('to')
+
+    headers = _github_headers(token)
+    headers['Accept'] = 'application/vnd.github+json'
+
+    results = []
+    total = 0
+    service = get_or_create_service(SERVICE_GITHUB, 'GitHub API')
+    # Iterate repositories stored for this account
+    for repo in account.repositories.all().order_by('-pushed_at')[:100]:
+        owner, name = (repo.full_name or '').split('/') if '/' in (repo.full_name or '') else (login, repo.name)
+        api_url = f'https://api.github.com/repos/{owner}/{name}/commits'
+        q = {'author': login, 'per_page': 1}
+        if since:
+            q['since'] = since
+        if until:
+            q['until'] = until
+        try:
+            with track_api_call(service, endpoint=f'/repos/{owner}/{name}/commits', method='GET', user=request.user):
+                resp = requests.get(api_url, headers=headers, params=q, timeout=20)
+            if resp.status_code == 200:
+                # Use Link header to estimate total pages, each page size=1 -> last page number equals count
+                link = resp.headers.get('Link') or ''
+                count = 0
+                if 'rel="last"' in link:
+                    import re
+                    m = re.search(r'[&?]page=(\d+)>; rel="last"', link)
+                    if m:
+                        count = int(m.group(1))
+                else:
+                    # If no pagination, check if one commit returned
+                    data = resp.json() or []
+                    count = 1 if data else 0
+                results.append({'full_name': repo.full_name, 'commits': count})
+                total += count
+            else:
+                results.append({'full_name': repo.full_name, 'commits': 0, 'error': resp.status_code})
+        except Exception as e:
+            logger.warning('Count commits failed for %s: %s', repo.full_name, e)
+            results.append({'full_name': repo.full_name, 'commits': 0, 'error': 'exception'})
+
+    return Response({'connected': True, 'login': login, 'repos': results, 'total_commits': total})
 
 
 def _load_store() -> Dict[str, Dict[str, Any]]:
@@ -3765,7 +3917,9 @@ def oauth_link_via_provider(request):
                 'Authorization': f'token {access_token}',
                 'Accept': 'application/vnd.github.v3+json'
             }
-            resp = requests.get('https://api.github.com/user/emails', headers=headers, timeout=6)
+            service = get_or_create_service(SERVICE_GITHUB, 'GitHub API')
+            with track_api_call(service, endpoint='/user/emails', method='GET'):
+                resp = requests.get('https://api.github.com/user/emails', headers=headers, timeout=6)
             if resp.status_code != 200:
                 logger.error(f"GitHub emails lookup failed: {resp.status_code} {resp.text}")
                 return Response({'error': {'code': 'provider_verification_failed', 'message': 'Failed to verify provider token.'}}, status=status.HTTP_400_BAD_REQUEST)
@@ -3811,6 +3965,9 @@ def oauth_link_via_provider(request):
         return Response({'error': {'code': 'internal_error', 'message': 'Failed to process provider token.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+## Duplicate minimal OAuth handlers removed; using the main implementations above.
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def oauth_github(request):
@@ -3828,7 +3985,9 @@ def oauth_github(request):
             'Authorization': f'token {access_token}',
             'Accept': 'application/vnd.github.v3+json'
         }
-        resp = requests.get('https://api.github.com/user/emails', headers=headers, timeout=6)
+        service = get_or_create_service(SERVICE_GITHUB, 'GitHub API')
+        with track_api_call(service, endpoint='/user/emails', method='GET'):
+            resp = requests.get('https://api.github.com/user/emails', headers=headers, timeout=6)
         # Some tests may not set status_code on the mock; proceed as long as we can parse emails
         try:
             emails = resp.json()
@@ -4311,7 +4470,9 @@ def get_profile_picture(request):
                 for u in urls_to_try:
                     try:
                         import requests
-                        resp = requests.get(u, timeout=6)
+                        service = get_or_create_service('photo_url_fetch', 'Photo URL Fetch')
+                        with track_api_call(service, endpoint='/photo', method='GET'):
+                            resp = requests.get(u, timeout=6)
                         if resp.status_code == 200:
                             content = resp.content
                             content_type = resp.headers.get('Content-Type', '')
@@ -17347,12 +17508,14 @@ def _build_supporter_ai_recommendations(candidate, achievements, practice_stats)
             "Return 3 bullet points, plain text."
         )
         endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-        resp = requests.post(
-            endpoint,
-            json={"contents": [{"parts": [{"text": prompt}]}]},
-            timeout=15,
-        )
-        resp.raise_for_status()
+        service = get_or_create_service(SERVICE_GEMINI, 'Google Gemini AI')
+        with track_api_call(service, endpoint=f'/models/{model}:generateContent', method='POST'):
+            resp = requests.post(
+                endpoint,
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                timeout=15,
+            )
+            resp.raise_for_status()
         data = resp.json()
         text = ""
         for cand in (data.get("candidates") or []):
@@ -18183,3 +18346,378 @@ def informational_interviews_analytics(request):
             'total_tracked': len(relationship_changes)
         }
     })
+
+
+# 
+# 
+# =
+# EMAIL INTEGRATION VIEWS (UC-113)
+# 
+# 
+# =
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def gmail_oauth_start(request):
+    """Initiate Gmail OAuth flow"""
+    from core.models import GmailIntegration
+    from core import gmail_utils
+    
+    redirect_uri = request.data.get('redirect_uri')
+    if not redirect_uri:
+        return Response({'error': 'redirect_uri required'}, status=400)
+    
+    integration, _ = GmailIntegration.objects.get_or_create(user=request.user)
+    state_token = secrets.token_urlsafe(32)
+    integration.state_token = state_token
+    integration.status = 'pending'
+    integration.save(update_fields=['state_token', 'status', 'updated_at'])
+    
+    auth_url = gmail_utils.build_gmail_auth_url(redirect_uri, state=state_token)
+    
+    return Response({
+        'auth_url': auth_url,
+        'state': state_token
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def gmail_oauth_callback(request):
+    """Handle Gmail OAuth callback"""
+    from core.models import GmailIntegration
+    from core import gmail_utils, google_import
+    from core.tasks import scan_gmail_emails
+    from core.serializers import GmailIntegrationSerializer
+    
+    code = request.data.get('code')
+    state = request.data.get('state')
+    redirect_uri = request.data.get('redirect_uri')
+    
+    if not all([code, state, redirect_uri]):
+        return Response({'error': 'Missing required parameters'}, status=400)
+    
+    integration = GmailIntegration.objects.filter(
+        user=request.user,
+        state_token=state
+    ).first()
+    
+    if not integration:
+        return Response({'error': 'Invalid state token'}, status=400)
+    
+    try:
+        tokens = google_import.exchange_code_for_tokens(code, redirect_uri)
+        
+        access_token = tokens.get('access_token')
+        refresh_token = tokens.get('refresh_token')
+        expires_in = tokens.get('expires_in', 3600)
+        
+        # Get user profile to store email
+        profile = google_import.fetch_user_profile(access_token)
+        
+        integration.access_token = access_token
+        integration.refresh_token = refresh_token or integration.refresh_token
+        integration.token_expires_at = timezone.now() + timedelta(seconds=expires_in)
+        integration.gmail_address = profile.get('email', '')
+        integration.scopes = gmail_utils.GMAIL_SCOPES
+        integration.status = 'connected'
+        integration.scan_enabled = False  # Require explicit opt-in
+        integration.last_error = ''
+        integration.save()
+        
+        # Note: Initial scan will only trigger after user explicitly enables scanning
+        
+        return Response({
+            'status': 'success',
+            'integration': GmailIntegrationSerializer(integration).data
+        })
+        
+    except Exception as e:
+        logger.error(f'Gmail OAuth callback failed: {e}', exc_info=True)
+        integration.status = 'error'
+        integration.last_error = str(e)[:500]
+        integration.save(update_fields=['status', 'last_error', 'updated_at'])
+        return Response({'error': str(e)}, status=400)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def gmail_integration_status(request):
+    """Get Gmail integration status"""
+    from core.models import GmailIntegration
+    from core.serializers import GmailIntegrationSerializer
+    
+    integration = GmailIntegration.objects.filter(user=request.user).first()
+    if not integration:
+        return Response({'connected': False})
+    
+    return Response(GmailIntegrationSerializer(integration).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def gmail_disconnect(request):
+    """Disconnect Gmail integration and delete all associated data for security"""
+    from core.models import GmailIntegration, ApplicationEmail, EmailScanLog
+    
+    integration = GmailIntegration.objects.filter(user=request.user).first()
+    if integration:
+        # Delete all application emails for this user
+        ApplicationEmail.objects.filter(user=request.user).delete()
+        
+        # Delete all scan logs for this integration
+        EmailScanLog.objects.filter(integration=integration).delete()
+        
+        # Delete the integration record itself (removes tokens)
+        integration.delete()
+    
+    return Response({'status': 'disconnected'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def gmail_enable_scanning(request):
+    """Enable email scanning with explicit user consent"""
+    from core.models import GmailIntegration
+    from core.tasks import scan_gmail_emails
+    
+    integration = GmailIntegration.objects.filter(
+        user=request.user,
+        status='connected'
+    ).first()
+    
+    if not integration:
+        return Response({'error': 'No Gmail integration found'}, status=404)
+    
+    # Enable scanning
+    integration.scan_enabled = True
+    integration.save(update_fields=['scan_enabled', 'updated_at'])
+    
+    # Trigger initial scan
+    if CELERY_AVAILABLE:
+        scan_gmail_emails.delay(integration.id)
+    else:
+        from core.tasks import _scan_gmail_sync
+        try:
+            _scan_gmail_sync(integration.id)
+        except Exception as e:
+            logger.warning(f'Initial scan failed: {e}')
+    
+    return Response({
+        'status': 'scanning_enabled',
+        'message': 'Email scanning has been enabled'
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def gmail_scan_now(request):
+    """Trigger manual email scan"""
+    from core.models import GmailIntegration
+    from core.tasks import scan_gmail_emails
+    
+    integration = GmailIntegration.objects.filter(
+        user=request.user,
+        status='connected'
+    ).first()
+    
+    if not integration:
+        return Response({'error': 'Gmail not connected'}, status=400)
+    
+    if CELERY_AVAILABLE:
+        scan_gmail_emails.delay(integration.id)
+    else:
+        # Run sync if Celery not available
+        from core.tasks import _scan_gmail_sync
+        try:
+            _scan_gmail_sync(integration.id)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+    
+    return Response({'status': 'scan_started'})
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def gmail_update_preferences(request):
+    """Update email scanning preferences"""
+    from core.models import GmailIntegration
+    from core.serializers import GmailIntegrationSerializer
+    
+    integration = GmailIntegration.objects.filter(
+        user=request.user,
+        status='connected'
+    ).first()
+    
+    if not integration:
+        return Response({'error': 'Gmail not connected'}, status=400)
+    
+    scan_frequency = request.data.get('scan_frequency')
+    auto_update_status = request.data.get('auto_update_status')
+    
+    # Validate scan_frequency
+    valid_frequencies = ['realtime', 'hourly', 'daily', 'manual']
+    if scan_frequency and scan_frequency not in valid_frequencies:
+        return Response({
+            'error': f'Invalid scan_frequency. Must be one of: {", ".join(valid_frequencies)}'
+        }, status=400)
+    
+    # Update fields if provided
+    if scan_frequency is not None:
+        integration.scan_frequency = scan_frequency
+    if auto_update_status is not None:
+        integration.auto_update_status = bool(auto_update_status)
+    
+    integration.save()
+    
+    serializer = GmailIntegrationSerializer(integration)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def application_emails_list(request):
+    """List application-related emails"""
+    from core.models import ApplicationEmail
+    from core.serializers import ApplicationEmailSerializer
+    
+    job_id = request.query_params.get('job_id')
+    email_type = request.query_params.get('email_type')
+    unlinked_only = request.query_params.get('unlinked_only') == 'true'
+    
+    queryset = ApplicationEmail.objects.filter(
+        user=request.user,
+        is_dismissed=False
+    )
+    
+    if job_id:
+        queryset = queryset.filter(job_id=job_id)
+    
+    if email_type:
+        queryset = queryset.filter(email_type=email_type)
+    
+    if unlinked_only:
+        queryset = queryset.filter(is_linked=False, is_application_related=True)
+    
+    queryset = queryset.select_related('job').order_by('-received_at')[:50]
+    
+    return Response(ApplicationEmailSerializer(queryset, many=True).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def link_email_to_job(request, email_id):
+    """Link an email to a specific job"""
+    from core.models import ApplicationEmail, JobEntry, CandidateProfile
+    from core.serializers import ApplicationEmailSerializer
+    
+    job_id = request.data.get('job_id')
+    if not job_id:
+        return Response({'error': 'job_id required'}, status=400)
+    
+    email = ApplicationEmail.objects.filter(id=email_id, user=request.user).first()
+    if not email:
+        return Response({'error': 'Email not found'}, status=404)
+    
+    # Get candidate profile for the user
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.filter(id=job_id, candidate=candidate).first()
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+    
+    if not job:
+        return Response({'error': 'Job not found'}, status=404)
+    
+    email.job = job
+    email.is_linked = True
+    email.save(update_fields=['job', 'is_linked', 'updated_at'])
+    
+    return Response(ApplicationEmailSerializer(email).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def apply_email_status_suggestion(request, email_id):
+    """Apply suggested status update from email"""
+    from core.models import ApplicationEmail, JobEntry
+    from core.serializers import JobEntrySummarySerializer
+    
+    email = ApplicationEmail.objects.filter(id=email_id, user=request.user).first()
+    if not email:
+        return Response({'error': 'Email not found'}, status=404)
+    
+    if not email.job:
+        return Response({'error': 'Email not linked to job'}, status=400)
+    
+    if not email.suggested_job_status:
+        return Response({'error': 'No status suggestion available'}, status=400)
+    
+    job = email.job
+    job.status = email.suggested_job_status
+    job.save(update_fields=['status', 'updated_at'])
+    
+    email.status_applied = True
+    email.save(update_fields=['status_applied', 'updated_at'])
+    
+    return Response({
+        'status': 'applied',
+        'job': JobEntrySummarySerializer(job).data
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def dismiss_email(request, email_id):
+    """Dismiss an email suggestion"""
+    from core.models import ApplicationEmail
+    
+    email = ApplicationEmail.objects.filter(id=email_id, user=request.user).first()
+    if not email:
+        return Response({'error': 'Email not found'}, status=404)
+    
+    email.is_dismissed = True
+    email.save(update_fields=['is_dismissed', 'updated_at'])
+    
+    return Response({'status': 'dismissed'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def application_email_detail(request, email_id):
+    """Get detailed information about a specific email"""
+    from core.models import ApplicationEmail
+    from core.serializers import ApplicationEmailSerializer
+    
+    email = ApplicationEmail.objects.filter(id=email_id, user=request.user).first()
+    if not email:
+        return Response({'error': 'Email not found'}, status=404)
+    
+    return Response(ApplicationEmailSerializer(email).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def gmail_scan_logs(request):
+    """Get Gmail scan history logs"""
+    from core.models import GmailIntegration, EmailScanLog
+    
+    integration = GmailIntegration.objects.filter(user=request.user).first()
+    if not integration:
+        return Response([])
+    
+    logs = EmailScanLog.objects.filter(integration=integration).order_by('-scan_started_at')[:20]
+    
+    return Response([{
+        'id': log.id,
+        'scan_started_at': log.scan_started_at,
+        'scan_completed_at': log.scan_completed_at,
+        'emails_processed': log.emails_processed,
+        'emails_matched': log.emails_matched,
+        'emails_linked': log.emails_linked,
+        'status': log.status,
+        'error_message': log.error_message
+    } for log in logs])
+
+

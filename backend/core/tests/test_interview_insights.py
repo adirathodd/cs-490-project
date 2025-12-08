@@ -46,7 +46,7 @@ class TestInterviewInsightsEndpoint:
     
     def test_interview_insights_returns_expected_structure(self):
         """Test that endpoint returns properly structured interview insights"""
-        url = reverse('core:job-interview-insights', kwargs={'job_id': self.job.id})
+        url = reverse('job-interview-insights', kwargs={'job_id': self.job.id})
         response = self.client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
@@ -122,13 +122,13 @@ class TestInterviewInsightsEndpoint:
 
     def test_preparation_checklist_toggle_persists(self):
         """Ensure checklist toggle saves and reflects in subsequent responses."""
-        url = reverse('core:job-interview-insights', kwargs={'job_id': self.job.id})
+        url = reverse('job-interview-insights', kwargs={'job_id': self.job.id})
         data = self.client.get(url).json()
         checklist = data['preparation_checklist']
         category = checklist[0]
         item = category['items'][0]
 
-        toggle_url = reverse('core:job-preparation-checklist', kwargs={'job_id': self.job.id})
+        toggle_url = reverse('job-preparation-checklist', kwargs={'job_id': self.job.id})
         payload = {
             'task_id': item['task_id'],
             'category': category['category'],
@@ -156,7 +156,7 @@ class TestInterviewInsightsEndpoint:
         other_client = APIClient()
         other_client.force_authenticate(user=other_user)
         
-        url = reverse('core:job-interview-insights', kwargs={'job_id': self.job.id})
+        url = reverse('job-interview-insights', kwargs={'job_id': self.job.id})
         response = other_client.get(url)
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -188,7 +188,7 @@ class TestInterviewQuestionBankEndpoint:
         self.client.force_authenticate(user=self.user)
 
     def test_question_bank_structure(self):
-        url = reverse('core:job-question-bank', kwargs={'job_id': self.job.id})
+        url = reverse('job-question-bank', kwargs={'job_id': self.job.id})
         response = self.client.get(url)
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -206,11 +206,11 @@ class TestInterviewQuestionBankEndpoint:
         assert 'practice_status' in first_question
 
     def test_question_practice_logging(self):
-        bank_url = reverse('core:job-question-bank', kwargs={'job_id': self.job.id})
+        bank_url = reverse('job-question-bank', kwargs={'job_id': self.job.id})
         bank_data = self.client.get(bank_url).json()
         question = bank_data['categories'][0]['questions'][0]
 
-        practice_url = reverse('core:job-question-practice', kwargs={'job_id': self.job.id})
+        practice_url = reverse('job-question-practice', kwargs={'job_id': self.job.id})
         payload = {
             'question_id': question['id'],
             'question_text': question['prompt'],
@@ -245,7 +245,7 @@ class TestInterviewQuestionBankEndpoint:
             'history_callout': '',
         }
 
-        url = reverse('core:job-question-response-coach', kwargs={'job_id': self.job.id})
+        url = reverse('job-question-response-coach', kwargs={'job_id': self.job.id})
         payload = {
             'question_id': 'coach-1',
             'question_text': 'Tell me about a time you influenced stakeholders.',
@@ -291,7 +291,7 @@ class TestInterviewQuestionBankEndpoint:
             word_count=120,
         )
 
-        url = reverse('core:get-question-practice-history', kwargs={'job_id': self.job.id, 'question_id': 'history-1'})
+        url = reverse('get-question-practice-history', kwargs={'job_id': self.job.id, 'question_id': 'history-1'})
         response = self.client.get(url)
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -299,7 +299,7 @@ class TestInterviewQuestionBankEndpoint:
         assert len(data['coaching_history']) == 1
 
     def test_question_bank_caching_and_refresh(self):
-        url = reverse('core:job-question-bank', kwargs={'job_id': self.job.id})
+        url = reverse('job-question-bank', kwargs={'job_id': self.job.id})
         sample_bank = {
             'job_id': self.job.id,
             'job_title': self.job.title,
@@ -341,7 +341,7 @@ class TestInterviewQuestionBankEndpoint:
     def test_interview_insights_requires_authentication(self):
         """Test that endpoint requires authentication"""
         client = APIClient()  # Unauthenticated client
-        url = reverse('core:job-interview-insights', kwargs={'job_id': self.job.id})
+        url = reverse('job-interview-insights', kwargs={'job_id': self.job.id})
         response = client.get(url)
         
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -359,12 +359,12 @@ class TestInterviewQuestionBankEndpoint:
         )
         
         # Get insights for technical role
-        tech_url = reverse('core:job-interview-insights', kwargs={'job_id': self.job.id})
+        tech_url = reverse('job-interview-insights', kwargs={'job_id': self.job.id})
         tech_response = self.client.get(tech_url)
         tech_data = tech_response.json()
         
         # Get insights for non-technical role
-        non_tech_url = reverse('core:job-interview-insights', kwargs={'job_id': non_tech_job.id})
+        non_tech_url = reverse('job-interview-insights', kwargs={'job_id': non_tech_job.id})
         non_tech_response = self.client.get(non_tech_url)
         non_tech_data = non_tech_response.json()
         
@@ -380,7 +380,7 @@ class TestInterviewQuestionBankEndpoint:
     
     def test_interview_insights_for_nonexistent_job(self):
         """Test that endpoint returns 404 for non-existent job"""
-        url = reverse('core:job-interview-insights', kwargs={'job_id': 99999})
+        url = reverse('job-interview-insights', kwargs={'job_id': 99999})
         response = self.client.get(url)
         
         assert response.status_code == status.HTTP_404_NOT_FOUND

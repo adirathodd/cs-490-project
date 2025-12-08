@@ -1,9 +1,12 @@
 import axios from 'axios';
 
+// ⚠️ UC-117: Backend API monitoring tracks all external API calls.
+// See backend/core/api_monitoring.py for implementation details.
+
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
 // Create axios instance with base configuration
-const api = axios.create({
+export const api = axios.create({
   baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000/api',
   headers: {
     'Content-Type': 'application/json',
@@ -26,6 +29,7 @@ api.interceptors.request.use(
 );
 
 // Normalize errors and add light retry for transient GET failures
+// Also handle token expiration by refreshing the token
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -34,6 +38,33 @@ api.interceptors.response.use(
     const method = (config.method || '').toLowerCase();
     const isGet = method === 'get';
     const isTransient = !error.response || [408, 429, 500, 502, 503, 504].includes(status);
+
+    // Handle token expiration (401/403 with authentication error)
+    if (status === 401 || status === 403) {
+      const errorMessage = error?.response?.data?.error?.message || error?.response?.data?.detail || '';
+      if (errorMessage.toLowerCase().includes('token') || errorMessage.toLowerCase().includes('authentication')) {
+        // Token expired - try to refresh it
+        if (!config.__tokenRefreshAttempted) {
+          config.__tokenRefreshAttempted = true;
+          
+          try {
+            // Get fresh token from Firebase
+            const { auth } = await import('./firebase');
+            const user = auth.currentUser;
+            if (user) {
+              const newToken = await user.getIdToken(true); // Force refresh
+              localStorage.setItem('firebaseToken', newToken);
+              config.headers.Authorization = `Bearer ${newToken}`;
+              return api.request(config); // Retry with new token
+            }
+          } catch (refreshError) {
+            console.error('Token refresh failed:', refreshError);
+            localStorage.removeItem('firebaseToken');
+            // Redirect to login or let the error propagate
+          }
+        }
+      }
+    }
 
     if (isGet && isTransient && (config.__retryCount || 0) < 1) {
       config.__retryCount = (config.__retryCount || 0) + 1;
@@ -1919,6 +1950,32 @@ export const githubAPI = {
       throw error.error || error.response?.data?.error || { message: 'Failed to load contributions summary' };
     }
   },
+
+  totalCommits: async (fromIso, toIso) => {
+    try {
+      const params = new URLSearchParams();
+      if (fromIso) params.append('from', fromIso);
+      if (toIso) params.append('to', toIso);
+      const path = params.toString() ? `/github/contrib/commits/?${params.toString()}` : '/github/contrib/commits/';
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load total commits' };
+    }
+  },
+
+  commitsByRepo: async (fromIso, toIso) => {
+    try {
+      const params = new URLSearchParams();
+      if (fromIso) params.append('from', fromIso);
+      if (toIso) params.append('to', toIso);
+      const path = params.toString() ? `/github/contrib/commits-by-repo/?${params.toString()}` : '/github/contrib/commits-by-repo/';
+      const response = await api.get(path);
+      return response.data; // { repos: [{ full_name, commits }], total_commits }
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load commits by repo' };
+    }
+  },
 };
 
 // Provide a forgiving default export that supports both
@@ -1930,6 +1987,9 @@ const _defaultExport = {
   http: api,
   // include grouped namespaces as properties
   authAPI,
+  // Legacy convenience aliases expected by tests and older code
+  getBasicProfile: (...args) => authAPI.getBasicProfile(...args),
+  updateBasicProfile: (...args) => authAPI.updateBasicProfile(...args),
   profileAPI,
   skillsAPI,
   educationAPI,

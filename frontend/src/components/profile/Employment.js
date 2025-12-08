@@ -261,7 +261,6 @@ const Employment = () => {
           ← Back to Dashboard
         </a>
       </div>
-        <h1 className="employment-page-title">Employment History</h1>
       </div>
 
       <div className="employment-header">

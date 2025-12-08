@@ -1,5 +1,4 @@
-"""
-Utilities for importing job details from job posting URLs.
+"""Utilities for importing job details from job posting URLs.
 Supports LinkedIn, Indeed, Glassdoor, and performs best-effort extraction for other sites.
 """
 import json
@@ -9,6 +8,7 @@ from urllib.parse import urlparse, urlunparse, urljoin
 
 import requests
 from bs4 import BeautifulSoup
+from core.api_monitoring import track_api_call, get_or_create_service
 
 logger = logging.getLogger(__name__)
 
@@ -480,7 +480,9 @@ def _fetch_job_soup(url: str, allow_proxy: bool = True) -> BeautifulSoup:
         headers['User-Agent'] = agent
         try:
             logger.debug("Import fetch: trying user-agent %s for %s", agent, url)
-            response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
+            service = get_or_create_service('job_board_scraper', 'Job Board Scraper')
+            with track_api_call(service, endpoint='/job-scrape', method='GET'):
+                response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
             if response.status_code in (403, 429):
                 logger.warning("Import fetch: received status %s for %s with agent %s", response.status_code, url, agent)
                 last_exc = requests.HTTPError(f'HTTP {response.status_code}', response=response)
@@ -528,8 +530,10 @@ def _fetch_job_soup(url: str, allow_proxy: bool = True) -> BeautifulSoup:
             headers = dict(BASE_REQUEST_HEADERS)
             headers['User-Agent'] = USER_AGENT
             logger.info("Import fetch: attempting proxy fetch via %s", fallback_url)
-            response = requests.get(fallback_url, headers=headers, timeout=10, allow_redirects=True)
-            response.raise_for_status()
+            service = get_or_create_service('job_board_proxy', 'Job Board Proxy Reader')
+            with track_api_call(service, endpoint='/proxy-reader', method='GET'):
+                response = requests.get(fallback_url, headers=headers, timeout=10, allow_redirects=True)
+                response.raise_for_status()
             text = None
             try:
                 text = response.text if isinstance(response.text, str) else None
