@@ -5,6 +5,7 @@ Note: In production, use google-auth libraries and securely store refresh tokens
 import logging
 import requests
 from django.conf import settings
+from core.api_monitoring import track_api_call, get_or_create_service
 
 
 class GoogleOAuthConfigError(RuntimeError):
@@ -90,8 +91,10 @@ def exchange_code_for_tokens(code, redirect_uri):
         'redirect_uri': redirect_uri,
         'grant_type': 'authorization_code',
     }
-    resp = requests.post(GOOGLE_OAUTH_TOKEN, data=payload, timeout=10)
-    resp.raise_for_status()
+    service = get_or_create_service('google_oauth', 'Google OAuth')
+    with track_api_call(service, endpoint='/token', method='POST'):
+        resp = requests.post(GOOGLE_OAUTH_TOKEN, data=payload, timeout=10)
+        resp.raise_for_status()
     return resp.json()
 
 
@@ -104,15 +107,19 @@ def refresh_access_token(refresh_token):
         'client_secret': client_secret,
         'grant_type': 'refresh_token',
     }
-    resp = requests.post(GOOGLE_OAUTH_TOKEN, data=payload, timeout=10)
-    resp.raise_for_status()
+    service = get_or_create_service('google_oauth', 'Google OAuth')
+    with track_api_call(service, endpoint='/token', method='POST'):
+        resp = requests.post(GOOGLE_OAUTH_TOKEN, data=payload, timeout=10)
+        resp.raise_for_status()
     return resp.json()
 
 
 def fetch_user_profile(access_token):
     headers = {'Authorization': f'Bearer {access_token}'}
-    resp = requests.get('https://www.googleapis.com/oauth2/v2/userinfo', headers=headers, timeout=10)
-    resp.raise_for_status()
+    service = get_or_create_service('google_userinfo', 'Google UserInfo')
+    with track_api_call(service, endpoint='/oauth2/v2/userinfo', method='GET'):
+        resp = requests.get('https://www.googleapis.com/oauth2/v2/userinfo', headers=headers, timeout=10)
+        resp.raise_for_status()
     return resp.json()
 
 
@@ -125,7 +132,9 @@ def fetch_connections(access_token, page_size=200):
     results = []
     url = GOOGLE_PEOPLE_CONNECTIONS
     while url:
-        resp = requests.get(url, headers=headers, params=params, timeout=15)
+        service = get_or_create_service('google_contacts', 'Google Contacts')
+        with track_api_call(service, endpoint='/v1/people/me/connections', method='GET'):
+            resp = requests.get(url, headers=headers, params=params, timeout=15)
         if resp.status_code >= 400:
             logger.error('People API returned %s: %s', resp.status_code, resp.text)
             raise GooglePeopleAPIError(_format_people_api_error(resp), status_code=resp.status_code)

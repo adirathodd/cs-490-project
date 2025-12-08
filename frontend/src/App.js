@@ -57,6 +57,7 @@ import ResetPassword from './components/auth/ResetPassword';
 import NavBar from './components/common/NavBar';
 import Breadcrumbs from './components/common/Breadcrumbs';
 import { MockInterviewContainer, QuestionBankBrowser, ResponseCoach, InterviewResearchBrief } from './components/interview';
+import APIMonitoringDashboard from './components/admin/APIMonitoringDashboard';
 import './App.css';
 
 function App() {
@@ -452,6 +453,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <TeamDashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/admin/api-monitoring"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <APIMonitoringDashboard />
               </PrivateRoute>
             }
           />

@@ -1,5 +1,8 @@
 import axios from 'axios';
 
+// ⚠️ UC-117: Backend API monitoring tracks all external API calls.
+// See backend/core/api_monitoring.py for implementation details.
+
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
 // Create axios instance with base configuration
@@ -25,6 +28,7 @@ api.interceptors.request.use(
 );
 
 // Normalize errors and add light retry for transient GET failures
+// Also handle token expiration by refreshing the token
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -33,6 +37,33 @@ api.interceptors.response.use(
     const method = (config.method || '').toLowerCase();
     const isGet = method === 'get';
     const isTransient = !error.response || [408, 429, 500, 502, 503, 504].includes(status);
+
+    // Handle token expiration (401/403 with authentication error)
+    if (status === 401 || status === 403) {
+      const errorMessage = error?.response?.data?.error?.message || error?.response?.data?.detail || '';
+      if (errorMessage.toLowerCase().includes('token') || errorMessage.toLowerCase().includes('authentication')) {
+        // Token expired - try to refresh it
+        if (!config.__tokenRefreshAttempted) {
+          config.__tokenRefreshAttempted = true;
+          
+          try {
+            // Get fresh token from Firebase
+            const { auth } = await import('./firebase');
+            const user = auth.currentUser;
+            if (user) {
+              const newToken = await user.getIdToken(true); // Force refresh
+              localStorage.setItem('firebaseToken', newToken);
+              config.headers.Authorization = `Bearer ${newToken}`;
+              return api.request(config); // Retry with new token
+            }
+          } catch (refreshError) {
+            console.error('Token refresh failed:', refreshError);
+            localStorage.removeItem('firebaseToken');
+            // Redirect to login or let the error propagate
+          }
+        }
+      }
+    }
 
     if (isGet && isTransient && (config.__retryCount || 0) < 1) {
       config.__retryCount = (config.__retryCount || 0) + 1;

@@ -10,6 +10,7 @@ import os, json, logging, requests
 from django.utils import timezone
 from datetime import timedelta, date
 from collections import defaultdict
+from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_GEMINI
 
 logger = logging.getLogger(__name__)
 
@@ -895,8 +896,10 @@ class ApplicationSuccessAnalyzer:
                         'responseMimeType': 'text/plain'
                     }
                 }
-                resp = requests.post(url, json=payload, timeout=25)
-                resp.raise_for_status()
+                service = get_or_create_service(SERVICE_GEMINI, 'Google Gemini AI')
+                with track_api_call(service, endpoint=f'/models/{model}:generateContent', method='POST'):
+                    resp = requests.post(url, json=payload, timeout=25)
+                    resp.raise_for_status()
                 data = resp.json()
                 text = data.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '')
                 sentences = [s.strip() for s in text.strip().splitlines() if s.strip()]

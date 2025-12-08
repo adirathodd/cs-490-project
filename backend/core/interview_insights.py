@@ -357,8 +357,10 @@ class InterviewInsightsGenerator:
         }
         
         try:
-            response = requests.post(url, json=payload, timeout=30)
-            response.raise_for_status()
+            service = get_or_create_service(SERVICE_GEMINI, 'Google Gemini AI')
+            with track_api_call(service, endpoint='/models/gemini-1.5-flash:generateContent', method='POST'):
+                response = requests.post(url, json=payload, timeout=30)
+                response.raise_for_status()
             
             result = response.json()
             

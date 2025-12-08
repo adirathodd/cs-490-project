@@ -10,6 +10,7 @@ from email.utils import parsedate_to_datetime
 from django.conf import settings
 from django.utils import timezone
 from core import google_import
+from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_GMAIL
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,15 @@ def refresh_gmail_token(integration):
     if not integration.refresh_token:
         raise GmailAPIError('Missing refresh token')
     
-    tokens = google_import.refresh_access_token(integration.refresh_token)
+    try:
+        tokens = google_import.refresh_access_token(integration.refresh_token)
+    except Exception as exc:
+        # Mark integration as disconnected and raise user-friendly error
+        integration.status = 'disconnected'
+        integration.last_error = 'Failed to refresh access token. Please reconnect Gmail.'
+        integration.save(update_fields=['status', 'last_error', 'updated_at'])
+        raise GmailAPIError('Your Gmail connection has expired. Please reconnect in Settings.') from exc
+    
     new_token = tokens.get('access_token')
     if not new_token:
         raise GmailAPIError('Failed to refresh token')
@@ -92,7 +101,9 @@ def fetch_messages(access_token, query='', max_results=50, page_token=None, max_
     
     for attempt in range(max_retries):
         try:
-            resp = requests.get(url, headers=headers, params=params, timeout=15)
+            service = get_or_create_service(SERVICE_GMAIL, 'Gmail API')
+            with track_api_call(service, endpoint='/users/me/messages', method='GET'):
+                resp = requests.get(url, headers=headers, params=params, timeout=15)
             
             # Handle authentication errors
             if resp.status_code == 401:
@@ -160,7 +171,9 @@ def get_message_detail(access_token, message_id, max_retries=3):
     
     for attempt in range(max_retries):
         try:
-            resp = requests.get(url, headers=headers, params=params, timeout=10)
+            service = get_or_create_service(SERVICE_GMAIL, 'Gmail API')
+            with track_api_call(service, endpoint=f'/users/me/messages/{message_id}', method='GET'):
+                resp = requests.get(url, headers=headers, params=params, timeout=10)
             
             # Handle authentication errors
             if resp.status_code == 401:

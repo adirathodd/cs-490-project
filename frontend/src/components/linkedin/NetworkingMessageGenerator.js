@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { linkedInAPI } from '../../services/api';
 import Icon from '../common/Icon';
 import LoadingSpinner from '../common/LoadingSpinner';
+import APIErrorBanner from '../common/APIErrorBanner'; // UC-117: User-facing API error handling
 import './LinkedIn.css';
 
 const NetworkingMessageGenerator = ({ onClose, onUseMessage }) => {
@@ -16,7 +17,7 @@ const NetworkingMessageGenerator = ({ onClose, onUseMessage }) => {
 
   const [generatedMessage, setGeneratedMessage] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null); // UC-117: Changed to null for structured errors
 
   const purposes = [
     { value: 'connection_request', label: 'Connection Request' },
@@ -34,23 +35,24 @@ const NetworkingMessageGenerator = ({ onClose, onUseMessage }) => {
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
-    setError('');
+    setError(null); // UC-117: Clear errors on user input
   };
 
   const handleGenerate = async () => {
     if (!formData.recipient_name) {
-      setError('Please enter recipient name');
+      setError({ message: 'Please enter recipient name' }); // UC-117: Structured error
       return;
     }
 
     setLoading(true);
-    setError('');
+    setError(null);
 
     try {
       const result = await linkedInAPI.generateNetworkingMessage(formData);
       setGeneratedMessage(result);
     } catch (err) {
-      setError(err.message || 'Failed to generate message');
+      // UC-117: Set structured error for user-facing display
+      setError(err);
     } finally {
       setLoading(false);
     }
@@ -144,11 +146,14 @@ const NetworkingMessageGenerator = ({ onClose, onUseMessage }) => {
           </div>
         </div>
 
+        {/* UC-117: User-facing API error handling with graceful fallback */}
         {error && (
-          <div className="error-message">
-            <Icon name="alert-circle" size="sm" />
-            {error}
-          </div>
+          <APIErrorBanner 
+            serviceName="LinkedIn API"
+            error={error}
+            severity={error.message?.includes('recipient name') ? 'info' : 'warning'}
+            onRetry={error.message?.includes('recipient name') ? null : handleGenerate}
+          />
         )}
 
         <button

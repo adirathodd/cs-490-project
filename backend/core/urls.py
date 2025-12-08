@@ -6,6 +6,7 @@ from core import views
 from core import analytics_views
 from core import market_views
 from core import team_views
+from core import api_monitoring_views
 
 # app_name = 'core'  # Removed to avoid namespace issues with reverse() in tests
 
@@ -447,5 +448,17 @@ urlpatterns = [
     path('emails/<uuid:email_id>/link/', views.link_email_to_job, name='link-email-to-job'),
     path('emails/<uuid:email_id>/apply-status/', views.apply_email_status_suggestion, name='apply-email-status'),
     path('emails/<uuid:email_id>/dismiss/', views.dismiss_email, name='dismiss-email'),
+
+    # UC-117: API Rate Limiting and Error Handling Dashboard
+    path('admin/api-monitoring/dashboard/', api_monitoring_views.api_monitoring_dashboard, name='api-monitoring-dashboard'),
+    path('admin/api-monitoring/services/', api_monitoring_views.api_service_list, name='api-service-list'),
+    path('admin/api-monitoring/services/<int:service_id>/', api_monitoring_views.api_service_detail, name='api-service-detail'),
+    path('admin/api-monitoring/usage-logs/', api_monitoring_views.api_usage_logs, name='api-usage-logs'),
+    path('admin/api-monitoring/errors/', api_monitoring_views.api_error_logs, name='api-error-logs'),
+    path('admin/api-monitoring/alerts/', api_monitoring_views.api_alerts, name='api-alerts'),
+    path('admin/api-monitoring/alerts/<int:alert_id>/acknowledge/', api_monitoring_views.acknowledge_alert, name='acknowledge-alert'),
+    path('admin/api-monitoring/alerts/<int:alert_id>/resolve/', api_monitoring_views.resolve_alert, name='resolve-alert'),
+    path('admin/api-monitoring/weekly-reports/', api_monitoring_views.api_weekly_reports, name='api-weekly-reports'),
+    path('admin/api-monitoring/weekly-reports/<int:report_id>/', api_monitoring_views.api_weekly_report_detail, name='api-weekly-report-detail'),
 
 ]

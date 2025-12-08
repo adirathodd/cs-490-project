@@ -42,6 +42,7 @@ def _load_local_env_file():
 _load_local_env_file()
 
 # Read secret key and debug flag from environment with sensible defaults
+# ⚠️  UC-117: All external API calls must use core.api_monitoring.track_api_call()
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'replace-me-in-production')
 
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'

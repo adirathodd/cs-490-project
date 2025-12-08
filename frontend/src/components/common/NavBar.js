@@ -194,6 +194,11 @@ const NavBar = () => {
   <NavLink to="/analytics" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Analytics</NavLink>
   <NavLink to="/team" className={({isActive}) => `nav-link nav-cta ${isActive ? 'active' : ''}`}>Teams</NavLink>
   <NavLink to="/mentorship" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>Mentors</NavLink>
+  {userProfile?.is_staff && (
+    <NavLink to="/admin/api-monitoring" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+      API Monitor
+    </NavLink>
+  )}
         
   {/* Profile dropdown */}
   <div className="nav-dropdown" ref={profileDropdownRef}>

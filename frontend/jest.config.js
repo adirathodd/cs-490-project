@@ -12,6 +12,8 @@ module.exports = {
     '^recharts$': '<rootDir>/__mocks__/recharts.js',
     '^@fullcalendar/react$': '<rootDir>/__mocks__/FullCalendarReact.js',
     '^@fullcalendar/(daygrid|timegrid|interaction|list)$': '<rootDir>/__mocks__/FullCalendarPlugin.js',
+    '^@mui/material$': '<rootDir>/__mocks__/@mui/material.js',
+    '^@mui/icons-material$': '<rootDir>/__mocks__/@mui/icons-material.js',
   },
   transform: {
     '^.+\\.(js|jsx|ts|tsx)$': ['babel-jest', {

@@ -39,6 +39,7 @@ class DummyResp:
             raise Exception('http error')
 
 
+@pytest.mark.django_db
 def test_exchange_code_for_tokens(monkeypatch):
     def fake_post(url, data, timeout):
         assert url == google_import.GOOGLE_OAUTH_TOKEN
@@ -58,6 +59,7 @@ def test_exchange_code_for_tokens_requires_secret(monkeypatch):
         google_import.exchange_code_for_tokens('code123', 'https://cb')
 
 
+@pytest.mark.django_db
 def test_fetch_connections_pagination(monkeypatch):
     # simulate two pages
     calls = {'n': 0}
@@ -75,6 +77,7 @@ def test_fetch_connections_pagination(monkeypatch):
     assert any(r.get('resourceName') == 'r2' for r in res)
 
 
+@pytest.mark.django_db
 def test_fetch_connections_raises_user_friendly_error_on_403(monkeypatch):
     def fake_get(url, headers, params, timeout):
         data = {'error': {'message': 'Google People API has not been used in project 12345 before or it is disabled.'}}

@@ -480,3 +480,64 @@ class SupporterEncouragementAdmin(admin.ModelAdmin):
 class SupporterChatMessageAdmin(admin.ModelAdmin):
     list_display = ['candidate', 'supporter', 'sender_role', 'sender_name', 'created_at']
     search_fields = ['sender_name', 'supporter__email', 'candidate__user__email', 'message']
+
+
+# UC-117: API Monitoring Admin
+from .models import APIService, APIUsageLog, APIQuotaUsage, APIError, APIAlert, APIWeeklyReport
+
+
+@admin.register(APIService)
+class APIServiceAdmin(admin.ModelAdmin):
+    list_display = ['name', 'service_type', 'is_active', 'rate_limit_enabled', 
+                   'requests_per_day', 'last_error_at']
+    list_filter = ['service_type', 'is_active', 'rate_limit_enabled']
+    search_fields = ['name', 'description']
+    readonly_fields = ['created_at', 'updated_at', 'last_error_at']
+
+
+@admin.register(APIUsageLog)
+class APIUsageLogAdmin(admin.ModelAdmin):
+    list_display = ['service', 'endpoint', 'method', 'request_at', 'response_time_ms', 
+                   'status_code', 'success', 'user']
+    list_filter = ['success', 'service', 'method', 'request_at']
+    search_fields = ['endpoint', 'error_message', 'error_type']
+    readonly_fields = ['request_at']
+    date_hierarchy = 'request_at'
+
+
+@admin.register(APIQuotaUsage)
+class APIQuotaUsageAdmin(admin.ModelAdmin):
+    list_display = ['service', 'period_type', 'period_start', 'total_requests', 
+                   'quota_percentage_used', 'alert_level']
+    list_filter = ['period_type', 'alert_level', 'service']
+    readonly_fields = ['created_at', 'updated_at']
+    date_hierarchy = 'period_start'
+
+
+@admin.register(APIError)
+class APIErrorAdmin(admin.ModelAdmin):
+    list_display = ['service', 'error_type', 'endpoint', 'occurred_at', 'is_resolved', 
+                   'retry_count', 'affected_users_count']
+    list_filter = ['is_resolved', 'error_type', 'service', 'occurred_at']
+    search_fields = ['error_message', 'error_type', 'endpoint']
+    readonly_fields = ['occurred_at', 'resolved_at']
+    date_hierarchy = 'occurred_at'
+
+
+@admin.register(APIAlert)
+class APIAlertAdmin(admin.ModelAdmin):
+    list_display = ['service', 'alert_type', 'severity', 'triggered_at', 
+                   'is_acknowledged', 'is_resolved', 'email_sent']
+    list_filter = ['alert_type', 'severity', 'is_acknowledged', 'is_resolved', 'service']
+    search_fields = ['message']
+    readonly_fields = ['triggered_at', 'acknowledged_at', 'resolved_at', 'email_sent_at']
+    date_hierarchy = 'triggered_at'
+
+
+@admin.register(APIWeeklyReport)
+class APIWeeklyReportAdmin(admin.ModelAdmin):
+    list_display = ['week_start', 'week_end', 'total_requests', 'total_errors', 
+                   'error_rate', 'total_alerts', 'email_sent', 'generated_at']
+    list_filter = ['email_sent', 'week_start']
+    readonly_fields = ['generated_at', 'email_sent_at']
+    date_hierarchy = 'week_start'

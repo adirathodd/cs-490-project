@@ -5384,3 +5384,296 @@ class EmailScanLog(models.Model):
 
     def __str__(self):
         return f"EmailScanLog({self.integration_id}, {self.status})"
+
+
+# UC-117: API Rate Limiting and Error Handling Dashboard Models
+
+class APIService(models.Model):
+    """Configuration for tracked API services"""
+    SERVICE_TYPES = [
+        ('gemini', 'Google Gemini AI'),
+        ('gmail', 'Gmail API'),
+        ('google_calendar', 'Google Calendar'),
+        ('google_contacts', 'Google Contacts'),
+        ('linkedin', 'LinkedIn API'),
+        ('github', 'GitHub API'),
+        ('openai', 'OpenAI API'),
+        ('market_data', 'Market Data APIs'),
+        ('other', 'Other API Service'),
+    ]
+    
+    name = models.CharField(max_length=100, unique=True)
+    service_type = models.CharField(max_length=50, choices=SERVICE_TYPES)
+    description = models.TextField(blank=True)
+    
+    # Rate limit configuration
+    rate_limit_enabled = models.BooleanField(default=True)
+    requests_per_minute = models.IntegerField(null=True, blank=True, help_text='Max requests per minute')
+    requests_per_hour = models.IntegerField(null=True, blank=True, help_text='Max requests per hour')
+    requests_per_day = models.IntegerField(null=True, blank=True, help_text='Max requests per day')
+    
+    # Alert thresholds (percentage of quota)
+    alert_threshold_warning = models.IntegerField(default=75, help_text='Warning threshold %')
+    alert_threshold_critical = models.IntegerField(default=90, help_text='Critical threshold %')
+    
+    # Service status
+    is_active = models.BooleanField(default=True)
+    last_error_at = models.DateTimeField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['service_type', 'is_active']),
+            models.Index(fields=['-last_error_at']),
+        ]
+        ordering = ['name']
+    
+    def __str__(self):
+        return f"{self.name} ({self.get_service_type_display()})"
+
+
+class APIUsageLog(models.Model):
+    """Log of all API requests for monitoring and analytics"""
+    service = models.ForeignKey(APIService, on_delete=models.CASCADE, related_name='usage_logs')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    # Request details
+    endpoint = models.CharField(max_length=500, help_text='API endpoint called')
+    method = models.CharField(max_length=10, default='GET')
+    
+    # Timing
+    request_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    response_time_ms = models.IntegerField(null=True, blank=True, help_text='Response time in milliseconds')
+    
+    # Response details
+    status_code = models.IntegerField(null=True, blank=True)
+    success = models.BooleanField(default=True)
+    
+    # Error tracking
+    error_message = models.TextField(blank=True)
+    error_type = models.CharField(max_length=100, blank=True)
+    
+    # Additional context
+    request_data = models.JSONField(default=dict, blank=True, help_text='Sanitized request data')
+    response_data = models.JSONField(default=dict, blank=True, help_text='Sanitized response data')
+    metadata = models.JSONField(default=dict, blank=True, help_text='Additional tracking metadata')
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['service', '-request_at']),
+            models.Index(fields=['user', '-request_at']),
+            models.Index(fields=['success', '-request_at']),
+            models.Index(fields=['-request_at']),
+        ]
+        ordering = ['-request_at']
+    
+    def __str__(self):
+        return f"{self.service.name} - {self.endpoint} ({self.status_code})"
+
+
+class APIQuotaUsage(models.Model):
+    """Aggregate quota usage per service per time period"""
+    service = models.ForeignKey(APIService, on_delete=models.CASCADE, related_name='quota_usage')
+    
+    # Time period
+    period_type = models.CharField(max_length=20, choices=[
+        ('minute', 'Minute'),
+        ('hour', 'Hour'),
+        ('day', 'Day'),
+        ('week', 'Week'),
+        ('month', 'Month'),
+    ])
+    period_start = models.DateTimeField(db_index=True)
+    period_end = models.DateTimeField()
+    
+    # Usage counts
+    total_requests = models.IntegerField(default=0)
+    successful_requests = models.IntegerField(default=0)
+    failed_requests = models.IntegerField(default=0)
+    
+    # Performance metrics
+    avg_response_time_ms = models.FloatField(null=True, blank=True)
+    max_response_time_ms = models.IntegerField(null=True, blank=True)
+    min_response_time_ms = models.IntegerField(null=True, blank=True)
+    
+    # Rate limit status
+    quota_limit = models.IntegerField(null=True, blank=True)
+    quota_remaining = models.IntegerField(null=True, blank=True)
+    quota_percentage_used = models.FloatField(null=True, blank=True)
+    
+    # Alert status
+    alert_level = models.CharField(max_length=20, choices=[
+        ('normal', 'Normal'),
+        ('warning', 'Warning'),
+        ('critical', 'Critical'),
+        ('exceeded', 'Exceeded'),
+    ], default='normal')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['service', 'period_type', '-period_start']),
+            models.Index(fields=['alert_level', '-period_start']),
+        ]
+        unique_together = [['service', 'period_type', 'period_start']]
+        ordering = ['-period_start']
+    
+    def __str__(self):
+        return f"{self.service.name} - {self.period_type} ({self.period_start.date()})"
+
+
+class APIError(models.Model):
+    """Detailed error tracking for API failures"""
+    service = models.ForeignKey(APIService, on_delete=models.CASCADE, related_name='errors')
+    usage_log = models.ForeignKey(APIUsageLog, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    # Error details
+    error_type = models.CharField(max_length=100, db_index=True)
+    error_message = models.TextField()
+    error_code = models.CharField(max_length=50, blank=True)
+    
+    # Context
+    endpoint = models.CharField(max_length=500)
+    request_method = models.CharField(max_length=10)
+    status_code = models.IntegerField(null=True, blank=True)
+    
+    # Error tracking
+    occurred_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    is_resolved = models.BooleanField(default=False)
+    
+    # Impact assessment
+    affected_users_count = models.IntegerField(default=0)
+    retry_count = models.IntegerField(default=0)
+    
+    # Details for debugging
+    stack_trace = models.TextField(blank=True)
+    request_data = models.JSONField(default=dict, blank=True)
+    response_data = models.JSONField(default=dict, blank=True)
+    
+    # Resolution tracking
+    resolution_notes = models.TextField(blank=True)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='resolved_api_errors'
+    )
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['service', '-occurred_at']),
+            models.Index(fields=['error_type', '-occurred_at']),
+            models.Index(fields=['is_resolved', '-occurred_at']),
+        ]
+        ordering = ['-occurred_at']
+    
+    def __str__(self):
+        return f"{self.service.name} - {self.error_type} at {self.occurred_at}"
+
+
+class APIAlert(models.Model):
+    """Alerts for API quota and error thresholds"""
+    service = models.ForeignKey(APIService, on_delete=models.CASCADE, related_name='alerts')
+    
+    ALERT_TYPES = [
+        ('quota_warning', 'Quota Warning'),
+        ('quota_critical', 'Quota Critical'),
+        ('quota_exceeded', 'Quota Exceeded'),
+        ('high_error_rate', 'High Error Rate'),
+        ('service_down', 'Service Down'),
+        ('slow_response', 'Slow Response Time'),
+    ]
+    
+    alert_type = models.CharField(max_length=50, choices=ALERT_TYPES)
+    severity = models.CharField(max_length=20, choices=[
+        ('info', 'Info'),
+        ('warning', 'Warning'),
+        ('critical', 'Critical'),
+    ])
+    
+    # Alert details
+    message = models.TextField()
+    details = models.JSONField(default=dict, blank=True)
+    
+    # Status
+    triggered_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    
+    is_acknowledged = models.BooleanField(default=False)
+    is_resolved = models.BooleanField(default=False)
+    
+    # Notification tracking
+    email_sent = models.BooleanField(default=False)
+    email_sent_at = models.DateTimeField(null=True, blank=True)
+    
+    acknowledged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='acknowledged_api_alerts'
+    )
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['service', '-triggered_at']),
+            models.Index(fields=['alert_type', 'is_resolved']),
+            models.Index(fields=['is_acknowledged', '-triggered_at']),
+        ]
+        ordering = ['-triggered_at']
+    
+    def __str__(self):
+        return f"{self.get_alert_type_display()} - {self.service.name}"
+
+
+class APIWeeklyReport(models.Model):
+    """Weekly API usage summary reports"""
+    
+    # Report period
+    week_start = models.DateField(db_index=True)
+    week_end = models.DateField()
+    
+    # Overall statistics
+    total_requests = models.IntegerField(default=0)
+    total_errors = models.IntegerField(default=0)
+    error_rate = models.FloatField(default=0.0, help_text='Error rate as percentage')
+    
+    # Performance metrics
+    avg_response_time_ms = models.FloatField(default=0.0)
+    
+    # Service breakdown
+    service_stats = models.JSONField(default=dict, help_text='Per-service statistics')
+    
+    # Top issues
+    top_errors = models.JSONField(default=list, help_text='Most common errors')
+    services_approaching_limit = models.JSONField(default=list, help_text='Services near quota')
+    
+    # Alerts summary
+    total_alerts = models.IntegerField(default=0)
+    critical_alerts = models.IntegerField(default=0)
+    
+    # Report metadata
+    generated_at = models.DateTimeField(auto_now_add=True)
+    email_sent = models.BooleanField(default=False)
+    email_sent_at = models.DateTimeField(null=True, blank=True)
+    
+    # Report content
+    html_content = models.TextField(blank=True)
+    summary_text = models.TextField(blank=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['-week_start']),
+        ]
+        unique_together = [['week_start', 'week_end']]
+        ordering = ['-week_start']
+    
+    def __str__(self):
+        return f"Weekly Report {self.week_start} to {self.week_end}"

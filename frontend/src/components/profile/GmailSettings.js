@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import emailAPI from '../../services/emailAPI';
 import Toast from '../common/Toast';
 import ConfirmDialog from '../common/ConfirmDialog';
+import APIErrorBanner from '../common/APIErrorBanner'; // UC-117: User-facing API error handling
 import './GmailSettings.css';
 
 const GmailSettings = () => {
@@ -12,6 +13,7 @@ const GmailSettings = () => {
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false });
   const [savingPreferences, setSavingPreferences] = useState(false);
   const [pollingInterval, setPollingInterval] = useState(null);
+  const [apiError, setApiError] = useState(null); // UC-117: Track API errors
 
   useEffect(() => {
     loadStatus();
@@ -98,6 +100,7 @@ const GmailSettings = () => {
 
   const handleScanNow = async () => {
     setScanning(true);
+    setApiError(null); // UC-117: Clear previous errors
     try {
       await emailAPI.triggerScan();
       setToast({
@@ -108,11 +111,8 @@ const GmailSettings = () => {
       });
     } catch (error) {
       console.error('Failed to start scan:', error);
-      setToast({
-        isOpen: true,
-        message: 'Failed to start scan. Please try again.',
-        type: 'error'
-      });
+      // UC-117: Set structured error for user-facing display
+      setApiError(error);
     } finally {
       setScanning(false);
     }
@@ -194,6 +194,17 @@ const GmailSettings = () => {
         </svg>
         Email Integration
       </h3>
+      
+      {/* UC-117: Display API error banner when Gmail operations fail */}
+      {apiError && (
+        <APIErrorBanner 
+          serviceName="Gmail API"
+          error={apiError}
+          severity="warning"
+          onRetry={handleScanNow}
+          dismissible={true}
+        />
+      )}
       
       {!isConnected ? (
         <div className="gmail-not-connected">

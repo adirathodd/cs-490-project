@@ -5,6 +5,7 @@ import ProfileOptimization from './ProfileOptimization';
 import NetworkingMessageGenerator from './NetworkingMessageGenerator';
 import GuidanceRenderer from '../common/GuidanceRenderer';
 import Icon from '../common/Icon';
+import APIErrorBanner from '../common/APIErrorBanner'; // UC-117: User-facing API error handling
 import './LinkedIn.css';
 
 const LinkedInIntegration = () => {
@@ -171,7 +172,8 @@ const ContentStrategyView = () => {
       setStrategy(data);
     } catch (err) {
       console.error('Error fetching strategy:', err);
-      setError(err.message || 'Failed to load content strategy');
+      // UC-117: Set structured error for user-facing display
+      setError(err);
     } finally {
       setLoading(false);
     }
@@ -218,13 +220,27 @@ const ContentStrategyView = () => {
   }
 
   if (error) {
+    // UC-117: User-facing error message with graceful degradation
     return (
-      <div className="error-state">
-        <Icon name="alert-circle" size="lg" />
-        <p>{error}</p>
-        <button onClick={fetchStrategy} className="retry-btn">
-          Try Again
-        </button>
+      <div className="content-strategy-error-container">
+        <APIErrorBanner 
+          serviceName="LinkedIn API"
+          error={error}
+          severity="warning"
+          onRetry={fetchStrategy}
+          dismissible={false}
+        />
+        <div className="fallback-content">
+          <h3>Content Strategy Tips</h3>
+          <p>While we work to restore LinkedIn integration, here are some general content strategies:</p>
+          <ul style={{ textAlign: 'left', marginTop: '16px' }}>
+            <li>Share industry insights and professional achievements regularly</li>
+            <li>Engage with your network's content through thoughtful comments</li>
+            <li>Post 2-3 times per week for optimal visibility</li>
+            <li>Use relevant hashtags to increase post reach</li>
+            <li>Share articles and resources valuable to your network</li>
+          </ul>
+        </div>
       </div>
     );
   }

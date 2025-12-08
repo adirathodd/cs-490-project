@@ -1,5 +1,9 @@
 """
 Authentication views for Firebase-based user registration and login.
+
+⚠️  UC-117 REQUIREMENT: All external API calls must use track_api_call() ⚠️
+See core/api_monitoring.py for details. Wrap Gemini, LinkedIn, Gmail, and all
+external API calls with the monitoring context manager.
 """
 from typing import Any, Dict, List, Optional
 
@@ -28,6 +32,7 @@ from django.conf import settings
 from django.utils.text import slugify
 from django.conf import settings
 from core.authentication import FirebaseAuthentication
+from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_GEMINI, SERVICE_GITHUB
 from core.serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
@@ -3382,7 +3387,9 @@ def oauth_link_via_provider(request):
                 'Authorization': f'token {access_token}',
                 'Accept': 'application/vnd.github.v3+json'
             }
-            resp = requests.get('https://api.github.com/user/emails', headers=headers, timeout=6)
+            service = get_or_create_service(SERVICE_GITHUB, 'GitHub API')
+            with track_api_call(service, endpoint='/user/emails', method='GET'):
+                resp = requests.get('https://api.github.com/user/emails', headers=headers, timeout=6)
             if resp.status_code != 200:
                 logger.error(f"GitHub emails lookup failed: {resp.status_code} {resp.text}")
                 return Response({'error': {'code': 'provider_verification_failed', 'message': 'Failed to verify provider token.'}}, status=status.HTTP_400_BAD_REQUEST)
@@ -3445,7 +3452,9 @@ def oauth_github(request):
             'Authorization': f'token {access_token}',
             'Accept': 'application/vnd.github.v3+json'
         }
-        resp = requests.get('https://api.github.com/user/emails', headers=headers, timeout=6)
+        service = get_or_create_service(SERVICE_GITHUB, 'GitHub API')
+        with track_api_call(service, endpoint='/user/emails', method='GET'):
+            resp = requests.get('https://api.github.com/user/emails', headers=headers, timeout=6)
         # Some tests may not set status_code on the mock; proceed as long as we can parse emails
         try:
             emails = resp.json()
@@ -3928,7 +3937,9 @@ def get_profile_picture(request):
                 for u in urls_to_try:
                     try:
                         import requests
-                        resp = requests.get(u, timeout=6)
+                        service = get_or_create_service('photo_url_fetch', 'Photo URL Fetch')
+                        with track_api_call(service, endpoint='/photo', method='GET'):
+                            resp = requests.get(u, timeout=6)
                         if resp.status_code == 200:
                             content = resp.content
                             content_type = resp.headers.get('Content-Type', '')
@@ -16964,12 +16975,14 @@ def _build_supporter_ai_recommendations(candidate, achievements, practice_stats)
             "Return 3 bullet points, plain text."
         )
         endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-        resp = requests.post(
-            endpoint,
-            json={"contents": [{"parts": [{"text": prompt}]}]},
-            timeout=15,
-        )
-        resp.raise_for_status()
+        service = get_or_create_service(SERVICE_GEMINI, 'Google Gemini AI')
+        with track_api_call(service, endpoint=f'/models/{model}:generateContent', method='POST'):
+            resp = requests.post(
+                endpoint,
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                timeout=15,
+            )
+            resp.raise_for_status()
         data = resp.json()
         text = ""
         for cand in (data.get("candidates") or []):
