@@ -8,6 +8,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 });
 
 // Add token to requests if available
@@ -1193,7 +1194,6 @@ export const interviewsAPI = {
       const usp = new URLSearchParams();
       Object.entries(params || {}).forEach(([k, v]) => {
         if (v !== undefined && v !== null && v !== '') {
-          // Convert boolean to string for URL params
           usp.append(k, String(v));
         }
       });
@@ -1854,15 +1854,80 @@ export const coverLetterExportAPI = {
   },
 };
 
+// UC-114: GitHub Integration API (define before default export to avoid TDZ)
+export const githubAPI = {
+  connect: async (includePrivate = false) => {
+    // Use authenticated request so Authorization header is sent, then follow redirect/URL
+    const usp = new URLSearchParams();
+    if (includePrivate) usp.append('include_private', 'true');
+    const path = usp.toString() ? `/github/connect/?${usp.toString()}` : '/github/connect/';
+    try {
+      const response = await api.get(path, { maxRedirects: 0, headers: { Accept: 'application/json' } });
+      const redirectUrl = response.data?.authorize_url || response.headers?.location || `${API_BASE_URL}${path}`;
+      window.location.href = redirectUrl;
+    } catch (error) {
+      // If server responds with 302, axios may treat as error when maxRedirects: 0
+      const loc = error?.response?.headers?.location;
+      const fallback = `${API_BASE_URL}${path}`;
+      window.location.href = loc || fallback;
+    }
+  },
+  disconnect: async () => {
+    try {
+      const response = await api.delete('/github/disconnect/');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to disconnect GitHub' };
+    }
+  },
+
+  listRepos: async (refresh = false) => {
+    try {
+      const usp = new URLSearchParams();
+      if (refresh) usp.append('refresh', 'true');
+      const path = usp.toString() ? `/github/repos/?${usp.toString()}` : '/github/repos/';
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load GitHub repositories' };
+    }
+  },
+
+  getFeatured: async () => {
+    try {
+      const response = await api.get('/github/featured/');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load featured repositories' };
+    }
+  },
+
+  setFeatured: async (repoIds = []) => {
+    try {
+      const response = await api.post('/github/featured/', { featured_repo_ids: repoIds });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update featured repositories' };
+    }
+  },
+
+  contribSummary: async () => {
+    try {
+      const response = await api.get('/github/contrib/summary/');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to load contributions summary' };
+    }
+  },
+};
+
 // Provide a forgiving default export that supports both
 // - `import authAPI from './services/api'` (legacy/default import)
 // - `import { authAPI } from './services/api'` (named import)
 // and also exposes other API groups as properties for callers that expect `api.authAPI`.
 const _defaultExport = {
-  // Expose the raw axios instance for direct API calls
-  ...api,
-  // spread authAPI methods to the top-level for backwards compatibility
-  ...authAPI,
+  // Expose the raw axios instance under a stable key to avoid property collisions
+  http: api,
   // include grouped namespaces as properties
   authAPI,
   profileAPI,
@@ -1878,86 +1943,10 @@ const _defaultExport = {
   coverLetterExportAPI,
   interviewsAPI,
   calendarAPI,
+  githubAPI,
 };
 
 export default _defaultExport;
-
-// CommonJS compatibility: some consumers (tests or older imports) may `require()` the module
-// and expect `module.exports.authAPI` or `module.exports.default` to exist. Provide both.
-/* istanbul ignore next */
-try {
-  if (typeof module !== 'undefined' && module && module.exports) {
-    module.exports = _defaultExport; // override CommonJS export
-    module.exports.default = _defaultExport;
-    module.exports.authAPI = authAPI;
-    module.exports.jobsAPI = jobsAPI;
-    module.exports.materialsAPI = materialsAPI;
-    module.exports.salaryAPI = salaryAPI;
-    module.exports.resumeAIAPI = resumeAIAPI;
-    module.exports.resumeExportAPI = resumeExportAPI;
-    module.exports.coverLetterExportAPI = coverLetterExportAPI;
-    module.exports.interviewsAPI = interviewsAPI;
-    module.exports.calendarAPI = calendarAPI;
-  }
-} catch (e) {
-  // ignore in strict ESM environments
-}
-
-// Defensive fallbacks: in some bundler/runtime interop cases the `authAPI` object
-// ends up missing properties. Provide runtime-safe fallbacks that call the
-// underlying axios `api` instance so callers like `authAPI.getBasicProfile()`
-// and `authAPI.getProfilePicture()` always exist.
-/* istanbul ignore next */
-try {
-  if (!authAPI || typeof authAPI.getBasicProfile !== 'function') {
-    authAPI.getBasicProfile = async () => {
-      const response = await api.get('/profile/basic');
-      return response.data;
-    };
-  }
-
-  if (!authAPI || typeof authAPI.getProfilePicture !== 'function') {
-    authAPI.getProfilePicture = async () => {
-      const response = await api.get('/profile/picture');
-      return response.data;
-    };
-  }
-
-  // Ensure the default export and CommonJS export expose these as well
-  if (_defaultExport) {
-    _defaultExport.authAPI = authAPI;
-    _defaultExport.getBasicProfile = authAPI.getBasicProfile;
-    _defaultExport.getProfilePicture = authAPI.getProfilePicture;
-    _defaultExport.jobsAPI = jobsAPI;
-    _defaultExport.materialsAPI = materialsAPI;
-    _defaultExport.salaryAPI = salaryAPI;
-    _defaultExport.resumeAIAPI = resumeAIAPI;
-  _defaultExport.resumeExportAPI = resumeExportAPI;
-  _defaultExport.coverLetterExportAPI = coverLetterExportAPI;
-  _defaultExport.interviewsAPI = interviewsAPI;
-  _defaultExport.calendarAPI = calendarAPI;
-  _defaultExport.logQuestionPractice = jobsAPI.logQuestionPractice;
-  _defaultExport.coachQuestionResponse = jobsAPI.coachQuestionResponse;
-  if (questionBankAPI?.getQuestionBank) {
-    jobsAPI.getJobQuestionBank = questionBankAPI.getQuestionBank;
-    _defaultExport.getJobQuestionBank = jobsAPI.getJobQuestionBank;
-  }
-}
-if (typeof module !== 'undefined' && module && module.exports) {
-  module.exports = _defaultExport;
-  module.exports.authAPI = authAPI;
-  module.exports.jobsAPI = jobsAPI;
-    module.exports.materialsAPI = materialsAPI;
-    module.exports.salaryAPI = salaryAPI;
-    module.exports.resumeAIAPI = resumeAIAPI;
-    module.exports.resumeExportAPI = resumeExportAPI;
-    module.exports.coverLetterExportAPI = coverLetterExportAPI;
-    module.exports.interviewsAPI = interviewsAPI;
-    module.exports.calendarAPI = calendarAPI;
-  }
-} catch (e) {
-  // ignore any errors during best-effort compatibility wiring
-}
 
 
 // UC-052: Resume Version Management API calls
@@ -2096,20 +2085,13 @@ export const resumeVersionAPI = {
   }
 };
 
-// Export for module compatibility
-try {
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports.resumeVersionAPI = resumeVersionAPI;
-  }
-} catch (e) {
-  // ignore
-}
+// ESM-only: no CommonJS interop here to avoid init-order issues
 
 
 
 // Default export: axios instance used across services
 // Also export the raw axios instance for callers that need it (named export)
-export { api };
+// Avoid named export of axios instance to reduce init-order issues
 
 // UC-052: Resume Sharing and Feedback API calls
 export const resumeSharingAPI = {
@@ -2831,6 +2813,8 @@ export const mentorshipAPI = {
   },
 };
 
+// (moved earlier)
+
 export const supportersAPI = {
   listInvites: () => api.get('/supporters').then((res) => res.data),
   createInvite: (payload) => api.post('/supporters', payload).then((res) => res.data),
@@ -3426,22 +3410,4 @@ export const teamAPI = {
   },
 };
 
-// Export for module compatibility
-try {
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports.salaryNegotiationAPI = salaryNegotiationAPI;
-    module.exports.resumeSharingAPI = resumeSharingAPI;
-    module.exports.feedbackAPI = feedbackAPI;
-    module.exports.commentAPI = commentAPI;
-    module.exports.notificationAPI = notificationAPI;
-    module.exports.networkingAPI = networkingAPI;
-    module.exports.mentorshipAPI = mentorshipAPI;
-    module.exports.goalsAPI = goalsAPI;
-    module.exports.mockInterviewAPI = mockInterviewAPI;
-    module.exports.questionBankAPI = questionBankAPI;
-    module.exports.linkedInAPI = linkedInAPI;
-    module.exports.teamAPI = teamAPI;
-  }
-} catch (e) {
-  // ignore
-}
+// ESM-only: no CommonJS interop here to avoid init-order issues

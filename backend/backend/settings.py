@@ -181,6 +181,16 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG  # Allow all in development
 CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
 CORS_ALLOW_CREDENTIALS = True
 
+# Trust the frontend origin for CSRF in development
+CSRF_TRUSTED_ORIGINS = ['http://localhost:3000']
+
+# Relax cookie and CORS credentials in development to allow OAuth redirects across localhost ports
+if DEBUG:
+    SESSION_COOKIE_SAMESITE = 'None'
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SAMESITE = 'None'
+    CSRF_COOKIE_SECURE = False
+
 # REST Framework settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [

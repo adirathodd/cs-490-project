@@ -241,6 +241,14 @@ urlpatterns = [
     # Ensure exact-match export route is available for tests and clients
     re_path(r'^resume/export$', views.resume_export, name='resume-export-exact'),
     path('resume/export/ai', views.export_ai_resume, name='export-ai-resume'),
+
+    # UC-114: GitHub integration
+    path('github/connect/', views.github_connect, name='github-connect'),
+    path('github/callback/', views.github_callback, name='github-callback'),
+    path('github/repos/', views.github_repos, name='github-repos'),
+    path('github/featured/', views.github_featured_repositories, name='github-featured'),
+    path('github/contrib/summary/', views.github_contributions_summary, name='github-contrib-summary'),
+    path('github/disconnect/', views.github_disconnect, name='github-disconnect'),
     
     # UC-063: Automated Company Research endpoints
     path('companies/<str:company_name>/research', views.automated_company_research, name='automated-company-research'),

@@ -177,6 +177,9 @@ from core.models import (
     
     ContactSuggestion,
     DiscoverySearch,
+    GitHubAccount,
+    Repository,
+    FeaturedRepository,
 )
 from core import google_import, tasks, response_coach, interview_followup, calendar_sync, resume_ai
 from core.interview_checklist import build_checklist_tasks
@@ -194,6 +197,7 @@ from core.technical_prep import (
     _derive_role_context,
 )
 from django.shortcuts import redirect
+from django.urls import reverse
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 from core import google_import
 
@@ -203,6 +207,8 @@ from rest_framework.permissions import AllowAny
 import json
 import os
 import tempfile
+import requests
+from datetime import timedelta
 
 # ------------------------------
 # Minimal Referral API stubs (development helper)
@@ -217,6 +223,385 @@ REFERRAL_STORE: Dict[str, Dict[str, Any]] = {}
 
 # File-backed dev store so multiple workers see the same data.
 STORE_FILENAME = os.path.join(settings.BASE_DIR, 'dev_referrals_store.json')
+
+# UC-114: GitHub Repository Showcase Integration
+def _get_candidate_profile_for_user(user):
+    try:
+        return CandidateProfile.objects.filter(user=user).first()
+    except Exception:
+        return None
+
+
+def _github_headers(token: str) -> dict:
+    return {
+        'Authorization': f'token {token}',
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'ats-project-uc114'
+    }
+
+
+def _sync_github_repos(account: GitHubAccount) -> int:
+    token = account.access_token
+    if not token:
+        return 0
+
+    visibility = 'all' if account.include_private else 'public'
+    per_page = 100
+    page = 1
+    synced = 0
+    while True:
+        params = {
+            'visibility': visibility,
+            'sort': 'updated',
+            'per_page': per_page,
+            'page': page,
+        }
+        resp = requests.get('https://api.github.com/user/repos', headers=_github_headers(token), params=params, timeout=20)
+        if resp.status_code != 200:
+            break
+        repos = resp.json() or []
+        if not repos:
+            break
+        for r in repos:
+            repo_id = r.get('id')
+            full_name = r.get('full_name') or ''
+            name = r.get('name') or ''
+            description = r.get('description') or ''
+            html_url = r.get('html_url') or ''
+            private = bool(r.get('private'))
+            primary_language = r.get('language') or ''
+            stars = int(r.get('stargazers_count') or 0)
+            forks = int(r.get('forks_count') or 0)
+            pushed_at_raw = r.get('pushed_at')
+            pushed_at = parse_datetime(pushed_at_raw) if pushed_at_raw else None
+
+            obj, _created = Repository.objects.update_or_create(
+                account=account,
+                repo_id=repo_id,
+                defaults={
+                    'name': name,
+                    'full_name': full_name,
+                    'description': description or '',
+                    'html_url': html_url,
+                    'private': private,
+                    'primary_language': primary_language or '',
+                    'stars': stars,
+                    'forks': forks,
+                    'pushed_at': pushed_at,
+                }
+            )
+
+            languages_url = r.get('languages_url')
+            if languages_url:
+                lang_resp = requests.get(languages_url, headers=_github_headers(token), timeout=20)
+                if lang_resp.status_code == 200:
+                    try:
+                        obj.languages = lang_resp.json() or {}
+                        obj.save(update_fields=['languages', 'last_synced_at'])
+                    except Exception:
+                        pass
+
+            synced += 1
+        page += 1
+    return synced
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def github_connect(request):
+    client_id = os.environ.get('GITHUB_CLIENT_ID')
+    redirect_uri = os.environ.get('GITHUB_OAUTH_REDIRECT_URI') or request.build_absolute_uri(reverse('core:github-callback'))
+    if not client_id:
+        return Response({'error': 'GitHub OAuth not configured (missing GITHUB_CLIENT_ID).'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    profile = _get_candidate_profile_for_user(request.user)
+    if not profile:
+        return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    include_private = (request.GET.get('include_private') == 'true')
+    scope = 'read:user user:email'
+    if include_private:
+        scope += ' repo'
+
+    state = uuid.uuid4().hex
+    # Persist OAuth state in both session and cache to avoid cookie issues in dev
+    session_payload = {
+        'state': state,
+        'include_private': include_private,
+        'user_id': str(getattr(request.user, 'id', '')),
+        'ts': timezone.now().isoformat(),
+    }
+    request.session['github_oauth'] = session_payload
+    try:
+        from django.core.cache import cache
+        cache.set(f'gh_oauth:{state}', session_payload, timeout=600)
+    except Exception:
+        pass
+
+    params = {
+        'client_id': client_id,
+        'redirect_uri': redirect_uri,
+        'scope': scope,
+        'state': state,
+        'allow_signup': 'true',
+    }
+    url = 'https://github.com/login/oauth/authorize?' + urlencode(params)
+    # If the client requests JSON (XHR), return authorize_url so frontend can redirect explicitly
+    accept = request.headers.get('Accept', '')
+    if 'application/json' in accept:
+        return Response({'authorize_url': url})
+    return redirect(url)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def github_callback(request):
+    # Retrieve state from cache first (more reliable across ports), then session
+    try:
+        from django.core.cache import cache
+        cached = cache.get(f"gh_oauth:{request.GET.get('state','')}") or {}
+    except Exception:
+        cached = {}
+    data = cached or (request.session.get('github_oauth') or {})
+    state_expected = data.get('state')
+    include_private = bool(data.get('include_private'))
+    user_id = data.get('user_id')
+
+    if not state_expected:
+        return Response({'error': 'OAuth session not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    code = request.GET.get('code')
+    state = request.GET.get('state')
+    if not code or state != state_expected:
+        return Response({'error': 'Invalid OAuth response.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    client_id = os.environ.get('GITHUB_CLIENT_ID')
+    client_secret = os.environ.get('GITHUB_CLIENT_SECRET')
+    redirect_uri = os.environ.get('GITHUB_OAUTH_REDIRECT_URI') or request.build_absolute_uri(reverse('core:github-callback'))
+    if not client_id or not client_secret:
+        return Response({'error': 'GitHub OAuth not configured.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    token_resp = requests.post(
+        'https://github.com/login/oauth/access_token',
+        headers={'Accept': 'application/json'},
+        json={'client_id': client_id, 'client_secret': client_secret, 'code': code, 'redirect_uri': redirect_uri},
+        timeout=20,
+    )
+    if token_resp.status_code != 200:
+        return Response({'error': 'Token exchange failed.'}, status=status.HTTP_400_BAD_REQUEST)
+    token_payload = token_resp.json() or {}
+    access_token = token_payload.get('access_token')
+    token_type = token_payload.get('token_type') or ''
+    scope = token_payload.get('scope') or ''
+    if not access_token:
+        return Response({'error': 'No access token returned.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user_resp = requests.get('https://api.github.com/user', headers=_github_headers(access_token), timeout=20)
+    if user_resp.status_code != 200:
+        return Response({'error': 'Failed to fetch GitHub user.'}, status=status.HTTP_400_BAD_REQUEST)
+    gh_user = user_resp.json() or {}
+    gh_id = gh_user.get('id')
+    login = gh_user.get('login') or ''
+    avatar_url = gh_user.get('avatar_url') or ''
+
+    profile = CandidateProfile.objects.filter(user__id=user_id).first()
+    if not profile:
+        return Response({'error': 'User profile not found for session.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Handle unique github_user_id across accounts: transfer to current candidate if already linked
+    existing = GitHubAccount.objects.filter(github_user_id=gh_id).first()
+    if existing and existing.candidate_id != profile.id:
+        existing.candidate = profile
+        existing.login = login
+        existing.avatar_url = avatar_url
+        existing.access_token = access_token
+        existing.token_type = token_type
+        existing.scopes = scope
+        existing.include_private = include_private
+        existing.save()
+        account = existing
+    else:
+        account, _created = GitHubAccount.objects.update_or_create(
+            candidate=profile,
+            defaults={
+                'github_user_id': gh_id,
+                'login': login,
+                'avatar_url': avatar_url,
+                'access_token': access_token,
+                'token_type': token_type,
+                'scopes': scope,
+                'include_private': include_private,
+            }
+        )
+
+    try:
+        _sync_github_repos(account)
+    except Exception as e:
+        logger.warning('GitHub sync failed: %s', e)
+
+    # Clean up cached state
+    try:
+        from django.core.cache import cache
+        cache.delete(f'gh_oauth:{state}')
+    except Exception:
+        pass
+
+    frontend_base = os.environ.get('FRONTEND_BASE_URL', 'http://localhost:3000').rstrip('/')
+    # Redirect to Projects page after successful connect
+    return redirect(f"{frontend_base}/projects?github=connected")
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def github_repos(request):
+    profile = _get_candidate_profile_for_user(request.user)
+    if not profile:
+        return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+    account = getattr(profile, 'github_account', None)
+    if not account:
+        return Response({'connected': False, 'repos': []})
+
+    if request.GET.get('refresh') == 'true':
+        try:
+            _sync_github_repos(account)
+        except Exception as e:
+            logger.warning('GitHub refresh failed: %s', e)
+
+    repos = account.repositories.order_by('-pushed_at', '-stars')[:500]
+    featured_ids = set(FeaturedRepository.objects.filter(candidate=profile).values_list('repository_id', flat=True))
+    payload = []
+    for r in repos:
+        payload.append({
+            'id': r.id,
+            'repo_id': r.repo_id,
+            'name': r.name,
+            'full_name': r.full_name,
+            'description': r.description,
+            'html_url': r.html_url,
+            'private': r.private,
+            'primary_language': r.primary_language,
+            'languages': r.languages,
+            'stars': r.stars,
+            'forks': r.forks,
+            'pushed_at': r.pushed_at.isoformat() if r.pushed_at else None,
+            'featured': r.id in featured_ids,
+        })
+    return Response({'connected': True, 'repos': payload})
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def github_disconnect(request):
+    profile = _get_candidate_profile_for_user(request.user)
+    if not profile:
+        return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    account = getattr(profile, 'github_account', None)
+    if not account:
+        return Response({'message': 'GitHub is not connected.'}, status=status.HTTP_200_OK)
+
+    try:
+        # Remove any featured selections for this candidate first to avoid FK constraints
+        try:
+            FeaturedRepository.objects.filter(candidate=profile).delete()
+        except Exception:
+            pass
+
+        # No need to update CandidateProfile directly; the OneToOne exists on GitHubAccount
+
+        # Delete repositories linked to this account
+        try:
+            Repository.objects.filter(account=account).delete()
+        except Exception:
+            pass
+
+        # Finally delete the account record (removes OneToOne link)
+        account.delete()
+    except Exception as e:
+        logger.error('GitHub disconnect failed: %s', e)
+        return Response({'error': 'Failed to disconnect GitHub.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    return Response({'message': 'GitHub disconnected successfully.'}, status=status.HTTP_200_OK)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def github_featured_repositories(request):
+    profile = _get_candidate_profile_for_user(request.user)
+    if not profile:
+        return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        featured = FeaturedRepository.objects.filter(candidate=profile).order_by('position')
+        data = [
+            {
+                'id': fr.repository.id,
+                'name': fr.repository.name,
+                'full_name': fr.repository.full_name,
+                'html_url': fr.repository.html_url,
+                'primary_language': fr.repository.primary_language,
+                'stars': fr.repository.stars,
+                'position': fr.position,
+            }
+            for fr in featured
+        ]
+        return Response({'featured': data})
+
+    try:
+        body = request.data or {}
+        repo_ids = body.get('featured_repo_ids') or []
+        if not isinstance(repo_ids, list):
+            return Response({'error': 'featured_repo_ids must be a list of repository IDs.'}, status=status.HTTP_400_BAD_REQUEST)
+        FeaturedRepository.objects.filter(candidate=profile).delete()
+        for idx, rid in enumerate(repo_ids, start=1):
+            try:
+                repo = Repository.objects.get(id=rid)
+                if repo.account.candidate_id != profile.id:
+                    continue
+                FeaturedRepository.objects.create(candidate=profile, repository=repo, position=idx)
+            except Repository.DoesNotExist:
+                continue
+        return Response({'ok': True})
+    except Exception as e:
+        logger.exception('Failed to update featured repositories: %s', e)
+        return Response({'error': 'Failed to update featured repositories.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def github_contributions_summary(request):
+    profile = _get_candidate_profile_for_user(request.user)
+    if not profile:
+        return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+    account = getattr(profile, 'github_account', None)
+    if not account:
+        return Response({'connected': False, 'summary': {}})
+
+    token = account.access_token
+    login = account.login
+    summary = {
+        'login': login,
+        'public_repos': 0,
+        'followers': 0,
+        'following': 0,
+        'total_repos': account.repositories.count(),
+        'recent_pushes': 0,
+    }
+    try:
+        u = requests.get('https://api.github.com/user', headers=_github_headers(token), timeout=20)
+        if u.status_code == 200:
+            uj = u.json() or {}
+            summary['public_repos'] = uj.get('public_repos') or 0
+            summary['followers'] = uj.get('followers') or 0
+            summary['following'] = uj.get('following') or 0
+
+        cutoff = timezone.now() - timedelta(days=30)
+        recent = account.repositories.filter(pushed_at__gte=cutoff).count()
+        summary['recent_pushes'] = recent
+    except Exception as e:
+        logger.warning('GitHub contrib summary failed: %s', e)
+
+    return Response({'connected': True, 'summary': summary})
 
 
 def _load_store() -> Dict[str, Dict[str, Any]]:
