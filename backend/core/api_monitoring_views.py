@@ -18,6 +18,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
+import pytz
 from core.models import (
     APIService, APIUsageLog, APIQuotaUsage, APIError, APIAlert, APIWeeklyReport
 )
@@ -36,9 +37,17 @@ def api_monitoring_dashboard(request):
     
     Query params:
         - days: Number of days to look back (default: 7)
+        - tz_offset: Client timezone offset in minutes from UTC (e.g., -300 for EST)
     """
     try:
         days = int(request.query_params.get('days', 7))
+        
+        # Get client timezone offset (default to UTC if not provided)
+        tz_offset_minutes = int(request.query_params.get('tz_offset', 0))
+        client_tz = timezone.get_fixed_timezone(tz_offset_minutes)
+        
+        # Get current time in client timezone
+        now_client = timezone.now().astimezone(client_tz)
         start_date = timezone.now() - timedelta(days=days)
         
         # Overall statistics
@@ -60,6 +69,42 @@ def api_monitoring_dashboard(request):
         
         for service in services:
             stats = get_service_stats(service, days=days)
+            
+            # Add daily usage data for trends (grouped by client timezone)
+            daily_usage = []
+            for i in range(days):
+                # Calculate day boundaries in client timezone
+                day_date = (now_client - timedelta(days=days-1-i)).date()
+                
+                # Create timezone-aware datetime for day start/end
+                day_start_naive = datetime.combine(day_date, datetime.min.time())
+                day_start_local = day_start_naive.replace(tzinfo=client_tz)
+                day_end_local = day_start_local + timedelta(days=1)
+                
+                # Convert to UTC for database query
+                day_start_utc = day_start_local.astimezone(pytz.UTC)
+                day_end_utc = day_end_local.astimezone(pytz.UTC)
+                
+                day_logs = APIUsageLog.objects.filter(
+                    service=service,
+                    request_at__gte=day_start_utc,
+                    request_at__lt=day_end_utc
+                )
+                
+                day_stats = day_logs.aggregate(
+                    total=Count('id'),
+                    successful=Count('id', filter=Q(success=True)),
+                    failed=Count('id', filter=Q(success=False))
+                )
+                
+                daily_usage.append({
+                    'date': day_date.isoformat(),
+                    'total_requests': day_stats['total'] or 0,
+                    'successful_requests': day_stats['successful'] or 0,
+                    'failed_requests': day_stats['failed'] or 0
+                })
+            
+            stats['daily_usage'] = daily_usage
             
             # Get current quota status
             latest_quota = APIQuotaUsage.objects.filter(

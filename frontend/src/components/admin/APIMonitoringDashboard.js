@@ -117,56 +117,48 @@ const APIMonitoringDashboard = () => {
   const { overall, services, active_alerts, recent_errors, approaching_limit } = dashboardData || {};
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
+    <div className="api-dashboard-container">
       {/* Header */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4" component="h1">
-          API Monitoring Dashboard
-        </Typography>
-        <Box display="flex" alignItems="center" gap={2}>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={autoRefresh}
-                onChange={handleToggleAutoRefresh}
-                size="small"
-              />
-            }
-            label={
-              <Typography variant="caption">
-                Auto-refresh {autoRefresh ? 'ON' : 'OFF'}
-              </Typography>
-            }
-          />
+      <div className="dashboard-header">
+        <h1 className="dashboard-title">API Monitoring Dashboard</h1>
+        <div className="dashboard-controls">
+          <label className="auto-refresh-label">
+            <span className="control-label">Auto Refresh</span>
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={handleToggleAutoRefresh}
+              className="toggle-switch"
+            />
+          </label>
           {lastRefresh && (
-            <Typography variant="caption" color="text.secondary">
-              Updated: {lastRefresh.toLocaleTimeString()}
-            </Typography>
+            <span className="last-updated" key={lastRefresh.getTime()}>
+              Updated: {lastRefresh.toLocaleString()}
+            </span>
           )}
-          <Tooltip title="Refresh Now">
-            <IconButton
-              onClick={handleRefresh}
-              disabled={refreshing}
-              color="primary"
-              size="small"
-            >
-              <RefreshIcon sx={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
-            </IconButton>
-          </Tooltip>
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Time Period</InputLabel>
-            <Select value={daysFilter} onChange={handleDaysFilterChange} label="Time Period">
-              <MenuItem value={1}>Last 24 Hours</MenuItem>
-              <MenuItem value={7}>Last 7 Days</MenuItem>
-              <MenuItem value={14}>Last 14 Days</MenuItem>
-              <MenuItem value={30}>Last 30 Days</MenuItem>
-            </Select>
-          </FormControl>
-        </Box>
-      </Box>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="refresh-button"
+            title="Refresh Now"
+          >
+            <RefreshIcon className={refreshing ? 'spinning' : ''} />
+          </button>
+          <select
+            value={daysFilter}
+            onChange={(e) => setDaysFilter(Number(e.target.value))}
+            className="period-selector"
+          >
+            <option value={1}>24h</option>
+            <option value={7}>7d</option>
+            <option value={14}>14d</option>
+            <option value={30}>30d</option>
+          </select>
+        </div>
+      </div>
 
       {/* Overview Cards */}
-      <Grid container spacing={3} mb={4}>
+      <Grid container spacing={{ xs: 2, sm: 3 }} mb={4}>
         <Grid item xs={12} sm={6} md={3}>
           <Card className="metric-card">
             <CardContent>
@@ -193,7 +185,11 @@ const APIMonitoringDashboard = () => {
                   Success Rate
                 </Typography>
               </Box>
-              <Typography variant="h4">{overall?.success_rate?.toFixed(1) || 0}%</Typography>
+              <Typography variant="h4">
+                {!overall?.total_requests || overall?.total_requests === 0
+                  ? 'N/A'
+                  : `${overall?.success_rate?.toFixed(1) || 0}%`}
+              </Typography>
               <Typography variant="caption" color="text.secondary">
                 {overall?.successful_requests?.toLocaleString() || 0} successful
               </Typography>
@@ -262,7 +258,13 @@ const APIMonitoringDashboard = () => {
 
       {/* Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={activeTab} onChange={handleTabChange}>
+        <Tabs 
+          value={activeTab} 
+          onChange={handleTabChange}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+        >
           <Tab label="Services" />
           <Tab label={`Alerts (${active_alerts?.length || 0})`} />
           <Tab label="Error Logs" />
@@ -308,7 +310,7 @@ const APIMonitoringDashboard = () => {
           <WeeklyReportsPanel />
         )}
       </Box>
-    </Container>
+    </div>
   );
 };
 

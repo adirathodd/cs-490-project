@@ -1,4 +1,3 @@
-"""
 """Utilities for importing job details from job posting URLs.
 Supports LinkedIn, Indeed, Glassdoor, and performs best-effort extraction for other sites.
 """

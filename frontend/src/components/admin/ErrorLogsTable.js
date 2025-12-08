@@ -125,18 +125,18 @@ const ErrorLogsTable = ({ initialErrors, daysFilter }) => {
       </Grid>
 
       {/* Table */}
-      <TableContainer component={Paper}>
-        <Table>
+      <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
+        <Table sx={{ minWidth: { xs: '100%', md: 650 }, tableLayout: 'auto' }}>
           <TableHead>
             <TableRow>
               <TableCell width={40} />
               <TableCell>Service</TableCell>
               <TableCell>Error Type</TableCell>
-              <TableCell>Endpoint</TableCell>
-              <TableCell>Status</TableCell>
+              <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Endpoint</TableCell>
+              <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Status</TableCell>
               <TableCell>Occurred At</TableCell>
-              <TableCell>Retries</TableCell>
-              <TableCell>Affected Users</TableCell>
+              <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Retries</TableCell>
+              <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Affected Users</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -162,12 +162,12 @@ const ErrorLogsTable = ({ initialErrors, daysFilter }) => {
                     <TableCell>
                       <Chip label={error.error_type} size="small" color="error" />
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                       <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
                         {error.endpoint}
                       </Typography>
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                       <Chip
                         label={error.is_resolved ? 'Resolved' : 'Active'}
                         size="small"
@@ -175,10 +175,17 @@ const ErrorLogsTable = ({ initialErrors, daysFilter }) => {
                       />
                     </TableCell>
                     <TableCell>
-                      {new Date(error.occurred_at).toLocaleString()}
+                      <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                        {new Date(error.occurred_at).toLocaleString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </Typography>
                     </TableCell>
-                    <TableCell>{error.retry_count}</TableCell>
-                    <TableCell>{error.affected_users_count}</TableCell>
+                    <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>{error.retry_count}</TableCell>
+                    <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>{error.affected_users_count}</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell colSpan={8} sx={{ py: 0, borderBottom: 'none' }}>

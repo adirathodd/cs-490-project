@@ -12,7 +12,9 @@ export const apiMonitoringAPI = {
    */
   getDashboard: async (days = 7) => {
     try {
-      const response = await api.get(`/admin/api-monitoring/dashboard/?days=${days}`);
+      // Get client timezone offset in minutes (negative of getTimezoneOffset)
+      const tzOffset = -new Date().getTimezoneOffset();
+      const response = await api.get(`/admin/api-monitoring/dashboard/?days=${days}&tz_offset=${tzOffset}`);
       return response.data;
     } catch (error) {
       throw error.error || error.response?.data?.error || { message: 'Failed to load dashboard' };

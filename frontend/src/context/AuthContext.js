@@ -44,9 +44,15 @@ export const AuthProvider = ({ children, value: injectedValue }) => {
       
       if (user) {
         try {
-          // Get Firebase ID token
-          const token = await user.getIdToken();
-          localStorage.setItem('firebaseToken', token);
+          // Check if token already exists (e.g., from signInWithPopup)
+          const existingToken = localStorage.getItem('firebaseToken');
+          let token = existingToken;
+          
+          // Only fetch a new token if we don't have one
+          if (!existingToken) {
+            token = await user.getIdToken();
+            localStorage.setItem('firebaseToken', token);
+          }
           
           // Fetch user profile from backend
           const profileData = await authAPI.getCurrentUser();

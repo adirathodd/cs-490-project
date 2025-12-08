@@ -56,7 +56,15 @@ def refresh_gmail_token(integration):
     if not integration.refresh_token:
         raise GmailAPIError('Missing refresh token')
     
-    tokens = google_import.refresh_access_token(integration.refresh_token)
+    try:
+        tokens = google_import.refresh_access_token(integration.refresh_token)
+    except Exception as exc:
+        # Mark integration as disconnected and raise user-friendly error
+        integration.status = 'disconnected'
+        integration.last_error = 'Failed to refresh access token. Please reconnect Gmail.'
+        integration.save(update_fields=['status', 'last_error', 'updated_at'])
+        raise GmailAPIError('Your Gmail connection has expired. Please reconnect in Settings.') from exc
+    
     new_token = tokens.get('access_token')
     if not new_token:
         raise GmailAPIError('Failed to refresh token')

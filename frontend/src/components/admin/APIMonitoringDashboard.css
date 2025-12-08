@@ -2,9 +2,140 @@
  * UC-117: API Monitoring Dashboard Styles
  */
 
+/* Prevent horizontal overflow */
+* {
+  box-sizing: border-box;
+}
+
+.api-dashboard-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 16px;
+}
+
+.dashboard-title {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.dashboard-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.auto-refresh-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  margin: 0;
+}
+
+.control-label {
+  font-size: 0.875rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.toggle-switch {
+  width: 42px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.last-updated {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+
+.refresh-button {
+  padding: 6px;
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.refresh-button:hover:not(:disabled) {
+  background-color: rgba(37, 99, 235, 0.1);
+}
+
+.refresh-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.refresh-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.refresh-button .spinning {
+  animation: spin 1s linear infinite;
+}
+
+.period-selector {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: white;
+  cursor: pointer;
+  min-width: 80px;
+}
+
+.period-selector:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+@media (max-width: 768px) {
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dashboard-title {
+    font-size: 1.5rem;
+  }
+
+  .dashboard-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .last-updated {
+    display: none;
+  }
+
+  .control-label {
+    display: none;
+  }
+}
+
 .metric-card {
   height: 100%;
   transition: transform 0.2s, box-shadow 0.2s;
+  overflow: hidden;
+  word-wrap: break-word;
 }
 
 .metric-card:hover {
@@ -18,6 +149,16 @@
 
 .api-monitoring-dashboard {
   padding: 24px;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.service-card {
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  word-wrap: break-word;
 }
 
 .service-card {

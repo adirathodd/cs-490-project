@@ -44,7 +44,14 @@ def _ensure_google_access_token(integration: CalendarIntegration) -> str:
         return token
     if not integration.refresh_token:
         raise CalendarSyncError('Missing refresh token. Please reconnect Google Calendar.')
-    tokens = google_import.refresh_access_token(integration.refresh_token)
+    
+    try:
+        tokens = google_import.refresh_access_token(integration.refresh_token)
+    except requests.HTTPError as exc:
+        # Mark integration as errored and raise user-friendly message
+        _mark_integration_error(integration, 'Failed to refresh access token. Please reconnect Google Calendar.')
+        raise CalendarSyncError('Your Google Calendar connection has expired. Please reconnect in Settings.') from exc
+    
     new_token = tokens.get('access_token')
     if not new_token:
         raise CalendarSyncError('Google did not return a new access token. Reconnect your account.')

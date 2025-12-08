@@ -44,9 +44,13 @@ const ServiceStatusGrid = ({ services, onRefresh }) => {
     }
   };
 
-  const getStatusIcon = (successRate, hasActiveAlerts) => {
+  const getStatusIcon = (successRate, hasActiveAlerts, totalRequests) => {
     if (hasActiveAlerts) {
       return <WarningIcon color="warning" />;
+    }
+    // Don't show error icon for services that haven't been called yet
+    if (!totalRequests || totalRequests === 0) {
+      return <CheckCircleIcon color="action" sx={{ opacity: 0.5 }} />;
     }
     if (successRate >= 95) {
       return <CheckCircleIcon color="success" />;
@@ -58,7 +62,7 @@ const ServiceStatusGrid = ({ services, onRefresh }) => {
   };
 
   return (
-    <Grid container spacing={3}>
+    <Grid container spacing={{ xs: 2, sm: 3 }}>
       {services.map((service) => {
         const hasActiveAlerts = service.active_alerts && service.active_alerts.length > 0;
         const quotaPercentage = service.quota?.percentage_used || 0;
@@ -70,7 +74,7 @@ const ServiceStatusGrid = ({ services, onRefresh }) => {
                 <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
                   <Box>
                     <Box display="flex" alignItems="center" gap={1} mb={0.5}>
-                      {getStatusIcon(service.success_rate, hasActiveAlerts)}
+                      {getStatusIcon(service.success_rate, hasActiveAlerts, service.total_requests)}
                       <Typography variant="h6" component="h3">
                         {service.service_name}
                       </Typography>
@@ -103,9 +107,19 @@ const ServiceStatusGrid = ({ services, onRefresh }) => {
                     <Typography 
                       variant="body2" 
                       fontWeight="bold"
-                      color={service.success_rate >= 95 ? 'success.main' : service.success_rate >= 80 ? 'warning.main' : 'error.main'}
+                      color={
+                        !service.total_requests || service.total_requests === 0
+                          ? 'text.secondary'
+                          : service.success_rate >= 95
+                          ? 'success.main'
+                          : service.success_rate >= 80
+                          ? 'warning.main'
+                          : 'error.main'
+                      }
                     >
-                      {service.success_rate?.toFixed(1) || 0}%
+                      {!service.total_requests || service.total_requests === 0
+                        ? 'N/A'
+                        : `${service.success_rate?.toFixed(1) || 0}%`}
                     </Typography>
                   </Box>
                   <Box display="flex" justifyContent="space-between" mb={1}>
