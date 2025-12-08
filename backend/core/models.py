@@ -718,6 +718,60 @@ class Interview(models.Model):
 # 
 # =
 # EXTENDED PROFILE MODELS
+
+# UC-114: GitHub Repository Showcase Integration
+class GitHubAccount(models.Model):
+    candidate = models.OneToOneField(CandidateProfile, on_delete=models.CASCADE, related_name='github_account')
+    github_user_id = models.BigIntegerField(unique=True)
+    login = models.CharField(max_length=255)
+    avatar_url = models.URLField(blank=True, default='')
+    access_token = models.CharField(max_length=255)
+    token_type = models.CharField(max_length=64, blank=True, default='')
+    scopes = models.CharField(max_length=512, blank=True, default='')
+    include_private = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.login} ({self.github_user_id})"
+
+
+class Repository(models.Model):
+    account = models.ForeignKey(GitHubAccount, on_delete=models.CASCADE, related_name='repositories')
+    repo_id = models.BigIntegerField()
+    name = models.CharField(max_length=255)
+    full_name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
+    html_url = models.URLField()
+    private = models.BooleanField(default=False)
+    primary_language = models.CharField(max_length=128, blank=True, default='')
+    languages = models.JSONField(default=dict, blank=True)
+    stars = models.PositiveIntegerField(default=0)
+    forks = models.PositiveIntegerField(default=0)
+    pushed_at = models.DateTimeField(null=True, blank=True)
+    last_synced_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [("account", "repo_id")]
+        indexes = [
+            models.Index(fields=["account", "-stars"]),
+            models.Index(fields=["account", "-pushed_at"]),
+        ]
+
+    def __str__(self):
+        return self.full_name
+
+
+class FeaturedRepository(models.Model):
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name='featured_repositories')
+    repository = models.ForeignKey(Repository, on_delete=models.CASCADE, related_name='featured_for')
+    position = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("candidate", "repository")]
+        indexes = [models.Index(fields=["candidate", "position"])]
+
 # 
 # 
 # =

@@ -38,6 +38,9 @@ urlpatterns = [
 
     # Education endpoints
     path('profile/education', views.education_list_create, name='education-list-create'),
+    # GitHub OAuth connect/callback (UC-114)
+    path('github/connect/', views.github_connect, name='github_connect'),
+    path('github/callback/', views.github_callback, name='github_callback'),
     path('profile/education/<int:education_id>', views.education_detail, name='education-detail'),
 
     # Projects endpoints
@@ -242,6 +245,16 @@ urlpatterns = [
     # Ensure exact-match export route is available for tests and clients
     re_path(r'^resume/export$', views.resume_export, name='resume-export-exact'),
     path('resume/export/ai', views.export_ai_resume, name='export-ai-resume'),
+
+    # UC-114: GitHub integration
+    path('github/connect/', views.github_connect, name='github-connect'),
+    path('github/callback/', views.github_callback, name='github-callback'),
+    path('github/repos/', views.github_repos, name='github-repos'),
+    path('github/featured/', views.github_featured_repositories, name='github-featured'),
+        path('github/contrib/summary/', views.github_contributions_summary, name='github-contrib-summary'),
+        path('github/contrib/commits/', views.github_total_commits, name='github_total_commits'),
+        path('github/contrib/commits-by-repo/', views.github_commits_by_repo, name='github_commits_by_repo'),
+    path('github/disconnect/', views.github_disconnect, name='github-disconnect'),
     
     # UC-063: Automated Company Research endpoints
     path('companies/<str:company_name>/research', views.automated_company_research, name='automated-company-research'),

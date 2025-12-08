@@ -1,149 +1,149 @@
-import { api } from './api';
+import apiSvc from './api';
 
 const base = '/contacts';
 
 export const contactsAPI = {
   list: async (q = '') => {
     const url = q ? `${base}?q=${encodeURIComponent(q)}` : base;
-    const res = await api.get(url);
+    const res = await apiSvc.http.get(url);
     return res.data;
   },
 
   create: async (payload) => {
-    const res = await api.post(base, payload);
+    const res = await apiSvc.http.post(base, payload);
     return res.data;
   },
 
   get: async (id) => {
-    const res = await api.get(`${base}/${id}`);
+    const res = await apiSvc.http.get(`${base}/${id}`);
     return res.data;
   },
 
   update: async (id, payload) => {
-    const res = await api.patch(`${base}/${id}`, payload);
+    const res = await apiSvc.http.patch(`${base}/${id}`, payload);
     return res.data;
   },
 
   remove: async (id) => {
-    const res = await api.delete(`${base}/${id}`);
+    const res = await apiSvc.http.delete(`${base}/${id}`);
     return res.data;
   },
 
   interactions: async (contactId) => {
-    const res = await api.get(`${base}/${contactId}/interactions`);
+    const res = await apiSvc.http.get(`${base}/${contactId}/interactions`);
     return res.data;
   },
   createInteraction: async (contactId, payload) => {
-    const res = await api.post(`${base}/${contactId}/interactions`, payload);
+    const res = await apiSvc.http.post(`${base}/${contactId}/interactions`, payload);
     return res.data;
   },
 
   notes: async (contactId) => {
-    const res = await api.get(`${base}/${contactId}/notes`);
+    const res = await apiSvc.http.get(`${base}/${contactId}/notes`);
     return res.data;
   },
   createNote: async (contactId, payload) => {
-    const res = await api.post(`${base}/${contactId}/notes`, payload);
+    const res = await apiSvc.http.post(`${base}/${contactId}/notes`, payload);
     return res.data;
   },
 
   reminders: async (contactId) => {
-    const res = await api.get(`${base}/${contactId}/reminders`);
+    const res = await apiSvc.http.get(`${base}/${contactId}/reminders`);
     return res.data;
   }
   ,
   createReminder: async (contactId, payload) => {
-    const res = await api.post(`${base}/${contactId}/reminders`, payload);
+    const res = await apiSvc.http.post(`${base}/${contactId}/reminders`, payload);
     return res.data;
   }
   ,
   importStart: async (provider = 'google') => {
-    const res = await api.post(`${base}/import/start`, { provider });
+    const res = await apiSvc.http.post(`${base}/import/start`, { provider });
     return res.data;
   },
   getImports: async () => {
-    const res = await api.get(`${base}/imports`);
+    const res = await apiSvc.http.get(`${base}/imports`);
     return res.data;
   },
   getImport: async (jobId) => {
-    const res = await api.get(`${base}/import/${jobId}`);
+    const res = await apiSvc.http.get(`${base}/import/${jobId}`);
     return res.data;
   },
   importCallback: async (data) => {
-    const res = await api.post(`${base}/import/callback`, data);
+    const res = await apiSvc.http.post(`${base}/import/callback`, data);
     return res.data;
   }
   ,
   mutuals: async (contactId) => {
-    const res = await api.get(`${base}/${contactId}/mutuals`);
+    const res = await apiSvc.http.get(`${base}/${contactId}/mutuals`);
     return res.data;
   },
   
   addMutual: async (contactId, payload) => {
-    const res = await api.post(`${base}/${contactId}/mutuals`, payload);
+    const res = await apiSvc.http.post(`${base}/${contactId}/mutuals`, payload);
     return res.data;
   },
   
   removeMutual: async (contactId, mutualId) => {
-    const res = await api.delete(`${base}/${contactId}/mutuals/${mutualId}`);
+    const res = await apiSvc.http.delete(`${base}/${contactId}/mutuals/${mutualId}`);
     return res.data;
   },
   
   getAllReminders: async () => {
-    const res = await api.get(`${base}/reminders/all`);
+    const res = await apiSvc.http.get(`${base}/reminders/all`);
     return res.data;
   },
   
   dismissReminder: async (reminderId) => {
-    const res = await api.patch(`${base}/reminders/${reminderId}/dismiss`);
+    const res = await apiSvc.http.patch(`${base}/reminders/${reminderId}/dismiss`);
     return res.data;
   },
 
   maintenanceInsights: async () => {
-    const res = await api.get(`${base}/maintenance/overview`);
+    const res = await apiSvc.http.get(`${base}/maintenance/overview`);
     return res.data;
   },
   
   generateCheckInReminders: async (contactIds = []) => {
     const payload = contactIds.length ? { contact_ids: contactIds } : {};
-    const res = await api.post(`${base}/maintenance/generate-reminders`, payload);
+    const res = await apiSvc.http.post(`${base}/maintenance/generate-reminders`, payload);
     return res.data;
   },
   
   logOutreach: async (contactId, payload) => {
-    const res = await api.post(`${base}/${contactId}/outreach`, payload);
+    const res = await apiSvc.http.post(`${base}/${contactId}/outreach`, payload);
     return res.data;
   },
   
   // Company links
   companyLinks: async (contactId) => {
-    const res = await api.get(`${base}/${contactId}/company-links`);
+    const res = await apiSvc.http.get(`${base}/${contactId}/company-links`);
     return res.data;
   },
   
   addCompanyLink: async (contactId, payload) => {
-    const res = await api.post(`${base}/${contactId}/company-links`, payload);
+    const res = await apiSvc.http.post(`${base}/${contactId}/company-links`, payload);
     return res.data;
   },
   
   removeCompanyLink: async (contactId, linkId) => {
-    const res = await api.delete(`${base}/${contactId}/company-links/${linkId}`);
+    const res = await apiSvc.http.delete(`${base}/${contactId}/company-links/${linkId}`);
     return res.data;
   },
   
   // Job links
   jobLinks: async (contactId) => {
-    const res = await api.get(`${base}/${contactId}/job-links`);
+    const res = await apiSvc.http.get(`${base}/${contactId}/job-links`);
     return res.data;
   },
   
   addJobLink: async (contactId, payload) => {
-    const res = await api.post(`${base}/${contactId}/job-links`, payload);
+    const res = await apiSvc.http.post(`${base}/${contactId}/job-links`, payload);
     return res.data;
   },
   
   removeJobLink: async (contactId, linkId) => {
-    const res = await api.delete(`${base}/${contactId}/job-links/${linkId}`);
+    const res = await apiSvc.http.delete(`${base}/${contactId}/job-links/${linkId}`);
     return res.data;
   }
 };
