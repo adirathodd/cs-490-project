@@ -3,6 +3,33 @@
 from django.db import migrations
 
 
+def safe_remove_constraint(table_name, constraint_name):
+    """Generate SQL to safely remove a constraint if it exists."""
+    return f"""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.table_constraints 
+                WHERE constraint_name = '{constraint_name}' AND table_name = '{table_name}'
+            ) THEN
+                ALTER TABLE "{table_name}" DROP CONSTRAINT "{constraint_name}";
+            END IF;
+        END $$;
+    """
+
+
+def safe_rename_index(old_name, new_name):
+    """Generate SQL to safely rename an index, handling cases where it may already be renamed."""
+    return f"""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = '{old_name}') THEN
+                ALTER INDEX "{old_name}" RENAME TO "{new_name}";
+            END IF;
+        END $$;
+    """
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,72 +37,67 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveConstraint(
-            model_name='teamcandidateaccess',
-            name='core_teamcandidate_team_cand_member_uniq',
+        # Remove constraints safely
+        migrations.RunSQL(
+            safe_remove_constraint('core_teamcandidateaccess', 'core_teamcandidate_team_cand_member_uniq'),
+            migrations.RunSQL.noop,
         ),
-        migrations.RemoveConstraint(
-            model_name='teammembership',
-            name='core_teammembership_team_user_uniq',
+        migrations.RunSQL(
+            safe_remove_constraint('core_teammembership', 'core_teammembership_team_user_uniq'),
+            migrations.RunSQL.noop,
         ),
-        migrations.RenameIndex(
-            model_name='linkedinintegration',
-            new_name='core_linked_user_id_c0550f_idx',
-            old_name='core_linked_user_id_idx',
+        # Rename indexes safely - LinkedInIntegration
+        migrations.RunSQL(
+            safe_rename_index('core_linked_user_id_idx', 'core_linked_user_id_c0550f_idx'),
+            migrations.RunSQL.noop,
         ),
-        migrations.RenameIndex(
-            model_name='linkedinintegration',
-            new_name='core_linked_linkedi_290f08_idx',
-            old_name='core_linked_linkedin_id_idx',
+        migrations.RunSQL(
+            safe_rename_index('core_linked_linkedin_id_idx', 'core_linked_linkedi_290f08_idx'),
+            migrations.RunSQL.noop,
         ),
-        migrations.RenameIndex(
-            model_name='teamaccount',
-            new_name='core_teamac_owner_i_b66d84_idx',
-            old_name='core_teamac_owner_c1fe62_idx',
+        # TeamAccount
+        migrations.RunSQL(
+            safe_rename_index('core_teamac_owner_c1fe62_idx', 'core_teamac_owner_i_b66d84_idx'),
+            migrations.RunSQL.noop,
         ),
-        migrations.RenameIndex(
-            model_name='teamaccount',
-            new_name='core_teamac_subscri_2eb392_idx',
-            old_name='core_teamac_subscri_5df6f4_idx',
+        migrations.RunSQL(
+            safe_rename_index('core_teamac_subscri_5df6f4_idx', 'core_teamac_subscri_2eb392_idx'),
+            migrations.RunSQL.noop,
         ),
-        migrations.RenameIndex(
-            model_name='teamcandidateaccess',
-            new_name='core_teamca_team_id_514ea0_idx',
-            old_name='core_teamcan_team_id_a24e14_idx',
+        # TeamCandidateAccess
+        migrations.RunSQL(
+            safe_rename_index('core_teamcan_team_id_a24e14_idx', 'core_teamca_team_id_514ea0_idx'),
+            migrations.RunSQL.noop,
         ),
-        migrations.RenameIndex(
-            model_name='teamcandidateaccess',
-            new_name='core_teamca_team_id_854e7a_idx',
-            old_name='core_teamcan_team_id_3f814f_idx',
+        migrations.RunSQL(
+            safe_rename_index('core_teamcan_team_id_3f814f_idx', 'core_teamca_team_id_854e7a_idx'),
+            migrations.RunSQL.noop,
         ),
-        migrations.RenameIndex(
-            model_name='teaminvitation',
-            new_name='core_teamin_team_id_5ecc95_idx',
-            old_name='core_teamin_team_id_2e101d_idx',
+        # TeamInvitation
+        migrations.RunSQL(
+            safe_rename_index('core_teamin_team_id_2e101d_idx', 'core_teamin_team_id_5ecc95_idx'),
+            migrations.RunSQL.noop,
         ),
-        migrations.RenameIndex(
-            model_name='teaminvitation',
-            new_name='core_teamin_email_5c2405_idx',
-            old_name='core_teamin_email_031d6b_idx',
+        migrations.RunSQL(
+            safe_rename_index('core_teamin_email_031d6b_idx', 'core_teamin_email_5c2405_idx'),
+            migrations.RunSQL.noop,
         ),
-        migrations.RenameIndex(
-            model_name='teammembership',
-            new_name='core_teamme_team_id_31ddcd_idx',
-            old_name='core_teammem_team_id_930156_idx',
+        # TeamMembership
+        migrations.RunSQL(
+            safe_rename_index('core_teammem_team_id_930156_idx', 'core_teamme_team_id_31ddcd_idx'),
+            migrations.RunSQL.noop,
         ),
-        migrations.RenameIndex(
-            model_name='teammembership',
-            new_name='core_teamme_team_id_683f95_idx',
-            old_name='core_teammem_team_id_3e0925_idx',
+        migrations.RunSQL(
+            safe_rename_index('core_teammem_team_id_3e0925_idx', 'core_teamme_team_id_683f95_idx'),
+            migrations.RunSQL.noop,
         ),
-        migrations.RenameIndex(
-            model_name='teammembership',
-            new_name='core_teamme_user_id_18ce5c_idx',
-            old_name='core_teammem_user_id_3c5672_idx',
+        migrations.RunSQL(
+            safe_rename_index('core_teammem_user_id_3c5672_idx', 'core_teamme_user_id_18ce5c_idx'),
+            migrations.RunSQL.noop,
         ),
-        migrations.RenameIndex(
-            model_name='teammessage',
-            new_name='core_teamme_team_id_f5dd70_idx',
-            old_name='core_teammem_team_id_fc0b5d_idx',
+        # TeamMessage
+        migrations.RunSQL(
+            safe_rename_index('core_teammem_team_id_fc0b5d_idx', 'core_teamme_team_id_f5dd70_idx'),
+            migrations.RunSQL.noop,
         ),
     ]
