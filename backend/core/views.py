@@ -17985,12 +17985,14 @@ def gmail_scan_now(request):
     from core.tasks import scan_gmail_emails
     
     integration = GmailIntegration.objects.filter(
-        user=request.user,
-        status='connected'
-    ).first()
+        user=request.user
+    ).exclude(status='disconnected').first()
     
     if not integration:
         return Response({'error': 'Gmail not connected'}, status=400)
+    
+    if not integration.scan_enabled:
+        return Response({'error': 'Email scanning not enabled'}, status=400)
     
     if CELERY_AVAILABLE:
         scan_gmail_emails.delay(integration.id)
