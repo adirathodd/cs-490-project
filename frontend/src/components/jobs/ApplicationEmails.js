@@ -47,28 +47,6 @@ const ApplicationEmails = ({ jobId, onRefresh, showSearch = false }) => {
     setDateTo('');
   };
 
-  const handleApplyStatus = async (emailId) => {
-    try {
-      await emailAPI.applyStatusSuggestion(emailId);
-      await loadEmails();
-      setToast({
-        isOpen: true,
-        message: 'Status applied successfully',
-        type: 'success'
-      });
-      if (onRefresh) {
-        onRefresh();
-      }
-    } catch (error) {
-      console.error('Failed to apply status:', error);
-      setToast({
-        isOpen: true,
-        message: 'Failed to apply status',
-        type: 'error'
-      });
-    }
-  };
-
   const handleDismiss = async (emailId) => {
     try {
       await emailAPI.dismissEmail(emailId);
@@ -199,11 +177,6 @@ const ApplicationEmails = ({ jobId, onRefresh, showSearch = false }) => {
                   {new Date(email.received_at).toLocaleDateString()}
                 </span>
               </div>
-              {email.suggested_job_status && (
-                <span className={`status-badge status-${email.suggested_job_status}`}>
-                  Suggested: {email.suggested_job_status}
-                </span>
-              )}
             </div>
             
             <div className="email-subject">
@@ -217,32 +190,7 @@ const ApplicationEmails = ({ jobId, onRefresh, showSearch = false }) => {
               <div className="email-snippet">{email.snippet}</div>
             )}
             
-            {email.suggested_job_status && (
-              <div className="email-actions">
-                <button 
-                  onClick={() => handleApplyStatus(email.id)}
-                  className="btn-apply-status"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
-                  Apply Suggested Status
-                </button>
-                <button 
-                  onClick={() => handleDismiss(email.id)}
-                  className="btn-dismiss"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 6L6 18M6 6l12 12"></path>
-                  </svg>
-                  Dismiss
-                </button>
-              </div>
-            )}
-            
             <div className="email-footer">
-              {email.confidence_score && (
-                <span className="confidence-score">
                   Confidence: {(email.confidence_score * 100).toFixed(0)}%
                 </span>
               )}

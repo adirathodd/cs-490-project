@@ -1936,13 +1936,11 @@ class GmailIntegrationSerializer(serializers.ModelSerializer):
     """Serializer for Gmail integration settings"""
     
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    scan_frequency_display = serializers.CharField(source='get_scan_frequency_display', read_only=True)
     
     class Meta:
         model = GmailIntegration
         fields = [
-            'id', 'status', 'status_display', 'scan_enabled', 'scan_frequency', 
-            'scan_frequency_display', 'auto_update_status', 'gmail_address', 
+            'id', 'status', 'status_display', 'scan_enabled', 'gmail_address', 
             'last_scan_at', 'emails_scanned_count', 'last_error', 
             'created_at', 'updated_at'
         ]

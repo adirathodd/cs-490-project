@@ -18007,43 +18007,6 @@ def gmail_scan_now(request):
     return Response({'status': 'scan_started'})
 
 
-@api_view(['PATCH'])
-@permission_classes([IsAuthenticated])
-def gmail_update_preferences(request):
-    """Update email scanning preferences"""
-    from core.models import GmailIntegration
-    from core.serializers import GmailIntegrationSerializer
-    
-    integration = GmailIntegration.objects.filter(
-        user=request.user,
-        status='connected'
-    ).first()
-    
-    if not integration:
-        return Response({'error': 'Gmail not connected'}, status=400)
-    
-    scan_frequency = request.data.get('scan_frequency')
-    auto_update_status = request.data.get('auto_update_status')
-    
-    # Validate scan_frequency
-    valid_frequencies = ['realtime', 'hourly', 'daily', 'manual']
-    if scan_frequency and scan_frequency not in valid_frequencies:
-        return Response({
-            'error': f'Invalid scan_frequency. Must be one of: {", ".join(valid_frequencies)}'
-        }, status=400)
-    
-    # Update fields if provided
-    if scan_frequency is not None:
-        integration.scan_frequency = scan_frequency
-    if auto_update_status is not None:
-        integration.auto_update_status = bool(auto_update_status)
-    
-    integration.save()
-    
-    serializer = GmailIntegrationSerializer(integration)
-    return Response(serializer.data)
-
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def application_emails_list(request):
@@ -18141,36 +18104,6 @@ def link_email_to_job(request, email_id):
     email.save(update_fields=['job', 'is_linked', 'updated_at'])
     
     return Response(ApplicationEmailSerializer(email).data)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def apply_email_status_suggestion(request, email_id):
-    """Apply suggested status update from email"""
-    from core.models import ApplicationEmail, JobEntry
-    from core.serializers import JobEntrySummarySerializer
-    
-    email = ApplicationEmail.objects.filter(id=email_id, user=request.user).first()
-    if not email:
-        return Response({'error': 'Email not found'}, status=404)
-    
-    if not email.job:
-        return Response({'error': 'Email not linked to job'}, status=400)
-    
-    if not email.suggested_job_status:
-        return Response({'error': 'No status suggestion available'}, status=400)
-    
-    job = email.job
-    job.status = email.suggested_job_status
-    job.save(update_fields=['status', 'updated_at'])
-    
-    email.status_applied = True
-    email.save(update_fields=['status_applied', 'updated_at'])
-    
-    return Response({
-        'status': 'applied',
-        'job': JobEntrySummarySerializer(job).data
-    })
 
 
 @api_view(['POST'])
