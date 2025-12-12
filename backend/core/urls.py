@@ -262,6 +262,7 @@ urlpatterns = [
     path('companies/<str:company_name>/research/refresh', views.refresh_company_research, name='refresh-company-research'),
     
     # UC-067: Salary Research and Benchmarking endpoints
+    path('jobs/<int:job_id>/salary-benchmarks/', views.salary_benchmarks, name='salary-benchmarks'),
     path('jobs/<int:job_id>/salary-research/', views.salary_research, name='salary-research'),
     path('jobs/<int:job_id>/salary-research/export/', views.salary_research_export, name='salary-research-export'),
     path('jobs/<int:job_id>/salary-negotiation/', views.salary_negotiation_prep, name='salary-negotiation-prep'),

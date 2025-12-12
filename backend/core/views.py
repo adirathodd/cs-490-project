@@ -31,6 +31,7 @@ from django.utils.text import slugify
 from django.conf import settings
 from core.authentication import FirebaseAuthentication
 from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_GEMINI, SERVICE_GITHUB
+from core.salary_benchmarks import salary_benchmark_service
 from django.views.decorators.http import require_GET
 import os
 import requests
@@ -8748,6 +8749,54 @@ def refresh_company_research(request, company_name):
         )
 
 
+#
+#
+# =
+# Salary Benchmarks (BLS + community)
+# =
+#
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def salary_benchmarks(request, job_id: int):
+    """
+    Lightweight salary benchmark lookup for a job entry.
+
+    Query params:
+    - refresh=true to bypass cache
+    """
+    from core.models import CandidateProfile, JobEntry
+
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except (CandidateProfile.DoesNotExist, JobEntry.DoesNotExist):
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+    location = job.location or profile.get_full_location() or 'United States'
+    result = salary_benchmark_service.get_benchmarks(
+        job_title=job.title,
+        location=location,
+        experience_level=profile.experience_level,
+        force_refresh=force_refresh,
+    )
+
+    payload = result.as_dict()
+    payload.update(
+        {
+            "job_title": job.title,
+            "location_used": location,
+            "experience_level": profile.experience_level,
+        }
+    )
+    return Response(payload, status=status.HTTP_200_OK)
+
+
 # 
 # 
 # =
@@ -8801,11 +8850,18 @@ def salary_research(request, job_id):
     if request.method == 'GET':
         # Return existing research or indicate none exists
         research = SalaryResearch.objects.filter(job=job).order_by('-created_at').first()
+        benchmark = salary_benchmark_service.get_benchmarks(
+            job_title=job.title,
+            location=job.location or 'Remote',
+            experience_level=profile.experience_level,
+        )
         
         if not research:
             return Response({
                 'has_data': False,
-                'message': 'No salary research available. Trigger research to generate data.'
+                'message': 'No salary research available. Trigger research to generate data.',
+                'benchmarks': benchmark.as_dict(),
+                'benchmark_location': job.location or 'Remote',
             }, status=status.HTTP_200_OK)
         
         return Response({
@@ -8841,6 +8897,8 @@ def salary_research(request, job_id):
             'historical_data': research.historical_data,
             'created_at': research.created_at.isoformat(),
             'updated_at': research.updated_at.isoformat(),
+            'benchmarks': benchmark.as_dict(),
+            'benchmark_location': job.location or 'Remote',
         }, status=status.HTTP_200_OK)
     
     # POST: Trigger new research
