@@ -191,9 +191,6 @@ const ApplicationEmails = ({ jobId, onRefresh, showSearch = false }) => {
             )}
             
             <div className="email-footer">
-                  Confidence: {(email.confidence_score * 100).toFixed(0)}%
-                </span>
-              )}
               <a 
                 href={email.gmail_url} 
                 target="_blank" 

@@ -274,11 +274,6 @@ const UnlinkedEmails = () => {
               </div>
               
               <div className="unlinked-email-footer">
-                {email.confidence_score && (
-                  <span className="confidence-score">
-                    Confidence: {(email.confidence_score * 100).toFixed(0)}%
-                  </span>
-                )}
                 <a 
                   href={email.gmail_url} 
                   target="_blank" 
