@@ -4,6 +4,7 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from datetime import timedelta
 import secrets
 import uuid
 
@@ -5722,3 +5723,251 @@ class APIWeeklyReport(models.Model):
     
     def __str__(self):
         return f"Weekly Report {self.week_start} to {self.week_end}"
+
+
+class ScheduledSubmission(models.Model):
+    """
+    UC-124: Scheduled application submissions with timing optimization
+    
+    Allows users to schedule application submissions for future dates/times
+    and track submission history with timing analytics.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('scheduled', 'Scheduled'),
+        ('submitted', 'Submitted'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    candidate = models.ForeignKey(
+        CandidateProfile,
+        on_delete=models.CASCADE,
+        related_name='scheduled_submissions'
+    )
+    job = models.ForeignKey(
+        JobEntry,
+        on_delete=models.CASCADE,
+        related_name='scheduled_submissions'
+    )
+    application_package = models.ForeignKey(
+        'ApplicationPackage',
+        on_delete=models.CASCADE,
+        related_name='scheduled_submissions',
+        null=True,
+        blank=True
+    )
+    
+    # Scheduling details
+    scheduled_datetime = models.DateTimeField(
+        help_text='When to submit the application'
+    )
+    timezone = models.CharField(
+        max_length=50,
+        default='UTC',
+        help_text="User's timezone for scheduling"
+    )
+    submission_method = models.CharField(
+        max_length=50,
+        default='email',
+        help_text='How to submit (email, portal, etc.)'
+    )
+    
+    # Status tracking
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending'
+    )
+    priority = models.PositiveSmallIntegerField(
+        default=5,
+        help_text='Submission priority (1=highest)'
+    )
+    
+    # Retry logic
+    retry_count = models.PositiveSmallIntegerField(default=0)
+    max_retries = models.PositiveSmallIntegerField(default=3)
+    
+    # Submission details
+    submission_parameters = models.JSONField(
+        default=dict,
+        help_text='Parameters for submission'
+    )
+    submission_result = models.JSONField(
+        default=dict,
+        help_text='Result of submission attempt'
+    )
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    error_message = models.TextField(blank=True)
+    
+    # Timing metadata for analytics
+    day_of_week = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text='Day of week when submitted (0=Monday, 6=Sunday)'
+    )
+    hour_of_day = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text='Hour of day when submitted (0-23)'
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['scheduled_datetime', 'priority']
+        indexes = [
+            models.Index(fields=['candidate', 'status']),
+            models.Index(fields=['scheduled_datetime', 'status']),
+            models.Index(fields=['job', 'status']),
+            models.Index(fields=['candidate', 'day_of_week']),
+            models.Index(fields=['candidate', 'hour_of_day']),
+        ]
+    
+    def __str__(self):
+        return f"Scheduled submission for {self.job.title} at {self.scheduled_datetime}"
+    
+    def save(self, *args, **kwargs):
+        # Update timing metadata when submitted
+        if self.status == 'submitted' and self.submitted_at:
+            self.day_of_week = self.submitted_at.weekday()
+            self.hour_of_day = self.submitted_at.hour
+        super().save(*args, **kwargs)
+    
+    def mark_submitted(self):
+        """Mark this submission as completed"""
+        self.status = 'submitted'
+        self.submitted_at = timezone.now()
+        self.save(update_fields=['status', 'submitted_at', 'day_of_week', 'hour_of_day'])
+        
+        # Also update the job status
+        if self.job.status == 'interested':
+            self.job.status = 'applied'
+            self.job.application_submitted_at = self.submitted_at
+            self.job.save(update_fields=['status', 'application_submitted_at'])
+    
+    def cancel(self, reason=''):
+        """Cancel this scheduled submission"""
+        self.status = 'cancelled'
+        self.error_message = reason
+        self.save(update_fields=['status', 'error_message'])
+
+
+class FollowUpReminder(models.Model):
+    """
+    UC-124: Follow-up reminders for applications and deadlines
+    
+    Manages reminders for application deadlines, follow-ups, and other
+    time-sensitive application-related tasks.
+    """
+    REMINDER_TYPES = [
+        ('application_deadline', 'Application Deadline'),
+        ('application_followup', 'Application Follow-up'),
+        ('interview_followup', 'Interview Follow-up'),
+        ('offer_response', 'Offer Response'),
+        ('thank_you', 'Thank You Note'),
+        ('status_inquiry', 'Status Inquiry'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('sent', 'Sent'),
+        ('dismissed', 'Dismissed'),
+        ('failed', 'Failed'),
+    ]
+    
+    candidate = models.ForeignKey(
+        CandidateProfile,
+        on_delete=models.CASCADE,
+        related_name='followup_reminders'
+    )
+    job = models.ForeignKey(
+        JobEntry,
+        on_delete=models.CASCADE,
+        related_name='followup_reminders'
+    )
+    
+    # Reminder details
+    reminder_type = models.CharField(
+        max_length=30,
+        choices=REMINDER_TYPES
+    )
+    subject = models.CharField(
+        max_length=200,
+        help_text='Email subject or reminder title'
+    )
+    message_template = models.TextField(
+        help_text='Template message with placeholders'
+    )
+    
+    # Scheduling
+    scheduled_datetime = models.DateTimeField(
+        help_text='When to send the reminder'
+    )
+    interval_days = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text='Days between reminders for recurring'
+    )
+    is_recurring = models.BooleanField(default=False)
+    max_occurrences = models.PositiveSmallIntegerField(
+        default=1,
+        help_text='Maximum times to send'
+    )
+    occurrence_count = models.PositiveSmallIntegerField(default=0)
+    
+    # Status tracking
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending'
+    )
+    sent_at = models.DateTimeField(null=True, blank=True)
+    response_received = models.BooleanField(default=False)
+    response_date = models.DateTimeField(null=True, blank=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['scheduled_datetime']
+        indexes = [
+            models.Index(fields=['candidate', 'status']),
+            models.Index(fields=['scheduled_datetime', 'status']),
+            models.Index(fields=['job', 'reminder_type']),
+        ]
+    
+    def __str__(self):
+        return f"{self.get_reminder_type_display()} for {self.job.title} at {self.scheduled_datetime}"
+    
+    def mark_sent(self):
+        """Mark reminder as sent"""
+        self.status = 'sent'
+        self.sent_at = timezone.now()
+        self.occurrence_count += 1
+        self.save(update_fields=['status', 'sent_at', 'occurrence_count'])
+        
+        # Schedule next occurrence if recurring
+        if self.is_recurring and self.occurrence_count < self.max_occurrences:
+            next_reminder = FollowUpReminder.objects.create(
+                candidate=self.candidate,
+                job=self.job,
+                reminder_type=self.reminder_type,
+                subject=self.subject,
+                message_template=self.message_template,
+                scheduled_datetime=self.scheduled_datetime + timedelta(days=self.interval_days),
+                interval_days=self.interval_days,
+                is_recurring=True,
+                max_occurrences=self.max_occurrences,
+                occurrence_count=self.occurrence_count
+            )
+            return next_reminder
+        return None
+    
+    def dismiss(self):
+        """Dismiss this reminder"""
+        self.status = 'dismissed'
+        self.save(update_fields=['status'])

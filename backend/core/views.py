@@ -77,6 +77,12 @@ from core.serializers import (
     JobEntrySummarySerializer,
     CandidatePublicProfileSerializer,
     CalendarIntegrationSerializer,
+    ScheduledSubmissionSerializer,
+    ScheduledSubmissionCreateSerializer,
+    FollowUpReminderSerializer,
+    FollowUpReminderCreateSerializer,
+    ApplicationTimingBestPracticesSerializer,
+    ApplicationTimingAnalyticsSerializer,
 )
 from core.serializers import (
     ContactSerializer,
@@ -18691,5 +18697,489 @@ def gmail_scan_logs(request):
         'status': log.status,
         'error_message': log.error_message
     } for log in logs])
+
+
+# ========================================
+# UC-124: Job Application Timing Optimizer
+# ========================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def scheduled_submissions(request):
+    """
+    GET: List all scheduled submissions for the authenticated user
+    POST: Create a new scheduled submission
+    """
+    from core.models import ScheduledSubmission, CandidateProfile
+    
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+    
+    if request.method == 'GET':
+        status_filter = request.query_params.get('status')
+        submissions = ScheduledSubmission.objects.filter(candidate=candidate)
+        
+        if status_filter:
+            submissions = submissions.filter(status=status_filter)
+        
+        submissions = submissions.select_related('job', 'application_package').order_by('scheduled_datetime')
+        serializer = ScheduledSubmissionSerializer(submissions, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = ScheduledSubmissionCreateSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            submission = serializer.save()
+            return Response(
+                ScheduledSubmissionSerializer(submission).data,
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def scheduled_submission_detail(request, submission_id):
+    """
+    GET: Retrieve a specific scheduled submission
+    PUT: Update a scheduled submission
+    DELETE: Delete a scheduled submission
+    """
+    from core.models import ScheduledSubmission, CandidateProfile
+    
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+    
+    try:
+        submission = ScheduledSubmission.objects.get(id=submission_id, candidate=candidate)
+    except ScheduledSubmission.DoesNotExist:
+        return Response({'error': 'Scheduled submission not found'}, status=404)
+    
+    if request.method == 'GET':
+        serializer = ScheduledSubmissionSerializer(submission)
+        return Response(serializer.data)
+    
+    elif request.method == 'PUT':
+        serializer = ScheduledSubmissionSerializer(submission, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        submission.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def cancel_scheduled_submission(request, submission_id):
+    """Cancel a scheduled submission"""
+    from core.models import ScheduledSubmission, CandidateProfile
+    
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+    
+    try:
+        submission = ScheduledSubmission.objects.get(id=submission_id, candidate=candidate)
+    except ScheduledSubmission.DoesNotExist:
+        return Response({'error': 'Scheduled submission not found'}, status=404)
+    
+    reason = request.data.get('reason', 'Cancelled by user')
+    submission.cancel(reason)
+    
+    return Response(ScheduledSubmissionSerializer(submission).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def execute_scheduled_submission(request, submission_id):
+    """Execute a scheduled submission immediately"""
+    from core.models import ScheduledSubmission, CandidateProfile
+    
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+    
+    try:
+        submission = ScheduledSubmission.objects.get(id=submission_id, candidate=candidate)
+    except ScheduledSubmission.DoesNotExist:
+        return Response({'error': 'Scheduled submission not found'}, status=404)
+    
+    if submission.status not in ['pending', 'scheduled', 'failed']:
+        return Response(
+            {'error': f'Cannot execute submission with status: {submission.status}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Mark as submitted
+    submission.mark_submitted()
+    
+    return Response(ScheduledSubmissionSerializer(submission).data)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def followup_reminders(request):
+    """
+    GET: List all reminders for the authenticated user
+    POST: Create a new reminder
+    """
+    from core.models import FollowUpReminder, CandidateProfile
+    
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+    
+    if request.method == 'GET':
+        status_filter = request.query_params.get('status')
+        reminder_type = request.query_params.get('type')
+        
+        reminders = FollowUpReminder.objects.filter(candidate=candidate)
+        
+        if status_filter:
+            reminders = reminders.filter(status=status_filter)
+        if reminder_type:
+            reminders = reminders.filter(reminder_type=reminder_type)
+        
+        reminders = reminders.select_related('job').order_by('scheduled_datetime')
+        serializer = FollowUpReminderSerializer(reminders, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = FollowUpReminderCreateSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            reminder = serializer.save()
+            return Response(
+                FollowUpReminderSerializer(reminder).data,
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def followup_reminder_detail(request, reminder_id):
+    """
+    GET: Retrieve a specific reminder
+    PUT: Update a reminder
+    DELETE: Delete a reminder
+    """
+    from core.models import FollowUpReminder, CandidateProfile
+    
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+    
+    try:
+        reminder = FollowUpReminder.objects.get(id=reminder_id, candidate=candidate)
+    except FollowUpReminder.DoesNotExist:
+        return Response({'error': 'Reminder not found'}, status=404)
+    
+    if request.method == 'GET':
+        serializer = FollowUpReminderSerializer(reminder)
+        return Response(serializer.data)
+    
+    elif request.method == 'PUT':
+        serializer = FollowUpReminderSerializer(reminder, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        reminder.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def dismiss_reminder(request, reminder_id):
+    """Dismiss a reminder"""
+    from core.models import FollowUpReminder, CandidateProfile
+    
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+    
+    try:
+        reminder = FollowUpReminder.objects.get(id=reminder_id, candidate=candidate)
+    except FollowUpReminder.DoesNotExist:
+        return Response({'error': 'Reminder not found'}, status=404)
+    
+    reminder.dismiss()
+    return Response(FollowUpReminderSerializer(reminder).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def application_timing_best_practices(request):
+    """
+    Get general best practices for application timing
+    """
+    best_practices = {
+        'best_days': [
+            {'day': 'Tuesday', 'reason': 'High engagement, employers reviewing applications'},
+            {'day': 'Wednesday', 'reason': 'Mid-week sweet spot, good response rates'},
+            {'day': 'Thursday', 'reason': 'Strong day before weekend planning'},
+        ],
+        'best_hours': [
+            {'time_range': '8:00 AM - 10:00 AM', 'reason': 'Start of workday, fresh inbox'},
+            {'time_range': '1:00 PM - 3:00 PM', 'reason': 'Post-lunch, active review time'},
+        ],
+        'avoid_times': [
+            'Late Friday afternoons (after 3 PM)',
+            'Weekends (Saturday and Sunday)',
+            'Late evenings (after 6 PM)',
+            'Early mornings (before 8 AM)',
+            'Holiday periods',
+        ],
+        'general_tips': [
+            'Apply within the first 24-48 hours of posting when possible',
+            'Avoid Monday mornings when inboxes are flooded',
+            'Consider company timezone for international applications',
+            'Submit earlier in the month when hiring budgets are fresh',
+            'Be consistent with your application schedule',
+        ],
+        'user_patterns': None  # Will be filled by analytics endpoint
+    }
+    
+    serializer = ApplicationTimingBestPracticesSerializer(best_practices)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def application_timing_analytics(request):
+    """
+    Get user's personal application timing analytics and response patterns
+    """
+    from core.models import ScheduledSubmission, JobEntry, CandidateProfile
+    from django.db.models import Count, Avg, Q
+    from collections import defaultdict
+    
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+    
+    # Get all submitted applications
+    submissions = ScheduledSubmission.objects.filter(
+        candidate=candidate,
+        status='submitted',
+        submitted_at__isnull=False
+    ).select_related('job')
+    
+    # Also consider jobs marked as applied
+    applied_jobs = JobEntry.objects.filter(
+        candidate=candidate,
+        status__in=['applied', 'phone_screen', 'interview', 'offer'],
+        application_submitted_at__isnull=False
+    )
+    
+    total_applications = submissions.count() + applied_jobs.count()
+    
+    if total_applications == 0:
+        return Response({
+            'total_applications': 0,
+            'response_rate_by_day': {},
+            'response_rate_by_hour': {},
+            'best_performing_day': None,
+            'best_performing_hour': None,
+            'submissions_by_day': {},
+            'submissions_by_hour': {},
+            'avg_days_to_response': None,
+            'recommendations': ['Apply to at least 5 jobs to start seeing personalized patterns']
+        })
+    
+    # Analyze by day of week
+    submissions_by_day = defaultdict(int)
+    responses_by_day = defaultdict(int)
+    
+    for submission in submissions:
+        day = submission.day_of_week
+        if day is not None:
+            submissions_by_day[day] += 1
+            # Check if job got response
+            if submission.job.first_response_at:
+                responses_by_day[day] += 1
+    
+    for job in applied_jobs:
+        if job.application_submitted_at:
+            day = job.application_submitted_at.weekday()
+            submissions_by_day[day] += 1
+            if job.first_response_at:
+                responses_by_day[day] += 1
+    
+    # Calculate response rates by day
+    response_rate_by_day = {}
+    day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    for day in range(7):
+        if submissions_by_day[day] > 0:
+            rate = (responses_by_day[day] / submissions_by_day[day]) * 100
+            response_rate_by_day[day_names[day]] = round(rate, 1)
+    
+    # Analyze by hour of day
+    submissions_by_hour = defaultdict(int)
+    responses_by_hour = defaultdict(int)
+    
+    for submission in submissions:
+        hour = submission.hour_of_day
+        if hour is not None:
+            submissions_by_hour[hour] += 1
+            if submission.job.first_response_at:
+                responses_by_hour[hour] += 1
+    
+    for job in applied_jobs:
+        if job.application_submitted_at:
+            hour = job.application_submitted_at.hour
+            submissions_by_hour[hour] += 1
+            if job.first_response_at:
+                responses_by_hour[hour] += 1
+    
+    # Calculate response rates by hour
+    response_rate_by_hour = {}
+    for hour in range(24):
+        if submissions_by_hour[hour] > 0:
+            rate = (responses_by_hour[hour] / submissions_by_hour[hour]) * 100
+            response_rate_by_hour[f"{hour:02d}:00"] = round(rate, 1)
+    
+    # Find best performing times
+    best_day = None
+    best_day_rate = 0
+    for day, rate in response_rate_by_day.items():
+        if rate > best_day_rate and submissions_by_day[day_names.index(day)] >= 2:  # At least 2 submissions
+            best_day = day
+            best_day_rate = rate
+    
+    best_hour = None
+    best_hour_rate = 0
+    for hour_str, rate in response_rate_by_hour.items():
+        hour = int(hour_str.split(':')[0])
+        if rate > best_hour_rate and submissions_by_hour[hour] >= 2:  # At least 2 submissions
+            best_hour = hour_str
+            best_hour_rate = rate
+    
+    # Calculate average days to response
+    jobs_with_response = applied_jobs.filter(
+        days_to_response__isnull=False
+    )
+    avg_days = jobs_with_response.aggregate(Avg('days_to_response'))['days_to_response__avg']
+    
+    # Generate recommendations
+    recommendations = []
+    if best_day:
+        recommendations.append(f"Your best response rate is on {best_day}s ({best_day_rate:.1f}%)")
+    if best_hour:
+        recommendations.append(f"You get better responses when applying around {best_hour}")
+    if avg_days:
+        recommendations.append(f"On average, you hear back in {int(avg_days)} days")
+    if total_applications < 10:
+        recommendations.append("Apply to more jobs to get more personalized insights")
+    
+    # Format submissions_by_day and submissions_by_hour for response
+    submissions_by_day_formatted = {day_names[k]: v for k, v in submissions_by_day.items()}
+    submissions_by_hour_formatted = {f"{k:02d}:00": v for k, v in submissions_by_hour.items()}
+    
+    analytics = {
+        'total_applications': total_applications,
+        'response_rate_by_day': response_rate_by_day,
+        'response_rate_by_hour': response_rate_by_hour,
+        'best_performing_day': {'day': best_day, 'rate': best_day_rate} if best_day else None,
+        'best_performing_hour': {'hour': best_hour, 'rate': best_hour_rate} if best_hour else None,
+        'submissions_by_day': submissions_by_day_formatted,
+        'submissions_by_hour': submissions_by_hour_formatted,
+        'avg_days_to_response': round(avg_days, 1) if avg_days else None,
+        'recommendations': recommendations
+    }
+    
+    serializer = ApplicationTimingAnalyticsSerializer(analytics)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def application_calendar_view(request):
+    """
+    Get calendar view of scheduled and completed applications
+    """
+    from core.models import ScheduledSubmission, JobEntry, CandidateProfile
+    from datetime import datetime, timedelta
+    
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+    
+    # Get date range from query params
+    start_date = request.query_params.get('start_date')
+    end_date = request.query_params.get('end_date')
+    
+    if not start_date or not end_date:
+        # Default to current month
+        now = timezone.now()
+        start_date = now.replace(day=1)
+        if now.month == 12:
+            end_date = now.replace(year=now.year + 1, month=1, day=1)
+        else:
+            end_date = now.replace(month=now.month + 1, day=1)
+    else:
+        start_date = parse_datetime(start_date)
+        end_date = parse_datetime(end_date)
+    
+    # Get scheduled submissions in range
+    scheduled = ScheduledSubmission.objects.filter(
+        candidate=candidate,
+        scheduled_datetime__range=[start_date, end_date]
+    ).select_related('job')
+    
+    # Get completed applications in range
+    completed = JobEntry.objects.filter(
+        candidate=candidate,
+        application_submitted_at__range=[start_date, end_date],
+        status__in=['applied', 'phone_screen', 'interview', 'offer']
+    )
+    
+    # Format for calendar
+    events = []
+    
+    for submission in scheduled:
+        events.append({
+            'id': f'scheduled-{submission.id}',
+            'type': 'scheduled',
+            'title': f"Submit: {submission.job.title}",
+            'company': submission.job.company_name,
+            'date': submission.scheduled_datetime,
+            'status': submission.status,
+            'job_id': submission.job.id,
+            'submission_id': submission.id,
+        })
+    
+    for job in completed:
+        events.append({
+            'id': f'completed-{job.id}',
+            'type': 'completed',
+            'title': f"Applied: {job.title}",
+            'company': job.company_name,
+            'date': job.application_submitted_at,
+            'status': job.status,
+            'job_id': job.id,
+        })
+    
+    return Response({
+        'start_date': start_date,
+        'end_date': end_date,
+        'events': events
+    })
 
 

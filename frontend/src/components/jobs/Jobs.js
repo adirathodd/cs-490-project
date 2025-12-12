@@ -1127,6 +1127,18 @@ const companyDropdownRef = useRef(null);
           </a>
           <a
             className="btn-secondary"
+            href="/jobs/timing-optimizer"
+            title="Application Timing Optimizer"
+            aria-label="Schedule submissions and manage application timing"
+            onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
+            style={{ ...responsiveActionButtonStyle, textDecoration: 'none', backgroundColor: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }}
+          >
+            <Icon name="clock" size="sm" />
+            Timing →
+          </a>
+          <a
+            className="btn-secondary"
             href="/documents?tab=templates"
             title="Cover Letter Templates"
             aria-label="Browse cover letter templates"

@@ -472,4 +472,16 @@ urlpatterns = [
     path('admin/api-monitoring/weekly-reports/', api_monitoring_views.api_weekly_reports, name='api-weekly-reports'),
     path('admin/api-monitoring/weekly-reports/<int:report_id>/', api_monitoring_views.api_weekly_report_detail, name='api-weekly-report-detail'),
 
+    # UC-124: Job Application Timing Optimizer
+    path('scheduled-submissions/', views.scheduled_submissions, name='scheduled-submissions'),
+    path('scheduled-submissions/<int:submission_id>/', views.scheduled_submission_detail, name='scheduled-submission-detail'),
+    path('scheduled-submissions/<int:submission_id>/cancel/', views.cancel_scheduled_submission, name='cancel-scheduled-submission'),
+    path('scheduled-submissions/<int:submission_id>/execute/', views.execute_scheduled_submission, name='execute-scheduled-submission'),
+    path('reminders/', views.followup_reminders, name='followup-reminders'),
+    path('reminders/<int:reminder_id>/', views.followup_reminder_detail, name='followup-reminder-detail'),
+    path('reminders/<int:reminder_id>/dismiss/', views.dismiss_reminder, name='dismiss-reminder'),
+    path('application-timing/best-practices/', views.application_timing_best_practices, name='application-timing-best-practices'),
+    path('application-timing/analytics/', views.application_timing_analytics, name='application-timing-analytics'),
+    path('application-timing/calendar/', views.application_calendar_view, name='application-calendar-view'),
+
 ]
