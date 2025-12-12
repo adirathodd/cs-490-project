@@ -18045,19 +18045,29 @@ def gmail_update_preferences(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def application_emails_list(request):
-    """List application-related emails"""
+    """List application-related emails with search and filtering"""
     from core.models import ApplicationEmail
     from core.serializers import ApplicationEmailSerializer
+    from django.db.models import Q
     
+    # Existing filters
     job_id = request.query_params.get('job_id')
     email_type = request.query_params.get('email_type')
     unlinked_only = request.query_params.get('unlinked_only') == 'true'
+    
+    # New search filters (UC-113)
+    search_query = request.query_params.get('search', '').strip()
+    company_name = request.query_params.get('company', '').strip()
+    date_from = request.query_params.get('date_from')
+    date_to = request.query_params.get('date_to')
+    sender = request.query_params.get('sender', '').strip()
     
     queryset = ApplicationEmail.objects.filter(
         user=request.user,
         is_dismissed=False
     )
     
+    # Apply filters
     if job_id:
         queryset = queryset.filter(job_id=job_id)
     
@@ -18066,6 +18076,33 @@ def application_emails_list(request):
     
     if unlinked_only:
         queryset = queryset.filter(is_linked=False, is_application_related=True)
+    
+    # Search across subject, sender name, and snippet
+    if search_query:
+        queryset = queryset.filter(
+            Q(subject__icontains=search_query) |
+            Q(sender_name__icontains=search_query) |
+            Q(sender_email__icontains=search_query) |
+            Q(snippet__icontains=search_query)
+        )
+    
+    # Filter by company name (searches job's company)
+    if company_name:
+        queryset = queryset.filter(job__company_name__icontains=company_name)
+    
+    # Filter by sender
+    if sender:
+        queryset = queryset.filter(
+            Q(sender_name__icontains=sender) |
+            Q(sender_email__icontains=sender)
+        )
+    
+    # Date range filters
+    if date_from:
+        queryset = queryset.filter(received_at__gte=date_from)
+    
+    if date_to:
+        queryset = queryset.filter(received_at__lte=date_to)
     
     queryset = queryset.select_related('job').order_by('-received_at')[:50]
     

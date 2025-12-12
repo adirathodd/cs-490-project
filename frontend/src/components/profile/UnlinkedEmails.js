@@ -11,6 +11,10 @@ const UnlinkedEmails = () => {
   const [linkingEmail, setLinkingEmail] = useState(null);
   const [toast, setToast] = useState({ isOpen: false, message: '', type: 'info' });
   const [isGmailConnected, setIsGmailConnected] = useState(false);
+  
+  // Search filters (UC-113)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -26,6 +30,11 @@ const UnlinkedEmails = () => {
     const handleGmailScan = () => {
       loadData();
     };
+    
+    // Reload when search query changes
+    if (isGmailConnected) {
+      loadData();
+    }
     
     window.addEventListener('gmail-disconnected', handleGmailDisconnect);
     window.addEventListener('gmail-scan-complete', handleGmailScan);
@@ -51,8 +60,13 @@ const UnlinkedEmails = () => {
       }
       
       setIsGmailConnected(true);
+      
+      // Build params with search filters
+      const params = { unlinked_only: true };
+      if (searchQuery) params.search = searchQuery;
+      
       const [emailsData, jobsData] = await Promise.all([
-        emailAPI.getEmails({ unlinked_only: true }),
+        emailAPI.getEmails(params),
         jobsAPI.getJobs()
       ]);
       setEmails(emailsData);
@@ -160,13 +174,44 @@ const UnlinkedEmails = () => {
   return (
     <>
       <div className="unlinked-emails">
-        <h3>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-            <polyline points="22,6 12,13 2,6"></polyline>
-          </svg>
-          Unlinked Emails ({emails.length})
-        </h3>
+        <div className="unlinked-emails-header">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+              <polyline points="22,6 12,13 2,6"></polyline>
+            </svg>
+            Unlinked Emails ({emails.length})
+          </h3>
+          <button 
+            className="toggle-filters-btn"
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"></path>
+            </svg>
+            {showFilters ? 'Hide Search' : 'Show Search'}
+          </button>
+        </div>
+        
+        {showFilters && (
+          <div className="unlinked-search-bar">
+            <input
+              type="text"
+              placeholder="Search unlinked emails by subject, sender, or company..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="unlinked-search-input"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="clear-search-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"></path>
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
+        
         <div className="unlinked-emails-list">
           {emails.map((email) => (
             <div key={email.id} className="unlinked-email-card">
