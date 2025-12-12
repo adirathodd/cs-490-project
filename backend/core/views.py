@@ -18518,12 +18518,14 @@ def gmail_scan_now(request):
     from core.tasks import scan_gmail_emails
     
     integration = GmailIntegration.objects.filter(
-        user=request.user,
-        status='connected'
-    ).first()
+        user=request.user
+    ).exclude(status='disconnected').first()
     
     if not integration:
         return Response({'error': 'Gmail not connected'}, status=400)
+    
+    if not integration.scan_enabled:
+        return Response({'error': 'Email scanning not enabled'}, status=400)
     
     if CELERY_AVAILABLE:
         scan_gmail_emails.delay(integration.id)
@@ -18538,59 +18540,32 @@ def gmail_scan_now(request):
     return Response({'status': 'scan_started'})
 
 
-@api_view(['PATCH'])
-@permission_classes([IsAuthenticated])
-def gmail_update_preferences(request):
-    """Update email scanning preferences"""
-    from core.models import GmailIntegration
-    from core.serializers import GmailIntegrationSerializer
-    
-    integration = GmailIntegration.objects.filter(
-        user=request.user,
-        status='connected'
-    ).first()
-    
-    if not integration:
-        return Response({'error': 'Gmail not connected'}, status=400)
-    
-    scan_frequency = request.data.get('scan_frequency')
-    auto_update_status = request.data.get('auto_update_status')
-    
-    # Validate scan_frequency
-    valid_frequencies = ['realtime', 'hourly', 'daily', 'manual']
-    if scan_frequency and scan_frequency not in valid_frequencies:
-        return Response({
-            'error': f'Invalid scan_frequency. Must be one of: {", ".join(valid_frequencies)}'
-        }, status=400)
-    
-    # Update fields if provided
-    if scan_frequency is not None:
-        integration.scan_frequency = scan_frequency
-    if auto_update_status is not None:
-        integration.auto_update_status = bool(auto_update_status)
-    
-    integration.save()
-    
-    serializer = GmailIntegrationSerializer(integration)
-    return Response(serializer.data)
-
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def application_emails_list(request):
-    """List application-related emails"""
+    """List application-related emails with search and filtering"""
     from core.models import ApplicationEmail
     from core.serializers import ApplicationEmailSerializer
+    from django.db.models import Q
     
+    # Existing filters
     job_id = request.query_params.get('job_id')
     email_type = request.query_params.get('email_type')
     unlinked_only = request.query_params.get('unlinked_only') == 'true'
+    
+    # New search filters (UC-113)
+    search_query = request.query_params.get('search', '').strip()
+    company_name = request.query_params.get('company', '').strip()
+    date_from = request.query_params.get('date_from')
+    date_to = request.query_params.get('date_to')
+    sender = request.query_params.get('sender', '').strip()
     
     queryset = ApplicationEmail.objects.filter(
         user=request.user,
         is_dismissed=False
     )
     
+    # Apply filters
     if job_id:
         queryset = queryset.filter(job_id=job_id)
     
@@ -18599,6 +18574,33 @@ def application_emails_list(request):
     
     if unlinked_only:
         queryset = queryset.filter(is_linked=False, is_application_related=True)
+    
+    # Search across subject, sender name, and snippet
+    if search_query:
+        queryset = queryset.filter(
+            Q(subject__icontains=search_query) |
+            Q(sender_name__icontains=search_query) |
+            Q(sender_email__icontains=search_query) |
+            Q(snippet__icontains=search_query)
+        )
+    
+    # Filter by company name (searches job's company)
+    if company_name:
+        queryset = queryset.filter(job__company_name__icontains=company_name)
+    
+    # Filter by sender
+    if sender:
+        queryset = queryset.filter(
+            Q(sender_name__icontains=sender) |
+            Q(sender_email__icontains=sender)
+        )
+    
+    # Date range filters
+    if date_from:
+        queryset = queryset.filter(received_at__gte=date_from)
+    
+    if date_to:
+        queryset = queryset.filter(received_at__lte=date_to)
     
     queryset = queryset.select_related('job').order_by('-received_at')[:50]
     
@@ -18635,36 +18637,6 @@ def link_email_to_job(request, email_id):
     email.save(update_fields=['job', 'is_linked', 'updated_at'])
     
     return Response(ApplicationEmailSerializer(email).data)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def apply_email_status_suggestion(request, email_id):
-    """Apply suggested status update from email"""
-    from core.models import ApplicationEmail, JobEntry
-    from core.serializers import JobEntrySummarySerializer
-    
-    email = ApplicationEmail.objects.filter(id=email_id, user=request.user).first()
-    if not email:
-        return Response({'error': 'Email not found'}, status=404)
-    
-    if not email.job:
-        return Response({'error': 'Email not linked to job'}, status=400)
-    
-    if not email.suggested_job_status:
-        return Response({'error': 'No status suggestion available'}, status=400)
-    
-    job = email.job
-    job.status = email.suggested_job_status
-    job.save(update_fields=['status', 'updated_at'])
-    
-    email.status_applied = True
-    email.save(update_fields=['status_applied', 'updated_at'])
-    
-    return Response({
-        'status': 'applied',
-        'job': JobEntrySummarySerializer(job).data
-    })
 
 
 @api_view(['POST'])

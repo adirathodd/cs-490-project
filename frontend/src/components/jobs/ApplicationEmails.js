@@ -3,19 +3,32 @@ import emailAPI from '../../services/emailAPI';
 import Toast from '../common/Toast';
 import './ApplicationEmails.css';
 
-const ApplicationEmails = ({ jobId, onRefresh }) => {
+const ApplicationEmails = ({ jobId, onRefresh, showSearch = false }) => {
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState({ isOpen: false, message: '', type: 'info' });
+  
+  // Search filters (UC-113)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [sender, setSender] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   useEffect(() => {
     loadEmails();
-  }, [jobId]);
+  }, [jobId, searchQuery, sender, dateFrom, dateTo]);
 
   const loadEmails = async () => {
     setLoading(true);
     try {
-      const params = jobId ? { job_id: jobId } : {};
+      const params = {};
+      if (jobId) params.job_id = jobId;
+      if (searchQuery) params.search = searchQuery;
+      if (sender) params.sender = sender;
+      if (dateFrom) params.date_from = dateFrom;
+      if (dateTo) params.date_to = dateTo;
+      
       const data = await emailAPI.getEmails(params);
       setEmails(data);
     } catch (error) {
@@ -26,27 +39,12 @@ const ApplicationEmails = ({ jobId, onRefresh }) => {
       setLoading(false);
     }
   };
-
-  const handleApplyStatus = async (emailId) => {
-    try {
-      await emailAPI.applyStatusSuggestion(emailId);
-      await loadEmails();
-      setToast({
-        isOpen: true,
-        message: 'Status applied successfully',
-        type: 'success'
-      });
-      if (onRefresh) {
-        onRefresh();
-      }
-    } catch (error) {
-      console.error('Failed to apply status:', error);
-      setToast({
-        isOpen: true,
-        message: 'Failed to apply status',
-        type: 'error'
-      });
-    }
+  
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setSender('');
+    setDateFrom('');
+    setDateTo('');
   };
 
   const handleDismiss = async (emailId) => {
@@ -105,13 +103,67 @@ const ApplicationEmails = ({ jobId, onRefresh }) => {
   return (
     <>
     <div className="application-emails">
-      <h3>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-          <polyline points="22,6 12,13 2,6"></polyline>
-        </svg>
-        Related Emails ({emails.length})
-      </h3>
+      <div className="emails-header">
+        <h3>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+            <polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+          Related Emails ({emails.length})
+        </h3>
+        {showSearch && (
+          <button 
+            className="toggle-filters-btn"
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"></path>
+            </svg>
+            {showFilters ? 'Hide Filters' : 'Show Filters'}
+          </button>
+        )}
+      </div>
+
+      {showSearch && showFilters && (
+        <div className="email-filters">
+          <div className="filter-row">
+            <input
+              type="text"
+              placeholder="Search emails..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="search-input"
+            />
+          </div>
+          <div className="filter-row">
+            <input
+              type="text"
+              placeholder="Filter by sender..."
+              value={sender}
+              onChange={(e) => setSender(e.target.value)}
+              className="filter-input"
+            />
+            <input
+              type="date"
+              placeholder="From date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="filter-input"
+            />
+            <input
+              type="date"
+              placeholder="To date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="filter-input"
+            />
+            <button onClick={handleClearFilters} className="clear-filters-btn">
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="emails-list">
         {emails.map((email) => (
           <div key={email.id} className={`email-card ${email.suggested_job_status ? 'has-suggestion' : ''} email-type-${email.email_type}`}>
@@ -125,11 +177,6 @@ const ApplicationEmails = ({ jobId, onRefresh }) => {
                   {new Date(email.received_at).toLocaleDateString()}
                 </span>
               </div>
-              {email.suggested_job_status && (
-                <span className={`status-badge status-${email.suggested_job_status}`}>
-                  Suggested: {email.suggested_job_status}
-                </span>
-              )}
             </div>
             
             <div className="email-subject">
@@ -143,35 +190,7 @@ const ApplicationEmails = ({ jobId, onRefresh }) => {
               <div className="email-snippet">{email.snippet}</div>
             )}
             
-            {email.suggested_job_status && (
-              <div className="email-actions">
-                <button 
-                  onClick={() => handleApplyStatus(email.id)}
-                  className="btn-apply-status"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
-                  Apply Suggested Status
-                </button>
-                <button 
-                  onClick={() => handleDismiss(email.id)}
-                  className="btn-dismiss"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 6L6 18M6 6l12 12"></path>
-                  </svg>
-                  Dismiss
-                </button>
-              </div>
-            )}
-            
             <div className="email-footer">
-              {email.confidence_score && (
-                <span className="confidence-score">
-                  Confidence: {(email.confidence_score * 100).toFixed(0)}%
-                </span>
-              )}
               <a 
                 href={email.gmail_url} 
                 target="_blank" 

@@ -2,15 +2,103 @@
   padding: 0;
 }
 
+.emails-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 32px 32px 0 32px;
+  margin-bottom: 24px;
+}
+
 .application-emails h3 {
-  margin: 0 0 24px 0;
+  margin: 0;
   color: #1f2937;
   font-size: 22px;
   font-weight: 600;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 32px 32px 0 32px;
+}
+
+.toggle-filters-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.toggle-filters-btn:hover {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+}
+
+.toggle-filters-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.email-filters {
+  margin: 0 32px 24px 32px;
+  padding: 20px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.filter-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.filter-row + .filter-row {
+  margin-top: 12px;
+}
+
+.search-input,
+.filter-input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+  transition: all 0.2s;
+}
+
+.search-input {
+  flex: 2;
+}
+
+.search-input:focus,
+.filter-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.clear-filters-btn {
+  padding: 10px 20px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.clear-filters-btn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
 }
 
 .no-emails {
@@ -53,6 +141,22 @@
   flex-direction: column;
   gap: 16px;
   padding: 0 32px 32px 32px;
+}
+
+/* UC-113: Compact mode for sidebar display */
+.sidebar-sticky .emails-list {
+  gap: 12px;
+  padding: 0 16px 16px 16px;
+}
+
+.sidebar-sticky .emails-header,
+.sidebar-sticky .email-filters {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.sidebar-sticky .application-emails h3 {
+  font-size: 18px;
 }
 
 .email-card {

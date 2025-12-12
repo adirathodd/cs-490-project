@@ -5284,13 +5284,6 @@ class GmailIntegration(models.Model):
         ('error', 'Error'),
     ]
     
-    SCAN_FREQUENCY_CHOICES = [
-        ('realtime', 'Real-time (as received)'),
-        ('hourly', 'Every Hour'),
-        ('daily', 'Daily'),
-        ('manual', 'Manual Only'),
-    ]
-    
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -5309,8 +5302,6 @@ class GmailIntegration(models.Model):
     
     # User preferences
     scan_enabled = models.BooleanField(default=False)
-    scan_frequency = models.CharField(max_length=20, choices=SCAN_FREQUENCY_CHOICES, default='daily')
-    auto_update_status = models.BooleanField(default=False)  # Auto-apply suggested status updates
     
     # Scanning metadata
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='disconnected')

@@ -791,8 +791,11 @@ const JobDetailView = () => {
       {error && <div className="error-banner">{error}</div>}
       {success && <div className="success-banner">{success}</div>}
 
-      {/* Tab Navigation */}
-      <div className="job-tabs">
+      {/* Main Content with Sidebar Layout */}
+      <div className="job-detail-layout">
+        <div className="job-detail-main">
+          {/* Tab Navigation */}
+          <div className="job-tabs">
         {TAB_GROUPS.map((group) => (
           <div key={group.title} className="job-tab-group">
             <p className="job-tab-group__title">{group.title}</p>
@@ -1355,10 +1358,7 @@ const JobDetailView = () => {
         )}
       </div>
 
-      {/* Application Emails */}
-      <div className="education-form-card">
-        <ApplicationEmails jobId={id} />
-      </div>
+      {/* Application Emails - Rendered as sidebar at top level */}
 
       {/* Metadata */}
       <div className="education-form-card">
@@ -1983,6 +1983,15 @@ const JobDetailView = () => {
           </div>
         </div>
       )}
+      </div>
+        
+        {/* Email Sidebar */}
+        <div className="job-detail-sidebar">
+          <div className="sidebar-sticky">
+            <ApplicationEmails jobId={id} showSearch={true} />
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
