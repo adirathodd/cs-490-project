@@ -1,4 +1,4 @@
-#!/Users/nishantnair/Downloads/cs-490-project/backend/.venv/bin/python3.12
+#!/Users/nishantnair/Downloads/cs-490-project/backend/.venv/bin/python3.13
 # -*- coding: utf-8 -*-
 # Copyright 2025 Google LLC
 #

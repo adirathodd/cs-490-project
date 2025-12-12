@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { timingAPI } from '../../services/timingAPI';
+import ConfirmDialog from '../common/ConfirmDialog';
 import './ApplicationTimingOptimizer.css';
 
 const ApplicationTimingOptimizer = () => {
@@ -74,6 +75,10 @@ const ScheduledSubmissions = ({ setError }) => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all | scheduled | submitted | cancelled
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [confirmExecute, setConfirmExecute] = useState(null);
+  const [confirmCancel, setConfirmCancel] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [editingSubmission, setEditingSubmission] = useState(null);
 
   useEffect(() => {
     loadSubmissions();
@@ -93,39 +98,45 @@ const ScheduledSubmissions = ({ setError }) => {
     }
   };
 
-  const handleExecute = async (id) => {
-    if (!window.confirm('Execute this submission now?')) return;
+  const handleExecute = async () => {
+    if (!confirmExecute) return;
     
     try {
-      await timingAPI.executeScheduledSubmission(id);
+      await timingAPI.executeScheduledSubmission(confirmExecute.id);
       setError('');
+      setConfirmExecute(null);
       loadSubmissions();
     } catch (err) {
       setError(err.message || 'Failed to execute submission');
+      setConfirmExecute(null);
     }
   };
 
-  const handleCancel = async (id) => {
-    if (!window.confirm('Cancel this scheduled submission?')) return;
+  const handleCancel = async () => {
+    if (!confirmCancel) return;
     
     try {
-      await timingAPI.cancelScheduledSubmission(id, 'Cancelled by user');
+      await timingAPI.cancelScheduledSubmission(confirmCancel.id, 'Cancelled by user');
       setError('');
+      setConfirmCancel(null);
       loadSubmissions();
     } catch (err) {
       setError(err.message || 'Failed to cancel submission');
+      setConfirmCancel(null);
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this scheduled submission?')) return;
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
     
     try {
-      await timingAPI.deleteScheduledSubmission(id);
+      await timingAPI.deleteScheduledSubmission(confirmDelete.id);
       setError('');
+      setConfirmDelete(null);
       loadSubmissions();
     } catch (err) {
       setError(err.message || 'Failed to delete submission');
+      setConfirmDelete(null);
     }
   };
 
@@ -163,9 +174,10 @@ const ScheduledSubmissions = ({ setError }) => {
             <SubmissionCard
               key={submission.id}
               submission={submission}
-              onExecute={handleExecute}
-              onCancel={handleCancel}
-              onDelete={handleDelete}
+              onExecute={(sub) => setConfirmExecute(sub)}
+              onCancel={(sub) => setConfirmCancel(sub)}
+              onDelete={(sub) => setConfirmDelete(sub)}
+              onEdit={(sub) => setEditingSubmission(sub)}
               onRefresh={loadSubmissions}
             />
           ))}
@@ -182,12 +194,56 @@ const ScheduledSubmissions = ({ setError }) => {
           setError={setError}
         />
       )}
+
+      {editingSubmission && (
+        <EditScheduleSubmissionModal
+          submission={editingSubmission}
+          onClose={() => setEditingSubmission(null)}
+          onSuccess={() => {
+            setEditingSubmission(null);
+            loadSubmissions();
+          }}
+          setError={setError}
+        />
+      )}
+
+      <ConfirmDialog
+        isOpen={!!confirmExecute}
+        onClose={() => setConfirmExecute(null)}
+        onConfirm={handleExecute}
+        title="Execute Submission Now"
+        message={`Are you sure you want to submit the application for "${confirmExecute?.job_title}" at "${confirmExecute?.company_name}" immediately?`}
+        confirmText="Submit Now"
+        cancelText="Cancel"
+        variant="info"
+      />
+
+      <ConfirmDialog
+        isOpen={!!confirmCancel}
+        onClose={() => setConfirmCancel(null)}
+        onConfirm={handleCancel}
+        title="Cancel Scheduled Submission"
+        message={`Are you sure you want to cancel the scheduled submission for "${confirmCancel?.job_title}"? You can reschedule it later if needed.`}
+        confirmText="Cancel Submission"
+        cancelText="Keep Scheduled"
+        variant="warning"
+      />
+
+      <ConfirmDialog
+        isOpen={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={handleDelete}
+        title="Delete Scheduled Submission"
+        message={`Are you sure you want to delete the scheduled submission for "${confirmDelete?.job_title}" at "${confirmDelete?.company_name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+      />
     </div>
   );
 };
 
-const SubmissionCard = ({ submission, onExecute, onCancel, onDelete, onRefresh }) => {
-  const [showDetails, setShowDetails] = useState(false);
+const SubmissionCard = ({ submission, onExecute, onCancel, onDelete, onEdit, onRefresh }) => {
   const scheduledDate = new Date(submission.scheduled_datetime);
   const isPast = scheduledDate < new Date();
   
@@ -223,7 +279,7 @@ const SubmissionCard = ({ submission, onExecute, onCancel, onDelete, onRefresh }
           {submission.can_execute && (
             <button
               className="btn btn-sm btn-success"
-              onClick={() => onExecute(submission.id)}
+              onClick={() => onExecute(submission)}
               title="Submit now"
             >
               Submit Now
@@ -232,7 +288,7 @@ const SubmissionCard = ({ submission, onExecute, onCancel, onDelete, onRefresh }
           {submission.can_reschedule && (
             <button
               className="btn btn-sm btn-secondary"
-              onClick={() => setShowDetails(true)}
+              onClick={() => onEdit(submission)}
               title="Edit schedule"
             >
               Edit
@@ -241,7 +297,7 @@ const SubmissionCard = ({ submission, onExecute, onCancel, onDelete, onRefresh }
           {submission.status === 'scheduled' && (
             <button
               className="btn btn-sm btn-warning"
-              onClick={() => onCancel(submission.id)}
+              onClick={() => onCancel(submission)}
               title="Cancel"
             >
               Cancel
@@ -249,7 +305,7 @@ const SubmissionCard = ({ submission, onExecute, onCancel, onDelete, onRefresh }
           )}
           <button
             className="btn btn-sm btn-danger"
-            onClick={() => onDelete(submission.id)}
+            onClick={() => onDelete(submission)}
             title="Delete"
           >
             Delete
@@ -257,19 +313,17 @@ const SubmissionCard = ({ submission, onExecute, onCancel, onDelete, onRefresh }
         </div>
       </div>
 
-      {showDetails && (
-        <div className="submission-details">
-          <p><strong>Method:</strong> {submission.submission_method}</p>
-          <p><strong>Priority:</strong> {submission.priority}</p>
-          <p><strong>Timezone:</strong> {submission.timezone}</p>
-          {submission.submitted_at && (
-            <p><strong>Submitted:</strong> {new Date(submission.submitted_at).toLocaleString()}</p>
-          )}
-          {submission.error_message && (
-            <p className="error-message"><strong>Error:</strong> {submission.error_message}</p>
-          )}
-        </div>
-      )}
+      <div className="submission-details">
+        <p><strong>Method:</strong> {submission.submission_method}</p>
+        <p><strong>Priority:</strong> {submission.priority}</p>
+        <p><strong>Timezone:</strong> {submission.timezone}</p>
+        {submission.submitted_at && (
+          <p><strong>Submitted:</strong> {new Date(submission.submitted_at).toLocaleString()}</p>
+        )}
+        {submission.error_message && (
+          <p className="error-message"><strong>Error:</strong> {submission.error_message}</p>
+        )}
+      </div>
     </div>
   );
 };
@@ -444,6 +498,178 @@ const ScheduleSubmissionModal = ({ onClose, onSuccess, setError }) => {
 };
 
 // ========================================
+// Edit Schedule Submission Modal
+// ========================================
+
+const EditScheduleSubmissionModal = ({ submission, onClose, onSuccess, setError }) => {
+  const [formData, setFormData] = useState({
+    job: submission.job || '',
+    application_package: submission.application_package || '',
+    scheduled_datetime: submission.scheduled_datetime ? new Date(submission.scheduled_datetime).toISOString().slice(0, 16) : '',
+    timezone: submission.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+    submission_method: submission.submission_method || 'email',
+    priority: submission.priority || 5,
+  });
+  const [loading, setLoading] = useState(false);
+  const [jobs, setJobs] = useState([]);
+  const [packages, setPackages] = useState([]);
+
+  useEffect(() => {
+    loadJobsAndPackages();
+  }, []);
+
+  useEffect(() => {
+    if (formData.job) {
+      loadApplicationPackages(formData.job);
+    } else {
+      setPackages([]);
+    }
+  }, [formData.job]);
+
+  const loadJobsAndPackages = async () => {
+    try {
+      const { jobsAPI } = await import('../../services/api');
+      const jobsData = await jobsAPI.getJobs();
+      setJobs(Array.isArray(jobsData) ? jobsData : []);
+    } catch (err) {
+      console.error('Failed to load jobs:', err);
+      setJobs([]);
+    }
+  };
+
+  const loadApplicationPackages = async (jobId) => {
+    try {
+      const { materialsAPI } = await import('../../services/api');
+      const packagesData = await materialsAPI.getApplicationPackages(jobId);
+      setPackages(Array.isArray(packagesData) ? packagesData : []);
+    } catch (err) {
+      console.error('Failed to load application packages:', err);
+      setPackages([]);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const submitData = {
+        ...formData,
+        application_package: formData.application_package || null,
+      };
+      await timingAPI.updateScheduledSubmission(submission.id, submitData);
+      onSuccess();
+    } catch (err) {
+      setError(err.message || 'Failed to update scheduled submission');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Edit Scheduled Submission</h2>
+          <button className="close-button" onClick={onClose}>×</button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Job *</label>
+            <select
+              value={formData.job}
+              onChange={(e) => setFormData({ ...formData, job: e.target.value })}
+              required
+            >
+              <option value="">Select a job</option>
+              {jobs.map((job) => (
+                <option key={job.id} value={job.id}>
+                  {job.title} at {job.company_name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Application Package {packages.length > 0 ? '*' : '(Optional)'}</label>
+            <select
+              value={formData.application_package}
+              onChange={(e) => setFormData({ ...formData, application_package: e.target.value })}
+              required={packages.length > 0}
+              disabled={!formData.job}
+            >
+              <option value="">
+                {!formData.job ? 'Select a job first' : packages.length === 0 ? 'No packages available' : 'Select a package'}
+              </option>
+              {packages.map((pkg) => (
+                <option key={pkg.id} value={pkg.id}>
+                  {pkg.resume_doc_name || 'Resume'} + {pkg.cover_letter_doc_name || 'Cover Letter'}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Scheduled Date & Time *</label>
+            <input
+              type="datetime-local"
+              value={formData.scheduled_datetime}
+              onChange={(e) => setFormData({ ...formData, scheduled_datetime: e.target.value })}
+              required
+              min={new Date().toISOString().slice(0, 16)}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Submission Method *</label>
+            <select
+              value={formData.submission_method}
+              onChange={(e) => setFormData({ ...formData, submission_method: e.target.value })}
+              required
+            >
+              <option value="email">Email</option>
+              <option value="portal">Job Portal</option>
+              <option value="linkedin">LinkedIn</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Timezone *</label>
+            <input
+              type="text"
+              value={formData.timezone}
+              onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Priority (1-10)</label>
+            <input
+              type="number"
+              value={formData.priority}
+              onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
+              min="1"
+              max="10"
+            />
+          </div>
+
+          <div className="modal-actions">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              {loading ? 'Updating...' : 'Update Submission'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// ========================================
 // Reminders List Component
 // ========================================
 
@@ -452,6 +678,7 @@ const RemindersList = ({ setError }) => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('pending');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   useEffect(() => {
     loadReminders();
@@ -480,14 +707,16 @@ const RemindersList = ({ setError }) => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this reminder?')) return;
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
     
     try {
-      await timingAPI.deleteReminder(id);
+      await timingAPI.deleteReminder(confirmDelete.id);
+      setConfirmDelete(null);
       loadReminders();
     } catch (err) {
       setError(err.message || 'Failed to delete reminder');
+      setConfirmDelete(null);
     }
   };
 
@@ -523,7 +752,7 @@ const RemindersList = ({ setError }) => {
               key={reminder.id}
               reminder={reminder}
               onDismiss={handleDismiss}
-              onDelete={handleDelete}
+              onDelete={(reminder) => setConfirmDelete(reminder)}
             />
           ))}
         </div>
@@ -539,6 +768,17 @@ const RemindersList = ({ setError }) => {
           setError={setError}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={handleDelete}
+        title="Delete Reminder"
+        message={`Are you sure you want to delete the reminder "${confirmDelete?.subject}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+      />
     </div>
   );
 };
@@ -581,7 +821,7 @@ const ReminderCard = ({ reminder, onDismiss, onDelete }) => {
             Dismiss
           </button>
         )}
-        <button className="btn btn-sm btn-danger" onClick={() => onDelete(reminder.id)}>
+        <button className="btn btn-sm btn-danger" onClick={() => onDelete(reminder)}>
           Delete
         </button>
       </div>
