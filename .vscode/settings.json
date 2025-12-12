@@ -1,4 +1,9 @@
 {
+    "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/backend"
+    ],
     "python.testing.unittestArgs": [
         "-v",
         "-s",
