@@ -20,6 +20,7 @@ from core.models import (
     MentorshipGoal, MentorshipMessage,
     MarketIntelligence, MockInterviewSession, MockInterviewQuestion, MockInterviewSummary,
     GmailIntegration, ApplicationEmail, EmailScanLog,
+    ScheduledSubmission, FollowUpReminder, ApplicationPackage,
 )
 from core.models import (
     Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink,
@@ -4660,3 +4661,201 @@ class TeamSharedJobSerializer(serializers.ModelSerializer):
 
     def get_comment_count(self, obj):
         return obj.comments.count()
+
+
+class ScheduledSubmissionSerializer(serializers.ModelSerializer):
+    """
+    UC-124: Serializer for scheduled application submissions
+    """
+    job_title = serializers.CharField(source='job.title', read_only=True)
+    company_name = serializers.CharField(source='job.company_name', read_only=True)
+    can_execute = serializers.SerializerMethodField()
+    can_reschedule = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ScheduledSubmission
+        fields = [
+            'id',
+            'candidate',
+            'job',
+            'application_package',
+            'scheduled_datetime',
+            'timezone',
+            'submission_method',
+            'status',
+            'priority',
+            'retry_count',
+            'max_retries',
+            'submission_parameters',
+            'submission_result',
+            'submitted_at',
+            'error_message',
+            'day_of_week',
+            'hour_of_day',
+            'created_at',
+            'updated_at',
+            'job_title',
+            'company_name',
+            'can_execute',
+            'can_reschedule',
+        ]
+        read_only_fields = [
+            'id',
+            'candidate',
+            'submitted_at',
+            'day_of_week',
+            'hour_of_day',
+            'created_at',
+            'updated_at',
+            'retry_count',
+            'submission_result',
+            'job_title',
+            'company_name',
+        ]
+    
+    def get_can_execute(self, obj):
+        """Check if submission can be executed now"""
+        return obj.status in ['pending', 'scheduled', 'failed']
+    
+    def get_can_reschedule(self, obj):
+        """Check if submission can be rescheduled"""
+        return obj.status in ['pending', 'scheduled']
+
+
+class ScheduledSubmissionCreateSerializer(serializers.ModelSerializer):
+    """
+    UC-124: Create serializer for scheduled submissions
+    """
+    application_package = serializers.PrimaryKeyRelatedField(
+        queryset=ApplicationPackage.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    
+    class Meta:
+        model = ScheduledSubmission
+        fields = [
+            'job',
+            'application_package',
+            'scheduled_datetime',
+            'timezone',
+            'submission_method',
+            'priority',
+            'submission_parameters',
+        ]
+    
+    def validate_scheduled_datetime(self, value):
+        """Ensure scheduled time is in the future"""
+        if value <= timezone.now():
+            raise serializers.ValidationError("Scheduled time must be in the future")
+        return value
+    
+    def create(self, validated_data):
+        """Create scheduled submission with candidate from context"""
+        validated_data['candidate'] = self.context['request'].user.profile
+        validated_data['status'] = 'scheduled'
+        return super().create(validated_data)
+
+
+class FollowUpReminderSerializer(serializers.ModelSerializer):
+    """
+    UC-124: Serializer for follow-up reminders
+    """
+    job_title = serializers.CharField(source='job.title', read_only=True)
+    company_name = serializers.CharField(source='job.company_name', read_only=True)
+    is_overdue = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = FollowUpReminder
+        fields = [
+            'id',
+            'candidate',
+            'job',
+            'reminder_type',
+            'subject',
+            'message_template',
+            'scheduled_datetime',
+            'interval_days',
+            'is_recurring',
+            'max_occurrences',
+            'occurrence_count',
+            'status',
+            'sent_at',
+            'response_received',
+            'response_date',
+            'created_at',
+            'updated_at',
+            'job_title',
+            'company_name',
+            'is_overdue',
+        ]
+        read_only_fields = [
+            'id',
+            'candidate',
+            'occurrence_count',
+            'sent_at',
+            'created_at',
+            'updated_at',
+            'job_title',
+            'company_name',
+        ]
+    
+    def get_is_overdue(self, obj):
+        """Check if reminder is overdue"""
+        return obj.status == 'pending' and obj.scheduled_datetime < timezone.now()
+
+
+class FollowUpReminderCreateSerializer(serializers.ModelSerializer):
+    """
+    UC-124: Create serializer for follow-up reminders
+    """
+    # Explicitly define optional fields to handle null values properly
+    interval_days = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text='Days between reminders for recurring'
+    )
+    
+    class Meta:
+        model = FollowUpReminder
+        fields = [
+            'job',
+            'reminder_type',
+            'subject',
+            'message_template',
+            'scheduled_datetime',
+            'interval_days',
+            'is_recurring',
+            'max_occurrences',
+        ]
+    
+    def create(self, validated_data):
+        """Create reminder with candidate from context"""
+        validated_data['candidate'] = self.context['request'].user.profile
+        return super().create(validated_data)
+
+
+class ApplicationTimingBestPracticesSerializer(serializers.Serializer):
+    """
+    UC-124: Serializer for application timing best practices
+    """
+    best_days = serializers.ListField(child=serializers.DictField())
+    best_hours = serializers.ListField(child=serializers.DictField())
+    avoid_times = serializers.ListField(child=serializers.CharField())
+    general_tips = serializers.ListField(child=serializers.CharField())
+    user_patterns = serializers.DictField(required=False)
+
+
+class ApplicationTimingAnalyticsSerializer(serializers.Serializer):
+    """
+    UC-124: Serializer for user's application timing analytics
+    """
+    total_applications = serializers.IntegerField()
+    response_rate_by_day = serializers.DictField(child=serializers.FloatField())
+    response_rate_by_hour = serializers.DictField(child=serializers.FloatField())
+    best_performing_day = serializers.DictField()
+    best_performing_hour = serializers.DictField()
+    submissions_by_day = serializers.DictField(child=serializers.IntegerField())
+    submissions_by_hour = serializers.DictField(child=serializers.IntegerField())
+    avg_days_to_response = serializers.FloatField()
+    recommendations = serializers.ListField(child=serializers.CharField())

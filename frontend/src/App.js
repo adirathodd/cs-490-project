@@ -21,6 +21,7 @@ import ProjectDetail from './components/profile/ProjectDetail';
 import Jobs from './components/jobs/Jobs';
 import JobsPipeline from './components/jobs/JobsPipeline';
 import JobStats from './components/jobs/JobStats';
+import ApplicationTimingOptimizer from './components/jobs/ApplicationTimingOptimizer';
 import Analytics from './components/analytics/Analytics';
 import ApplicationSuccessAnalysis from './components/analytics/ApplicationSuccessAnalysis';
 import JobDetailView from './components/jobs/JobDetailView';
@@ -282,6 +283,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <JobStats />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/jobs/timing-optimizer"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ApplicationTimingOptimizer />
               </PrivateRoute>
             }
           />
