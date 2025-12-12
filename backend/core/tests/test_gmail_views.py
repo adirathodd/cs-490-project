@@ -33,9 +33,7 @@ def gmail_integration(db, user):
         refresh_token='test_refresh_token',
         status='connected',
         scan_enabled=True,
-        gmail_address='test@gmail.com',
-        scan_frequency='daily',
-        auto_update_status=False
+        gmail_address='test@gmail.com'
     )
 
 
@@ -76,8 +74,6 @@ class TestGmailIntegrationStatus:
         assert response.data['status'] == 'connected'
         assert response.data['gmail_address'] == 'test@gmail.com'
         assert response.data['scan_enabled'] == True
-        assert response.data['scan_frequency'] == 'daily'
-        assert response.data['auto_update_status'] == False
     
     def test_status_without_integration(self, api_client, user):
         """Test getting status when no integration exists"""
@@ -157,64 +153,6 @@ class TestGmailEnableScanning:
         response = api_client.post(url)
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
-
-
-class TestGmailUpdatePreferences:
-    """Tests for gmail_update_preferences endpoint"""
-    
-    def test_update_scan_frequency(self, api_client, user, gmail_integration):
-        """Test updating scan frequency"""
-        api_client.force_authenticate(user=user)
-        url = reverse('gmail-update-preferences')
-        response = api_client.patch(url, {'scan_frequency': 'hourly'})
-        
-        assert response.status_code == status.HTTP_200_OK
-        
-        gmail_integration.refresh_from_db()
-        assert gmail_integration.scan_frequency == 'hourly'
-    
-    def test_update_auto_update_status(self, api_client, user, gmail_integration):
-        """Test updating auto_update_status"""
-        api_client.force_authenticate(user=user)
-        url = reverse('gmail-update-preferences')
-        response = api_client.patch(url, {'auto_update_status': True})
-        
-        assert response.status_code == status.HTTP_200_OK
-        
-        gmail_integration.refresh_from_db()
-        assert gmail_integration.auto_update_status == True
-    
-    def test_update_both_preferences(self, api_client, user, gmail_integration):
-        """Test updating both preferences at once"""
-        api_client.force_authenticate(user=user)
-        url = reverse('gmail-update-preferences')
-        response = api_client.patch(url, {
-            'scan_frequency': 'realtime',
-            'auto_update_status': True
-        })
-        
-        assert response.status_code == status.HTTP_200_OK
-        
-        gmail_integration.refresh_from_db()
-        assert gmail_integration.scan_frequency == 'realtime'
-        assert gmail_integration.auto_update_status == True
-    
-    def test_update_invalid_frequency(self, api_client, user, gmail_integration):
-        """Test updating with invalid scan frequency"""
-        api_client.force_authenticate(user=user)
-        url = reverse('gmail-update-preferences')
-        response = api_client.patch(url, {'scan_frequency': 'invalid'})
-        
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'Invalid scan_frequency' in response.data['error']
-    
-    def test_update_preferences_no_integration(self, api_client, user):
-        """Test update preferences when no integration exists"""
-        api_client.force_authenticate(user=user)
-        url = reverse('gmail-update-preferences')
-        response = api_client.patch(url, {'scan_frequency': 'hourly'})
-        
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
 class TestGmailScanNow:

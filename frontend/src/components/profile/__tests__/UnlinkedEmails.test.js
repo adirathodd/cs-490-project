@@ -372,19 +372,6 @@ describe('UnlinkedEmails Component', () => {
       });
     });
 
-    it('displays confidence scores', async () => {
-      emailAPI.getGmailStatus.mockResolvedValue(mockGmailStatus);
-      emailAPI.getEmails.mockResolvedValue(mockUnlinkedEmails);
-      jobsAPI.getJobs.mockResolvedValue(mockJobs);
-
-      render(<UnlinkedEmails />);
-
-      await waitFor(() => {
-        expect(screen.getByText('Confidence: 85%')).toBeInTheDocument();
-        expect(screen.getByText('Confidence: 90%')).toBeInTheDocument();
-      });
-    });
-
     it('renders View in Gmail links', async () => {
       emailAPI.getGmailStatus.mockResolvedValue(mockGmailStatus);
       emailAPI.getEmails.mockResolvedValue(mockUnlinkedEmails);

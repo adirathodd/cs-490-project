@@ -236,64 +236,7 @@ describe('ApplicationEmails Component', () => {
     });
   });
 
-  describe('Email Actions', () => {
-    it('applies status suggestion successfully', async () => {
-      emailAPI.getEmails.mockResolvedValue(mockEmails);
-      emailAPI.applyStatusSuggestion.mockResolvedValue({ status: 'applied' });
-      
-      const mockRefresh = jest.fn();
-      render(<ApplicationEmails jobId="job-1" onRefresh={mockRefresh} />);
-
-      await waitFor(() => {
-        expect(screen.getByText('Apply Suggested Status')).toBeInTheDocument();
-      });
-
-      const applyButton = screen.getByText('Apply Suggested Status');
-      fireEvent.click(applyButton);
-
-      await waitFor(() => {
-        expect(emailAPI.applyStatusSuggestion).toHaveBeenCalledWith('1');
-        expect(mockRefresh).toHaveBeenCalled();
-      });
-    });
-
-    it('dismisses email successfully', async () => {
-      emailAPI.getEmails.mockResolvedValue(mockEmails);
-      emailAPI.dismissEmail.mockResolvedValue({ status: 'dismissed' });
-
-      render(<ApplicationEmails jobId="job-1" />);
-
-      await waitFor(() => {
-        expect(screen.getByText('Software Engineer Interview')).toBeInTheDocument();
-      });
-
-      // Find and click dismiss button (first one)
-      const dismissButtons = screen.getAllByText('Dismiss');
-      fireEvent.click(dismissButtons[0]);
-
-      await waitFor(() => {
-        expect(emailAPI.dismissEmail).toHaveBeenCalledWith('1');
-      });
-    });
-
-    it('handles apply status error', async () => {
-      emailAPI.getEmails.mockResolvedValue(mockEmails);
-      emailAPI.applyStatusSuggestion.mockRejectedValue(new Error('Failed'));
-
-      render(<ApplicationEmails jobId="job-1" />);
-
-      await waitFor(() => {
-        expect(screen.getByText('Apply Suggested Status')).toBeInTheDocument();
-      });
-
-      const applyButton = screen.getByText('Apply Suggested Status');
-      fireEvent.click(applyButton);
-
-      await waitFor(() => {
-        expect(emailAPI.applyStatusSuggestion).toHaveBeenCalled();
-      });
-    });
-  });
+  // Email Actions tests removed - no dismiss/apply status buttons in simplified UC-113
 
   describe('Email Display', () => {
     it('displays email metadata correctly', async () => {
@@ -304,25 +247,6 @@ describe('ApplicationEmails Component', () => {
         expect(screen.getByText('Google HR')).toBeInTheDocument();
         expect(screen.getByText('Microsoft Recruiter')).toBeInTheDocument();
         expect(screen.getByText('We would like to invite you...')).toBeInTheDocument();
-      });
-    });
-
-    it('displays confidence score', async () => {
-      emailAPI.getEmails.mockResolvedValue(mockEmails);
-      render(<ApplicationEmails jobId="job-1" />);
-
-      await waitFor(() => {
-        expect(screen.getByText('Confidence: 90%')).toBeInTheDocument();
-        expect(screen.getByText('Confidence: 85%')).toBeInTheDocument();
-      });
-    });
-
-    it('displays suggested status badge', async () => {
-      emailAPI.getEmails.mockResolvedValue(mockEmails);
-      render(<ApplicationEmails jobId="job-1" />);
-
-      await waitFor(() => {
-        expect(screen.getByText('Suggested: interviewing')).toBeInTheDocument();
       });
     });
 

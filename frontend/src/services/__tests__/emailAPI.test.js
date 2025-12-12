@@ -247,29 +247,6 @@ describe('Email API Service', () => {
     });
   });
 
-  describe('applyStatusSuggestion', () => {
-    it('should apply status suggestion', async () => {
-      const mockResponse = {
-        data: {
-          message: 'Status applied',
-          job_status: 'phone'
-        }
-      };
-      api.post.mockResolvedValue(mockResponse);
-
-      const result = await emailAPI.applyStatusSuggestion(1);
-
-      expect(api.post).toHaveBeenCalledWith('/emails/1/apply-status/');
-      expect(result).toEqual(mockResponse.data);
-    });
-
-    it('should handle no suggestion error', async () => {
-      api.post.mockRejectedValue(new Error('No suggestion available'));
-
-      await expect(emailAPI.applyStatusSuggestion(1)).rejects.toThrow('No suggestion available');
-    });
-  });
-
   describe('dismissEmail', () => {
     it('should dismiss email', async () => {
       api.delete.mockResolvedValue({ data: {} });
