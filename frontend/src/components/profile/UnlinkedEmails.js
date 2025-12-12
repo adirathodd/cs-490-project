@@ -31,11 +31,6 @@ const UnlinkedEmails = () => {
       loadData();
     };
     
-    // Reload when search query changes
-    if (isGmailConnected) {
-      loadData();
-    }
-    
     window.addEventListener('gmail-disconnected', handleGmailDisconnect);
     window.addEventListener('gmail-scan-complete', handleGmailScan);
     
@@ -44,6 +39,17 @@ const UnlinkedEmails = () => {
       window.removeEventListener('gmail-scan-complete', handleGmailScan);
     };
   }, []);
+
+  // Reload when search query changes (with debounce)
+  useEffect(() => {
+    if (!isGmailConnected) return;
+    
+    const timeoutId = setTimeout(() => {
+      loadData();
+    }, 300); // 300ms debounce
+    
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
 
   const loadData = async () => {
     setLoading(true);
