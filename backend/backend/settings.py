@@ -178,9 +178,28 @@ MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5MB
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # CORS settings
-CORS_ALLOW_ALL_ORIGINS = DEBUG  # Allow all in development
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+# When using credentials, do NOT use wildcard origins; explicitly list dev origins
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+    origin.strip() for origin in os.environ.get(
+        'CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000'
+    ).split(',') if origin.strip()
+]
+# Optional: allow Authorization header for Firebase token
+CORS_ALLOW_HEADERS = list(set([
+    'accept', 'accept-encoding', 'authorization', 'content-type', 'dnt', 'origin', 'user-agent', 'x-csrftoken', 'x-requested-with'
+]))
+
+# Trust the frontend origin for CSRF in development
+CSRF_TRUSTED_ORIGINS = ['http://localhost:3000']
+
+# Relax cookie and CORS credentials in development to allow OAuth redirects across localhost ports
+if DEBUG:
+    SESSION_COOKIE_SAMESITE = 'None'
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SAMESITE = 'None'
+    CSRF_COOKIE_SECURE = False
 
 # REST Framework settings
 REST_FRAMEWORK = {

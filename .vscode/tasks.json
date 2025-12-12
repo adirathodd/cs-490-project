@@ -37,6 +37,12 @@
 			"type": "shell",
 			"command": "cd frontend && npm run build",
 			"group": "build"
+		},
+		{
+			"label": "build-frontend-powershell",
+			"type": "shell",
+			"command": "cd frontend; npm run build",
+			"group": "build"
 		}
 	]
 }

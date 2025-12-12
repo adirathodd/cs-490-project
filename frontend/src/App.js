@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import PrivateRoute from './components/common/PrivateRoute';
@@ -61,10 +62,25 @@ import APIMonitoringDashboard from './components/admin/APIMonitoringDashboard';
 import './App.css';
 
 function App() {
+  // Global handler: if URL has ?github=connected, redirect to Projects and clean URL
+  const GithubCallbackRedirector = () => {
+    const navigate = useNavigate();
+    const location = useLocation();
+    useEffect(() => {
+      const usp = new URLSearchParams(location.search);
+      if (usp.get('github') === 'connected') {
+        usp.delete('github');
+        const nextSearch = usp.toString();
+        navigate({ pathname: '/projects', search: nextSearch ? `?${nextSearch}` : '' }, { replace: true });
+      }
+    }, [location, navigate]);
+    return null;
+  };
   return (
     <Router>
       <ScrollToTop />
       <AuthProvider>
+        <GithubCallbackRedirector />
         <Routes>
           {/* public */}
           <Route path="/" element={<Navigate to="/login" replace />} />

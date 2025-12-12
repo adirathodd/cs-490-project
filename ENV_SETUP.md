@@ -97,6 +97,13 @@ SECRET_KEY=your-django-secret-key
 # Google OAuth used by /api/contacts/import
 GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
+
+# UC-114: GitHub OAuth
+GITHUB_CLIENT_ID=your-github-oauth-client-id
+GITHUB_CLIENT_SECRET=your-github-oauth-client-secret
+GITHUB_OAUTH_REDIRECT_URI=http://localhost:8000/api/github/callback/
+# Optional: where to redirect after successful connect
+FRONTEND_BASE_URL=http://localhost:3000
 ```
 
 > 💡 Create a Google Cloud OAuth 2.0 **Web application** client for development, then add
