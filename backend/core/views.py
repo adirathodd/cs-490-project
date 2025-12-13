@@ -10761,7 +10761,7 @@ def skill_progress(request, skill_id):
             progress_records = SkillDevelopmentProgress.objects.filter(
                 candidate=profile,
                 skill=skill
-            ).order_by('-activity_date')
+            ).order_by('-activity_date', '-id')  # stable ordering even when timestamps tie
             
             data = []
             for record in progress_records:
@@ -19239,5 +19239,4 @@ def application_calendar_view(request):
         'end_date': end_date,
         'events': events
     })
-
 

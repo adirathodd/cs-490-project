@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 import requests
 from django.core.cache import cache
 from django.utils import timezone
+from django.utils.functional import SimpleLazyObject
 
 from core.api_monitoring import SERVICE_MARKET_DATA, get_or_create_service, track_api_call
 from core.models import MarketIntelligence
@@ -312,4 +313,4 @@ class SalaryBenchmarkService:
         return payload
 
 
-salary_benchmark_service = SalaryBenchmarkService()
+salary_benchmark_service = SimpleLazyObject(lambda: SalaryBenchmarkService())
