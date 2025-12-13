@@ -55,12 +55,15 @@ export const QuestionBankBrowser = () => {
   };
 
   const loadPracticeHistory = async (questionId) => {
+    console.log('Loading practice history for question:', questionId);
     try {
       const history = await api.questionBankAPI.getQuestionPracticeHistory(jobId, questionId);
+      console.log('Practice history loaded:', history);
       setPracticeHistory(history);
       setShowHistory(true);
     } catch (err) {
       console.error('Failed to load practice history:', err);
+      setToast({ isOpen: true, message: 'Failed to load practice history', type: 'error' });
     }
   };
 
@@ -97,7 +100,20 @@ export const QuestionBankBrowser = () => {
 
       await api.questionBankAPI.logQuestionPractice(jobId, payload);
       
-      setToast({ isOpen: true, message: 'Practice response saved successfully!', type: 'success' });
+      setToast({ isOpen: true, message: 'Practice response saved! Getting AI feedback...', type: 'success' });
+      
+      // Immediately get AI coaching feedback
+      try {
+        await api.questionBankAPI.coachQuestionResponse(jobId, {
+          question_id: selectedQuestion.id,
+          question_text: selectedQuestion.prompt,
+          written_response: writtenResponse
+        });
+        setToast({ isOpen: true, message: 'AI feedback generated! Check Response Coach.', type: 'success' });
+      } catch (coachErr) {
+        console.error('Failed to generate AI feedback:', coachErr);
+      }
+      
       setWrittenResponse('');
       setStarResponse({ situation: '', task: '', action: '', result: '' });
       setPracticeMode(false);
@@ -205,7 +221,7 @@ export const QuestionBankBrowser = () => {
   const difficulties = questionBank.difficulty_levels || [];
 
   return (
-    <div className="question-bank-page">
+    <div className="education-container">
       <Toast
         isOpen={toast.isOpen}
         onClose={() => setToast({ ...toast, isOpen: false })}
@@ -213,27 +229,24 @@ export const QuestionBankBrowser = () => {
         type={toast.type}
       />
       
-      <div className="page-header">
-        <button 
-          onClick={() => navigate(-1)}
-          className="back-button"
-        >
-          <Icon name="arrow-left" size="sm" />
-          Back
+      <div className="page-backbar">
+        <button className="btn-back" onClick={() => navigate(-1)}>
+          ← Back to Job
         </button>
-        <h1 style={{ 
-          margin: 0, 
-          fontSize: '24px', 
-          fontWeight: '600', 
-          color: '#111827',
-          flex: 1
-        }}>
-          Question Bank: {questionBank.job_title} at {questionBank.company_name}
-        </h1>
+      </div>
+
+      <div className="education-header">
+        <h2>
+          <Icon name="book-open" size="md" /> Question Bank: {questionBank.job_title} at {questionBank.company_name}
+        </h2>
         <button 
           onClick={() => loadQuestionBank(true)} 
           disabled={refreshing}
-          className="refresh-button"
+          className="add-education-button"
+          style={{
+            background: refreshing ? '#94a3b8' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            cursor: refreshing ? 'not-allowed' : 'pointer'
+          }}
         >
           <Icon name="refresh-cw" size="sm" />
           {refreshing ? 'Refreshing...' : 'Refresh'}
