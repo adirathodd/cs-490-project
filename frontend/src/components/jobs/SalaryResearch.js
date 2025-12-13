@@ -20,6 +20,26 @@ const SalaryResearch = ({ jobId: propJobId, embedded = false }) => {
   const [researchData, setResearchData] = useState(null);
   const [hasData, setHasData] = useState(false);
   const [selectedView, setSelectedView] = useState('overview'); // overview, comparisons, trends, negotiation
+  const [benchmarks, setBenchmarks] = useState(null);
+  const [benchmarksLoading, setBenchmarksLoading] = useState(true);
+  const [benchmarksError, setBenchmarksError] = useState('');
+
+  const fetchBenchmarks = useCallback(
+    async (refresh = false) => {
+      try {
+        setBenchmarksLoading(true);
+        setBenchmarksError('');
+        const data = await salaryAPI.getSalaryBenchmarks(jobId, { refresh });
+        setBenchmarks(data);
+      } catch (err) {
+        console.error('Error fetching benchmarks:', err);
+        setBenchmarksError(err.message || 'Unable to load benchmarks');
+      } finally {
+        setBenchmarksLoading(false);
+      }
+    },
+    [jobId]
+  );
   
   const fetchJobAndResearch = useCallback(async () => {
     try {
@@ -37,13 +57,21 @@ const SalaryResearch = ({ jobId: propJobId, embedded = false }) => {
         setResearchData(null);
         setHasData(false);
       }
+      if (research.benchmarks) {
+        setBenchmarks({
+          ...research.benchmarks,
+          location_used: research.benchmark_location || research.benchmarks.location_used,
+        });
+        setBenchmarksLoading(false);
+      }
+      fetchBenchmarks(false);
     } catch (err) {
       console.error('Error fetching data:', err);
       setError(err.message || 'Failed to load salary research');
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [fetchBenchmarks, jobId]);
 
   useEffect(() => {
     fetchJobAndResearch();
@@ -123,6 +151,80 @@ const SalaryResearch = ({ jobId: propJobId, embedded = false }) => {
   const historicalRange = historicalMax - historicalMin || 1;
 
   const clampPercent = (value) => Math.min(100, Math.max(0, value));
+
+  const renderBenchmarkCard = () => (
+    <div className="salary-research-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ margin: 0 }}>Salary Benchmarks</h2>
+        <button
+          className="btn-secondary"
+          onClick={() => fetchBenchmarks(true)}
+          disabled={benchmarksLoading}
+        >
+          <Icon name="refresh" size="sm" /> {benchmarksLoading ? 'Refreshing...' : 'Refresh Benchmarks'}
+        </button>
+      </div>
+      {benchmarksError && (
+        <div className="error-message" style={{ marginTop: '8px' }}>
+          <Icon name="alert" size="sm" /> {benchmarksError}
+        </div>
+      )}
+      {benchmarksLoading ? (
+        <div style={{ padding: '20px 0' }}>
+          <LoadingSpinner />
+        </div>
+      ) : benchmarks ? (
+        <>
+          <p style={{ color: '#6b7280', marginTop: '8px', marginBottom: '16px' }}>
+            Based on BLS national wage data and community ranges adjusted for {benchmarks.location_used || 'location'}.
+          </p>
+          <div className="salary-stats">
+            <div className="stat-row">
+              <div className="stat-item">
+                <div className="stat-label">25th Percentile</div>
+                <div className="stat-value">{formatCurrency(benchmarks.percentile_25)}</div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-label">Median</div>
+                <div className="stat-value" style={{ color: '#6c3fb5', fontSize: '24px', fontWeight: 'bold' }}>
+                  {formatCurrency(benchmarks.percentile_50)}
+                </div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-label">75th Percentile</div>
+                <div className="stat-value">{formatCurrency(benchmarks.percentile_75)}</div>
+              </div>
+            </div>
+            <div className="stat-row" style={{ marginTop: '12px' }}>
+              <div className="stat-item">
+                <div className="stat-label">Sample Size</div>
+                <div className="stat-value">{benchmarks.sample_size || 'N/A'}</div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-label">Sources</div>
+                <div className="stat-value" style={{ fontSize: '14px', color: '#374151' }}>
+                  {(benchmarks.sources || []).join(', ') || 'Unknown'}
+                </div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-label">Cache</div>
+                <div className="stat-value" style={{ fontSize: '14px', color: '#374151' }}>
+                  {benchmarks.cached ? 'Cached (weekly refresh)' : 'Live lookup'}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style={{ marginTop: '16px', fontSize: '13px', color: '#6b7280', lineHeight: 1.5 }}>
+            {benchmarks.disclaimer || 'Benchmark data is informational and may not reflect exact offers.'}
+          </div>
+        </>
+      ) : (
+        <div style={{ color: '#6b7280', padding: '12px 0' }}>
+          No benchmark data available yet. Try refreshing above.
+        </div>
+      )}
+    </div>
+  );
   
   if (loading) {
     return <LoadingSpinner />;
@@ -197,32 +299,35 @@ const SalaryResearch = ({ jobId: propJobId, embedded = false }) => {
       
       {/* No Data State */}
       {!hasData && !researching && (
-        <div className="salary-research-card" style={{ maxWidth: '800px', margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <Icon name="briefcase" size="xl" color="#6c3fb5" />
-            <h2 style={{ marginTop: '20px', marginBottom: '10px' }}>No Salary Research Available</h2>
-            <p style={{ color: '#666', marginBottom: '30px' }}>
-              Generate comprehensive salary insights for this position including market ranges,
-              company comparisons, historical trends, and negotiation recommendations.
-            </p>
-            <button 
-              className="btn-primary" 
-              onClick={() => handleTriggerResearch(false)}
-              disabled={researching}
-              style={{ padding: '14px 32px', fontSize: '16px' }}
-            >
-              {researching ? (
-                <>
-                  <Icon name="refresh" size="sm" /> Generating Research...
-                </>
-              ) : (
-                <>
-                  <Icon name="idea" size="sm" /> Generate Salary Research
-                </>
-              )}
-            </button>
+        <>
+          <div className="salary-research-card" style={{ maxWidth: '800px', margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+              <Icon name="briefcase" size="xl" color="#6c3fb5" />
+              <h2 style={{ marginTop: '20px', marginBottom: '10px' }}>No Salary Research Available</h2>
+              <p style={{ color: '#666', marginBottom: '30px' }}>
+                Generate comprehensive salary insights for this position including market ranges,
+                company comparisons, historical trends, and negotiation recommendations.
+              </p>
+              <button 
+                className="btn-primary" 
+                onClick={() => handleTriggerResearch(false)}
+                disabled={researching}
+                style={{ padding: '14px 32px', fontSize: '16px' }}
+              >
+                {researching ? (
+                  <>
+                    <Icon name="refresh" size="sm" /> Generating Research...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="idea" size="sm" /> Generate Salary Research
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-        </div>
+          {renderBenchmarkCard()}
+        </>
       )}
       
       {/* Research Data View */}
@@ -261,6 +366,8 @@ const SalaryResearch = ({ jobId: propJobId, embedded = false }) => {
           {/* Overview Tab */}
           {selectedView === 'overview' && (
             <div className="salary-research-grid">
+              {renderBenchmarkCard()}
+
               {/* Salary Range Card */}
               <div className="salary-research-card">
                 <h2>Salary Range</h2>

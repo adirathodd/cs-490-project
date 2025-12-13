@@ -1117,6 +1117,21 @@ export const salaryAPI = {
       throw error.response?.data?.error || { message: 'Failed to export salary research' };
     }
   },
+
+  // Get salary benchmarks (BLS + community) with caching
+  getSalaryBenchmarks: async (jobId, options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.refresh) params.append('refresh', 'true');
+      const path = params.toString()
+        ? `/jobs/${jobId}/salary-benchmarks/?${params.toString()}`
+        : `/jobs/${jobId}/salary-benchmarks/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch salary benchmarks' };
+    }
+  },
 };
 
 // UC-083: Salary Negotiation planning + outcome tracking

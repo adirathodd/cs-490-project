@@ -10,6 +10,7 @@ jest.mock('../../services/api', () => ({
     getSalaryResearch: jest.fn(),
     triggerResearch: jest.fn(),
     exportResearch: jest.fn(),
+    getSalaryBenchmarks: jest.fn(),
   },
   jobsAPI: {
     getJob: jest.fn(),
@@ -267,7 +268,7 @@ describe('SalaryResearch (UC-067: Salary Research and Benchmarking)', () => {
   await screen.findByRole('heading', { name: /salary research/i });
 
     // Click refresh button
-    const refreshBtn = screen.getByRole('button', { name: /refresh/i });
+    const refreshBtn = screen.getByRole('button', { name: /refresh data/i });
     await userEvent.click(refreshBtn);
 
     await waitFor(() => {
