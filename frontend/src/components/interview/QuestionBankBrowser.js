@@ -217,20 +217,6 @@ export const QuestionBankBrowser = () => {
         <button 
           onClick={() => navigate(-1)}
           className="back-button"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '14px',
-            padding: '8px 16px',
-            background: 'white',
-            border: '1px solid #e5e7eb',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            color: '#374151',
-            fontWeight: '500',
-            transition: 'all 0.2s'
-          }}
         >
           <Icon name="arrow-left" size="sm" />
           Back
@@ -247,20 +233,7 @@ export const QuestionBankBrowser = () => {
         <button 
           onClick={() => loadQuestionBank(true)} 
           disabled={refreshing}
-          style={{
-            background: refreshing ? '#94a3b8' : '#4f46e5',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '8px 16px',
-            fontSize: '14px',
-            fontWeight: '500',
-            cursor: refreshing ? 'not-allowed' : 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            whiteSpace: 'nowrap'
-          }}
+          className="refresh-button"
         >
           <Icon name="refresh-cw" size="sm" />
           {refreshing ? 'Refreshing...' : 'Refresh'}
