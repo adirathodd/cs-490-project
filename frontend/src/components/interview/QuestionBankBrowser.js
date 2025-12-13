@@ -522,8 +522,8 @@ export const QuestionBankBrowser = () => {
                       Skills Being Assessed
                     </h4>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {selectedQuestion.skills.map(skill => (
-                        <span key={skill} style={{
+                      {selectedQuestion.skills.map((skill, idx) => (
+                        <span key={skill.skill_id || idx} style={{
                           fontSize: '13px',
                           padding: '6px 12px',
                           borderRadius: '6px',
@@ -531,7 +531,7 @@ export const QuestionBankBrowser = () => {
                           color: '#4338ca',
                           fontWeight: '500'
                         }}>
-                          {skill}
+                          {typeof skill === 'string' ? skill : skill.name}
                         </span>
                       ))}
                     </div>
@@ -566,7 +566,7 @@ export const QuestionBankBrowser = () => {
                       lineHeight: '1.8'
                     }}>
                       {selectedQuestion.concepts.map((concept, idx) => (
-                        <li key={idx}>{concept}</li>
+                        <li key={idx}>{typeof concept === 'string' ? concept : concept.name || concept.text}</li>
                       ))}
                     </ul>
                   </div>
