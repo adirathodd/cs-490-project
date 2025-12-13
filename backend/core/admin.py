@@ -30,6 +30,8 @@ from .models import (
     # UC-095: Reference Management models
     ProfessionalReference, ReferenceRequest, ReferenceTemplate, 
     ReferenceAppreciation, ReferencePortfolio,
+    # UC-126: Interview Response Library models
+    InterviewResponseLibrary, ResponseVersion,
 
 )
 
@@ -541,3 +543,27 @@ class APIWeeklyReportAdmin(admin.ModelAdmin):
     list_filter = ['email_sent', 'week_start']
     readonly_fields = ['generated_at', 'email_sent_at']
     date_hierarchy = 'week_start'
+
+
+# UC-126: Interview Response Library models
+@admin.register(InterviewResponseLibrary)
+class InterviewResponseLibraryAdmin(admin.ModelAdmin):
+    list_display = ['user', 'question_type', 'question_text_short', 'times_used', 
+                   'success_rate', 'led_to_offer', 'updated_at']
+    list_filter = ['question_type', 'led_to_offer', 'led_to_next_round', 'created_at']
+    search_fields = ['user__username', 'user__email', 'question_text', 'tags']
+    readonly_fields = ['created_at', 'updated_at']
+    date_hierarchy = 'created_at'
+    
+    def question_text_short(self, obj):
+        return obj.question_text[:50] + '...' if len(obj.question_text) > 50 else obj.question_text
+    question_text_short.short_description = 'Question'
+
+
+@admin.register(ResponseVersion)
+class ResponseVersionAdmin(admin.ModelAdmin):
+    list_display = ['response_library', 'version_number', 'coaching_score', 'created_at']
+    list_filter = ['created_at']
+    search_fields = ['response_library__question_text', 'change_notes']
+    readonly_fields = ['created_at']
+    date_hierarchy = 'created_at'

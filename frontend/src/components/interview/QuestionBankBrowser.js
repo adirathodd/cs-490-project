@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Toast from '../common/Toast';
+import Icon from '../common/Icon';
 import api from '../../services/api';
 import './QuestionBank.css';
 
@@ -147,7 +148,7 @@ export const QuestionBankBrowser = () => {
 
   if (loading) {
     return (
-      <div className="question-bank-container">
+      <div className="question-bank-page">
         <Toast
           isOpen={toast.isOpen}
           onClose={() => setToast({ ...toast, isOpen: false })}
@@ -164,7 +165,7 @@ export const QuestionBankBrowser = () => {
 
   if (error) {
     return (
-      <div className="question-bank-container">
+      <div className="question-bank-page">
         <Toast
           isOpen={toast.isOpen}
           onClose={() => setToast({ ...toast, isOpen: false })}
@@ -174,7 +175,19 @@ export const QuestionBankBrowser = () => {
         <div className="error-state">
           <h2>Error Loading Question Bank</h2>
           <p>{error}</p>
-          <button onClick={() => loadQuestionBank()} className="btn-primary">
+          <button 
+            onClick={() => loadQuestionBank()}
+            style={{
+              background: '#4f46e5',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '10px 20px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer'
+            }}
+          >
             Try Again
           </button>
         </div>
@@ -192,40 +205,77 @@ export const QuestionBankBrowser = () => {
   const difficulties = questionBank.difficulty_levels || [];
 
   return (
-    <div className="question-bank-container">
+    <div className="question-bank-page">
       <Toast
         isOpen={toast.isOpen}
         onClose={() => setToast({ ...toast, isOpen: false })}
         message={toast.message}
         type={toast.type}
       />
-      <div className="question-bank-header">
-        <div className="header-content">
-          <h1>Interview Question Bank</h1>
-          <div className="job-info">
-            <h2>{questionBank.job_title}</h2>
-            <p>{questionBank.company_name} • {questionBank.industry}</p>
-          </div>
-        </div>
+      
+      <div className="page-header">
+        <button 
+          onClick={() => navigate(-1)}
+          className="back-button"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '14px'
+          }}
+        >
+          <Icon name="arrow-left" size="sm" />
+          Back
+        </button>
+        <h1 style={{ 
+          margin: 0, 
+          fontSize: '24px', 
+          fontWeight: '600', 
+          color: '#111827',
+          flex: 1
+        }}>
+          Question Bank: {questionBank.job_title} at {questionBank.company_name}
+        </h1>
         <button 
           onClick={() => loadQuestionBank(true)} 
-          className="btn-secondary"
           disabled={refreshing}
+          style={{
+            background: refreshing ? '#94a3b8' : '#4f46e5',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            padding: '8px 16px',
+            fontSize: '14px',
+            fontWeight: '500',
+            cursor: refreshing ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
         >
-          {refreshing ? 'Refreshing...' : 'Refresh Questions'}
+          <Icon name="refresh-cw" size="sm" />
+          {refreshing ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
 
-      <div className="question-bank-content">
+      <div className="question-bank-layout">
         {/* Sidebar with filters and question list */}
-        <div className="question-sidebar">
-          <div className="filters-section">
+        <div className="questions-sidebar-panel">
+          <div className="sidebar-filters">
             <div className="filter-group">
               <label>Category</label>
               <select 
                 value={selectedCategory} 
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="filter-select"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  background: 'white',
+                  cursor: 'pointer'
+                }}
               >
                 <option value="all">All Categories</option>
                 {uniqueCategories.map(cat => (
@@ -241,7 +291,15 @@ export const QuestionBankBrowser = () => {
               <select 
                 value={selectedDifficulty} 
                 onChange={(e) => setSelectedDifficulty(e.target.value)}
-                className="filter-select"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  background: 'white',
+                  cursor: 'pointer'
+                }}
               >
                 <option value="all">All Levels</option>
                 {difficulties.map(diff => (
@@ -253,96 +311,278 @@ export const QuestionBankBrowser = () => {
             </div>
           </div>
 
-          <div className="questions-list">
-            <div className="list-header">
-              <h3>Questions ({filteredQuestions.length})</h3>
+          <div className="questions-scroll-area">
+            <div className="questions-header">
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: '#111827' }}>
+                Questions ({filteredQuestions.length})
+              </h3>
             </div>
             {filteredQuestions.map((question, index) => (
               <div
                 key={question.id}
-                className={`question-item ${selectedQuestion?.id === question.id ? 'active' : ''}`}
+                className={`question-list-item ${selectedQuestion?.id === question.id ? 'selected' : ''}`}
                 onClick={() => handleQuestionSelect(question)}
+                style={{
+                  padding: '14px 16px',
+                  borderBottom: '1px solid #e5e7eb',
+                  cursor: 'pointer',
+                  background: selectedQuestion?.id === question.id ? '#eef2ff' : 'white',
+                  borderLeft: selectedQuestion?.id === question.id ? '3px solid #4f46e5' : '3px solid transparent',
+                  transition: 'all 0.2s'
+                }}
               >
-                <div className="question-number">#{index + 1}</div>
-                <div className="question-preview">
-                  <p>{question.prompt}</p>
-                  <div className="question-meta">
-                    <span className="category-tag">{question.categoryLabel}</span>
-                    <span 
-                      className="difficulty-tag"
-                      style={{ backgroundColor: getDifficultyColor(question.difficulty) }}
-                    >
-                      {question.difficulty}
-                    </span>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <div style={{
+                    flexShrink: 0,
+                    width: '28px',
+                    height: '28px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: selectedQuestion?.id === question.id ? '#4f46e5' : '#f3f4f6',
+                    color: selectedQuestion?.id === question.id ? 'white' : '#6b7280',
+                    borderRadius: '50%',
+                    fontSize: '12px',
+                    fontWeight: '600'
+                  }}>
+                    {index + 1}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ 
+                      margin: '0 0 8px 0', 
+                      fontSize: '14px', 
+                      lineHeight: '1.4',
+                      color: '#111827',
+                      fontWeight: '500'
+                    }}>
+                      {question.prompt}
+                    </p>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        background: '#f3f4f6',
+                        color: '#374151',
+                        fontWeight: '500'
+                      }}>
+                        {question.categoryLabel}
+                      </span>
+                      <span style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        background: getDifficultyColor(question.difficulty),
+                        color: 'white',
+                        fontWeight: '500'
+                      }}>
+                        {question.difficulty}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
             ))}
             {filteredQuestions.length === 0 && (
-              <div className="no-questions">
-                <p>No questions match your filters.</p>
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: '#6b7280' }}>
+                <Icon name="search" size="lg" />
+                <p style={{ marginTop: '12px', fontSize: '14px' }}>No questions match your filters.</p>
               </div>
             )}
           </div>
         </div>
 
         {/* Main content area */}
-        <div className="question-detail">
+        <div className="question-detail-panel">
           {!selectedQuestion ? (
-            <div className="no-selection">
-              <div className="placeholder-icon">💭</div>
-              <h3>Select a Question to Begin</h3>
-              <p>Choose a question from the list to start practicing your interview responses.</p>
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              height: '100%',
+              padding: '60px 20px',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '64px', marginBottom: '20px' }}>💭</div>
+              <h3 style={{ fontSize: '20px', fontWeight: '600', color: '#111827', margin: '0 0 8px 0' }}>
+                Select a Question to Begin
+              </h3>
+              <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
+                Choose a question from the list to start practicing your interview responses.
+              </p>
             </div>
           ) : (
             <>
-              <div className="detail-header">
-                <div className="detail-meta">
-                  <span className="category-badge">{selectedQuestion.categoryLabel}</span>
-                  <span 
-                    className="difficulty-badge"
-                    style={{ backgroundColor: getDifficultyColor(selectedQuestion.difficulty) }}
-                  >
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                marginBottom: '24px',
+                paddingBottom: '20px',
+                borderBottom: '2px solid #e5e7eb'
+              }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: '13px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    background: '#f3f4f6',
+                    color: '#374151',
+                    fontWeight: '500'
+                  }}>
+                    {selectedQuestion.categoryLabel}
+                  </span>
+                  <span style={{
+                    fontSize: '13px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    background: getDifficultyColor(selectedQuestion.difficulty),
+                    color: 'white',
+                    fontWeight: '500'
+                  }}>
                     {selectedQuestion.difficulty}
                   </span>
                 </div>
-                <div className="detail-actions">
+                <div style={{ display: 'flex', gap: '12px' }}>
                   <button 
                     onClick={() => loadPracticeHistory(selectedQuestion.id)}
-                    className="btn-outline"
+                    style={{
+                      background: 'white',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      padding: '10px 16px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      color: '#374151',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
                   >
+                    <Icon name="clock" size="sm" />
                     View History
                   </button>
                   {!practiceMode ? (
-                    <button onClick={handleStartPractice} className="btn-primary">
+                    <button 
+                      onClick={handleStartPractice}
+                      style={{
+                        background: '#4f46e5',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '10px 16px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <Icon name="edit" size="sm" />
                       Practice This Question
                     </button>
                   ) : (
-                    <button onClick={handleGetCoaching} className="btn-secondary">
+                    <button 
+                      onClick={handleGetCoaching}
+                      style={{
+                        background: '#10b981',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '10px 16px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <Icon name="zap" size="sm" />
                       Get AI Coaching
                     </button>
                   )}
                 </div>
               </div>
 
-              <div className="question-content">
-                <h2>{selectedQuestion.prompt}</h2>
+              <div className="question-content-area">
+                <h2 style={{ 
+                  fontSize: '22px', 
+                  fontWeight: '600', 
+                  color: '#111827', 
+                  margin: '0 0 24px 0',
+                  lineHeight: '1.4'
+                }}>
+                  {selectedQuestion.prompt}
+                </h2>
                 
                 {selectedQuestion.skills?.length > 0 && (
-                  <div className="skills-section">
-                    <h4>Skills Being Assessed:</h4>
-                    <div className="skills-tags">
+                  <div style={{ 
+                    background: '#f9fafb', 
+                    border: '1px solid #e5e7eb', 
+                    borderRadius: '12px', 
+                    padding: '16px',
+                    marginBottom: '20px'
+                  }}>
+                    <h4 style={{ 
+                      fontSize: '14px', 
+                      fontWeight: '600', 
+                      color: '#111827', 
+                      margin: '0 0 12px 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      <Icon name="target" size="sm" color="#4f46e5" />
+                      Skills Being Assessed
+                    </h4>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       {selectedQuestion.skills.map(skill => (
-                        <span key={skill} className="skill-tag">{skill}</span>
+                        <span key={skill} style={{
+                          fontSize: '13px',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          background: '#eef2ff',
+                          color: '#4338ca',
+                          fontWeight: '500'
+                        }}>
+                          {skill}
+                        </span>
                       ))}
                     </div>
                   </div>
                 )}
 
                 {selectedQuestion.concepts?.length > 0 && (
-                  <div className="concepts-section">
-                    <h4>Key Concepts:</h4>
-                    <ul className="concepts-list">
+                  <div style={{ 
+                    background: '#f0fdf4', 
+                    border: '1px solid #dcfce7', 
+                    borderRadius: '12px', 
+                    padding: '16px',
+                    marginBottom: '20px'
+                  }}>
+                    <h4 style={{ 
+                      fontSize: '14px', 
+                      fontWeight: '600', 
+                      color: '#111827', 
+                      margin: '0 0 12px 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      <Icon name="book" size="sm" color="#10b981" />
+                      Key Concepts
+                    </h4>
+                    <ul style={{ 
+                      margin: 0, 
+                      paddingLeft: '20px',
+                      color: '#374151',
+                      fontSize: '14px',
+                      lineHeight: '1.8'
+                    }}>
                       {selectedQuestion.concepts.map((concept, idx) => (
                         <li key={idx}>{concept}</li>
                       ))}
@@ -351,32 +591,108 @@ export const QuestionBankBrowser = () => {
                 )}
 
                 {selectedQuestion.guidance && (
-                  <div className="guidance-section">
-                    <h4>💡 Guidance:</h4>
-                    <p>{selectedQuestion.guidance}</p>
+                  <div style={{ 
+                    background: '#fffbeb', 
+                    border: '1px solid #fef3c7', 
+                    borderRadius: '12px', 
+                    padding: '16px',
+                    marginBottom: '20px'
+                  }}>
+                    <h4 style={{ 
+                      fontSize: '14px', 
+                      fontWeight: '600', 
+                      color: '#111827', 
+                      margin: '0 0 8px 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      <Icon name="lightbulb" size="sm" color="#f59e0b" />
+                      Guidance
+                    </h4>
+                    <p style={{ margin: 0, color: '#374151', fontSize: '14px', lineHeight: '1.6' }}>
+                      {selectedQuestion.guidance}
+                    </p>
                   </div>
                 )}
 
                 {/* STAR Framework Reference */}
                 {questionBank.star_framework && (
-                  <div className="star-framework-section">
-                    <h4>⭐ STAR Method Framework:</h4>
-                    <div className="star-grid">
-                      <div className="star-item">
-                        <strong>S</strong>ituation
-                        <p>{questionBank.star_framework.situation}</p>
+                  <div style={{ 
+                    background: '#fef2f2', 
+                    border: '1px solid #fecaca', 
+                    borderRadius: '12px', 
+                    padding: '20px',
+                    marginBottom: '20px'
+                  }}>
+                    <h4 style={{ 
+                      fontSize: '16px', 
+                      fontWeight: '600', 
+                      color: '#111827', 
+                      margin: '0 0 16px 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      <span>⭐</span>
+                      STAR Method Framework
+                    </h4>
+                    <div style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                      gap: '16px'
+                    }}>
+                      <div style={{ 
+                        background: 'white', 
+                        borderRadius: '8px', 
+                        padding: '14px',
+                        border: '1px solid #fecaca'
+                      }}>
+                        <strong style={{ fontSize: '14px', color: '#dc2626', fontWeight: '600' }}>
+                          <span style={{ fontSize: '18px', marginRight: '4px' }}>S</span>ituation
+                        </strong>
+                        <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#6b7280', lineHeight: '1.5' }}>
+                          {questionBank.star_framework.situation}
+                        </p>
                       </div>
-                      <div className="star-item">
-                        <strong>T</strong>ask
-                        <p>{questionBank.star_framework.task}</p>
+                      <div style={{ 
+                        background: 'white', 
+                        borderRadius: '8px', 
+                        padding: '14px',
+                        border: '1px solid #fecaca'
+                      }}>
+                        <strong style={{ fontSize: '14px', color: '#dc2626', fontWeight: '600' }}>
+                          <span style={{ fontSize: '18px', marginRight: '4px' }}>T</span>ask
+                        </strong>
+                        <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#6b7280', lineHeight: '1.5' }}>
+                          {questionBank.star_framework.task}
+                        </p>
                       </div>
-                      <div className="star-item">
-                        <strong>A</strong>ction
-                        <p>{questionBank.star_framework.action}</p>
+                      <div style={{ 
+                        background: 'white', 
+                        borderRadius: '8px', 
+                        padding: '14px',
+                        border: '1px solid #fecaca'
+                      }}>
+                        <strong style={{ fontSize: '14px', color: '#dc2626', fontWeight: '600' }}>
+                          <span style={{ fontSize: '18px', marginRight: '4px' }}>A</span>ction
+                        </strong>
+                        <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#6b7280', lineHeight: '1.5' }}>
+                          {questionBank.star_framework.action}
+                        </p>
                       </div>
-                      <div className="star-item">
-                        <strong>R</strong>esult
-                        <p>{questionBank.star_framework.result}</p>
+                      <div style={{ 
+                        background: 'white', 
+                        borderRadius: '8px', 
+                        padding: '14px',
+                        border: '1px solid #fecaca'
+                      }}>
+                        <strong style={{ fontSize: '14px', color: '#dc2626', fontWeight: '600' }}>
+                          <span style={{ fontSize: '18px', marginRight: '4px' }}>R</span>esult
+                        </strong>
+                        <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#6b7280', lineHeight: '1.5' }}>
+                          {questionBank.star_framework.result}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -384,74 +700,214 @@ export const QuestionBankBrowser = () => {
 
                 {/* Practice Mode */}
                 {practiceMode && (
-                  <div className="practice-section">
-                    <h3>Write Your Response</h3>
+                  <div style={{ 
+                    background: '#f9fafb', 
+                    border: '2px solid #e5e7eb', 
+                    borderRadius: '12px', 
+                    padding: '24px',
+                    marginTop: '24px'
+                  }}>
+                    <h3 style={{ 
+                      fontSize: '18px', 
+                      fontWeight: '600', 
+                      color: '#111827', 
+                      margin: '0 0 20px 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      <Icon name="edit" size="sm" color="#4f46e5" />
+                      Write Your Response
+                    </h3>
                     
-                    <div className="response-area">
-                      <label>Full Response</label>
+                    <div style={{ marginBottom: '24px' }}>
+                      <label style={{ 
+                        display: 'block', 
+                        fontSize: '14px', 
+                        fontWeight: '500', 
+                        color: '#374151',
+                        marginBottom: '8px'
+                      }}>
+                        Full Response
+                      </label>
                       <textarea
                         value={writtenResponse}
                         onChange={(e) => setWrittenResponse(e.target.value)}
                         placeholder="Write your complete response here..."
                         rows={8}
-                        className="response-textarea"
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '8px',
+                          fontSize: '14px',
+                          fontFamily: 'inherit',
+                          resize: 'vertical',
+                          lineHeight: '1.6'
+                        }}
                       />
                     </div>
 
-                    <div className="star-inputs">
-                      <h4>STAR Breakdown (Optional)</h4>
-                      <div className="star-input-grid">
-                        <div className="star-input-item">
-                          <label>Situation</label>
+                    <div>
+                      <h4 style={{ 
+                        fontSize: '16px', 
+                        fontWeight: '600', 
+                        color: '#111827', 
+                        margin: '0 0 16px 0'
+                      }}>
+                        STAR Breakdown (Optional)
+                      </h4>
+                      <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                        gap: '16px'
+                      }}>
+                        <div>
+                          <label style={{ 
+                            display: 'block', 
+                            fontSize: '13px', 
+                            fontWeight: '500', 
+                            color: '#374151',
+                            marginBottom: '6px'
+                          }}>
+                            Situation
+                          </label>
                           <textarea
                             value={starResponse.situation}
                             onChange={(e) => setStarResponse({ ...starResponse, situation: e.target.value })}
                             placeholder="Describe the context..."
                             rows={3}
+                            style={{
+                              width: '100%',
+                              padding: '10px',
+                              border: '1px solid #e5e7eb',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              fontFamily: 'inherit',
+                              resize: 'vertical'
+                            }}
                           />
                         </div>
-                        <div className="star-input-item">
-                          <label>Task</label>
+                        <div>
+                          <label style={{ 
+                            display: 'block', 
+                            fontSize: '13px', 
+                            fontWeight: '500', 
+                            color: '#374151',
+                            marginBottom: '6px'
+                          }}>
+                            Task
+                          </label>
                           <textarea
                             value={starResponse.task}
                             onChange={(e) => setStarResponse({ ...starResponse, task: e.target.value })}
                             placeholder="What was your responsibility..."
                             rows={3}
+                            style={{
+                              width: '100%',
+                              padding: '10px',
+                              border: '1px solid #e5e7eb',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              fontFamily: 'inherit',
+                              resize: 'vertical'
+                            }}
                           />
                         </div>
-                        <div className="star-input-item">
-                          <label>Action</label>
+                        <div>
+                          <label style={{ 
+                            display: 'block', 
+                            fontSize: '13px', 
+                            fontWeight: '500', 
+                            color: '#374151',
+                            marginBottom: '6px'
+                          }}>
+                            Action
+                          </label>
                           <textarea
                             value={starResponse.action}
                             onChange={(e) => setStarResponse({ ...starResponse, action: e.target.value })}
                             placeholder="What steps did you take..."
                             rows={3}
+                            style={{
+                              width: '100%',
+                              padding: '10px',
+                              border: '1px solid #e5e7eb',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              fontFamily: 'inherit',
+                              resize: 'vertical'
+                            }}
                           />
                         </div>
-                        <div className="star-input-item">
-                          <label>Result</label>
+                        <div>
+                          <label style={{ 
+                            display: 'block', 
+                            fontSize: '13px', 
+                            fontWeight: '500', 
+                            color: '#374151',
+                            marginBottom: '6px'
+                          }}>
+                            Result
+                          </label>
                           <textarea
                             value={starResponse.result}
                             onChange={(e) => setStarResponse({ ...starResponse, result: e.target.value })}
                             placeholder="What was the outcome..."
                             rows={3}
+                            style={{
+                              width: '100%',
+                              padding: '10px',
+                              border: '1px solid #e5e7eb',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              fontFamily: 'inherit',
+                              resize: 'vertical'
+                            }}
                           />
                         </div>
                       </div>
                     </div>
 
-                    <div className="practice-actions">
+                    <div style={{ 
+                      display: 'flex', 
+                      gap: '12px', 
+                      justifyContent: 'flex-end',
+                      marginTop: '24px'
+                    }}>
                       <button 
-                        onClick={() => setPracticeMode(false)} 
-                        className="btn-outline"
+                        onClick={() => setPracticeMode(false)}
+                        style={{
+                          background: 'white',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '8px',
+                          padding: '10px 20px',
+                          fontSize: '14px',
+                          fontWeight: '500',
+                          cursor: 'pointer',
+                          color: '#374151'
+                        }}
                       >
                         Cancel
                       </button>
                       <button 
-                        onClick={handleSubmitPractice} 
-                        className="btn-primary"
+                        onClick={handleSubmitPractice}
                         disabled={submitting}
+                        style={{
+                          background: submitting ? '#94a3b8' : '#4f46e5',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '10px 20px',
+                          fontSize: '14px',
+                          fontWeight: '500',
+                          cursor: submitting ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}
                       >
+                        <Icon name="save" size="sm" />
                         {submitting ? 'Saving...' : 'Save Practice Response'}
                       </button>
                     </div>
@@ -460,23 +916,103 @@ export const QuestionBankBrowser = () => {
 
                 {/* Practice History */}
                 {showHistory && practiceHistory && (
-                  <div className="history-section">
-                    <h3>Practice History</h3>
+                  <div style={{ 
+                    background: 'white', 
+                    border: '1px solid #e5e7eb', 
+                    borderRadius: '12px', 
+                    padding: '24px',
+                    marginTop: '24px'
+                  }}>
+                    <h3 style={{ 
+                      fontSize: '18px', 
+                      fontWeight: '600', 
+                      color: '#111827', 
+                      margin: '0 0 20px 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      <Icon name="clock" size="sm" color="#4f46e5" />
+                      Practice History
+                    </h3>
                     {practiceHistory.practice_count > 0 ? (
                       <>
-                        <div className="history-stats">
-                          <div className="stat-item">
-                            <span className="stat-label">Times Practiced</span>
-                            <span className="stat-value">{practiceHistory.practice_count}</span>
+                        <div style={{ 
+                          display: 'grid', 
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                          gap: '16px',
+                          marginBottom: '24px'
+                        }}>
+                          <div style={{ 
+                            background: '#f3f4f6', 
+                            borderRadius: '8px', 
+                            padding: '16px',
+                            textAlign: 'center'
+                          }}>
+                            <span style={{ 
+                              display: 'block', 
+                              fontSize: '12px', 
+                              color: '#6b7280',
+                              marginBottom: '8px',
+                              fontWeight: '500'
+                            }}>
+                              Times Practiced
+                            </span>
+                            <span style={{ 
+                              display: 'block', 
+                              fontSize: '28px', 
+                              fontWeight: '700',
+                              color: '#111827'
+                            }}>
+                              {practiceHistory.practice_count}
+                            </span>
                           </div>
-                          <div className="stat-item">
-                            <span className="stat-label">Coaching Sessions</span>
-                            <span className="stat-value">{practiceHistory.coaching_count}</span>
+                          <div style={{ 
+                            background: '#f3f4f6', 
+                            borderRadius: '8px', 
+                            padding: '16px',
+                            textAlign: 'center'
+                          }}>
+                            <span style={{ 
+                              display: 'block', 
+                              fontSize: '12px', 
+                              color: '#6b7280',
+                              marginBottom: '8px',
+                              fontWeight: '500'
+                            }}>
+                              Coaching Sessions
+                            </span>
+                            <span style={{ 
+                              display: 'block', 
+                              fontSize: '28px', 
+                              fontWeight: '700',
+                              color: '#111827'
+                            }}>
+                              {practiceHistory.coaching_count}
+                            </span>
                           </div>
                           {practiceHistory.latest_coaching?.scores?.overall && (
-                            <div className="stat-item">
-                              <span className="stat-label">Latest Score</span>
-                              <span className="stat-value">
+                            <div style={{ 
+                              background: '#eef2ff', 
+                              borderRadius: '8px', 
+                              padding: '16px',
+                              textAlign: 'center'
+                            }}>
+                              <span style={{ 
+                                display: 'block', 
+                                fontSize: '12px', 
+                                color: '#6b7280',
+                                marginBottom: '8px',
+                                fontWeight: '500'
+                              }}>
+                                Latest Score
+                              </span>
+                              <span style={{ 
+                                display: 'block', 
+                                fontSize: '28px', 
+                                fontWeight: '700',
+                                color: '#4f46e5'
+                              }}>
                                 {practiceHistory.latest_coaching.scores.overall}/100
                               </span>
                             </div>
@@ -484,19 +1020,41 @@ export const QuestionBankBrowser = () => {
                         </div>
                         
                         {practiceHistory.latest_practice && (
-                          <div className="latest-practice">
-                            <h4>Latest Practice</h4>
-                            <p className="practice-date">
+                          <div style={{ 
+                            background: '#f9fafb', 
+                            borderRadius: '8px', 
+                            padding: '16px'
+                          }}>
+                            <h4 style={{ 
+                              fontSize: '14px', 
+                              fontWeight: '600', 
+                              color: '#111827',
+                              margin: '0 0 8px 0'
+                            }}>
+                              Latest Practice
+                            </h4>
+                            <p style={{ 
+                              fontSize: '12px', 
+                              color: '#6b7280',
+                              margin: '0 0 12px 0'
+                            }}>
                               {new Date(practiceHistory.latest_practice.practiced_at).toLocaleDateString()}
                             </p>
-                            <p className="practice-response">
+                            <p style={{ 
+                              fontSize: '14px', 
+                              color: '#374151',
+                              margin: 0,
+                              lineHeight: '1.6'
+                            }}>
                               {practiceHistory.latest_practice.written_response}
                             </p>
                           </div>
                         )}
                       </>
                     ) : (
-                      <p className="no-history">No practice history yet. Start practicing to build your history!</p>
+                      <p style={{ fontSize: '14px', color: '#6b7280', margin: 0, textAlign: 'center', padding: '20px' }}>
+                        No practice history yet. Start practicing to build your history!
+                      </p>
                     )}
                   </div>
                 )}

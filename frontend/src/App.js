@@ -59,7 +59,7 @@ import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
 import NavBar from './components/common/NavBar';
 import Breadcrumbs from './components/common/Breadcrumbs';
-import { MockInterviewContainer, QuestionBankBrowser, ResponseCoach, InterviewResearchBrief } from './components/interview';
+import { MockInterviewContainer, QuestionBankBrowser, ResponseCoach, ResponseCoachLanding, InterviewResearchBrief, ResponseLibrary } from './components/interview';
 import APIMonitoringDashboard from './components/admin/APIMonitoringDashboard';
 import './App.css';
 
@@ -589,6 +589,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <QuestionBankBrowser />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/response-coach"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ResponseCoachLanding />
               </PrivateRoute>
             }
           />

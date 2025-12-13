@@ -26,7 +26,9 @@ export const ResponseCoach = () => {
   const [coaching, setCoaching] = useState(null);
   const [practiceStatus, setPracticeStatus] = useState(null);
   const [improvement, setImprovement] = useState(null);
+  const [coachingSessionId, setCoachingSessionId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [savingToLibrary, setSavingToLibrary] = useState(false);
   const [toast, setToast] = useState({ isOpen: false, message: '', type: 'info' });
 
   useEffect(() => {
@@ -79,6 +81,7 @@ export const ResponseCoach = () => {
       setCoaching(result.coaching);
       setPracticeStatus(result.practice_status);
       setImprovement(result.improvement);
+      setCoachingSessionId(result.improvement?.last_session_id);
     } catch (err) {
       setError(err.message || 'Failed to generate coaching feedback');
     } finally {
@@ -92,7 +95,42 @@ export const ResponseCoach = () => {
     setCoaching(null);
     setPracticeStatus(null);
     setImprovement(null);
+    setCoachingSessionId(null);
     setError(null);
+  };
+
+  const handleSaveToLibrary = async () => {
+    if (!coachingSessionId) {
+      setToast({ isOpen: true, message: 'No coaching session to save.', type: 'warning' });
+      return;
+    }
+
+    try {
+      setSavingToLibrary(true);
+      
+      // Determine question type from the question or default to behavioral
+      const questionType = question?.category || 'behavioral';
+      
+      const payload = {
+        coaching_session_id: coachingSessionId,
+        question_type: questionType,
+        tags: question?.category ? [question.category] : [],
+        skills: question?.skills || [],
+      };
+
+      const result = await api.responseLibraryAPI.saveFromCoaching(payload);
+      
+      setToast({ 
+        isOpen: true, 
+        message: `Response ${result.action === 'created' ? 'saved to' : 'updated in'} your library!`, 
+        type: 'success' 
+      });
+    } catch (err) {
+      setError(err.message || 'Failed to save to library');
+      setToast({ isOpen: true, message: 'Failed to save to library', type: 'error' });
+    } finally {
+      setSavingToLibrary(false);
+    }
   };
 
   const getScoreColor = (score) => {
@@ -311,9 +349,18 @@ export const ResponseCoach = () => {
           <div className="coaching-results">
             <div className="results-header">
               <h2>Your Coaching Report</h2>
-              <button onClick={handleReset} className="btn-outline">
-                Practice Another Response
-              </button>
+              <div className="results-actions">
+                <button 
+                  onClick={handleSaveToLibrary} 
+                  className="btn-save-library"
+                  disabled={savingToLibrary || !coachingSessionId}
+                >
+                  {savingToLibrary ? 'Saving...' : '💾 Save to Response Library'}
+                </button>
+                <button onClick={handleReset} className="btn-outline">
+                  Practice Another Response
+                </button>
+              </div>
             </div>
 
             {/* Summary */}

@@ -249,6 +249,35 @@
   margin-bottom: 2rem;
 }
 
+.results-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.btn-save-library {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.btn-save-library:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.btn-save-library:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .results-header h2 {
   font-size: 1.75rem;
   font-weight: 700;
