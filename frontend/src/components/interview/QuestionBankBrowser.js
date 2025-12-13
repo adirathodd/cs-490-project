@@ -221,7 +221,15 @@ export const QuestionBankBrowser = () => {
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
-            fontSize: '14px'
+            fontSize: '14px',
+            padding: '8px 16px',
+            background: 'white',
+            border: '1px solid #e5e7eb',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            color: '#374151',
+            fontWeight: '500',
+            transition: 'all 0.2s'
           }}
         >
           <Icon name="arrow-left" size="sm" />
@@ -250,7 +258,8 @@ export const QuestionBankBrowser = () => {
             cursor: refreshing ? 'not-allowed' : 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '6px'
+            gap: '6px',
+            whiteSpace: 'nowrap'
           }}
         >
           <Icon name="refresh-cw" size="sm" />
@@ -393,14 +402,14 @@ export const QuestionBankBrowser = () => {
         </div>
 
         {/* Main content area */}
-        <div className="question-detail-panel">
+        <div className="question-detail-panel" style={{ minHeight: '400px' }}>
           {!selectedQuestion ? (
             <div style={{ 
               display: 'flex', 
               flexDirection: 'column', 
               alignItems: 'center', 
               justifyContent: 'center',
-              height: '100%',
+              minHeight: '400px',
               padding: '60px 20px',
               textAlign: 'center'
             }}>
