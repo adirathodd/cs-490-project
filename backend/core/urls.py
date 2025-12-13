@@ -484,5 +484,12 @@ urlpatterns = [
     path('application-timing/best-practices/', views.application_timing_best_practices, name='application-timing-best-practices'),
     path('application-timing/analytics/', views.application_timing_analytics, name='application-timing-analytics'),
     path('application-timing/calendar/', views.application_calendar_view, name='application-calendar-view'),
+    
+    # UC-128: Career Growth Calculator
+    path('career-growth/scenarios/', views.career_growth_scenarios, name='career-growth-scenarios'),
+    path('career-growth/scenarios/<int:scenario_id>/', views.career_growth_scenario_detail, name='career-growth-scenario-detail'),
+    path('career-growth/calculate/', views.calculate_scenario_projections, name='calculate-scenario-projections'),
+    path('career-growth/compare/', views.compare_career_scenarios, name='compare-career-scenarios'),
+    path('career-growth/progression-data/', views.get_career_progression_data, name='career-progression-data'),
 
 ]

@@ -58,6 +58,220 @@ class Migration(migrations.Migration):
                 'ordering': ['scheduled_datetime', 'priority'],
             },
         ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql=(
+                        'ALTER TABLE "core_teamcandidateaccess" '
+                        'DROP CONSTRAINT IF EXISTS "core_teamcandidate_team_cand_member_uniq";'
+                    ),
+                    reverse_sql=migrations.RunSQL.noop,
+                ),
+            ],
+            state_operations=[
+                migrations.RemoveConstraint(
+                    model_name='teamcandidateaccess',
+                    name='core_teamcandidate_team_cand_member_uniq',
+                ),
+            ],
+        ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql=(
+                        'ALTER TABLE "core_teammembership" '
+                        'DROP CONSTRAINT IF EXISTS "core_teammembership_team_user_uniq";'
+                    ),
+                    reverse_sql=migrations.RunSQL.noop,
+                ),
+            ],
+            state_operations=[
+                migrations.RemoveConstraint(
+                    model_name='teammembership',
+                    name='core_teammembership_team_user_uniq',
+                ),
+            ],
+        ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql='ALTER INDEX IF EXISTS "core_linked_user_id_idx" RENAME TO "core_linked_user_id_c0550f_idx";',
+                    reverse_sql='ALTER INDEX IF EXISTS "core_linked_user_id_c0550f_idx" RENAME TO "core_linked_user_id_idx";',
+                ),
+            ],
+            state_operations=[
+                migrations.RenameIndex(
+                    model_name='linkedinintegration',
+                    new_name='core_linked_user_id_c0550f_idx',
+                    old_name='core_linked_user_id_idx',
+                ),
+            ],
+        ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql='ALTER INDEX IF EXISTS "core_linked_linkedin_id_idx" RENAME TO "core_linked_linkedi_290f08_idx";',
+                    reverse_sql='ALTER INDEX IF EXISTS "core_linked_linkedi_290f08_idx" RENAME TO "core_linked_linkedin_id_idx";',
+                ),
+            ],
+            state_operations=[
+                migrations.RenameIndex(
+                    model_name='linkedinintegration',
+                    new_name='core_linked_linkedi_290f08_idx',
+                    old_name='core_linked_linkedin_id_idx',
+                ),
+            ],
+        ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql='ALTER INDEX IF EXISTS "core_teamac_owner_c1fe62_idx" RENAME TO "core_teamac_owner_i_b66d84_idx";',
+                    reverse_sql='ALTER INDEX IF EXISTS "core_teamac_owner_i_b66d84_idx" RENAME TO "core_teamac_owner_c1fe62_idx";',
+                ),
+            ],
+            state_operations=[
+                migrations.RenameIndex(
+                    model_name='teamaccount',
+                    new_name='core_teamac_owner_i_b66d84_idx',
+                    old_name='core_teamac_owner_c1fe62_idx',
+                ),
+            ],
+        ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql='ALTER INDEX IF EXISTS "core_teamac_subscri_5df6f4_idx" RENAME TO "core_teamac_subscri_2eb392_idx";',
+                    reverse_sql='ALTER INDEX IF EXISTS "core_teamac_subscri_2eb392_idx" RENAME TO "core_teamac_subscri_5df6f4_idx";',
+                ),
+            ],
+            state_operations=[
+                migrations.RenameIndex(
+                    model_name='teamaccount',
+                    new_name='core_teamac_subscri_2eb392_idx',
+                    old_name='core_teamac_subscri_5df6f4_idx',
+                ),
+            ],
+        ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql='ALTER INDEX IF EXISTS "core_teamcan_team_id_a24e14_idx" RENAME TO "core_teamca_team_id_514ea0_idx";',
+                    reverse_sql='ALTER INDEX IF EXISTS "core_teamca_team_id_514ea0_idx" RENAME TO "core_teamcan_team_id_a24e14_idx";',
+                ),
+            ],
+            state_operations=[
+                migrations.RenameIndex(
+                    model_name='teamcandidateaccess',
+                    new_name='core_teamca_team_id_514ea0_idx',
+                    old_name='core_teamcan_team_id_a24e14_idx',
+                ),
+            ],
+        ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql='ALTER INDEX IF EXISTS "core_teamcan_team_id_3f814f_idx" RENAME TO "core_teamca_team_id_854e7a_idx";',
+                    reverse_sql='ALTER INDEX IF EXISTS "core_teamca_team_id_854e7a_idx" RENAME TO "core_teamcan_team_id_3f814f_idx";',
+                ),
+            ],
+            state_operations=[
+                migrations.RenameIndex(
+                    model_name='teamcandidateaccess',
+                    new_name='core_teamca_team_id_854e7a_idx',
+                    old_name='core_teamcan_team_id_3f814f_idx',
+                ),
+            ],
+        ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql='ALTER INDEX IF EXISTS "core_teamin_team_id_2e101d_idx" RENAME TO "core_teamin_team_id_5ecc95_idx";',
+                    reverse_sql='ALTER INDEX IF EXISTS "core_teamin_team_id_5ecc95_idx" RENAME TO "core_teamin_team_id_2e101d_idx";',
+                ),
+            ],
+            state_operations=[
+                migrations.RenameIndex(
+                    model_name='teaminvitation',
+                    new_name='core_teamin_team_id_5ecc95_idx',
+                    old_name='core_teamin_team_id_2e101d_idx',
+                ),
+            ],
+        ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql='ALTER INDEX IF EXISTS "core_teamin_email_031d6b_idx" RENAME TO "core_teamin_email_5c2405_idx";',
+                    reverse_sql='ALTER INDEX IF EXISTS "core_teamin_email_5c2405_idx" RENAME TO "core_teamin_email_031d6b_idx";',
+                ),
+            ],
+            state_operations=[
+                migrations.RenameIndex(
+                    model_name='teaminvitation',
+                    new_name='core_teamin_email_5c2405_idx',
+                    old_name='core_teamin_email_031d6b_idx',
+                ),
+            ],
+        ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql='ALTER INDEX IF EXISTS "core_teammem_team_id_930156_idx" RENAME TO "core_teamme_team_id_31ddcd_idx";',
+                    reverse_sql='ALTER INDEX IF EXISTS "core_teamme_team_id_31ddcd_idx" RENAME TO "core_teammem_team_id_930156_idx";',
+                ),
+            ],
+            state_operations=[
+                migrations.RenameIndex(
+                    model_name='teammembership',
+                    new_name='core_teamme_team_id_31ddcd_idx',
+                    old_name='core_teammem_team_id_930156_idx',
+                ),
+            ],
+        ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql='ALTER INDEX IF EXISTS "core_teammem_team_id_3e0925_idx" RENAME TO "core_teamme_team_id_683f95_idx";',
+                    reverse_sql='ALTER INDEX IF EXISTS "core_teamme_team_id_683f95_idx" RENAME TO "core_teammem_team_id_3e0925_idx";',
+                ),
+            ],
+            state_operations=[
+                migrations.RenameIndex(
+                    model_name='teammembership',
+                    new_name='core_teamme_team_id_683f95_idx',
+                    old_name='core_teammem_team_id_3e0925_idx',
+                ),
+            ],
+        ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql='ALTER INDEX IF EXISTS "core_teammem_user_id_3c5672_idx" RENAME TO "core_teamme_user_id_18ce5c_idx";',
+                    reverse_sql='ALTER INDEX IF EXISTS "core_teamme_user_id_18ce5c_idx" RENAME TO "core_teammem_user_id_3c5672_idx";',
+                ),
+            ],
+            state_operations=[
+                migrations.RenameIndex(
+                    model_name='teammembership',
+                    new_name='core_teamme_user_id_18ce5c_idx',
+                    old_name='core_teammem_user_id_3c5672_idx',
+                ),
+            ],
+        ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql='ALTER INDEX IF EXISTS "core_teammem_team_id_fc0b5d_idx" RENAME TO "core_teamme_team_id_f5dd70_idx";',
+                    reverse_sql='ALTER INDEX IF EXISTS "core_teamme_team_id_f5dd70_idx" RENAME TO "core_teammem_team_id_fc0b5d_idx";',
+                ),
+            ],
+            state_operations=[
+                migrations.RenameIndex(
+                    model_name='teammessage',
+                    new_name='core_teamme_team_id_f5dd70_idx',
+                    old_name='core_teammem_team_id_fc0b5d_idx',
+                ),
+            ],
+        ),
         migrations.AddField(
             model_name='followupreminder',
             name='candidate',

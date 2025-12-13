@@ -19240,3 +19240,325 @@ def application_calendar_view(request):
         'events': events
     })
 
+
+# 
+# 
+# =
+# UC-128: CAREER GROWTH CALCULATOR
+# 
+# 
+# =
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def career_growth_scenarios(request):
+    """
+    List all career growth scenarios or create a new one.
+    GET: Returns all scenarios for the authenticated user.
+    POST: Creates a new scenario and calculates initial projections.
+    """
+    from .models import CareerGrowthScenario
+    from .career_growth_utils import career_growth_analyzer
+    from decimal import Decimal
+    
+    if request.method == 'GET':
+        scenarios = CareerGrowthScenario.objects.filter(user=request.user).order_by('-created_at')
+        
+        scenarios_data = []
+        for scenario in scenarios:
+            # Ensure projections exist so we can surface end-of-period salary
+            if not scenario.projections_10_year:
+                scenario.calculate_projections()
+            # Extract salary at the end of 5 and 10 years (base salary line from projections)
+            salary_after_5 = None
+            salary_after_10 = None
+            total_comp_year_5 = None
+            total_comp_year_10 = None
+            if scenario.projections_5_year:
+                salary_after_5 = scenario.projections_5_year[-1].get('base_salary')
+                total_comp_year_5 = scenario.projections_5_year[-1].get('total_comp')
+            if scenario.projections_10_year:
+                salary_after_10 = scenario.projections_10_year[-1].get('base_salary')
+                total_comp_year_10 = scenario.projections_10_year[-1].get('total_comp')
+
+            scenarios_data.append({
+                'id': scenario.id,
+                'scenario_name': scenario.scenario_name,
+                'job_title': scenario.job_title,
+                'company_name': scenario.company_name,
+                'starting_salary': str(scenario.starting_salary),
+                'annual_raise_percent': str(scenario.annual_raise_percent),
+                'scenario_type': scenario.scenario_type,
+                'total_comp_5_year': str(scenario.total_comp_5_year) if scenario.total_comp_5_year else None,
+                'total_comp_10_year': str(scenario.total_comp_10_year) if scenario.total_comp_10_year else None,
+                'salary_after_5_years': salary_after_5,
+                'salary_after_10_years': salary_after_10,
+                'total_comp_year_5': total_comp_year_5,
+                'total_comp_year_10': total_comp_year_10,
+                'created_at': scenario.created_at.isoformat(),
+                'updated_at': scenario.updated_at.isoformat(),
+            })
+        
+        return Response({'scenarios': scenarios_data}, status=status.HTTP_200_OK)
+    
+    elif request.method == 'POST':
+        data = request.data
+        
+        # Required fields
+        required_fields = ['scenario_name', 'job_title', 'starting_salary']
+        for field in required_fields:
+            if not data.get(field):
+                return Response(
+                    {'error': f'{field} is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        try:
+            # Create scenario (map frontend names to database names)
+            scenario = CareerGrowthScenario.objects.create(
+                user=request.user,
+                scenario_name=data['scenario_name'],
+                job_title=data['job_title'],
+                company_name=data.get('company_name', ''),
+                starting_salary=Decimal(str(data['starting_salary'])),
+                annual_raise_percent=Decimal(str(data.get('annual_raise_percent', 3.0))),
+                bonus_percent=Decimal(str(data.get('annual_bonus_percent', 0))),
+                starting_equity_value=Decimal(str(data.get('equity_value', 0))),
+                milestones=data.get('milestones', []),
+                career_goals_notes=data.get('notes', ''),
+                scenario_type=data.get('scenario_type', 'expected'),
+            )
+            
+            # Calculate projections
+            scenario.calculate_projections()
+            
+            return Response({
+                'id': scenario.id,
+                'scenario_name': scenario.scenario_name,
+                'total_comp_5_year': str(scenario.total_comp_5_year),
+                'total_comp_10_year': str(scenario.total_comp_10_year),
+                'message': 'Scenario created successfully'
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.error(f"Error creating career growth scenario: {e}")
+            return Response(
+                {'error': f'Error creating scenario: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def career_growth_scenario_detail(request, scenario_id):
+    """
+    Retrieve, update, or delete a specific career growth scenario.
+    """
+    from .models import CareerGrowthScenario
+    
+    try:
+        scenario = CareerGrowthScenario.objects.get(id=scenario_id, user=request.user)
+    except CareerGrowthScenario.DoesNotExist:
+        return Response(
+            {'error': 'Scenario not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == 'GET':
+        return Response({
+            'id': scenario.id,
+            'scenario_name': scenario.scenario_name,
+            'job_title': scenario.job_title,
+            'company_name': scenario.company_name,
+            'starting_salary': str(scenario.starting_salary),
+            'annual_raise_percent': str(scenario.annual_raise_percent),
+            'annual_bonus_percent': str(scenario.bonus_percent or 0),
+            'equity_value': str(scenario.starting_equity_value or 0),
+            'equity_vesting_years': 4,
+            'milestones': scenario.milestones,
+            'notes': scenario.career_goals_notes,
+            'scenario_type': scenario.scenario_type,
+            'projections_5_year': scenario.projections_5_year,
+            'projections_10_year': scenario.projections_10_year,
+            'total_comp_5_year': str(scenario.total_comp_5_year) if scenario.total_comp_5_year else None,
+            'total_comp_10_year': str(scenario.total_comp_10_year) if scenario.total_comp_10_year else None,
+            'created_at': scenario.created_at.isoformat(),
+            'updated_at': scenario.updated_at.isoformat(),
+        }, status=status.HTTP_200_OK)
+    
+    elif request.method == 'PUT':
+        data = request.data
+        
+        # Update fields
+        if 'scenario_name' in data:
+            scenario.scenario_name = data['scenario_name']
+        if 'job_title' in data:
+            scenario.job_title = data['job_title']
+        if 'company_name' in data:
+            scenario.company_name = data['company_name']
+        if 'starting_salary' in data:
+            scenario.starting_salary = Decimal(str(data['starting_salary']))
+        if 'annual_raise_percent' in data:
+            scenario.annual_raise_percent = Decimal(str(data['annual_raise_percent']))
+        if 'annual_bonus_percent' in data:
+            scenario.bonus_percent = Decimal(str(data['annual_bonus_percent']))
+        if 'equity_value' in data:
+            scenario.starting_equity_value = Decimal(str(data['equity_value']))
+        if 'milestones' in data:
+            scenario.milestones = data['milestones']
+        if 'notes' in data:
+            scenario.career_goals_notes = data['notes']
+        if 'scenario_type' in data:
+            scenario.scenario_type = data['scenario_type']
+        
+        scenario.save()
+        
+        # Recalculate projections
+        scenario.calculate_projections()
+        
+        return Response({
+            'id': scenario.id,
+            'scenario_name': scenario.scenario_name,
+            'total_comp_5_year': str(scenario.total_comp_5_year),
+            'total_comp_10_year': str(scenario.total_comp_10_year),
+            'message': 'Scenario updated successfully'
+        }, status=status.HTTP_200_OK)
+    
+    elif request.method == 'DELETE':
+        scenario.delete()
+        return Response(
+            {'message': 'Scenario deleted successfully'},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def calculate_scenario_projections(request):
+    """
+    Calculate projections for a scenario without saving.
+    Useful for "what-if" analysis before committing to a scenario.
+    """
+    from .models import CareerGrowthScenario
+    from decimal import Decimal
+    
+    data = request.data
+    
+    # Create temporary scenario (don't save)
+    temp_scenario = CareerGrowthScenario(
+        user=request.user,
+        scenario_name=data.get('scenario_name', 'Temporary'),
+        job_title=data.get('job_title', ''),
+        starting_salary=Decimal(str(data.get('starting_salary', 100000))),
+        annual_raise_percent=Decimal(str(data.get('annual_raise_percent', 3.0))),
+        bonus_percent=Decimal(str(data.get('annual_bonus_percent', 0))),
+        starting_equity_value=Decimal(str(data.get('equity_value', 0))),
+        milestones=data.get('milestones', []),
+        scenario_type=data.get('scenario_type', 'expected'),
+    )
+    
+    # Calculate without saving
+    temp_scenario.calculate_projections()
+    
+    return Response({
+        'projections_5_year': temp_scenario.projections_5_year,
+        'projections_10_year': temp_scenario.projections_10_year,
+        'total_comp_5_year': str(temp_scenario.total_comp_5_year),
+        'total_comp_10_year': str(temp_scenario.total_comp_10_year),
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def compare_career_scenarios(request):
+    """
+    Compare multiple career scenarios side-by-side.
+    Accepts list of scenario IDs and returns comparative analysis.
+    """
+    from .models import CareerGrowthScenario
+    from .career_growth_utils import career_growth_analyzer
+    
+    scenario_ids = request.data.get('scenario_ids', [])
+    
+    if not scenario_ids:
+        return Response(
+            {'error': 'scenario_ids list is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Fetch scenarios
+    scenarios = CareerGrowthScenario.objects.filter(
+        id__in=scenario_ids,
+        user=request.user
+    )
+    
+    if not scenarios.exists():
+        return Response(
+            {'error': 'No scenarios found with provided IDs'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Convert to dict format for comparison
+    scenarios_data = []
+    for scenario in scenarios:
+        scenarios_data.append({
+            'id': scenario.id,
+            'scenario_name': scenario.scenario_name,
+            'job_title': scenario.job_title,
+            'company_name': scenario.company_name,
+            'starting_salary': float(scenario.starting_salary),
+            'annual_raise_percent': float(scenario.annual_raise_percent),
+            'total_comp_5_year': float(scenario.total_comp_5_year or 0),
+            'total_comp_10_year': float(scenario.total_comp_10_year or 0),
+            'projections_5_year': scenario.projections_5_year,
+            'projections_10_year': scenario.projections_10_year,
+            'milestones': scenario.milestones,
+        })
+    
+    # Perform comparison
+    comparison = career_growth_analyzer.calculate_scenario_comparison(scenarios_data)
+    # Include projections for charting on the frontend
+    comparison['projections'] = scenarios_data
+    
+    return Response(comparison, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_career_progression_data(request):
+    """
+    Get career progression data for a job title and company.
+    Uses career_growth_utils to fetch industry data.
+    """
+    from .career_growth_utils import career_growth_analyzer
+    
+    job_title = request.query_params.get('job_title')
+    company_name = request.query_params.get('company_name', '')
+    industry = request.query_params.get('industry')
+    
+    if not job_title:
+        return Response(
+            {'error': 'job_title parameter is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Get promotion timeline data
+    progression = career_growth_analyzer.get_promotion_timeline(
+        job_title=job_title,
+        company_name=company_name,
+        industry=industry
+    )
+    
+    # Get Glassdoor career path (if available)
+    glassdoor_data = None
+    if company_name:
+        glassdoor_data = career_growth_analyzer.fetch_glassdoor_career_path(
+            job_title=job_title,
+            company_name=company_name
+        )
+    
+    return Response({
+        'progression': progression,
+        'glassdoor_data': glassdoor_data,
+    }, status=status.HTTP_200_OK)
+
