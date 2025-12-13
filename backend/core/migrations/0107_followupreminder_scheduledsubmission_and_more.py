@@ -4,6 +4,30 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+def drop_constraint_if_exists(table, constraint):
+    """Factory to create migration operation that drops a constraint (PostgreSQL only)."""
+    def forward(apps, schema_editor):
+        if schema_editor.connection.vendor == 'postgresql':
+            with schema_editor.connection.cursor() as cursor:
+                cursor.execute(f'ALTER TABLE "{table}" DROP CONSTRAINT IF EXISTS "{constraint}";')
+    return migrations.RunPython(forward, migrations.RunPython.noop)
+
+
+def rename_index_if_exists(old_name, new_name):
+    """Factory to create migration operation that renames an index (PostgreSQL only)."""
+    def forward(apps, schema_editor):
+        if schema_editor.connection.vendor == 'postgresql':
+            with schema_editor.connection.cursor() as cursor:
+                cursor.execute(f'ALTER INDEX IF EXISTS "{old_name}" RENAME TO "{new_name}";')
+    
+    def backward(apps, schema_editor):
+        if schema_editor.connection.vendor == 'postgresql':
+            with schema_editor.connection.cursor() as cursor:
+                cursor.execute(f'ALTER INDEX IF EXISTS "{new_name}" RENAME TO "{old_name}";')
+    
+    return migrations.RunPython(forward, backward)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -60,13 +84,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql=(
-                        'ALTER TABLE "core_teamcandidateaccess" '
-                        'DROP CONSTRAINT IF EXISTS "core_teamcandidate_team_cand_member_uniq";'
-                    ),
-                    reverse_sql=migrations.RunSQL.noop,
-                ),
+                drop_constraint_if_exists('core_teamcandidateaccess', 'core_teamcandidate_team_cand_member_uniq'),
             ],
             state_operations=[
                 migrations.RemoveConstraint(
@@ -77,13 +95,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql=(
-                        'ALTER TABLE "core_teammembership" '
-                        'DROP CONSTRAINT IF EXISTS "core_teammembership_team_user_uniq";'
-                    ),
-                    reverse_sql=migrations.RunSQL.noop,
-                ),
+                drop_constraint_if_exists('core_teammembership', 'core_teammembership_team_user_uniq'),
             ],
             state_operations=[
                 migrations.RemoveConstraint(
@@ -94,10 +106,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql='ALTER INDEX IF EXISTS "core_linked_user_id_idx" RENAME TO "core_linked_user_id_c0550f_idx";',
-                    reverse_sql='ALTER INDEX IF EXISTS "core_linked_user_id_c0550f_idx" RENAME TO "core_linked_user_id_idx";',
-                ),
+                rename_index_if_exists('core_linked_user_id_idx', 'core_linked_user_id_c0550f_idx'),
             ],
             state_operations=[
                 migrations.RenameIndex(
@@ -109,10 +118,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql='ALTER INDEX IF EXISTS "core_linked_linkedin_id_idx" RENAME TO "core_linked_linkedi_290f08_idx";',
-                    reverse_sql='ALTER INDEX IF EXISTS "core_linked_linkedi_290f08_idx" RENAME TO "core_linked_linkedin_id_idx";',
-                ),
+                rename_index_if_exists('core_linked_linkedin_id_idx', 'core_linked_linkedi_290f08_idx'),
             ],
             state_operations=[
                 migrations.RenameIndex(
@@ -124,10 +130,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql='ALTER INDEX IF EXISTS "core_teamac_owner_c1fe62_idx" RENAME TO "core_teamac_owner_i_b66d84_idx";',
-                    reverse_sql='ALTER INDEX IF EXISTS "core_teamac_owner_i_b66d84_idx" RENAME TO "core_teamac_owner_c1fe62_idx";',
-                ),
+                rename_index_if_exists('core_teamac_owner_c1fe62_idx', 'core_teamac_owner_i_b66d84_idx'),
             ],
             state_operations=[
                 migrations.RenameIndex(
@@ -139,10 +142,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql='ALTER INDEX IF EXISTS "core_teamac_subscri_5df6f4_idx" RENAME TO "core_teamac_subscri_2eb392_idx";',
-                    reverse_sql='ALTER INDEX IF EXISTS "core_teamac_subscri_2eb392_idx" RENAME TO "core_teamac_subscri_5df6f4_idx";',
-                ),
+                rename_index_if_exists('core_teamac_subscri_5df6f4_idx', 'core_teamac_subscri_2eb392_idx'),
             ],
             state_operations=[
                 migrations.RenameIndex(
@@ -154,10 +154,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql='ALTER INDEX IF EXISTS "core_teamcan_team_id_a24e14_idx" RENAME TO "core_teamca_team_id_514ea0_idx";',
-                    reverse_sql='ALTER INDEX IF EXISTS "core_teamca_team_id_514ea0_idx" RENAME TO "core_teamcan_team_id_a24e14_idx";',
-                ),
+                rename_index_if_exists('core_teamcan_team_id_a24e14_idx', 'core_teamca_team_id_514ea0_idx'),
             ],
             state_operations=[
                 migrations.RenameIndex(
@@ -169,10 +166,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql='ALTER INDEX IF EXISTS "core_teamcan_team_id_3f814f_idx" RENAME TO "core_teamca_team_id_854e7a_idx";',
-                    reverse_sql='ALTER INDEX IF EXISTS "core_teamca_team_id_854e7a_idx" RENAME TO "core_teamcan_team_id_3f814f_idx";',
-                ),
+                rename_index_if_exists('core_teamcan_team_id_3f814f_idx', 'core_teamca_team_id_854e7a_idx'),
             ],
             state_operations=[
                 migrations.RenameIndex(
@@ -184,10 +178,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql='ALTER INDEX IF EXISTS "core_teamin_team_id_2e101d_idx" RENAME TO "core_teamin_team_id_5ecc95_idx";',
-                    reverse_sql='ALTER INDEX IF EXISTS "core_teamin_team_id_5ecc95_idx" RENAME TO "core_teamin_team_id_2e101d_idx";',
-                ),
+                rename_index_if_exists('core_teamin_team_id_2e101d_idx', 'core_teamin_team_id_5ecc95_idx'),
             ],
             state_operations=[
                 migrations.RenameIndex(
@@ -199,10 +190,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql='ALTER INDEX IF EXISTS "core_teamin_email_031d6b_idx" RENAME TO "core_teamin_email_5c2405_idx";',
-                    reverse_sql='ALTER INDEX IF EXISTS "core_teamin_email_5c2405_idx" RENAME TO "core_teamin_email_031d6b_idx";',
-                ),
+                rename_index_if_exists('core_teamin_email_031d6b_idx', 'core_teamin_email_5c2405_idx'),
             ],
             state_operations=[
                 migrations.RenameIndex(
@@ -214,10 +202,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql='ALTER INDEX IF EXISTS "core_teammem_team_id_930156_idx" RENAME TO "core_teamme_team_id_31ddcd_idx";',
-                    reverse_sql='ALTER INDEX IF EXISTS "core_teamme_team_id_31ddcd_idx" RENAME TO "core_teammem_team_id_930156_idx";',
-                ),
+                rename_index_if_exists('core_teammem_team_id_930156_idx', 'core_teamme_team_id_31ddcd_idx'),
             ],
             state_operations=[
                 migrations.RenameIndex(
@@ -229,10 +214,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql='ALTER INDEX IF EXISTS "core_teammem_team_id_3e0925_idx" RENAME TO "core_teamme_team_id_683f95_idx";',
-                    reverse_sql='ALTER INDEX IF EXISTS "core_teamme_team_id_683f95_idx" RENAME TO "core_teammem_team_id_3e0925_idx";',
-                ),
+                rename_index_if_exists('core_teammem_team_id_3e0925_idx', 'core_teamme_team_id_683f95_idx'),
             ],
             state_operations=[
                 migrations.RenameIndex(
@@ -244,10 +226,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql='ALTER INDEX IF EXISTS "core_teammem_user_id_3c5672_idx" RENAME TO "core_teamme_user_id_18ce5c_idx";',
-                    reverse_sql='ALTER INDEX IF EXISTS "core_teamme_user_id_18ce5c_idx" RENAME TO "core_teammem_user_id_3c5672_idx";',
-                ),
+                rename_index_if_exists('core_teammem_user_id_3c5672_idx', 'core_teamme_user_id_18ce5c_idx'),
             ],
             state_operations=[
                 migrations.RenameIndex(
@@ -259,10 +238,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql='ALTER INDEX IF EXISTS "core_teammem_team_id_fc0b5d_idx" RENAME TO "core_teamme_team_id_f5dd70_idx";',
-                    reverse_sql='ALTER INDEX IF EXISTS "core_teamme_team_id_f5dd70_idx" RENAME TO "core_teammem_team_id_fc0b5d_idx";',
-                ),
+                rename_index_if_exists('core_teammem_team_id_fc0b5d_idx', 'core_teamme_team_id_f5dd70_idx'),
             ],
             state_operations=[
                 migrations.RenameIndex(

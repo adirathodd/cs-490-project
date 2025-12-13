@@ -3,6 +3,64 @@
 from django.db import migrations
 
 
+def rename_linkedin_indexes(apps, schema_editor):
+    """Rename indexes - PostgreSQL only."""
+    if schema_editor.connection.vendor != 'postgresql':
+        return
+    
+    with schema_editor.connection.cursor() as cursor:
+        # Check and rename core_linked_user_id_idx
+        cursor.execute("""
+            SELECT 1 FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind = 'i'
+              AND c.relname = 'core_linked_user_id_idx'
+              AND n.nspname = current_schema()
+        """)
+        if cursor.fetchone():
+            cursor.execute("ALTER INDEX core_linked_user_id_idx RENAME TO core_linked_user_id_c0550f_idx;")
+        
+        # Check and rename core_linked_linkedin_id_idx
+        cursor.execute("""
+            SELECT 1 FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind = 'i'
+              AND c.relname = 'core_linked_linkedin_id_idx'
+              AND n.nspname = current_schema()
+        """)
+        if cursor.fetchone():
+            cursor.execute("ALTER INDEX core_linked_linkedin_id_idx RENAME TO core_linked_linkedi_290f08_idx;")
+
+
+def reverse_rename_linkedin_indexes(apps, schema_editor):
+    """Reverse index renames - PostgreSQL only."""
+    if schema_editor.connection.vendor != 'postgresql':
+        return
+    
+    with schema_editor.connection.cursor() as cursor:
+        # Check and rename core_linked_user_id_c0550f_idx
+        cursor.execute("""
+            SELECT 1 FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind = 'i'
+              AND c.relname = 'core_linked_user_id_c0550f_idx'
+              AND n.nspname = current_schema()
+        """)
+        if cursor.fetchone():
+            cursor.execute("ALTER INDEX core_linked_user_id_c0550f_idx RENAME TO core_linked_user_id_idx;")
+        
+        # Check and rename core_linked_linkedi_290f08_idx
+        cursor.execute("""
+            SELECT 1 FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind = 'i'
+              AND c.relname = 'core_linked_linkedi_290f08_idx'
+              AND n.nspname = current_schema()
+        """)
+        if cursor.fetchone():
+            cursor.execute("ALTER INDEX core_linked_linkedi_290f08_idx RENAME TO core_linked_linkedin_id_idx;")
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,64 +68,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
-            sql="""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM pg_class c
-                        JOIN pg_namespace n ON n.oid = c.relnamespace
-                        WHERE c.relkind = 'i'
-                          AND c.relname = 'core_linked_user_id_idx'
-                          AND n.nspname = current_schema()
-                    ) THEN
-                        ALTER INDEX core_linked_user_id_idx RENAME TO core_linked_user_id_c0550f_idx;
-                    END IF;
-                END$$;
-            """,
-            reverse_sql="""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM pg_class c
-                        JOIN pg_namespace n ON n.oid = c.relnamespace
-                        WHERE c.relkind = 'i'
-                          AND c.relname = 'core_linked_user_id_c0550f_idx'
-                          AND n.nspname = current_schema()
-                    ) THEN
-                        ALTER INDEX core_linked_user_id_c0550f_idx RENAME TO core_linked_user_id_idx;
-                    END IF;
-                END$$;
-            """,
-        ),
-        migrations.RunSQL(
-            sql="""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM pg_class c
-                        JOIN pg_namespace n ON n.oid = c.relnamespace
-                        WHERE c.relkind = 'i'
-                          AND c.relname = 'core_linked_linkedin_id_idx'
-                          AND n.nspname = current_schema()
-                    ) THEN
-                        ALTER INDEX core_linked_linkedin_id_idx RENAME TO core_linked_linkedi_290f08_idx;
-                    END IF;
-                END$$;
-            """,
-            reverse_sql="""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM pg_class c
-                        JOIN pg_namespace n ON n.oid = c.relnamespace
-                        WHERE c.relkind = 'i'
-                          AND c.relname = 'core_linked_linkedi_290f08_idx'
-                          AND n.nspname = current_schema()
-                    ) THEN
-                        ALTER INDEX core_linked_linkedi_290f08_idx RENAME TO core_linked_linkedin_id_idx;
-                    END IF;
-                END$$;
-            """,
-        ),
+        migrations.RunPython(rename_linkedin_indexes, reverse_rename_linkedin_indexes),
     ]

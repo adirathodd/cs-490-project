@@ -3,31 +3,34 @@
 from django.db import migrations
 
 
-def safe_remove_constraint(table_name, constraint_name):
-    """Generate SQL to safely remove a constraint if it exists."""
-    return f"""
-        DO $$
-        BEGIN
-            IF EXISTS (
-                SELECT 1 FROM information_schema.table_constraints 
-                WHERE constraint_name = '{constraint_name}' AND table_name = '{table_name}'
-            ) THEN
-                ALTER TABLE "{table_name}" DROP CONSTRAINT "{constraint_name}";
-            END IF;
-        END $$;
-    """
+def remove_constraint_if_exists(apps, schema_editor, table_name, constraint_name):
+    """Remove a constraint if it exists (PostgreSQL only)."""
+    if schema_editor.connection.vendor != 'postgresql':
+        return
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(f"""
+            SELECT 1 FROM information_schema.table_constraints 
+            WHERE constraint_name = '{constraint_name}' AND table_name = '{table_name}'
+        """)
+        if cursor.fetchone():
+            cursor.execute(f'ALTER TABLE "{table_name}" DROP CONSTRAINT "{constraint_name}"')
 
 
-def safe_rename_index(old_name, new_name):
-    """Generate SQL to safely rename an index, handling cases where it may already be renamed."""
-    return f"""
-        DO $$
-        BEGIN
-            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = '{old_name}') THEN
-                ALTER INDEX "{old_name}" RENAME TO "{new_name}";
-            END IF;
-        END $$;
-    """
+def rename_index_if_exists(apps, schema_editor, old_name, new_name):
+    """Rename an index if it exists (PostgreSQL only)."""
+    if schema_editor.connection.vendor != 'postgresql':
+        return
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(f"""
+            SELECT 1 FROM pg_indexes WHERE indexname = '{old_name}'
+        """)
+        if cursor.fetchone():
+            cursor.execute(f'ALTER INDEX "{old_name}" RENAME TO "{new_name}"')
+
+
+def reverse_noop(apps, schema_editor):
+    """No-op reverse migration."""
+    pass
 
 
 class Migration(migrations.Migration):
@@ -38,66 +41,94 @@ class Migration(migrations.Migration):
 
     operations = [
         # Remove constraints safely
-        migrations.RunSQL(
-            safe_remove_constraint('core_teamcandidateaccess', 'core_teamcandidate_team_cand_member_uniq'),
-            migrations.RunSQL.noop,
+        migrations.RunPython(
+            lambda apps, schema_editor: remove_constraint_if_exists(
+                apps, schema_editor, 'core_teamcandidateaccess', 'core_teamcandidate_team_cand_member_uniq'
+            ),
+            reverse_noop,
         ),
-        migrations.RunSQL(
-            safe_remove_constraint('core_teammembership', 'core_teammembership_team_user_uniq'),
-            migrations.RunSQL.noop,
+        migrations.RunPython(
+            lambda apps, schema_editor: remove_constraint_if_exists(
+                apps, schema_editor, 'core_teammembership', 'core_teammembership_team_user_uniq'
+            ),
+            reverse_noop,
         ),
         # Rename indexes safely - LinkedInIntegration
-        migrations.RunSQL(
-            safe_rename_index('core_linked_user_id_idx', 'core_linked_user_id_c0550f_idx'),
-            migrations.RunSQL.noop,
+        migrations.RunPython(
+            lambda apps, schema_editor: rename_index_if_exists(
+                apps, schema_editor, 'core_linked_user_id_idx', 'core_linked_user_id_c0550f_idx'
+            ),
+            reverse_noop,
         ),
-        migrations.RunSQL(
-            safe_rename_index('core_linked_linkedin_id_idx', 'core_linked_linkedi_290f08_idx'),
-            migrations.RunSQL.noop,
+        migrations.RunPython(
+            lambda apps, schema_editor: rename_index_if_exists(
+                apps, schema_editor, 'core_linked_linkedin_id_idx', 'core_linked_linkedi_290f08_idx'
+            ),
+            reverse_noop,
         ),
         # TeamAccount
-        migrations.RunSQL(
-            safe_rename_index('core_teamac_owner_c1fe62_idx', 'core_teamac_owner_i_b66d84_idx'),
-            migrations.RunSQL.noop,
+        migrations.RunPython(
+            lambda apps, schema_editor: rename_index_if_exists(
+                apps, schema_editor, 'core_teamac_owner_c1fe62_idx', 'core_teamac_owner_i_b66d84_idx'
+            ),
+            reverse_noop,
         ),
-        migrations.RunSQL(
-            safe_rename_index('core_teamac_subscri_5df6f4_idx', 'core_teamac_subscri_2eb392_idx'),
-            migrations.RunSQL.noop,
+        migrations.RunPython(
+            lambda apps, schema_editor: rename_index_if_exists(
+                apps, schema_editor, 'core_teamac_subscri_5df6f4_idx', 'core_teamac_subscri_2eb392_idx'
+            ),
+            reverse_noop,
         ),
         # TeamCandidateAccess
-        migrations.RunSQL(
-            safe_rename_index('core_teamcan_team_id_a24e14_idx', 'core_teamca_team_id_514ea0_idx'),
-            migrations.RunSQL.noop,
+        migrations.RunPython(
+            lambda apps, schema_editor: rename_index_if_exists(
+                apps, schema_editor, 'core_teamcan_team_id_a24e14_idx', 'core_teamca_team_id_514ea0_idx'
+            ),
+            reverse_noop,
         ),
-        migrations.RunSQL(
-            safe_rename_index('core_teamcan_team_id_3f814f_idx', 'core_teamca_team_id_854e7a_idx'),
-            migrations.RunSQL.noop,
+        migrations.RunPython(
+            lambda apps, schema_editor: rename_index_if_exists(
+                apps, schema_editor, 'core_teamcan_team_id_3f814f_idx', 'core_teamca_team_id_854e7a_idx'
+            ),
+            reverse_noop,
         ),
         # TeamInvitation
-        migrations.RunSQL(
-            safe_rename_index('core_teamin_team_id_2e101d_idx', 'core_teamin_team_id_5ecc95_idx'),
-            migrations.RunSQL.noop,
+        migrations.RunPython(
+            lambda apps, schema_editor: rename_index_if_exists(
+                apps, schema_editor, 'core_teamin_team_id_2e101d_idx', 'core_teamin_team_id_5ecc95_idx'
+            ),
+            reverse_noop,
         ),
-        migrations.RunSQL(
-            safe_rename_index('core_teamin_email_031d6b_idx', 'core_teamin_email_5c2405_idx'),
-            migrations.RunSQL.noop,
+        migrations.RunPython(
+            lambda apps, schema_editor: rename_index_if_exists(
+                apps, schema_editor, 'core_teamin_email_031d6b_idx', 'core_teamin_email_5c2405_idx'
+            ),
+            reverse_noop,
         ),
         # TeamMembership
-        migrations.RunSQL(
-            safe_rename_index('core_teammem_team_id_930156_idx', 'core_teamme_team_id_31ddcd_idx'),
-            migrations.RunSQL.noop,
+        migrations.RunPython(
+            lambda apps, schema_editor: rename_index_if_exists(
+                apps, schema_editor, 'core_teammem_team_id_930156_idx', 'core_teamme_team_id_31ddcd_idx'
+            ),
+            reverse_noop,
         ),
-        migrations.RunSQL(
-            safe_rename_index('core_teammem_team_id_3e0925_idx', 'core_teamme_team_id_683f95_idx'),
-            migrations.RunSQL.noop,
+        migrations.RunPython(
+            lambda apps, schema_editor: rename_index_if_exists(
+                apps, schema_editor, 'core_teammem_team_id_3e0925_idx', 'core_teamme_team_id_683f95_idx'
+            ),
+            reverse_noop,
         ),
-        migrations.RunSQL(
-            safe_rename_index('core_teammem_user_id_3c5672_idx', 'core_teamme_user_id_18ce5c_idx'),
-            migrations.RunSQL.noop,
+        migrations.RunPython(
+            lambda apps, schema_editor: rename_index_if_exists(
+                apps, schema_editor, 'core_teammem_user_id_3c5672_idx', 'core_teamme_user_id_18ce5c_idx'
+            ),
+            reverse_noop,
         ),
         # TeamMessage
-        migrations.RunSQL(
-            safe_rename_index('core_teammem_team_id_fc0b5d_idx', 'core_teamme_team_id_f5dd70_idx'),
-            migrations.RunSQL.noop,
+        migrations.RunPython(
+            lambda apps, schema_editor: rename_index_if_exists(
+                apps, schema_editor, 'core_teammem_team_id_fc0b5d_idx', 'core_teamme_team_id_f5dd70_idx'
+            ),
+            reverse_noop,
         ),
     ]

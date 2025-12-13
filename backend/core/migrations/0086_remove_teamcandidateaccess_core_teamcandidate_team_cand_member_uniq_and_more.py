@@ -4,43 +4,68 @@ from django.conf import settings
 from django.db import migrations, models
 
 
-def safe_rename_index(old_name, new_name):
-    """Generate SQL to safely rename an index, handling cases where it may already be renamed."""
-    return f"""
-        DO $$
-        BEGIN
-            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = '{old_name}') THEN
-                ALTER INDEX "{old_name}" RENAME TO "{new_name}";
-            END IF;
-        END $$;
-    """
+def postgresql_operations(apps, schema_editor):
+    """Execute PostgreSQL-specific operations."""
+    if schema_editor.connection.vendor != 'postgresql':
+        return
+    
+    with schema_editor.connection.cursor() as cursor:
+        # Remove constraints
+        cursor.execute("SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'core_teamcandidate_team_cand_member_uniq' AND table_name = 'core_teamcandidateaccess'")
+        if cursor.fetchone():
+            cursor.execute('ALTER TABLE "core_teamcandidateaccess" DROP CONSTRAINT "core_teamcandidate_team_cand_member_uniq";')
+        
+        cursor.execute("SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'core_teammembership_team_user_uniq' AND table_name = 'core_teammembership'")
+        if cursor.fetchone():
+            cursor.execute('ALTER TABLE "core_teammembership" DROP CONSTRAINT "core_teammembership_team_user_uniq";')
+        
+        # Rename indexes - check existence first
+        index_renames = [
+            ('core_linked_user_id_idx', 'core_linked_user_id_c0550f_idx'),
+            ('core_linked_linkedin_id_idx', 'core_linked_linkedi_290f08_idx'),
+            ('core_teamac_owner_c1fe62_idx', 'core_teamac_owner_i_b66d84_idx'),
+            ('core_teamac_subscri_5df6f4_idx', 'core_teamac_subscri_2eb392_idx'),
+            ('core_teamcan_team_id_a24e14_idx', 'core_teamca_team_id_514ea0_idx'),
+            ('core_teamcan_team_id_3f814f_idx', 'core_teamca_team_id_854e7a_idx'),
+            ('core_teamin_team_id_2e101d_idx', 'core_teamin_team_id_5ecc95_idx'),
+            ('core_teamin_email_031d6b_idx', 'core_teamin_email_5c2405_idx'),
+            ('core_teammem_team_id_930156_idx', 'core_teamme_team_id_31ddcd_idx'),
+            ('core_teammem_team_id_3e0925_idx', 'core_teamme_team_id_683f95_idx'),
+            ('core_teammem_user_id_3c5672_idx', 'core_teamme_user_id_18ce5c_idx'),
+            ('core_teammem_team_id_fc0b5d_idx', 'core_teamme_team_id_f5dd70_idx'),
+        ]
+        
+        for old_name, new_name in index_renames:
+            cursor.execute(f"SELECT 1 FROM pg_indexes WHERE indexname = '{old_name}'")
+            if cursor.fetchone():
+                cursor.execute(f'ALTER INDEX "{old_name}" RENAME TO "{new_name}";')
 
 
-def noop_reverse(old_name, new_name):
-    """Generate SQL to rename back (for reverse migration)."""
-    return f"""
-        DO $$
-        BEGIN
-            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = '{new_name}') THEN
-                ALTER INDEX "{new_name}" RENAME TO "{old_name}";
-            END IF;
-        END $$;
-    """
-
-
-def safe_remove_constraint(table_name, constraint_name):
-    """Generate SQL to safely remove a constraint if it exists."""
-    return f"""
-        DO $$
-        BEGIN
-            IF EXISTS (
-                SELECT 1 FROM information_schema.table_constraints 
-                WHERE constraint_name = '{constraint_name}' AND table_name = '{table_name}'
-            ) THEN
-                ALTER TABLE "{table_name}" DROP CONSTRAINT "{constraint_name}";
-            END IF;
-        END $$;
-    """
+def reverse_postgresql_operations(apps, schema_editor):
+    """Reverse PostgreSQL operations."""
+    if schema_editor.connection.vendor != 'postgresql':
+        return
+    
+    with schema_editor.connection.cursor() as cursor:
+        index_renames = [
+            ('core_linked_user_id_c0550f_idx', 'core_linked_user_id_idx'),
+            ('core_linked_linkedi_290f08_idx', 'core_linked_linkedin_id_idx'),
+            ('core_teamac_owner_i_b66d84_idx', 'core_teamac_owner_c1fe62_idx'),
+            ('core_teamac_subscri_2eb392_idx', 'core_teamac_subscri_5df6f4_idx'),
+            ('core_teamca_team_id_514ea0_idx', 'core_teamcan_team_id_a24e14_idx'),
+            ('core_teamca_team_id_854e7a_idx', 'core_teamcan_team_id_3f814f_idx'),
+            ('core_teamin_team_id_5ecc95_idx', 'core_teamin_team_id_2e101d_idx'),
+            ('core_teamin_email_5c2405_idx', 'core_teamin_email_031d6b_idx'),
+            ('core_teamme_team_id_31ddcd_idx', 'core_teammem_team_id_930156_idx'),
+            ('core_teamme_team_id_683f95_idx', 'core_teammem_team_id_3e0925_idx'),
+            ('core_teamme_user_id_18ce5c_idx', 'core_teammem_user_id_3c5672_idx'),
+            ('core_teamme_team_id_f5dd70_idx', 'core_teammem_team_id_fc0b5d_idx'),
+        ]
+        
+        for new_name, old_name in index_renames:
+            cursor.execute(f"SELECT 1 FROM pg_indexes WHERE indexname = '{new_name}'")
+            if cursor.fetchone():
+                cursor.execute(f'ALTER INDEX "{new_name}" RENAME TO "{old_name}";')
 
 
 class Migration(migrations.Migration):
@@ -51,69 +76,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Remove constraints safely
-        migrations.RunSQL(
-            safe_remove_constraint('core_teamcandidateaccess', 'core_teamcandidate_team_cand_member_uniq'),
-            migrations.RunSQL.noop,
-        ),
-        migrations.RunSQL(
-            safe_remove_constraint('core_teammembership', 'core_teammembership_team_user_uniq'),
-            migrations.RunSQL.noop,
-        ),
-        # Rename indexes safely - LinkedInIntegration
-        migrations.RunSQL(
-            safe_rename_index('core_linked_user_id_idx', 'core_linked_user_id_c0550f_idx'),
-            noop_reverse('core_linked_user_id_idx', 'core_linked_user_id_c0550f_idx'),
-        ),
-        migrations.RunSQL(
-            safe_rename_index('core_linked_linkedin_id_idx', 'core_linked_linkedi_290f08_idx'),
-            noop_reverse('core_linked_linkedin_id_idx', 'core_linked_linkedi_290f08_idx'),
-        ),
-        # TeamAccount
-        migrations.RunSQL(
-            safe_rename_index('core_teamac_owner_c1fe62_idx', 'core_teamac_owner_i_b66d84_idx'),
-            noop_reverse('core_teamac_owner_c1fe62_idx', 'core_teamac_owner_i_b66d84_idx'),
-        ),
-        migrations.RunSQL(
-            safe_rename_index('core_teamac_subscri_5df6f4_idx', 'core_teamac_subscri_2eb392_idx'),
-            noop_reverse('core_teamac_subscri_5df6f4_idx', 'core_teamac_subscri_2eb392_idx'),
-        ),
-        # TeamCandidateAccess
-        migrations.RunSQL(
-            safe_rename_index('core_teamcan_team_id_a24e14_idx', 'core_teamca_team_id_514ea0_idx'),
-            noop_reverse('core_teamcan_team_id_a24e14_idx', 'core_teamca_team_id_514ea0_idx'),
-        ),
-        migrations.RunSQL(
-            safe_rename_index('core_teamcan_team_id_3f814f_idx', 'core_teamca_team_id_854e7a_idx'),
-            noop_reverse('core_teamcan_team_id_3f814f_idx', 'core_teamca_team_id_854e7a_idx'),
-        ),
-        # TeamInvitation
-        migrations.RunSQL(
-            safe_rename_index('core_teamin_team_id_2e101d_idx', 'core_teamin_team_id_5ecc95_idx'),
-            noop_reverse('core_teamin_team_id_2e101d_idx', 'core_teamin_team_id_5ecc95_idx'),
-        ),
-        migrations.RunSQL(
-            safe_rename_index('core_teamin_email_031d6b_idx', 'core_teamin_email_5c2405_idx'),
-            noop_reverse('core_teamin_email_031d6b_idx', 'core_teamin_email_5c2405_idx'),
-        ),
-        # TeamMembership
-        migrations.RunSQL(
-            safe_rename_index('core_teammem_team_id_930156_idx', 'core_teamme_team_id_31ddcd_idx'),
-            noop_reverse('core_teammem_team_id_930156_idx', 'core_teamme_team_id_31ddcd_idx'),
-        ),
-        migrations.RunSQL(
-            safe_rename_index('core_teammem_team_id_3e0925_idx', 'core_teamme_team_id_683f95_idx'),
-            noop_reverse('core_teammem_team_id_3e0925_idx', 'core_teamme_team_id_683f95_idx'),
-        ),
-        migrations.RunSQL(
-            safe_rename_index('core_teammem_user_id_3c5672_idx', 'core_teamme_user_id_18ce5c_idx'),
-            noop_reverse('core_teammem_user_id_3c5672_idx', 'core_teamme_user_id_18ce5c_idx'),
-        ),
-        # TeamMessage
-        migrations.RunSQL(
-            safe_rename_index('core_teammem_team_id_fc0b5d_idx', 'core_teamme_team_id_f5dd70_idx'),
-            noop_reverse('core_teammem_team_id_fc0b5d_idx', 'core_teamme_team_id_f5dd70_idx'),
-        ),
+        migrations.RunPython(postgresql_operations, reverse_postgresql_operations),
         # AlterField operations
         migrations.AlterField(
             model_name='teamaccount',

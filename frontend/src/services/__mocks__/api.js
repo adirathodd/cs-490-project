@@ -335,6 +335,7 @@ const axiosInstance = {
 module.exports = {
 	__esModule: true,
 	default: axiosInstance,
+	api: axiosInstance,
 	profileAPI,
 	authAPI,
 	skillsAPI,
