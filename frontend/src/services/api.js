@@ -3470,4 +3470,20 @@ export const teamAPI = {
   },
 };
 
+// UC-128: Career Growth Calculator API
+export const careerGrowthAPI = {
+  getScenarios: () => api.get('/career-growth/scenarios/'),
+  getScenario: (scenarioId) => api.get(`/career-growth/scenarios/${scenarioId}/`),
+  createScenario: (data) => api.post('/career-growth/scenarios/', data),
+  updateScenario: (scenarioId, data) => api.put(`/career-growth/scenarios/${scenarioId}/`, data),
+  deleteScenario: (scenarioId) => api.delete(`/career-growth/scenarios/${scenarioId}/`),
+  calculateProjection: (data) => api.post('/career-growth/calculate/', data),
+  compareScenarios: (scenarioIds) => api.post('/career-growth/compare/', { scenario_ids: scenarioIds }),
+  getProgressionData: (jobTitle, companyName, industry) => 
+    api.get('/career-growth/progression-data/', {
+      params: { job_title: jobTitle, company_name: companyName, industry }
+    }),
+};
+
 // ESM-only: no CommonJS interop here to avoid init-order issues
+
