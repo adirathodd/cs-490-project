@@ -911,6 +911,28 @@ export const jobsAPI = {
       throw error.response?.data?.error || { message: 'Failed to fetch bulk job match scores' };
     }
   },
+
+  // Application quality scoring
+  getApplicationQuality: async (id, options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.refresh) params.append('refresh', 'true');
+      const path = params.toString() ? `/jobs/${id}/quality/?${params.toString()}` : `/jobs/${id}/quality/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch application quality' };
+    }
+  },
+
+  refreshApplicationQuality: async (id, data = {}) => {
+    try {
+      const response = await api.post(`/jobs/${id}/quality/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to score application quality' };
+    }
+  },
 };
 
 export const companyAPI = {

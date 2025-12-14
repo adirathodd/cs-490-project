@@ -3809,6 +3809,49 @@ class ApplicationPackageGenerator:
             return None
 
 
+class ApplicationQualityReview(models.Model):
+    """
+    UC-??? AI quality score for application packages
+
+    Stores per-job, per-candidate quality assessments so we can track history
+    and enforce submission readiness thresholds.
+    """
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name='application_quality_reviews')
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='quality_reviews')
+    resume_doc = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='quality_reviews_as_resume')
+    cover_letter_doc = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='quality_reviews_as_cover')
+    linkedin_url = models.URLField(blank=True, default='')
+
+    overall_score = models.DecimalField(max_digits=5, decimal_places=2)
+    alignment_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    keyword_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    consistency_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    formatting_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+
+    missing_keywords = models.JSONField(default=list, blank=True)
+    missing_skills = models.JSONField(default=list, blank=True)
+    formatting_issues = models.JSONField(default=list, blank=True)
+    improvement_suggestions = models.JSONField(default=list, blank=True)
+    comparison_snapshot = models.JSONField(default=dict, blank=True)
+
+    threshold = models.PositiveIntegerField(default=70)
+    meets_threshold = models.BooleanField(default=False)
+    score_delta = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['candidate', 'job', '-created_at']),
+            models.Index(fields=['job', '-created_at']),
+            models.Index(fields=['candidate', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"Quality {self.overall_score} for job {self.job_id}"
+
+
 class ApplicationGoal(models.Model):
     """Track weekly application goals and progress for analytics."""
     
