@@ -1036,6 +1036,7 @@ class CertificationSerializer(serializers.ModelSerializer):
     never_expires = serializers.BooleanField(required=False)
     does_not_expire = serializers.BooleanField(source='never_expires', required=False)
     document_url = serializers.SerializerMethodField(read_only=True)
+    badge_image_url = serializers.SerializerMethodField(read_only=True)
     is_expired = serializers.SerializerMethodField(read_only=True)
     days_until_expiration = serializers.SerializerMethodField(read_only=True)
     reminder_date = serializers.DateField(read_only=True)
@@ -1048,15 +1049,24 @@ class CertificationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'issuing_organization', 'issue_date', 'expiry_date',
             'never_expires', 'does_not_expire', 'credential_id', 'credential_url', 'category',
-            'verification_status', 'document_url', 'is_expired', 'days_until_expiration',
-            'renewal_reminder_enabled', 'reminder_days_before', 'reminder_date', 'candidate',
+            'verification_status', 'document_url', 'badge_image_url', 'description',
+            'achievement_highlights', 'assessment_score', 'assessment_max_score', 'assessment_units',
+            'is_expired', 'days_until_expiration', 'renewal_reminder_enabled',
+            'reminder_days_before', 'reminder_date', 'candidate',
         ]
-        read_only_fields = ['id', 'document_url', 'is_expired', 'days_until_expiration', 'reminder_date']
+        read_only_fields = ['id', 'document_url', 'badge_image_url', 'is_expired', 'days_until_expiration', 'reminder_date']
 
     def get_document_url(self, obj):
         request = self.context.get('request')
         if obj.document:
             url = obj.document.url
+            return request.build_absolute_uri(url) if request else url
+        return None
+
+    def get_badge_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.badge_image:
+            url = obj.badge_image.url
             return request.build_absolute_uri(url) if request else url
         return None
 

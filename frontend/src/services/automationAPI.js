@@ -1,4 +1,5 @@
 // Automation API Service for UC-069 Application Workflow Automation
+import { authorizedFetch } from './authToken';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
@@ -7,25 +8,20 @@ class AutomationAPI {
     this.baseURL = API_BASE_URL;
   }
 
-  // Helper method to get auth headers
-  getAuthHeaders() {
-    const token = localStorage.getItem('firebaseToken'); // Use firebaseToken, not authToken
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': token ? `Bearer ${token}` : '',
-    };
-  }
-
   // Helper method to handle API requests
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    };
     const config = {
-      headers: this.getAuthHeaders(),
       ...options,
+      headers,
     };
 
     try {
-      const response = await fetch(url, config);
+      const response = await authorizedFetch(url, config);
       
       if (!response.ok) {
         let errorText = '';
@@ -138,9 +134,10 @@ class AutomationAPI {
   }
 
   async downloadApplicationPackage(packageId) {
-    const response = await fetch(`${this.baseURL}/automation/packages/${packageId}/download/`, {
-      headers: this.getAuthHeaders(),
-    });
+    const response = await authorizedFetch(
+      `${this.baseURL}/automation/packages/${packageId}/download/`,
+      {}
+    );
     
     if (!response.ok) {
       throw new Error('Failed to download package');

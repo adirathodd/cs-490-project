@@ -914,6 +914,16 @@ class Certification(models.Model):
     document = models.FileField(upload_to='certifications/%Y/%m/', null=True, blank=True)
     renewal_reminder_enabled = models.BooleanField(default=False)
     reminder_days_before = models.PositiveSmallIntegerField(default=30)
+    badge_image = models.ImageField(upload_to='certifications/badges/%Y/%m/', null=True, blank=True)
+    description = models.TextField(blank=True)
+    achievement_highlights = models.TextField(blank=True)
+    assessment_score = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    assessment_max_score = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    assessment_units = models.CharField(
+        max_length=40,
+        blank=True,
+        help_text="Units for the assessment score (points, percentile, rank, etc.)"
+    )
     
     class Meta:
         ordering = ['-issue_date']

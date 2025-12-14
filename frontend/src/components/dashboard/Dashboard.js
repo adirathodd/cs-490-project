@@ -75,7 +75,7 @@ const Dashboard = () => {
     };
 
     fetchProfilePicture();
-  }, [currentUser]);
+  }, [currentUser, userProfile]);
 
   const handleUpdateProfile = () => {
     if (!authLoading && currentUser) {
@@ -87,7 +87,7 @@ const Dashboard = () => {
   const [activeSection, setActiveSection] = useState('Profile');
   const [calendarSummary, setCalendarSummary] = useState(null);
 
-  const showCard = (section) => activeSection === section;
+  // showCard helper removed - not currently used
 
   if (authLoading) {
     return (
