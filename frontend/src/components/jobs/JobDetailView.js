@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { jobsAPI, skillsAPI, interviewsAPI } from '../../services/api';
+import { jobsAPI, skillsAPI, interviewsAPI, followupAPI } from '../../services/api';
 import Icon from '../common/Icon';
 import { CompanyInfo } from '../../features/company';
 import InterviewInsights from './InterviewInsights';
@@ -129,6 +129,10 @@ const JobDetailView = () => {
   const [successForecast, setSuccessForecast] = useState(null);
   const [loadingSuccessForecast, setLoadingSuccessForecast] = useState(false);
   const [successForecastError, setSuccessForecastError] = useState('');
+  const [followupPlan, setFollowupPlan] = useState(null);
+  const [followupReminders, setFollowupReminders] = useState([]);
+  const [loadingFollowup, setLoadingFollowup] = useState(false);
+  const [followupError, setFollowupError] = useState('');
   
   const jobTypeOptions = [
     { value: 'ft', label: 'Full-time' },
@@ -423,6 +427,92 @@ const JobDetailView = () => {
       setLoadingTechnicalPrep(false);
     }
   }, []);
+
+  const loadFollowupData = useCallback(async (jobId, stage) => {
+    if (!jobId) return;
+    setLoadingFollowup(true);
+    setFollowupError('');
+    try {
+      const [plan, reminders] = await Promise.all([
+        followupAPI.getPlaybook({ jobId, stage }),
+        followupAPI.list()
+      ]);
+      setFollowupPlan(plan);
+      setFollowupReminders(Array.isArray(reminders) ? reminders.filter((r) => r.job === Number(jobId)) : []);
+    } catch (err) {
+      const msg = err?.message || err?.error || 'Unable to load follow-up guidance';
+      setFollowupError(msg);
+      setFollowupPlan(null);
+      setFollowupReminders([]);
+    } finally {
+      setLoadingFollowup(false);
+    }
+  }, []);
+
+  const handleScheduleFollowup = async () => {
+    if (!job?.id) return;
+    setLoadingFollowup(true);
+    setFollowupError('');
+    try {
+      await followupAPI.createFromPlaybook({ jobId: job.id, stage: job.status });
+      await loadFollowupData(job.id, job.status);
+      setSuccess('Follow-up reminder scheduled');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      const msg = err?.message || err?.error || 'Failed to schedule follow-up';
+      setFollowupError(msg);
+    } finally {
+      setLoadingFollowup(false);
+    }
+  };
+
+  const handleSnoozeReminder = async (reminderId, hours = 48) => {
+    if (!job?.id || !reminderId) return;
+    setLoadingFollowup(true);
+    setFollowupError('');
+    try {
+      await followupAPI.snooze(reminderId, { hours });
+      await loadFollowupData(job.id, job.status);
+    } catch (err) {
+      setFollowupError(err?.message || 'Failed to snooze reminder');
+    } finally {
+      setLoadingFollowup(false);
+    }
+  };
+
+  const handleDismissReminder = async (reminderId) => {
+    if (!job?.id || !reminderId) return;
+    setLoadingFollowup(true);
+    setFollowupError('');
+    try {
+      await followupAPI.dismiss(reminderId);
+      await loadFollowupData(job.id, job.status);
+    } catch (err) {
+      setFollowupError(err?.message || 'Failed to dismiss reminder');
+    } finally {
+      setLoadingFollowup(false);
+    }
+  };
+
+  const handleCompleteReminder = async (reminderId) => {
+    if (!job?.id || !reminderId) return;
+    setLoadingFollowup(true);
+    setFollowupError('');
+    try {
+      await followupAPI.complete(reminderId, { response_received: true });
+      await loadFollowupData(job.id, job.status);
+    } catch (err) {
+      setFollowupError(err?.message || 'Failed to mark reminder complete');
+    } finally {
+      setLoadingFollowup(false);
+    }
+  };
+
+  useEffect(() => {
+    if (job?.id) {
+      loadFollowupData(job.id, job.status);
+    }
+  }, [job?.id, job?.status, loadFollowupData]);
 
   const handleRefreshTechnicalPrep = useCallback(() => {
     if (job?.id) {
@@ -1130,6 +1220,131 @@ const JobDetailView = () => {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Follow-up Reminders */}
+      <div className="education-form-card followup-card">
+        <div className="form-header">
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            Follow-up reminders
+            {job?.status && (
+              <span className="followup-pill">
+                Stage: {job.status.replace('_', ' ')}
+              </span>
+            )}
+          </h3>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              className="add-education-button"
+              onClick={() => loadFollowupData(job.id, job.status)}
+              disabled={loadingFollowup}
+              style={{ background: '#f3f4f6', color: '#111827' }}
+            >
+              <Icon name="refresh-cw" size="sm" /> Refresh
+            </button>
+            <button
+              className="add-education-button"
+              onClick={handleScheduleFollowup}
+              disabled={loadingFollowup || job?.status === 'rejected'}
+              style={{
+                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                color: 'white',
+                border: 'none'
+              }}
+            >
+              {loadingFollowup ? 'Working...' : 'Schedule suggested reminder'}
+            </button>
+          </div>
+        </div>
+
+        {followupError && <div className="error-banner" style={{ marginBottom: '12px' }}>{followupError}</div>}
+
+        <div className="followup-grid">
+          <div className="followup-panel">
+            <p className="followup-label">Suggested timing</p>
+            <h4 style={{ margin: '4px 0 8px' }}>
+              {followupPlan?.scheduled_datetime ? formatTimestamp(followupPlan.scheduled_datetime) : 'Not available'}
+            </h4>
+            <p className="followup-meta">
+              {followupPlan?.recommendation_reason || 'Uses stage-aware etiquette (1 week post-application, 3 days post-interview).'}
+            </p>
+            <div className="followup-meta-row">
+              <span>Reminder type: <strong>{followupPlan?.reminder_type || 'follow-up'}</strong></span>
+              {followupPlan?.interval_days && (
+                <span>Cadence: every {followupPlan.interval_days} days</span>
+              )}
+            </div>
+          </div>
+
+          <div className="followup-panel">
+            <p className="followup-label">Template preview</p>
+            <div className="followup-template">
+              <div className="template-subject">Subject: {followupPlan?.subject || 'Follow-up about your application'}</div>
+              <div className="template-body">
+                {(followupPlan?.message_template || 'Friendly follow-up message tailored to your current stage.').slice(0, 380)}...
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="followup-tips">
+          <p className="followup-label">Etiquette tips</p>
+          <div className="followup-chips">
+            {(followupPlan?.etiquette_tips || []).map((tip, idx) => (
+              <span key={idx} className="followup-chip">{tip}</span>
+            ))}
+          </div>
+        </div>
+
+        <div className="followup-reminders">
+          <div className="followup-reminders-header">
+            <p className="followup-label">Scheduled reminders</p>
+            <span className="followup-count">{(followupReminders || []).length} for this job</span>
+          </div>
+          {(followupReminders || []).length === 0 ? (
+            <div className="followup-empty">
+              <Icon name="bell-off" size="sm" />
+              <div>No reminders yet. Use “Schedule suggested reminder” to add one.</div>
+            </div>
+          ) : (
+            <div className="followup-list">
+              {followupReminders.map((reminder) => (
+                <div key={reminder.id} className="followup-reminder-card">
+                  <div className="followup-reminder-main">
+                    <div>
+                      <div className="followup-reminder-title">{reminder.subject}</div>
+                      <div className="followup-reminder-meta">
+                        {reminder.reminder_type} • {reminder.followup_stage || job.status}
+                      </div>
+                      <div className="followup-reminder-meta">
+                        Scheduled: {formatTimestamp(reminder.scheduled_datetime)}
+                      </div>
+                      <div className="followup-reminder-meta">
+                        Status: <span className={`pill pill-${reminder.status}`}>{reminder.status}</span>
+                      </div>
+                    </div>
+                    {reminder.status === 'pending' && (
+                      <div className="followup-reminder-actions">
+                        <button onClick={() => handleSnoozeReminder(reminder.id, 48)} disabled={loadingFollowup}>
+                          Snooze 2d
+                        </button>
+                        <button onClick={() => handleCompleteReminder(reminder.id)} disabled={loadingFollowup}>
+                          Mark done
+                        </button>
+                        <button onClick={() => handleDismissReminder(reminder.id)} disabled={loadingFollowup} className="ghost">
+                          Dismiss
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="followup-reminder-body">
+                    {(reminder.message_template || '').slice(0, 260)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Notes Sections */}

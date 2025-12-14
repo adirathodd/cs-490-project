@@ -1900,6 +1900,64 @@ export const coverLetterExportAPI = {
   },
 };
 
+// Application follow-up reminders (UC-124 intelligent reminders)
+export const followupAPI = {
+  getPlaybook: async ({ jobId, stage }) => {
+    try {
+      const params = stage ? `?stage=${encodeURIComponent(stage)}` : '';
+      const response = await api.get(`/reminders/playbook/${jobId}/${params}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to load follow-up suggestion' };
+    }
+  },
+
+  createFromPlaybook: async ({ jobId, stage }) => {
+    try {
+      const response = await api.post(`/reminders/playbook/${jobId}/`, stage ? { stage } : {});
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to schedule follow-up' };
+    }
+  },
+
+  list: async () => {
+    try {
+      const response = await api.get('/reminders/');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to fetch reminders' };
+    }
+  },
+
+  snooze: async (id, payload) => {
+    try {
+      const response = await api.post(`/reminders/${id}/snooze/`, payload || {});
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to snooze reminder' };
+    }
+  },
+
+  dismiss: async (id) => {
+    try {
+      const response = await api.post(`/reminders/${id}/dismiss/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to dismiss reminder' };
+    }
+  },
+
+  complete: async (id, payload) => {
+    try {
+      const response = await api.post(`/reminders/${id}/complete/`, payload || {});
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to complete reminder' };
+    }
+  },
+};
+
 // UC-114: GitHub Integration API (define before default export to avoid TDZ)
 export const githubAPI = {
   connect: async (includePrivate = false) => {
@@ -3501,4 +3559,3 @@ export const careerGrowthAPI = {
 };
 
 // ESM-only: no CommonJS interop here to avoid init-order issues
-

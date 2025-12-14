@@ -5847,6 +5847,12 @@ class ScheduledSubmission(models.Model):
             self.job.status = 'applied'
             self.job.application_submitted_at = self.submitted_at
             self.job.save(update_fields=['status', 'application_submitted_at'])
+            try:
+                from core import followup_utils
+                followup_utils.create_stage_followup(self.job, 'applied', auto=True)
+            except Exception:
+                # Scheduling reminders should not block submission updates
+                pass
     
     def cancel(self, reason=''):
         """Cancel this scheduled submission"""
@@ -5927,6 +5933,18 @@ class FollowUpReminder(models.Model):
     sent_at = models.DateTimeField(null=True, blank=True)
     response_received = models.BooleanField(default=False)
     response_date = models.DateTimeField(null=True, blank=True)
+    # Stage + automation context
+    followup_stage = models.CharField(
+        max_length=20,
+        choices=JobEntry.STATUS_CHOICES,
+        null=True,
+        blank=True,
+        help_text='Job stage when the reminder was created'
+    )
+    auto_scheduled = models.BooleanField(default=False)
+    recommendation_reason = models.CharField(max_length=200, blank=True)
+    snoozed_until = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -5938,6 +5956,7 @@ class FollowUpReminder(models.Model):
             models.Index(fields=['candidate', 'status']),
             models.Index(fields=['scheduled_datetime', 'status']),
             models.Index(fields=['job', 'reminder_type']),
+            models.Index(fields=['job', 'followup_stage']),
         ]
     
     def __str__(self):
@@ -5948,7 +5967,11 @@ class FollowUpReminder(models.Model):
         self.status = 'sent'
         self.sent_at = timezone.now()
         self.occurrence_count += 1
-        self.save(update_fields=['status', 'sent_at', 'occurrence_count'])
+        self.completed_at = self.sent_at
+        # Ensure we persist stage if it was not set
+        if not self.followup_stage:
+            self.followup_stage = getattr(self.job, 'status', None)
+        self.save(update_fields=['status', 'sent_at', 'occurrence_count', 'completed_at', 'followup_stage', 'updated_at'])
         
         # Schedule next occurrence if recurring
         if self.is_recurring and self.occurrence_count < self.max_occurrences:
@@ -5970,7 +5993,32 @@ class FollowUpReminder(models.Model):
     def dismiss(self):
         """Dismiss this reminder"""
         self.status = 'dismissed'
-        self.save(update_fields=['status'])
+        self.completed_at = timezone.now()
+        self.save(update_fields=['status', 'completed_at', 'updated_at'])
+
+    def snooze(self, new_datetime):
+        """Snooze reminder to a new datetime."""
+        self.scheduled_datetime = new_datetime
+        self.snoozed_until = new_datetime
+        if self.status != 'pending':
+            self.status = 'pending'
+        self.save(update_fields=['scheduled_datetime', 'snoozed_until', 'status', 'updated_at'])
+
+    def mark_completed(self, response_received=False, response_date=None):
+        """Mark reminder as completed and optionally record a response."""
+        self.completed_at = timezone.now()
+        self.response_received = response_received or self.response_received
+        if response_received:
+            self.response_date = response_date or timezone.now()
+        if self.status == 'pending':
+            self.status = 'sent'
+        self.save(update_fields=[
+            'status',
+            'completed_at',
+            'response_received',
+            'response_date',
+            'updated_at',
+        ])
 
 
 class CareerGrowthScenario(models.Model):
