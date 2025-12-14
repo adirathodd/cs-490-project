@@ -83,6 +83,7 @@ export const AuthProvider = ({ children, value: injectedValue }) => {
     });
 
     return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const signOut = async () => {

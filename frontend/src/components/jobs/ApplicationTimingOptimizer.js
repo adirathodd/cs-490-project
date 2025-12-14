@@ -12,7 +12,6 @@ import './ApplicationTimingOptimizer.css';
 
 const ApplicationTimingOptimizer = () => {
   const [activeTab, setActiveTab] = useState('schedule'); // schedule | reminders | analytics | calendar
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   return (
@@ -82,6 +81,7 @@ const ScheduledSubmissions = ({ setError }) => {
 
   useEffect(() => {
     loadSubmissions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
   const loadSubmissions = async () => {
@@ -687,6 +687,7 @@ const RemindersList = ({ setError }) => {
 
   useEffect(() => {
     loadReminders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
   const loadReminders = async () => {
@@ -1023,6 +1024,7 @@ const TimingAnalytics = ({ setError }) => {
 
   useEffect(() => {
     loadAnalytics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadAnalytics = async () => {
@@ -1198,6 +1200,7 @@ const CalendarView = ({ setError }) => {
 
   useEffect(() => {
     loadCalendar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentMonth]);
 
   const loadCalendar = async () => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import apiSvc, { projectsAPI, githubAPI } from '../../services/api';
+import { projectsAPI, githubAPI } from '../../services/api';
 import './Projects.css';
 import Icon from '../common/Icon';
 
@@ -98,6 +98,7 @@ const displayDate = (value) => sanitizeDateInput(value) || '—';
       }
     };
     init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 
@@ -128,6 +129,7 @@ const displayDate = (value) => sanitizeDateInput(value) || '—';
       }
     };
     loadGithub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // After returning from OAuth callback (?github=connected), avoid unauthorized flash
@@ -161,6 +163,7 @@ const displayDate = (value) => sanitizeDateInput(value) || '—';
         }
       })();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const sortProjects = (arr) => {

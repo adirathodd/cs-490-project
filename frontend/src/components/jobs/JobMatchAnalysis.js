@@ -10,12 +10,12 @@ const JobMatchAnalysis = ({ job, onError }) => {
     experience: 0.3,
     education: 0.2
   });
-  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     if (job?.id) {
       loadMatchAnalysis();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job?.id]);
 
   const loadMatchAnalysis = async (refresh = false) => {
@@ -35,20 +35,7 @@ const JobMatchAnalysis = ({ job, onError }) => {
     }
   };
 
-  const updateWeights = async () => {
-    try {
-      setUpdating(true);
-      const response = await jobsAPI.updateJobMatchWeights(job.id, { weights: customWeights });
-      setMatchData(response.data);
-      onError?.(''); // Clear any previous errors
-    } catch (error) {
-      console.error('Error updating weights:', error);
-      onError?.('Failed to update match weights');
-    } finally {
-      setUpdating(false);
-    }
-  };
-
+  // handleWeightChange is currently unused but kept for future UI integration
   const handleWeightChange = (category, value) => {
     const numValue = parseFloat(value);
     if (isNaN(numValue) || numValue < 0 || numValue > 1) return;
@@ -71,6 +58,8 @@ const JobMatchAnalysis = ({ job, onError }) => {
     return '#dc2626';
   };
 
+  // normalizeWeights is currently unused but kept for future UI integration
+  // eslint-disable-next-line no-unused-vars
   const normalizeWeights = () => {
     const total = Object.values(customWeights).reduce((sum, val) => sum + val, 0);
     if (total > 0) {
@@ -108,6 +97,8 @@ const JobMatchAnalysis = ({ job, onError }) => {
   }
 
   const totalWeights = Object.values(customWeights).reduce((sum, val) => sum + val, 0);
+  // weightsValid is currently unused but kept for future UI validation
+  // eslint-disable-next-line no-unused-vars
   const weightsValid = Math.abs(totalWeights - 1) < 0.001;
 
   return (

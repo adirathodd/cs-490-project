@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -370,6 +370,7 @@ const SkillsOrganized = () => {
   const categoryNames = Object.keys(skillsByCategory);
 
   // Get all skill IDs for the active category
+  // eslint-disable-next-line no-unused-vars
   const getAllSkillIds = () => {
     const ids = [];
     Object.values(filteredCategories).forEach(category => {

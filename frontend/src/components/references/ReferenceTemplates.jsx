@@ -21,6 +21,7 @@ const ReferenceTemplates = ({ onClose, onSelectTemplate }) => {
 
   useEffect(() => {
     loadTemplates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterType]);
 
   const loadTemplates = async () => {

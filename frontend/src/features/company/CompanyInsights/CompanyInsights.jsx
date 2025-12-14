@@ -254,6 +254,7 @@ const CompanyInsights = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
+  // eslint-disable-next-line no-unused-vars
   const [generatingProfile, setGeneratingProfile] = useState(false);
   const [savingNotesFor, setSavingNotesFor] = useState(null);
   const newsSectionRef = useRef(null);
@@ -714,6 +715,7 @@ const CompanyInsights = () => {
     setTimeout(() => setStatus(''), 3000);
   };
 
+  // eslint-disable-next-line no-unused-vars
   const generateMissingProfile = async () => {
     if (!job) return;
     setGeneratingProfile(true);

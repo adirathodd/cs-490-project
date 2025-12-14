@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { teamAPI } from '../../services/api';
 import './TeamDashboard.css';
 
@@ -104,6 +104,7 @@ export default function TeamDashboard() {
     loadTeams();
     loadMyPendingInvites();
     loadMyJobs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -120,6 +121,7 @@ export default function TeamDashboard() {
       setReports(null);
       setSharedJobs([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTeamId]);
 
   const selectedTeam = useMemo(() => {

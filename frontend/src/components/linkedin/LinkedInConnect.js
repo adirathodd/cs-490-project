@@ -23,6 +23,7 @@ const LinkedInConnect = ({ onSuccess }) => {
     if (code && state) {
       handleOAuthCallback(code, state);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const checkIntegrationStatus = async () => {

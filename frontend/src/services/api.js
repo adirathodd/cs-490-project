@@ -85,6 +85,7 @@ api.interceptors.response.use(
   }
 );
 
+// eslint-disable-next-line no-unused-vars
 const _extractErrorMessage = (error, fallback) => {
   const data = error?.response?.data;
   if (!data) return fallback;
@@ -1305,9 +1306,9 @@ export const interviewsAPI = {
         const errorMessage = error.error[0];
         if (typeof errorMessage === 'string') {
           // This is likely a conflict message, so put it in scheduled_at field
-          throw { scheduled_at: errorMessage };
+          throw new Error(JSON.stringify({ scheduled_at: errorMessage }));
         }
-        throw error.error[0];
+        throw new Error(JSON.stringify(error.error[0]));
       }
       
       throw error.response?.data || error.error || { message: 'Failed to create interview' };
@@ -1930,122 +1931,6 @@ export const coverLetterExportAPI = {
       }
       const errInfo = error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
       throw new Error(typeof errInfo === 'string' ? errInfo : JSON.stringify(errInfo));
-    }
-  },
-};
-
-// Application follow-up reminders (UC-124 intelligent reminders)
-export const followupAPI = {
-  getPlaybook: async ({ jobId, stage }) => {
-    try {
-      const params = stage ? `?stage=${encodeURIComponent(stage)}` : '';
-      const response = await api.get(`/reminders/playbook/${jobId}/${params}`);
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || error.response?.data?.error || { message: 'Failed to load follow-up suggestion' };
-    }
-  },
-
-  createFromPlaybook: async ({ jobId, stage }) => {
-    try {
-      const response = await api.post(`/reminders/playbook/${jobId}/`, stage ? { stage } : {});
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || error.response?.data?.error || { message: 'Failed to schedule follow-up' };
-    }
-  },
-
-  list: async () => {
-    try {
-      const response = await api.get('/reminders/');
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || error.response?.data?.error || { message: 'Failed to fetch reminders' };
-    }
-  },
-
-  snooze: async (id, payload) => {
-    try {
-      const response = await api.post(`/reminders/${id}/snooze/`, payload || {});
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || error.response?.data?.error || { message: 'Failed to snooze reminder' };
-    }
-  },
-
-  dismiss: async (id) => {
-    try {
-      const response = await api.post(`/reminders/${id}/dismiss/`);
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || error.response?.data?.error || { message: 'Failed to dismiss reminder' };
-    }
-  },
-
-  complete: async (id, payload) => {
-    try {
-      const response = await api.post(`/reminders/${id}/complete/`, payload || {});
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || error.response?.data?.error || { message: 'Failed to complete reminder' };
-    }
-  },
-};
-
-// Application follow-up reminders (UC-124 intelligent reminders)
-export const followupAPI = {
-  getPlaybook: async ({ jobId, stage }) => {
-    try {
-      const params = stage ? `?stage=${encodeURIComponent(stage)}` : '';
-      const response = await api.get(`/reminders/playbook/${jobId}/${params}`);
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || error.response?.data?.error || { message: 'Failed to load follow-up suggestion' };
-    }
-  },
-
-  createFromPlaybook: async ({ jobId, stage }) => {
-    try {
-      const response = await api.post(`/reminders/playbook/${jobId}/`, stage ? { stage } : {});
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || error.response?.data?.error || { message: 'Failed to schedule follow-up' };
-    }
-  },
-
-  list: async () => {
-    try {
-      const response = await api.get('/reminders/');
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || error.response?.data?.error || { message: 'Failed to fetch reminders' };
-    }
-  },
-
-  snooze: async (id, payload) => {
-    try {
-      const response = await api.post(`/reminders/${id}/snooze/`, payload || {});
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || error.response?.data?.error || { message: 'Failed to snooze reminder' };
-    }
-  },
-
-  dismiss: async (id) => {
-    try {
-      const response = await api.post(`/reminders/${id}/dismiss/`);
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || error.response?.data?.error || { message: 'Failed to dismiss reminder' };
-    }
-  },
-
-  complete: async (id, payload) => {
-    try {
-      const response = await api.post(`/reminders/${id}/complete/`, payload || {});
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || error.response?.data?.error || { message: 'Failed to complete reminder' };
     }
   },
 };
