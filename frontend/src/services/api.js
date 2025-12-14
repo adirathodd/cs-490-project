@@ -828,6 +828,10 @@ export const jobsAPI = {
     const response = await api.get('/jobs/success-analysis');
     return response.data;
   },
+  getOptimizationInsights: async () => {
+    const response = await api.get('/jobs/optimization-dashboard');
+    return response.data;
+  },
 
   bulkUpdateStatus: async (ids, status) => {
     const response = await api.post('/jobs/bulk-status', { ids, status });
@@ -2161,11 +2165,11 @@ export const githubAPI = {
 };
 
 // Provide a forgiving default export that supports both
-// - `import authAPI from './services/api'` (legacy/default import)
-// - `import { authAPI } from './services/api'` (named import)
+// - `import api from './services/api'` and calling `api.get(...)`
+// - `import { authAPI } from './services/api'`
 // and also exposes other API groups as properties for callers that expect `api.authAPI`.
-const _defaultExport = {
-  // Expose the raw axios instance under a stable key to avoid property collisions
+const _defaultExport = Object.assign(api, {
+  // Preserve direct axios usage while giving callers access to the raw instance
   http: api,
   // include grouped namespaces as properties
   authAPI,
@@ -2186,7 +2190,7 @@ const _defaultExport = {
   interviewsAPI,
   calendarAPI,
   githubAPI,
-};
+});
 
 export default _defaultExport;
 

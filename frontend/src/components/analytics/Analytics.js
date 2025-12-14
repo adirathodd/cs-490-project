@@ -7,6 +7,7 @@ import InterviewPerformanceTracking from './InterviewPerformanceTracking';
 import ApplicationSuccessAnalysis from './ApplicationSuccessAnalysis';
 import CompetitiveAnalysisPanel from './CompetitiveAnalysisPanel';
 import ProductivityAnalytics from './ProductivityAnalytics';
+import OptimizationDashboard from './OptimizationDashboard';
 
 const card = { padding: 16, borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb', marginBottom: 16 };
 const sectionTitle = { fontSize: 18, fontWeight: 700, marginBottom: 12, color: '#1f2937' };
@@ -31,6 +32,7 @@ export default function Analytics() {
     { id: 'interviews', label: 'Interview Performance' },
     { id: 'competitive', label: 'Competitive Analysis' },
     { id: 'productivity', label: 'Productivity' },
+    { id: 'optimization', label: 'Optimization' },
   ];
 
   return (
@@ -68,6 +70,7 @@ export default function Analytics() {
         {activeTab === 'interviews' && <InterviewPerformanceTracking />}
         {activeTab === 'competitive' && <CompetitiveAnalysisPanel />}
         {activeTab === 'productivity' && <ProductivityAnalytics />}
+        {activeTab === 'optimization' && <OptimizationDashboard />}
       </div>
     </div>
   );

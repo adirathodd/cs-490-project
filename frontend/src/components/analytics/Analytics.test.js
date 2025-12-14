@@ -34,6 +34,11 @@ jest.mock('./ApplicationSuccessAnalysis', () => ({
   default: () => <div data-testid="application-success-analysis">Application Success Analysis</div>,
 }));
 
+jest.mock('./OptimizationDashboard', () => ({
+  __esModule: true,
+  default: () => <div data-testid="optimization-dashboard">Optimization Dashboard</div>,
+}));
+
 const { jobsAPI } = require('../../services/api');
 const { useAuth } = require('../../context/AuthContext');
 
@@ -175,6 +180,7 @@ describe('Analytics component', () => {
       expect(screen.getByText('Application Analytics')).toBeInTheDocument();
       expect(screen.getByText('Success Analysis')).toBeInTheDocument();
       expect(screen.getByText('Interview Performance')).toBeInTheDocument();
+      expect(screen.getByText('Optimization')).toBeInTheDocument();
     });
 
     test('switches between tabs correctly', async () => {
@@ -206,6 +212,20 @@ describe('Analytics component', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Application Analytics Dashboard')).toBeInTheDocument();
+      });
+    });
+
+    test('shows optimization dashboard content when tab selected', async () => {
+      render(<Analytics />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Application Analytics Dashboard')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('Optimization'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('optimization-dashboard')).toBeInTheDocument();
       });
     });
 
