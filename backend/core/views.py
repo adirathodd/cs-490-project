@@ -36,8 +36,9 @@ from django.views.decorators.http import require_GET
 import os
 import requests
 from urllib.parse import urlencode
-from core.models import GitHubAccount
+from core.models import GitHubAccount, ApplicationQualityReview
 from core import followup_utils
+from core.application_quality import ApplicationQualityScorer, build_quality_history
 from core.serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
@@ -6456,6 +6457,135 @@ def materials_defaults(request):
     except Exception as e:
         logger.error(f"materials_defaults error: {e}")
         return Response({'error': {'code': 'internal_error', 'message': 'Failed to update defaults'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _serialize_quality_review(review, request, history=None, analysis_override=None):
+    """Serialize ApplicationQualityReview with optional overridden analysis values."""
+    analysis = analysis_override or {}
+    history = history or []
+
+    def _val(field, default=None):
+        return analysis.get(field, getattr(review, field, default))
+
+    comparison = analysis.get('comparison') or getattr(review, 'comparison_snapshot', {}) or {}
+    score_delta = analysis.get('score_delta')
+    if score_delta is None and getattr(review, 'score_delta', None) is not None:
+        score_delta = float(review.score_delta)
+
+    resume_doc_data = DocumentSummarySerializer(
+        review.resume_doc,
+        context={'request': request}
+    ).data if getattr(review, 'resume_doc', None) else None
+    cover_doc_data = DocumentSummarySerializer(
+        review.cover_letter_doc,
+        context={'request': request}
+    ).data if getattr(review, 'cover_letter_doc', None) else None
+
+    return {
+        'job_id': review.job_id,
+        'score': float(_val('score', review.overall_score)),
+        'alignment_score': float(_val('alignment_score', review.alignment_score)),
+        'keyword_score': float(_val('keyword_score', review.keyword_score)),
+        'consistency_score': float(_val('consistency_score', review.consistency_score)),
+        'formatting_score': float(_val('formatting_score', review.formatting_score)),
+        'missing_keywords': _val('missing_keywords', []) or [],
+        'missing_skills': _val('missing_skills', []) or [],
+        'formatting_issues': _val('formatting_issues', []) or [],
+        'suggestions': _val('suggestions', []) or getattr(review, 'improvement_suggestions', []) or [],
+        'comparison': comparison,
+        'threshold': int(_val('threshold', review.threshold)),
+        'meets_threshold': bool(_val('meets_threshold', review.meets_threshold)),
+        'score_delta': score_delta,
+        'history': history,
+        'resume_doc': resume_doc_data,
+        'cover_letter_doc': cover_doc_data,
+        'last_reviewed_at': getattr(review, 'created_at', None).isoformat() if getattr(review, 'created_at', None) else None,
+    }
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def job_application_quality(request, job_id):
+    """
+    Generate or fetch an application quality score for a job application package.
+
+    GET: Returns the latest review (use refresh=true to recalc)
+    POST: Forces a recalculation using optional resume/cover/LinkedIn overrides
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Candidate profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    try:
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    try:
+        from core.models import Document  # Local import to avoid circulars
+
+        resume_doc = job.resume_doc or profile.default_resume_doc
+        cover_doc = job.cover_letter_doc or profile.default_cover_letter_doc
+        analysis = None
+
+        if request.method == 'POST':
+            # Optional overrides
+            resume_id = request.data.get('resume_doc_id')
+            cover_id = request.data.get('cover_letter_doc_id')
+            threshold_raw = request.data.get('threshold') or request.data.get('min_score_threshold')
+            linkedin_url = request.data.get('linkedin_url') or profile.linkedin_url
+
+            if resume_id:
+                resume_doc = Document.objects.filter(id=resume_id, candidate=profile).first() or resume_doc
+            if cover_id:
+                cover_doc = Document.objects.filter(id=cover_id, candidate=profile).first() or cover_doc
+
+            threshold_val = None
+            if threshold_raw is not None:
+                try:
+                    threshold_val = int(threshold_raw)
+                except (TypeError, ValueError):
+                    threshold_val = None
+
+            scorer = ApplicationQualityScorer(
+                job,
+                profile,
+                resume_doc=resume_doc,
+                cover_letter_doc=cover_doc,
+                linkedin_url=linkedin_url,
+                threshold=threshold_val,
+            )
+            review, analysis = scorer.persist()
+        else:
+            refresh = (request.query_params.get('refresh') or '').lower() == 'true'
+            review = ApplicationQualityReview.objects.filter(candidate=profile, job=job).order_by('-created_at', '-id').first()
+
+            if review is None or refresh:
+                scorer = ApplicationQualityScorer(
+                    job,
+                    profile,
+                    resume_doc=resume_doc,
+                    cover_letter_doc=cover_doc,
+                    linkedin_url=profile.linkedin_url,
+                )
+                review, analysis = scorer.persist()
+
+        history = build_quality_history(profile, job)
+        payload = _serialize_quality_review(review, request, history=history, analysis_override=analysis)
+        return Response(payload, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"job_application_quality error: {e}", exc_info=True)
+        return Response(
+            {'error': {'code': 'quality_generation_failed', 'message': 'Failed to score application quality.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 # 
@@ -18797,6 +18927,42 @@ def scheduled_submissions(request):
     elif request.method == 'POST':
         serializer = ScheduledSubmissionCreateSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
+            validated = serializer.validated_data
+            job = validated.get('job')
+            application_package = validated.get('application_package')
+
+            resume_doc = None
+            cover_doc = None
+            if application_package:
+                resume_doc = getattr(application_package, 'resume_document', None)
+                cover_doc = getattr(application_package, 'cover_letter_document', None)
+            if not resume_doc:
+                resume_doc = getattr(job, 'resume_doc', None) or candidate.default_resume_doc
+            if not cover_doc:
+                cover_doc = getattr(job, 'cover_letter_doc', None) or candidate.default_cover_letter_doc
+
+            scorer = ApplicationQualityScorer(
+                job,
+                candidate,
+                resume_doc=resume_doc,
+                cover_letter_doc=cover_doc,
+                linkedin_url=candidate.linkedin_url,
+            )
+            review, analysis = scorer.persist()
+
+            if not analysis.get('meets_threshold'):
+                history = build_quality_history(candidate, job)
+                return Response(
+                    {
+                        'error': {
+                            'code': 'quality_below_threshold',
+                            'message': f"Quality score {analysis.get('score')} is below the required threshold of {analysis.get('threshold')}.",
+                            'quality': _serialize_quality_review(review, request, history=history, analysis_override=analysis),
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
             submission = serializer.save()
             return Response(
                 ScheduledSubmissionSerializer(submission).data,
@@ -18882,6 +19048,38 @@ def execute_scheduled_submission(request, submission_id):
     if submission.status not in ['pending', 'scheduled', 'failed']:
         return Response(
             {'error': f'Cannot execute submission with status: {submission.status}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    job = submission.job
+    resume_doc = None
+    cover_doc = None
+    if submission.application_package:
+        resume_doc = getattr(submission.application_package, 'resume_document', None)
+        cover_doc = getattr(submission.application_package, 'cover_letter_document', None)
+    if not resume_doc:
+        resume_doc = getattr(job, 'resume_doc', None) or candidate.default_resume_doc
+    if not cover_doc:
+        cover_doc = getattr(job, 'cover_letter_doc', None) or candidate.default_cover_letter_doc
+
+    scorer = ApplicationQualityScorer(
+        job,
+        candidate,
+        resume_doc=resume_doc,
+        cover_letter_doc=cover_doc,
+        linkedin_url=candidate.linkedin_url,
+    )
+    review, analysis = scorer.persist()
+    if not analysis.get('meets_threshold'):
+        history = build_quality_history(candidate, job)
+        return Response(
+            {
+                'error': {
+                    'code': 'quality_below_threshold',
+                    'message': f"Quality score {analysis.get('score')} is below the required threshold of {analysis.get('threshold')}.",
+                    'quality': _serialize_quality_review(review, request, history=history, analysis_override=analysis),
+                }
+            },
             status=status.HTTP_400_BAD_REQUEST
         )
     

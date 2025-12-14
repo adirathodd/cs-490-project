@@ -200,6 +200,7 @@ urlpatterns = [
     path('documents/<int:doc_id>/', views.document_delete, name='document-delete'),
     path('documents/<int:doc_id>/download/', views.document_download, name='document-download'),
     path('jobs/<int:job_id>/materials/', views.job_materials, name='job-materials'),
+    path('jobs/<int:job_id>/quality/', views.job_application_quality, name='job-application-quality'),
     path('materials/defaults/', views.materials_defaults, name='materials-defaults'),
     path('materials/analytics/', views.materials_analytics, name='materials-analytics'),
     

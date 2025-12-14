@@ -10,6 +10,7 @@ import InterviewScheduler from './InterviewScheduler';
 import InterviewFollowUp from './InterviewFollowUp';
 import RoleQuestionBank from './RoleQuestionBank';
 import PreparationChecklist from './PreparationChecklist';
+import ApplicationQualityScore from './ApplicationQualityScore';
 import JobPreparationChecklist from './JobPreparationChecklist';
 import SalaryResearch from './SalaryResearch';
 import SalaryNegotiation from './SalaryNegotiation';
@@ -73,6 +74,12 @@ const TAB_GROUPS = [
         label: 'Match Analysis',
         icon: 'zap',
         description: 'Role fit, strengths, and improvement areas',
+      },
+      {
+        id: 'quality',
+        label: 'Quality Score',
+        icon: 'award',
+        description: 'Package quality, ATS coverage, submission gate',
       },
       {
         id: 'skills',
@@ -1811,6 +1818,10 @@ const JobDetailView = () => {
             onError={setError}
           />
         </>
+      )}
+
+      {activeTab === 'quality' && (
+        <ApplicationQualityScore job={job} />
       )}
 
       {/* Tab Content - Skills Gap Analysis */}
