@@ -2307,6 +2307,7 @@ const _defaultExport = Object.assign(api, {
   interviewsAPI,
   calendarAPI,
   githubAPI,
+  responseLibraryAPI,
 });
 
 export default _defaultExport;
