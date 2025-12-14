@@ -261,20 +261,24 @@ describe('Analytics component', () => {
     test('applies filters correctly', async () => {
       render(<Analytics />);
 
-      await waitFor(() => {
-        expect(screen.getByLabelText('Start date')).toBeInTheDocument();
-      });
+      // Wait for initial load to complete
+      await screen.findByLabelText('Start date');
+      await screen.findByText('Apply filters');
 
-      const startDate = screen.getByLabelText('Start date');
-      const endDate = screen.getByLabelText('End date');
-      const salaryMin = screen.getByLabelText('Salary minimum');
+      // Change start date and wait for re-render to settle
+      fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2025-11-01' } });
+      await screen.findByLabelText('Start date'); // Wait for component to settle after potential reload
 
-      fireEvent.change(startDate, { target: { value: '2025-11-01' } });
-      fireEvent.change(endDate, { target: { value: '2025-11-30' } });
-      fireEvent.change(salaryMin, { target: { value: '80000' } });
+      // Change end date and wait for re-render to settle  
+      fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2025-11-30' } });
+      await screen.findByLabelText('End date');
 
-      const applyButton = screen.getByText('Apply filters');
-      fireEvent.click(applyButton);
+      // Change salary min and wait for re-render to settle
+      fireEvent.change(screen.getByLabelText('Salary minimum'), { target: { value: '80000' } });
+      await screen.findByLabelText('Salary minimum');
+
+      // Click apply filters
+      fireEvent.click(screen.getByText('Apply filters'));
 
       await waitFor(() => {
         expect(jobsAPI.getAnalytics).toHaveBeenCalledWith(
@@ -290,15 +294,16 @@ describe('Analytics component', () => {
     test('resets filters correctly', async () => {
       render(<Analytics />);
 
-      await waitFor(() => {
-        expect(screen.getByLabelText('Start date')).toBeInTheDocument();
-      });
+      // Wait for initial load to complete
+      await screen.findByLabelText('Start date');
+      await screen.findByText('Reset');
 
-      const startDate = screen.getByLabelText('Start date');
-      fireEvent.change(startDate, { target: { value: '2025-11-01' } });
+      // Change start date and wait for component to settle
+      fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2025-11-01' } });
+      await screen.findByLabelText('Start date');
 
-      const resetButton = screen.getByText('Reset');
-      fireEvent.click(resetButton);
+      // Click reset
+      fireEvent.click(screen.getByText('Reset'));
 
       await waitFor(() => {
         // After reset, the API is called again without filters
@@ -835,15 +840,16 @@ describe('Analytics component', () => {
     test('handles filter with salary max only', async () => {
       render(<Analytics />);
 
-      await waitFor(() => {
-        expect(screen.getByLabelText('Salary maximum')).toBeInTheDocument();
-      });
+      // Wait for initial load to complete
+      await screen.findByLabelText('Salary maximum');
+      await screen.findByText('Apply filters');
 
-      const salaryMax = screen.getByLabelText('Salary maximum');
-      fireEvent.change(salaryMax, { target: { value: '150000' } });
+      // Change salary max and wait for component to settle
+      fireEvent.change(screen.getByLabelText('Salary maximum'), { target: { value: '150000' } });
+      await screen.findByLabelText('Salary maximum');
 
-      const applyButton = screen.getByText('Apply filters');
-      fireEvent.click(applyButton);
+      // Click apply
+      fireEvent.click(screen.getByText('Apply filters'));
 
       await waitFor(() => {
         expect(jobsAPI.getAnalytics).toHaveBeenCalledWith(
@@ -857,18 +863,19 @@ describe('Analytics component', () => {
     test('filters out unchecked job types', async () => {
       render(<Analytics />);
 
-      await waitFor(() => {
-        expect(screen.getByText('Full-time')).toBeInTheDocument();
-      });
+      // Wait for initial load to complete
+      await screen.findByText('Full-time');
+      await screen.findByText('Apply filters');
 
-      // Uncheck Part-time
-      const labels = screen.getAllByRole('checkbox');
-      const partTimeCheckbox = labels.find(cb => cb.parentElement.textContent.includes('Part-time'));
+      // Uncheck Part-time and wait for component to settle
+      const checkboxes = screen.getAllByRole('checkbox');
+      const partTimeCheckbox = checkboxes.find(cb => cb.parentElement.textContent.includes('Part-time'));
       
       fireEvent.click(partTimeCheckbox);
+      await screen.findByText('Part-time');
 
-      const applyButton = screen.getByText('Apply filters');
-      fireEvent.click(applyButton);
+      // Click apply
+      fireEvent.click(screen.getByText('Apply filters'));
 
       await waitFor(() => {
         const lastCall = jobsAPI.getAnalytics.mock.calls[jobsAPI.getAnalytics.mock.calls.length - 1][0];
