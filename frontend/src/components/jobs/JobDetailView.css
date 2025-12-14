@@ -1,43 +1,29 @@
-/* UC-113: Two-column layout with email sidebar */
+/* UC-113: Job Detail Layout */
 .job-detail-layout {
-  display: grid;
-  grid-template-columns: 1fr 400px;
+  display: flex;
+  flex-direction: column;
   gap: 32px;
-  align-items: start;
 }
 
 .job-detail-main {
-  min-width: 0; /* Prevents grid blowout */
+  min-width: 0; /* Prevents blowout */
 }
 
-.job-detail-sidebar {
-  position: relative;
-}
-
-.sidebar-sticky {
-  position: sticky;
-  top: 20px;
+/* Related Emails Section */
+.related-emails-section {
+  margin-top: 24px;
   background: white;
   border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  max-height: calc(100vh - 40px);
-  overflow-y: auto;
+  border-radius: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  padding: 20px;
 }
 
-/* Responsive: stack on smaller screens */
-@media (max-width: 1200px) {
-  .job-detail-layout {
-    grid-template-columns: 1fr;
-  }
-  
-  .job-detail-sidebar {
-    order: -1; /* Move sidebar to top on mobile */
-  }
-  
-  .sidebar-sticky {
-    position: static;
-    max-height: none;
+@media (max-width: 768px) {
+  .related-emails-section {
+    margin-top: 16px;
+    border-radius: 12px;
   }
 }
 

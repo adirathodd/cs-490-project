@@ -3,6 +3,29 @@
 from django.db import migrations
 
 
+def remove_fields_if_exist(apps, schema_editor):
+    """Safely remove fields that may or may not exist."""
+    connection = schema_editor.connection
+    
+    fields_to_remove = [
+        ('core_gmailintegration', 'auto_update_status'),
+        ('core_gmailintegration', 'scan_frequency'),
+    ]
+    
+    for table_name, column_name in fields_to_remove:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = %s AND column_name = %s
+            """, [table_name, column_name])
+            if cursor.fetchone():
+                cursor.execute(f'ALTER TABLE "{table_name}" DROP COLUMN "{column_name}"')
+
+
+def noop(apps, schema_editor):
+    pass
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,12 +33,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name='gmailintegration',
-            name='auto_update_status',
-        ),
-        migrations.RemoveField(
-            model_name='gmailintegration',
-            name='scan_frequency',
-        ),
+        migrations.RunPython(remove_fields_if_exist, noop),
     ]

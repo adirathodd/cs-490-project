@@ -2209,11 +2209,9 @@ const JobDetailView = () => {
           </div>
         </div>
       )}
-      </div>
-        
-        {/* Email Sidebar */}
-        <div className="job-detail-sidebar">
-          <div className="sidebar-sticky">
+
+          {/* Related Emails Section */}
+          <div className="related-emails-section">
             <ApplicationEmails jobId={id} showSearch={true} />
           </div>
         </div>

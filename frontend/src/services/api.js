@@ -1208,6 +1208,80 @@ export const salaryNegotiationAPI = {
   },
 };
 
+// UC-127: Offer comparison + scenario analysis
+export const offerAPI = {
+  list: async (params = {}) => {
+    try {
+      const usp = new URLSearchParams();
+      Object.entries(params || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') return;
+        usp.append(key, value);
+      });
+      const path = usp.toString() ? `/job-offers/?${usp.toString()}` : '/job-offers/';
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to load job offers' };
+    }
+  },
+
+  create: async (payload) => {
+    try {
+      const response = await api.post('/job-offers/', payload);
+      return response.data?.result;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to save job offer' };
+    }
+  },
+
+  update: async (offerId, payload) => {
+    try {
+      const response = await api.patch(`/job-offers/${offerId}/`, payload);
+      return response.data?.result;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to update job offer' };
+    }
+  },
+
+  delete: async (offerId) => {
+    try {
+      await api.delete(`/job-offers/${offerId}/`);
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete job offer' };
+    }
+  },
+
+  archive: async (offerId, reason = 'declined') => {
+    try {
+      const response = await api.post(`/job-offers/${offerId}/archive/`, { reason });
+      return response.data?.result;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to archive job offer' };
+    }
+  },
+
+  getComparison: async (options = {}) => {
+    try {
+      const usp = new URLSearchParams();
+      if (options.includeArchived) usp.append('include_archived', 'true');
+      const path = usp.toString() ? `/job-offers/comparison/?${usp.toString()}` : '/job-offers/comparison/';
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to load offer comparison' };
+    }
+  },
+
+  runScenario: async (scenario = {}) => {
+    try {
+      const response = await api.post('/job-offers/comparison/', { scenario });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to run scenario analysis' };
+    }
+  },
+};
+
 // UC-047: AI Resume Generation API calls
 export const resumeAIAPI = {
   generateForJob: async (jobId, options = {}) => {

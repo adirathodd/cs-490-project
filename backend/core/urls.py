@@ -195,6 +195,11 @@ urlpatterns = [
     path('jobs/bulk-status', views.jobs_bulk_status, name='jobs-bulk-status'),
     path('jobs/bulk-deadline', views.jobs_bulk_deadline, name='jobs-bulk-deadline'),
     path('jobs/upcoming-deadlines', views.jobs_upcoming_deadlines, name='jobs-upcoming-deadlines'),
+    # UC-127: Job offer comparison
+    path('job-offers/', views.job_offers_view, name='job-offers'),
+    path('job-offers/<int:offer_id>/', views.job_offer_detail, name='job-offer-detail'),
+    path('job-offers/<int:offer_id>/archive/', views.job_offer_archive, name='job-offer-archive'),
+    path('job-offers/comparison/', views.job_offer_comparison, name='job-offer-comparison'),
     # UC-042: Application Materials endpoints
     path('documents/', views.documents_list, name='documents-list'),
     path('documents/<int:doc_id>/', views.document_delete, name='document-delete'),
