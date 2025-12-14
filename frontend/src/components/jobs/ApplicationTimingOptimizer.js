@@ -12,7 +12,6 @@ import './ApplicationTimingOptimizer.css';
 
 const ApplicationTimingOptimizer = () => {
   const [activeTab, setActiveTab] = useState('schedule'); // schedule | reminders | analytics | calendar
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   return (
@@ -82,6 +81,7 @@ const ScheduledSubmissions = ({ setError }) => {
 
   useEffect(() => {
     loadSubmissions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
   const loadSubmissions = async () => {
@@ -399,7 +399,12 @@ const ScheduleSubmissionModal = ({ onClose, onSuccess, setError }) => {
       await timingAPI.createScheduledSubmission(submitData);
       onSuccess();
     } catch (err) {
-      setError(err.message || 'Failed to schedule submission');
+      if (err?.quality) {
+        const score = err.quality?.score ? ` (score ${Math.round(err.quality.score)}%)` : '';
+        setError((err.message || 'Quality gate blocked this submission') + score + '. Open the job Quality Score tab to improve it.');
+      } else {
+        setError(err.message || 'Failed to schedule submission');
+      }
     } finally {
       setLoading(false);
     }
@@ -682,6 +687,7 @@ const RemindersList = ({ setError }) => {
 
   useEffect(() => {
     loadReminders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
   const loadReminders = async () => {
@@ -1018,6 +1024,7 @@ const TimingAnalytics = ({ setError }) => {
 
   useEffect(() => {
     loadAnalytics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadAnalytics = async () => {
@@ -1193,6 +1200,7 @@ const CalendarView = ({ setError }) => {
 
   useEffect(() => {
     loadCalendar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentMonth]);
 
   const loadCalendar = async () => {

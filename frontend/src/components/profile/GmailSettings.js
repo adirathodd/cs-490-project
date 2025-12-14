@@ -11,7 +11,6 @@ const GmailSettings = () => {
   const [scanning, setScanning] = useState(false);
   const [toast, setToast] = useState({ isOpen: false, message: '', type: 'info' });
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false });
-  const [savingPreferences, setSavingPreferences] = useState(false);
   const [pollingInterval, setPollingInterval] = useState(null);
   const [apiError, setApiError] = useState(null); // UC-117: Track API errors
 
@@ -37,6 +36,7 @@ const GmailSettings = () => {
         window.dispatchEvent(new CustomEvent('gmail-scan-complete'));
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [integration?.status]);
 
   const loadStatus = async () => {

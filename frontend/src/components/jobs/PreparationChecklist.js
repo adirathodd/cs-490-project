@@ -19,6 +19,7 @@ export default function PreparationChecklist({ interview, onClose }) {
     if (interview?.id) {
       loadChecklist();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [interview]);
 
   const loadChecklist = async () => {

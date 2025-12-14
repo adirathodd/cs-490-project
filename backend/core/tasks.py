@@ -19,6 +19,7 @@ from core.models import (
 from core.google_import import fetch_and_normalize, GooglePeopleAPIError
 from core.technical_prep import build_technical_prep
 from core import gmail_utils
+from core.salary_benchmarks import salary_benchmark_service
 
 logger = logging.getLogger(__name__)
 
@@ -974,7 +975,7 @@ def _send_due_reminders_sync():
     due_reminders = FollowUpReminder.objects.filter(
         status='pending',
         scheduled_datetime__lte=now
-    ).select_related('job', 'candidate__user')
+    ).exclude(job__status='rejected').select_related('job', 'candidate__user')
     
     sent_count = 0
     failed_count = 0
@@ -1057,13 +1058,44 @@ def _check_upcoming_deadlines_sync():
                 reminder_type='application_deadline',
                 subject=f"Deadline in 3 days: {job.title} at {job.company_name}",
                 message_template=f"Hi {{user_name}},\n\nThis is a reminder that the application deadline for {job.title} at {job.company_name} is in 3 days ({job.application_deadline}).\n\nDon't forget to submit your application!",
-                scheduled_datetime=timezone.now() + timedelta(hours=9)  # 9 AM next day
+                scheduled_datetime=timezone.now() + timedelta(hours=9),  # 9 AM next day
+                followup_stage=getattr(job, 'status', None),
+                auto_scheduled=True,
             )
             reminder_count += 1
             logger.info(f"Created deadline reminder {reminder.id} for job {job.id}")
     
     logger.info(f"Created {reminder_count} deadline reminders")
     return {'reminders_created': reminder_count}
+
+
+def _refresh_salary_benchmarks_sync(limit: int = 15):
+    """
+    Refresh cached salary benchmarks for stale entries (runs weekly/monthly).
+    Uses stored MarketIntelligence rows to avoid redundant API calls.
+    """
+    from core.models import MarketIntelligence
+
+    cutoff = timezone.now() - timedelta(days=30)
+    stale = (
+        MarketIntelligence.objects.filter(last_updated__lt=cutoff)
+        .order_by("last_updated")[:limit]
+    )
+    refreshed = 0
+
+    for record in stale:
+        try:
+            salary_benchmark_service.get_benchmarks(
+                job_title=record.job_title,
+                location=record.location,
+                experience_level=record.experience_level,
+                force_refresh=True,
+            )
+            refreshed += 1
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.warning("Failed to refresh salary benchmark for %s (%s): %s", record.job_title, record.location, exc)
+
+    return {"refreshed": refreshed, "checked": stale.count()}
 
 
 # Celery task wrappers
@@ -1082,6 +1114,11 @@ if CELERY_AVAILABLE:
     def check_upcoming_deadlines():
         """Check for upcoming deadlines and create reminders."""
         return _check_upcoming_deadlines_sync()
+
+    @shared_task
+    def refresh_salary_benchmarks():
+        """Refresh salary benchmarks for stale market intelligence rows."""
+        return _refresh_salary_benchmarks_sync()
 else:
     def process_scheduled_submissions():
         return _process_scheduled_submissions_sync()
@@ -1092,3 +1129,5 @@ else:
     def check_upcoming_deadlines():
         return _check_upcoming_deadlines_sync()
 
+    def refresh_salary_benchmarks():
+        return _refresh_salary_benchmarks_sync()

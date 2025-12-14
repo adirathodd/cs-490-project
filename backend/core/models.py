@@ -914,6 +914,16 @@ class Certification(models.Model):
     document = models.FileField(upload_to='certifications/%Y/%m/', null=True, blank=True)
     renewal_reminder_enabled = models.BooleanField(default=False)
     reminder_days_before = models.PositiveSmallIntegerField(default=30)
+    badge_image = models.ImageField(upload_to='certifications/badges/%Y/%m/', null=True, blank=True)
+    description = models.TextField(blank=True)
+    achievement_highlights = models.TextField(blank=True)
+    assessment_score = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    assessment_max_score = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    assessment_units = models.CharField(
+        max_length=40,
+        blank=True,
+        help_text="Units for the assessment score (points, percentile, rank, etc.)"
+    )
     
     class Meta:
         ordering = ['-issue_date']
@@ -1524,6 +1534,102 @@ class QuestionResponseCoaching(models.Model):
         return f"CoachingSession(job={self.job_id}, question={self.question_id}, created={timestamp})"
 
 
+class InterviewResponseLibrary(models.Model):
+    """UC-126: User's library of prepared interview responses."""
+    
+    QUESTION_TYPE_CHOICES = [
+        ('behavioral', 'Behavioral'),
+        ('technical', 'Technical'),
+        ('situational', 'Situational'),
+    ]
+    
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='response_library')
+    question_text = models.TextField()
+    question_type = models.CharField(max_length=20, choices=QUESTION_TYPE_CHOICES)
+    
+    # Current best version
+    current_response_text = models.TextField()
+    current_star_response = models.JSONField(default=dict, blank=True)
+    
+    # Tagging and categorization
+    skills = models.JSONField(default=list, blank=True, help_text="List of skills demonstrated")
+    experiences = models.JSONField(default=list, blank=True, help_text="List of experiences referenced")
+    companies_used_for = models.JSONField(default=list, blank=True, help_text="Companies this response was used for")
+    tags = models.JSONField(default=list, blank=True, help_text="Custom tags for organization")
+    
+    # Success tracking
+    led_to_offer = models.BooleanField(default=False)
+    led_to_next_round = models.BooleanField(default=False)
+    times_used = models.PositiveIntegerField(default=0)
+    success_rate = models.FloatField(default=0.0, help_text="Calculated success rate based on outcomes")
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    
+    # Optional job linkage for context
+    related_jobs = models.ManyToManyField('JobEntry', blank=True, related_name='linked_responses')
+    
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['user', 'question_type']),
+            models.Index(fields=['user', '-updated_at']),
+            models.Index(fields=['user', 'led_to_offer']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.question_type} - {self.question_text[:50]}"
+    
+    def calculate_success_rate(self):
+        """Update success rate based on tracked outcomes."""
+        if self.times_used == 0:
+            self.success_rate = 0.0
+        else:
+            successful = 0
+            if self.led_to_offer:
+                successful = self.times_used  # If got offer, count all uses as successful
+            elif self.led_to_next_round:
+                successful = max(1, self.times_used // 2)  # Partial success
+            self.success_rate = (successful / self.times_used) * 100
+        self.save()
+
+
+class ResponseVersion(models.Model):
+    """Version history for interview responses (UC-126)."""
+    
+    response_library = models.ForeignKey(InterviewResponseLibrary, on_delete=models.CASCADE, related_name='versions')
+    version_number = models.PositiveIntegerField()
+    response_text = models.TextField()
+    star_response = models.JSONField(default=dict, blank=True)
+    
+    # What changed in this version
+    change_notes = models.TextField(blank=True, help_text="Notes about what was improved")
+    coaching_score = models.FloatField(null=True, blank=True, help_text="AI coaching score if available")
+    
+    # Link to original coaching session if applicable
+    coaching_session = models.ForeignKey(
+        'QuestionResponseCoaching', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='saved_versions'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-version_number']
+        unique_together = [('response_library', 'version_number')]
+        indexes = [
+            models.Index(fields=['response_library', '-version_number']),
+        ]
+    
+    def __str__(self):
+        return f"Version {self.version_number} - {self.response_library.question_text[:30]}"
+
+
 class MockInterviewSession(models.Model):
     """UC-077: Full mock interview practice sessions with AI-generated questions."""
     
@@ -1547,7 +1653,7 @@ class MockInterviewSession(models.Model):
     
     # Configuration
     question_count = models.PositiveIntegerField(default=5)
-    difficulty_level = models.CharField(max_length=20, default='mid')
+    difficulty_level = models.CharField(max_length=50, default='mid')
     focus_areas = models.JSONField(default=list, blank=True)  # e.g., ['leadership', 'conflict resolution']
     
     # Session metadata
@@ -3809,6 +3915,49 @@ class ApplicationPackageGenerator:
             return None
 
 
+class ApplicationQualityReview(models.Model):
+    """
+    UC-??? AI quality score for application packages
+
+    Stores per-job, per-candidate quality assessments so we can track history
+    and enforce submission readiness thresholds.
+    """
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name='application_quality_reviews')
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='quality_reviews')
+    resume_doc = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='quality_reviews_as_resume')
+    cover_letter_doc = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='quality_reviews_as_cover')
+    linkedin_url = models.URLField(blank=True, default='')
+
+    overall_score = models.DecimalField(max_digits=5, decimal_places=2)
+    alignment_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    keyword_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    consistency_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    formatting_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+
+    missing_keywords = models.JSONField(default=list, blank=True)
+    missing_skills = models.JSONField(default=list, blank=True)
+    formatting_issues = models.JSONField(default=list, blank=True)
+    improvement_suggestions = models.JSONField(default=list, blank=True)
+    comparison_snapshot = models.JSONField(default=dict, blank=True)
+
+    threshold = models.PositiveIntegerField(default=70)
+    meets_threshold = models.BooleanField(default=False)
+    score_delta = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['candidate', 'job', '-created_at']),
+            models.Index(fields=['job', '-created_at']),
+            models.Index(fields=['candidate', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"Quality {self.overall_score} for job {self.job_id}"
+
+
 class ApplicationGoal(models.Model):
     """Track weekly application goals and progress for analytics."""
     
@@ -5847,6 +5996,12 @@ class ScheduledSubmission(models.Model):
             self.job.status = 'applied'
             self.job.application_submitted_at = self.submitted_at
             self.job.save(update_fields=['status', 'application_submitted_at'])
+            try:
+                from core import followup_utils
+                followup_utils.create_stage_followup(self.job, 'applied', auto=True)
+            except Exception:
+                # Scheduling reminders should not block submission updates
+                pass
     
     def cancel(self, reason=''):
         """Cancel this scheduled submission"""
@@ -5927,6 +6082,18 @@ class FollowUpReminder(models.Model):
     sent_at = models.DateTimeField(null=True, blank=True)
     response_received = models.BooleanField(default=False)
     response_date = models.DateTimeField(null=True, blank=True)
+    # Stage + automation context
+    followup_stage = models.CharField(
+        max_length=20,
+        choices=JobEntry.STATUS_CHOICES,
+        null=True,
+        blank=True,
+        help_text='Job stage when the reminder was created'
+    )
+    auto_scheduled = models.BooleanField(default=False)
+    recommendation_reason = models.CharField(max_length=200, blank=True)
+    snoozed_until = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -5938,6 +6105,7 @@ class FollowUpReminder(models.Model):
             models.Index(fields=['candidate', 'status']),
             models.Index(fields=['scheduled_datetime', 'status']),
             models.Index(fields=['job', 'reminder_type']),
+            models.Index(fields=['job', 'followup_stage']),
         ]
     
     def __str__(self):
@@ -5948,7 +6116,11 @@ class FollowUpReminder(models.Model):
         self.status = 'sent'
         self.sent_at = timezone.now()
         self.occurrence_count += 1
-        self.save(update_fields=['status', 'sent_at', 'occurrence_count'])
+        self.completed_at = self.sent_at
+        # Ensure we persist stage if it was not set
+        if not self.followup_stage:
+            self.followup_stage = getattr(self.job, 'status', None)
+        self.save(update_fields=['status', 'sent_at', 'occurrence_count', 'completed_at', 'followup_stage', 'updated_at'])
         
         # Schedule next occurrence if recurring
         if self.is_recurring and self.occurrence_count < self.max_occurrences:
@@ -5970,7 +6142,32 @@ class FollowUpReminder(models.Model):
     def dismiss(self):
         """Dismiss this reminder"""
         self.status = 'dismissed'
-        self.save(update_fields=['status'])
+        self.completed_at = timezone.now()
+        self.save(update_fields=['status', 'completed_at', 'updated_at'])
+
+    def snooze(self, new_datetime):
+        """Snooze reminder to a new datetime."""
+        self.scheduled_datetime = new_datetime
+        self.snoozed_until = new_datetime
+        if self.status != 'pending':
+            self.status = 'pending'
+        self.save(update_fields=['scheduled_datetime', 'snoozed_until', 'status', 'updated_at'])
+
+    def mark_completed(self, response_received=False, response_date=None):
+        """Mark reminder as completed and optionally record a response."""
+        self.completed_at = timezone.now()
+        self.response_received = response_received or self.response_received
+        if response_received:
+            self.response_date = response_date or timezone.now()
+        if self.status == 'pending':
+            self.status = 'sent'
+        self.save(update_fields=[
+            'status',
+            'completed_at',
+            'response_received',
+            'response_date',
+            'updated_at',
+        ])
 
 
 class CareerGrowthScenario(models.Model):

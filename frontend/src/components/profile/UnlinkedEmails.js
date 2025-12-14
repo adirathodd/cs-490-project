@@ -38,6 +38,7 @@ const UnlinkedEmails = () => {
       window.removeEventListener('gmail-disconnected', handleGmailDisconnect);
       window.removeEventListener('gmail-scan-complete', handleGmailScan);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Reload when search query changes (with debounce)
@@ -49,6 +50,7 @@ const UnlinkedEmails = () => {
     }, 300); // 300ms debounce
     
     return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
 
   const loadData = async () => {

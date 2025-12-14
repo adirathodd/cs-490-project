@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import authAPI from '../../services/api';
 import './Employment.css';
@@ -7,7 +6,6 @@ import Icon from '../common/Icon';
 import LoadingSpinner from '../common/LoadingSpinner';
 
 const Employment = () => {
-  const navigate = useNavigate();
   const { currentUser } = useAuth();
   const [employmentHistory, setEmploymentHistory] = useState([]);
   const [loading, setLoading] = useState(true);

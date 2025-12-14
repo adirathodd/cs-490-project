@@ -200,6 +200,7 @@ urlpatterns = [
     path('documents/<int:doc_id>/', views.document_delete, name='document-delete'),
     path('documents/<int:doc_id>/download/', views.document_download, name='document-download'),
     path('jobs/<int:job_id>/materials/', views.job_materials, name='job-materials'),
+    path('jobs/<int:job_id>/quality/', views.job_application_quality, name='job-application-quality'),
     path('materials/defaults/', views.materials_defaults, name='materials-defaults'),
     path('materials/analytics/', views.materials_analytics, name='materials-analytics'),
     
@@ -262,6 +263,7 @@ urlpatterns = [
     path('companies/<str:company_name>/research/refresh', views.refresh_company_research, name='refresh-company-research'),
     
     # UC-067: Salary Research and Benchmarking endpoints
+    path('jobs/<int:job_id>/salary-benchmarks/', views.salary_benchmarks, name='salary-benchmarks'),
     path('jobs/<int:job_id>/salary-research/', views.salary_research, name='salary-research'),
     path('jobs/<int:job_id>/salary-research/export/', views.salary_research_export, name='salary-research-export'),
     path('jobs/<int:job_id>/salary-negotiation/', views.salary_negotiation_prep, name='salary-negotiation-prep'),
@@ -280,6 +282,14 @@ urlpatterns = [
     path('jobs/<int:job_id>/question-bank/practice/', views.job_question_practice, name='job-question-practice'),
     path('jobs/<int:job_id>/question-bank/practice/<str:question_id>/', views.get_question_practice_history, name='get-question-practice-history'),
     path('jobs/<int:job_id>/question-bank/coach/', views.job_question_response_coach, name='job-question-response-coach'),
+    path('general-response-coach/', views.general_response_coach, name='general-response-coach'),
+    # UC-126: Interview Response Library endpoints
+    path('response-library/', views.response_library_list, name='response-library-list'),
+    path('response-library/<int:response_id>/', views.response_library_detail, name='response-library-detail'),
+    path('response-library/<int:response_id>/record-usage/', views.response_library_record_usage, name='response-library-record-usage'),
+    path('response-library/export/', views.response_library_export, name='response-library-export'),
+    path('response-library/save-from-coaching/', views.response_library_save_from_coaching, name='response-library-save-from-coaching'),
+    path('jobs/<int:job_id>/response-suggestions/', views.response_library_suggestions, name='response-library-suggestions'),
     # UC-078: Technical interview preparation endpoints
     path('jobs/<int:job_id>/technical-prep/', views.job_technical_prep, name='job-technical-prep'),
     path('jobs/<int:job_id>/technical-prep/practice/', views.job_technical_prep_practice, name='job-technical-prep-practice'),
@@ -480,6 +490,9 @@ urlpatterns = [
     path('reminders/', views.followup_reminders, name='followup-reminders'),
     path('reminders/<int:reminder_id>/', views.followup_reminder_detail, name='followup-reminder-detail'),
     path('reminders/<int:reminder_id>/dismiss/', views.dismiss_reminder, name='dismiss-reminder'),
+    path('reminders/<int:reminder_id>/snooze/', views.snooze_followup_reminder, name='snooze-reminder'),
+    path('reminders/<int:reminder_id>/complete/', views.complete_followup_reminder, name='complete-reminder'),
+    path('reminders/playbook/<int:job_id>/', views.followup_playbook, name='followup-playbook'),
     path('application-timing/best-practices/', views.application_timing_best_practices, name='application-timing-best-practices'),
     path('application-timing/analytics/', views.application_timing_analytics, name='application-timing-analytics'),
     path('application-timing/calendar/', views.application_calendar_view, name='application-calendar-view'),

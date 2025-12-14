@@ -208,6 +208,7 @@ const salaryAPI = {
 	getSalaryResearch: jestFn(),
 	triggerResearch: jestFn(),
 	exportResearch: jestFn(),
+	getSalaryBenchmarks: jestFn(),
 };
 
 const salaryNegotiationAPI = {
@@ -335,6 +336,7 @@ const axiosInstance = {
 module.exports = {
 	__esModule: true,
 	default: axiosInstance,
+	api: axiosInstance,
 	profileAPI,
 	authAPI,
 	skillsAPI,

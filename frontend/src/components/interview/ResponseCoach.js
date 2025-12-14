@@ -26,11 +26,14 @@ export const ResponseCoach = () => {
   const [coaching, setCoaching] = useState(null);
   const [practiceStatus, setPracticeStatus] = useState(null);
   const [improvement, setImprovement] = useState(null);
+  const [coachingSessionId, setCoachingSessionId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [savingToLibrary, setSavingToLibrary] = useState(false);
   const [toast, setToast] = useState({ isOpen: false, message: '', type: 'info' });
 
   useEffect(() => {
-    if (!question && questionId) {
+    // Skip loading question bank for general coaching (no job context)
+    if (!question && questionId && jobId !== 'general') {
       loadQuestionBank();
     }
   }, [jobId, questionId]);
@@ -79,6 +82,7 @@ export const ResponseCoach = () => {
       setCoaching(result.coaching);
       setPracticeStatus(result.practice_status);
       setImprovement(result.improvement);
+      setCoachingSessionId(result.improvement?.last_session_id);
     } catch (err) {
       setError(err.message || 'Failed to generate coaching feedback');
     } finally {
@@ -92,7 +96,51 @@ export const ResponseCoach = () => {
     setCoaching(null);
     setPracticeStatus(null);
     setImprovement(null);
+    setCoachingSessionId(null);
     setError(null);
+  };
+
+  const handleSaveToLibrary = async () => {
+    if (jobId === 'general') {
+      setToast({ 
+        isOpen: true, 
+        message: 'Save to library is only available for job-specific practice sessions. Practice a question from a job to save responses.', 
+        type: 'info' 
+      });
+      return;
+    }
+    
+    if (!coachingSessionId) {
+      setToast({ isOpen: true, message: 'No coaching session to save.', type: 'info' });
+      return;
+    }
+
+    try {
+      setSavingToLibrary(true);
+      
+      // Determine question type from the question or default to behavioral
+      const questionType = question?.category || 'behavioral';
+      
+      const payload = {
+        coaching_session_id: coachingSessionId,
+        question_type: questionType,
+        tags: question?.category ? [question.category] : [],
+        skills: question?.skills || [],
+      };
+
+      const result = await api.responseLibraryAPI.saveFromCoaching(payload);
+      
+      setToast({ 
+        isOpen: true, 
+        message: `Response ${result.action === 'created' ? 'saved to' : 'updated in'} your library!`, 
+        type: 'success' 
+      });
+    } catch (err) {
+      setError(err.message || 'Failed to save to library');
+      setToast({ isOpen: true, message: 'Failed to save to library', type: 'error' });
+    } finally {
+      setSavingToLibrary(false);
+    }
   };
 
   const getScoreColor = (score) => {
@@ -104,8 +152,18 @@ export const ResponseCoach = () => {
   const renderScoreBar = (label, score) => (
     <div className="score-bar">
       <div className="score-label">
-        <span>{label}</span>
-        <span className="score-value">{score}</span>
+        <span style={{ fontSize: '1.3rem', fontWeight: '800', color: '#000000' }}>{label}</span>
+        <span style={{ 
+          fontSize: '1.8rem', 
+          fontWeight: '900', 
+          color: '#000000',
+          backgroundColor: '#ffc107',
+          padding: '0.25rem 0.75rem',
+          borderRadius: '6px',
+          minWidth: '60px',
+          textAlign: 'center',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+        }}>{score}</span>
       </div>
       <div className="score-track">
         <div 
@@ -189,14 +247,9 @@ export const ResponseCoach = () => {
         message={toast.message}
         type={toast.type}
       />
+      <h2>AI Response Coach</h2>
       <div className="coach-header">
-        <button onClick={() => navigate(-1)} className="back-button">
-          ← Back
-        </button>
-        <div className="header-content">
-          <h1>AI Response Coach</h1>
-          <p>Get detailed feedback on your interview responses</p>
-        </div>
+        <h2>Your Interview Responses</h2>
       </div>
 
       <div className="coach-content">
@@ -311,9 +364,18 @@ export const ResponseCoach = () => {
           <div className="coaching-results">
             <div className="results-header">
               <h2>Your Coaching Report</h2>
-              <button onClick={handleReset} className="btn-outline">
-                Practice Another Response
-              </button>
+              <div className="results-actions">
+                <button 
+                  onClick={handleSaveToLibrary} 
+                  className="btn-save-library"
+                  disabled={savingToLibrary}
+                >
+                  {savingToLibrary ? 'Saving...' : '💾 Save to Response Library'}
+                </button>
+                <button onClick={handleReset} className="btn-outline">
+                  Practice Another Response
+                </button>
+              </div>
             </div>
 
             {/* Summary */}
@@ -324,26 +386,16 @@ export const ResponseCoach = () => {
 
             {/* Scores */}
             <div className="coaching-card scores-card">
-              <h3>📊 Response Scores</h3>
-              <div className="scores-grid">
-                {coaching.scores && (
-                  <>
-                    <div className="overall-score">
-                      <div className="score-circle" style={{ borderColor: getScoreColor(coaching.scores.overall) }}>
-                        <span className="score-number">{coaching.scores.overall}</span>
-                        <span className="score-max">/100</span>
-                      </div>
-                      <span className="score-title">Overall Score</span>
-                    </div>
-                    <div className="detailed-scores">
-                      {renderScoreBar('Relevance', coaching.scores.relevance)}
-                      {renderScoreBar('Specificity', coaching.scores.specificity)}
-                      {renderScoreBar('Impact', coaching.scores.impact)}
-                      {renderScoreBar('Clarity', coaching.scores.clarity)}
-                    </div>
-                  </>
-                )}
-              </div>
+              <h3>📊 Response Score</h3>
+              {coaching.scores && (
+                <div className="overall-score-only">
+                  <div className="score-circle" style={{ borderColor: getScoreColor(coaching.scores.overall) }}>
+                    <span className="score-number">{coaching.scores.overall}</span>
+                    <span className="score-max">/100</span>
+                  </div>
+                  <span className="score-title">Overall Score</span>
+                </div>
+              )}
             </div>
 
             {/* Length Analysis */}
@@ -381,7 +433,7 @@ export const ResponseCoach = () => {
                     <h4>Content</h4>
                     <ul>
                       {coaching.feedback.content.map((item, idx) => (
-                        <li key={idx}>{item}</li>
+                        <li key={idx}>{typeof item === 'string' ? item : item.label || item.description || JSON.stringify(item)}</li>
                       ))}
                     </ul>
                   </div>
@@ -391,7 +443,7 @@ export const ResponseCoach = () => {
                     <h4>Structure</h4>
                     <ul>
                       {coaching.feedback.structure.map((item, idx) => (
-                        <li key={idx}>{item}</li>
+                        <li key={idx}>{typeof item === 'string' ? item : item.label || item.description || JSON.stringify(item)}</li>
                       ))}
                     </ul>
                   </div>
@@ -401,7 +453,7 @@ export const ResponseCoach = () => {
                     <h4>Clarity</h4>
                     <ul>
                       {coaching.feedback.clarity.map((item, idx) => (
-                        <li key={idx}>{item}</li>
+                        <li key={idx}>{typeof item === 'string' ? item : item.label || item.description || JSON.stringify(item)}</li>
                       ))}
                     </ul>
                   </div>
@@ -444,7 +496,14 @@ export const ResponseCoach = () => {
                 <h3>🔄 Alternative Approaches</h3>
                 <ul className="alternatives-list">
                   {coaching.alternative_approaches.map((alt, idx) => (
-                    <li key={idx}>{alt}</li>
+                    <li key={idx}>
+                      {typeof alt === 'string' ? alt : (
+                        <div>
+                          <strong>{alt.label}:</strong> {alt.description}
+                          {alt.sample_opening && <div style={{marginTop: '4px', fontStyle: 'italic'}}>Example: {alt.sample_opening}</div>}
+                        </div>
+                      )}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -456,7 +515,7 @@ export const ResponseCoach = () => {
                 <h3>🎯 Focus Areas for Improvement</h3>
                 <ul className="improvement-list">
                   {coaching.improvement_focus.map((focus, idx) => (
-                    <li key={idx}>{focus}</li>
+                    <li key={idx}>{typeof focus === 'string' ? focus : focus.label || focus.description || JSON.stringify(focus)}</li>
                   ))}
                 </ul>
               </div>

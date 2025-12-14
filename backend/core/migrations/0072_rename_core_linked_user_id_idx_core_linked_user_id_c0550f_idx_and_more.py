@@ -3,6 +3,35 @@
 from django.db import migrations
 
 
+def _rename_linked_indexes(apps, schema_editor):
+    if schema_editor.connection.vendor != 'postgresql':
+        return
+
+    statements = [
+        "ALTER INDEX IF EXISTS core_linked_user_id_idx RENAME TO core_linked_user_id_c0550f_idx;",
+        "ALTER INDEX IF EXISTS core_linked_user_id_c0550f_idx RENAME TO core_linked_user_id_idx;",
+        "ALTER INDEX IF EXISTS core_linked_linkedin_id_idx RENAME TO core_linked_linkedi_290f08_idx;",
+        "ALTER INDEX IF EXISTS core_linked_linkedi_290f08_idx RENAME TO core_linked_linkedin_id_idx;",
+    ]
+    with schema_editor.connection.cursor() as cursor:
+        # Execute in pairs to keep behavior similar to forward/reverse blocks
+        cursor.execute(statements[0])
+        cursor.execute(statements[2])
+
+
+def _rename_linked_indexes_reverse(apps, schema_editor):
+    if schema_editor.connection.vendor != 'postgresql':
+        return
+
+    statements = [
+        "ALTER INDEX IF EXISTS core_linked_user_id_c0550f_idx RENAME TO core_linked_user_id_idx;",
+        "ALTER INDEX IF EXISTS core_linked_linkedi_290f08_idx RENAME TO core_linked_linkedin_id_idx;",
+    ]
+    with schema_editor.connection.cursor() as cursor:
+        for sql in statements:
+            cursor.execute(sql)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,64 +39,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
-            sql="""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM pg_class c
-                        JOIN pg_namespace n ON n.oid = c.relnamespace
-                        WHERE c.relkind = 'i'
-                          AND c.relname = 'core_linked_user_id_idx'
-                          AND n.nspname = current_schema()
-                    ) THEN
-                        ALTER INDEX core_linked_user_id_idx RENAME TO core_linked_user_id_c0550f_idx;
-                    END IF;
-                END$$;
-            """,
-            reverse_sql="""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM pg_class c
-                        JOIN pg_namespace n ON n.oid = c.relnamespace
-                        WHERE c.relkind = 'i'
-                          AND c.relname = 'core_linked_user_id_c0550f_idx'
-                          AND n.nspname = current_schema()
-                    ) THEN
-                        ALTER INDEX core_linked_user_id_c0550f_idx RENAME TO core_linked_user_id_idx;
-                    END IF;
-                END$$;
-            """,
-        ),
-        migrations.RunSQL(
-            sql="""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM pg_class c
-                        JOIN pg_namespace n ON n.oid = c.relnamespace
-                        WHERE c.relkind = 'i'
-                          AND c.relname = 'core_linked_linkedin_id_idx'
-                          AND n.nspname = current_schema()
-                    ) THEN
-                        ALTER INDEX core_linked_linkedin_id_idx RENAME TO core_linked_linkedi_290f08_idx;
-                    END IF;
-                END$$;
-            """,
-            reverse_sql="""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM pg_class c
-                        JOIN pg_namespace n ON n.oid = c.relnamespace
-                        WHERE c.relkind = 'i'
-                          AND c.relname = 'core_linked_linkedi_290f08_idx'
-                          AND n.nspname = current_schema()
-                    ) THEN
-                        ALTER INDEX core_linked_linkedi_290f08_idx RENAME TO core_linked_linkedin_id_idx;
-                    END IF;
-                END$$;
-            """,
+        migrations.RunPython(
+            code=_rename_linked_indexes,
+            reverse_code=_rename_linked_indexes_reverse,
         ),
     ]

@@ -16,6 +16,7 @@ const ReferenceAppreciations = ({ reference, onClose }) => {
 
   useEffect(() => {
     loadAppreciations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadAppreciations = async () => {

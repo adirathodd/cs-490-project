@@ -7,6 +7,7 @@ import LoadingSpinner from '../common/LoadingSpinner';
 
 const ProfilePictureUpload = ({ onUploadSuccess }) => {
   const [profilePicture, setProfilePicture] = useState(null);
+  // eslint-disable-next-line no-unused-vars
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);

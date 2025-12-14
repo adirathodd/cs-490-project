@@ -21,6 +21,7 @@ const ProjectsPortfolio = () => {
 
   const [items, setItems] = useState([]);
   const [featuredRepos, setFeaturedRepos] = useState([]);
+  // eslint-disable-next-line no-unused-vars
   const [ghError, setGhError] = useState('');
   const [ghLoading, setGhLoading] = useState(false);
   const [loading, setLoading] = useState(true);
