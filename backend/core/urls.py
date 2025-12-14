@@ -191,6 +191,7 @@ urlpatterns = [
     path('jobs/competitive-analysis', analytics_views.competitive_analysis_view, name='competitive-analysis'),
     path('productivity/analytics', analytics_views.productivity_analytics_view, name='productivity-analytics'),
     path('jobs/success-analysis', views.application_success_analysis, name='application-success-analysis'),  # UC-097
+    path('jobs/optimization-dashboard', views.application_optimization_dashboard, name='application-optimization-dashboard'),
     path('jobs/analytics/goals', analytics_views.update_application_targets_view, name='analytics-goals'),
     path('jobs/bulk-status', views.jobs_bulk_status, name='jobs-bulk-status'),
     path('jobs/bulk-deadline', views.jobs_bulk_deadline, name='jobs-bulk-deadline'),

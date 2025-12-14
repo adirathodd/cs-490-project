@@ -5826,6 +5826,39 @@ def application_success_analysis(request):
         )
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def application_optimization_dashboard(request):
+    """
+    UC-??? Optimization Dashboard
+
+    Provides an actionable optimization dashboard that:
+    - Surfaces key success metrics (response/interview/offer rates)
+    - Highlights best performing resume/cover letter versions
+    - Benchmarks application approaches and timing
+    - Surfaces role types generating the best responses
+    - Returns experiments and recommendations for improving success rates
+    """
+    try:
+        from core.application_analytics import ApplicationSuccessAnalyzer
+
+        profile = CandidateProfile.objects.get(user=request.user)
+        analyzer = ApplicationSuccessAnalyzer(profile)
+        payload = analyzer.build_optimization_dashboard()
+        return Response(payload, status=status.HTTP_200_OK)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Candidate profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as exc:
+        logger.exception(f"Error in application_optimization_dashboard: {exc}")
+        return Response(
+            {'error': {'code': 'internal_error', 'message': 'Failed to load optimization dashboard.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def jobs_bulk_status(request):
