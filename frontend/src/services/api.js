@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { ensureFirebaseToken } from './authToken';
 
 // ⚠️ UC-117: Backend API monitoring tracks all external API calls.
 // See backend/core/api_monitoring.py for implementation details.
@@ -17,15 +18,16 @@ export const api = axios.create({
 // Add token to requests if available
 api.interceptors.request.use(
   async (config) => {
-    const token = localStorage.getItem('firebaseToken');
+    const token = await ensureFirebaseToken(false);
+    if (!config.headers) config.headers = {};
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    } else if (config.headers.Authorization) {
+      delete config.headers.Authorization;
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // Normalize errors and add light retry for transient GET failures
@@ -41,26 +43,22 @@ api.interceptors.response.use(
 
     // Handle token expiration (401/403 with authentication error)
     if (status === 401 || status === 403) {
-      const errorMessage = error?.response?.data?.error?.message || error?.response?.data?.detail || '';
-      if (errorMessage.toLowerCase().includes('token') || errorMessage.toLowerCase().includes('authentication')) {
-        // Token expired - try to refresh it
-        if (!config.__tokenRefreshAttempted) {
+      const errorMessage = (error?.response?.data?.error?.message || error?.response?.data?.detail || '').toLowerCase();
+      if (!config.__tokenRefreshAttempted && (errorMessage.includes('token') || errorMessage.includes('authentication'))) {
+        try {
           config.__tokenRefreshAttempted = true;
-          
+          const newToken = await ensureFirebaseToken(true);
+          if (newToken) {
+            if (!config.headers) config.headers = {};
+            config.headers.Authorization = `Bearer ${newToken}`;
+            return api.request(config);
+          }
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
           try {
-            // Get fresh token from Firebase
-            const { auth } = await import('./firebase');
-            const user = auth.currentUser;
-            if (user) {
-              const newToken = await user.getIdToken(true); // Force refresh
-              localStorage.setItem('firebaseToken', newToken);
-              config.headers.Authorization = `Bearer ${newToken}`;
-              return api.request(config); // Retry with new token
-            }
-          } catch (refreshError) {
-            console.error('Token refresh failed:', refreshError);
             localStorage.removeItem('firebaseToken');
-            // Redirect to login or let the error propagate
+          } catch (_) {
+            // ignore
           }
         }
       }
@@ -87,7 +85,7 @@ api.interceptors.response.use(
   }
 );
 
-const extractErrorMessage = (error, fallback) => {
+const _extractErrorMessage = (error, fallback) => {
   const data = error?.response?.data;
   if (!data) return fallback;
 
@@ -496,8 +494,8 @@ export const certificationsAPI = {
 
   addCertification: async (data) => {
     try {
-      // If document file is included, send multipart
-      if (data.document instanceof File) {
+      // If document or badge file is included, send multipart
+      if (data.document instanceof File || data.badge_image instanceof File) {
         const form = new FormData();
         Object.entries(data).forEach(([k, v]) => {
           if (v !== undefined && v !== null) form.append(k, v);
@@ -514,7 +512,12 @@ export const certificationsAPI = {
 
   updateCertification: async (id, data) => {
     try {
-      if (data.document instanceof File || data.document === null) {
+      const requiresMultipart =
+        data.document instanceof File ||
+        data.document === null ||
+        data.badge_image instanceof File ||
+        data.badge_image === null;
+      if (requiresMultipart) {
         const form = new FormData();
         Object.entries(data).forEach(([k, v]) => {
           if (v === null) {
@@ -911,6 +914,28 @@ export const jobsAPI = {
       throw error.response?.data?.error || { message: 'Failed to fetch bulk job match scores' };
     }
   },
+
+  // Application quality scoring
+  getApplicationQuality: async (id, options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.refresh) params.append('refresh', 'true');
+      const path = params.toString() ? `/jobs/${id}/quality/?${params.toString()}` : `/jobs/${id}/quality/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch application quality' };
+    }
+  },
+
+  refreshApplicationQuality: async (id, data = {}) => {
+    try {
+      const response = await api.post(`/jobs/${id}/quality/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to score application quality' };
+    }
+  },
 };
 
 export const companyAPI = {
@@ -1117,6 +1142,21 @@ export const salaryAPI = {
       throw error.response?.data?.error || { message: 'Failed to export salary research' };
     }
   },
+
+  // Get salary benchmarks (BLS + community) with caching
+  getSalaryBenchmarks: async (jobId, options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.refresh) params.append('refresh', 'true');
+      const path = params.toString()
+        ? `/jobs/${jobId}/salary-benchmarks/?${params.toString()}`
+        : `/jobs/${jobId}/salary-benchmarks/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch salary benchmarks' };
+    }
+  },
 };
 
 // UC-083: Salary Negotiation planning + outcome tracking
@@ -1290,12 +1330,15 @@ export const interviewsAPI = {
         const errorMessage = error.error[0];
         if (typeof errorMessage === 'string') {
           // This is likely a conflict message, so put it in scheduled_at field
-          throw { scheduled_at: errorMessage };
+          const err = new Error(errorMessage);
+          err.scheduled_at = errorMessage;
+          throw err;
         }
-        throw error.error[0];
+        throw new Error(JSON.stringify(error.error[0]));
       }
       
-      throw error.response?.data || error.error || { message: 'Failed to update interview' };
+      const errData = error.response?.data || error.error || { message: 'Failed to update interview' };
+      throw new Error(typeof errData === 'string' ? errData : JSON.stringify(errData));
     }
   },
 
@@ -1740,12 +1783,14 @@ export const resumeExportAPI = {
         const text = await error.response.data.text();
         try {
           const errorData = JSON.parse(text);
-          throw errorData.error || { code: 'export_failed', message: 'Export failed' };
-        } catch {
-          throw { code: 'export_failed', message: 'Export failed' };
+          throw new Error(JSON.stringify(errorData.error || { code: 'export_failed', message: 'Export failed' }));
+        } catch (parseErr) {
+          if (parseErr instanceof Error && parseErr.message.includes('export_failed')) throw parseErr;
+          throw new Error(JSON.stringify({ code: 'export_failed', message: 'Export failed' }));
         }
       }
-      throw error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+      const errInfo = error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+      throw new Error(typeof errInfo === 'string' ? errInfo : JSON.stringify(errInfo));
     }
   },
 
@@ -1801,12 +1846,14 @@ export const resumeExportAPI = {
         const text = await error.response.data.text();
         try {
           const errorData = JSON.parse(text);
-          throw errorData.error || { code: 'export_failed', message: 'Export failed' };
-        } catch {
-          throw { code: 'export_failed', message: 'Export failed' };
+          throw new Error(JSON.stringify(errorData.error || { code: 'export_failed', message: 'Export failed' }));
+        } catch (parseErr) {
+          if (parseErr instanceof Error && parseErr.message.includes('export_failed')) throw parseErr;
+          throw new Error(JSON.stringify({ code: 'export_failed', message: 'Export failed' }));
         }
       }
-      throw error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+      const errInfo = error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+      throw new Error(typeof errInfo === 'string' ? errInfo : JSON.stringify(errInfo));
     }
   },
 };
@@ -1875,12 +1922,130 @@ export const coverLetterExportAPI = {
         const text = await error.response.data.text();
         try {
           const errorData = JSON.parse(text);
-          throw errorData.error || { code: 'export_failed', message: 'Export failed' };
-        } catch {
-          throw { code: 'export_failed', message: 'Export failed' };
+          throw new Error(JSON.stringify(errorData.error || { code: 'export_failed', message: 'Export failed' }));
+        } catch (parseErr) {
+          if (parseErr instanceof Error && parseErr.message.includes('export_failed')) throw parseErr;
+          throw new Error(JSON.stringify({ code: 'export_failed', message: 'Export failed' }));
         }
       }
-      throw error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+      const errInfo = error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+      throw new Error(typeof errInfo === 'string' ? errInfo : JSON.stringify(errInfo));
+    }
+  },
+};
+
+// Application follow-up reminders (UC-124 intelligent reminders)
+export const followupAPI = {
+  getPlaybook: async ({ jobId, stage }) => {
+    try {
+      const params = stage ? `?stage=${encodeURIComponent(stage)}` : '';
+      const response = await api.get(`/reminders/playbook/${jobId}/${params}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to load follow-up suggestion' };
+    }
+  },
+
+  createFromPlaybook: async ({ jobId, stage }) => {
+    try {
+      const response = await api.post(`/reminders/playbook/${jobId}/`, stage ? { stage } : {});
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to schedule follow-up' };
+    }
+  },
+
+  list: async () => {
+    try {
+      const response = await api.get('/reminders/');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to fetch reminders' };
+    }
+  },
+
+  snooze: async (id, payload) => {
+    try {
+      const response = await api.post(`/reminders/${id}/snooze/`, payload || {});
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to snooze reminder' };
+    }
+  },
+
+  dismiss: async (id) => {
+    try {
+      const response = await api.post(`/reminders/${id}/dismiss/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to dismiss reminder' };
+    }
+  },
+
+  complete: async (id, payload) => {
+    try {
+      const response = await api.post(`/reminders/${id}/complete/`, payload || {});
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to complete reminder' };
+    }
+  },
+};
+
+// Application follow-up reminders (UC-124 intelligent reminders)
+export const followupAPI = {
+  getPlaybook: async ({ jobId, stage }) => {
+    try {
+      const params = stage ? `?stage=${encodeURIComponent(stage)}` : '';
+      const response = await api.get(`/reminders/playbook/${jobId}/${params}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to load follow-up suggestion' };
+    }
+  },
+
+  createFromPlaybook: async ({ jobId, stage }) => {
+    try {
+      const response = await api.post(`/reminders/playbook/${jobId}/`, stage ? { stage } : {});
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to schedule follow-up' };
+    }
+  },
+
+  list: async () => {
+    try {
+      const response = await api.get('/reminders/');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to fetch reminders' };
+    }
+  },
+
+  snooze: async (id, payload) => {
+    try {
+      const response = await api.post(`/reminders/${id}/snooze/`, payload || {});
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to snooze reminder' };
+    }
+  },
+
+  dismiss: async (id) => {
+    try {
+      const response = await api.post(`/reminders/${id}/dismiss/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to dismiss reminder' };
+    }
+  },
+
+  complete: async (id, payload) => {
+    try {
+      const response = await api.post(`/reminders/${id}/complete/`, payload || {});
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to complete reminder' };
     }
   },
 };
@@ -2244,14 +2409,13 @@ export const resumeSharingAPI = {
       
       // Pass through the response data which contains requires_password, requires_reviewer_info flags
       const errorData = error.response?.data || {};
-      throw {
-        message: errorData.error || error.message || 'Failed to access shared resume',
-        status: error.response?.status,
-        requires_password: errorData.requires_password || false,
-        requires_reviewer_info: errorData.requires_reviewer_info || false,
-        requires_email: errorData.requires_email || false,
-        ...errorData
-      };
+      const errObj = new Error(errorData.error || error.message || 'Failed to access shared resume');
+      errObj.status = error.response?.status;
+      errObj.requires_password = errorData.requires_password || false;
+      errObj.requires_reviewer_info = errorData.requires_reviewer_info || false;
+      errObj.requires_email = errorData.requires_email || false;
+      Object.assign(errObj, errorData);
+      throw errObj;
     }
   },
   // Download PDF for shared resume (with auth context)
@@ -3433,7 +3597,7 @@ export const teamAPI = {
       return response.data;
     } catch (error) {
       const errMsg = error.response?.data?.error || 'Failed to share job';
-      throw { message: errMsg };
+      throw new Error(errMsg);
     }
   },
   unshareJob: async (teamId, sharedJobId) => {
@@ -3468,6 +3632,21 @@ export const teamAPI = {
       throw error.error || error.response?.data?.error || { message: 'Failed to delete comment' };
     }
   },
+};
+
+// UC-128: Career Growth Calculator API
+export const careerGrowthAPI = {
+  getScenarios: () => api.get('/career-growth/scenarios/'),
+  getScenario: (scenarioId) => api.get(`/career-growth/scenarios/${scenarioId}/`),
+  createScenario: (data) => api.post('/career-growth/scenarios/', data),
+  updateScenario: (scenarioId, data) => api.put(`/career-growth/scenarios/${scenarioId}/`, data),
+  deleteScenario: (scenarioId) => api.delete(`/career-growth/scenarios/${scenarioId}/`),
+  calculateProjection: (data) => api.post('/career-growth/calculate/', data),
+  compareScenarios: (scenarioIds) => api.post('/career-growth/compare/', { scenario_ids: scenarioIds }),
+  getProgressionData: (jobTitle, companyName, industry) => 
+    api.get('/career-growth/progression-data/', {
+      params: { job_title: jobTitle, company_name: companyName, industry }
+    }),
 };
 
 // ESM-only: no CommonJS interop here to avoid init-order issues

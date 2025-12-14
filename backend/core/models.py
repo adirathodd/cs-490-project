@@ -914,6 +914,16 @@ class Certification(models.Model):
     document = models.FileField(upload_to='certifications/%Y/%m/', null=True, blank=True)
     renewal_reminder_enabled = models.BooleanField(default=False)
     reminder_days_before = models.PositiveSmallIntegerField(default=30)
+    badge_image = models.ImageField(upload_to='certifications/badges/%Y/%m/', null=True, blank=True)
+    description = models.TextField(blank=True)
+    achievement_highlights = models.TextField(blank=True)
+    assessment_score = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    assessment_max_score = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    assessment_units = models.CharField(
+        max_length=40,
+        blank=True,
+        help_text="Units for the assessment score (points, percentile, rank, etc.)"
+    )
     
     class Meta:
         ordering = ['-issue_date']
@@ -3809,6 +3819,49 @@ class ApplicationPackageGenerator:
             return None
 
 
+class ApplicationQualityReview(models.Model):
+    """
+    UC-??? AI quality score for application packages
+
+    Stores per-job, per-candidate quality assessments so we can track history
+    and enforce submission readiness thresholds.
+    """
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name='application_quality_reviews')
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='quality_reviews')
+    resume_doc = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='quality_reviews_as_resume')
+    cover_letter_doc = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True, related_name='quality_reviews_as_cover')
+    linkedin_url = models.URLField(blank=True, default='')
+
+    overall_score = models.DecimalField(max_digits=5, decimal_places=2)
+    alignment_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    keyword_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    consistency_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    formatting_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+
+    missing_keywords = models.JSONField(default=list, blank=True)
+    missing_skills = models.JSONField(default=list, blank=True)
+    formatting_issues = models.JSONField(default=list, blank=True)
+    improvement_suggestions = models.JSONField(default=list, blank=True)
+    comparison_snapshot = models.JSONField(default=dict, blank=True)
+
+    threshold = models.PositiveIntegerField(default=70)
+    meets_threshold = models.BooleanField(default=False)
+    score_delta = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['candidate', 'job', '-created_at']),
+            models.Index(fields=['job', '-created_at']),
+            models.Index(fields=['candidate', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"Quality {self.overall_score} for job {self.job_id}"
+
+
 class ApplicationGoal(models.Model):
     """Track weekly application goals and progress for analytics."""
     
@@ -5847,6 +5900,12 @@ class ScheduledSubmission(models.Model):
             self.job.status = 'applied'
             self.job.application_submitted_at = self.submitted_at
             self.job.save(update_fields=['status', 'application_submitted_at'])
+            try:
+                from core import followup_utils
+                followup_utils.create_stage_followup(self.job, 'applied', auto=True)
+            except Exception:
+                # Scheduling reminders should not block submission updates
+                pass
     
     def cancel(self, reason=''):
         """Cancel this scheduled submission"""
@@ -5927,6 +5986,18 @@ class FollowUpReminder(models.Model):
     sent_at = models.DateTimeField(null=True, blank=True)
     response_received = models.BooleanField(default=False)
     response_date = models.DateTimeField(null=True, blank=True)
+    # Stage + automation context
+    followup_stage = models.CharField(
+        max_length=20,
+        choices=JobEntry.STATUS_CHOICES,
+        null=True,
+        blank=True,
+        help_text='Job stage when the reminder was created'
+    )
+    auto_scheduled = models.BooleanField(default=False)
+    recommendation_reason = models.CharField(max_length=200, blank=True)
+    snoozed_until = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -5938,6 +6009,7 @@ class FollowUpReminder(models.Model):
             models.Index(fields=['candidate', 'status']),
             models.Index(fields=['scheduled_datetime', 'status']),
             models.Index(fields=['job', 'reminder_type']),
+            models.Index(fields=['job', 'followup_stage']),
         ]
     
     def __str__(self):
@@ -5948,7 +6020,11 @@ class FollowUpReminder(models.Model):
         self.status = 'sent'
         self.sent_at = timezone.now()
         self.occurrence_count += 1
-        self.save(update_fields=['status', 'sent_at', 'occurrence_count'])
+        self.completed_at = self.sent_at
+        # Ensure we persist stage if it was not set
+        if not self.followup_stage:
+            self.followup_stage = getattr(self.job, 'status', None)
+        self.save(update_fields=['status', 'sent_at', 'occurrence_count', 'completed_at', 'followup_stage', 'updated_at'])
         
         # Schedule next occurrence if recurring
         if self.is_recurring and self.occurrence_count < self.max_occurrences:
@@ -5970,4 +6046,186 @@ class FollowUpReminder(models.Model):
     def dismiss(self):
         """Dismiss this reminder"""
         self.status = 'dismissed'
-        self.save(update_fields=['status'])
+        self.completed_at = timezone.now()
+        self.save(update_fields=['status', 'completed_at', 'updated_at'])
+
+    def snooze(self, new_datetime):
+        """Snooze reminder to a new datetime."""
+        self.scheduled_datetime = new_datetime
+        self.snoozed_until = new_datetime
+        if self.status != 'pending':
+            self.status = 'pending'
+        self.save(update_fields=['scheduled_datetime', 'snoozed_until', 'status', 'updated_at'])
+
+    def mark_completed(self, response_received=False, response_date=None):
+        """Mark reminder as completed and optionally record a response."""
+        self.completed_at = timezone.now()
+        self.response_received = response_received or self.response_received
+        if response_received:
+            self.response_date = response_date or timezone.now()
+        if self.status == 'pending':
+            self.status = 'sent'
+        self.save(update_fields=[
+            'status',
+            'completed_at',
+            'response_received',
+            'response_date',
+            'updated_at',
+        ])
+
+
+class CareerGrowthScenario(models.Model):
+    """
+    UC-128: Career Growth Calculator - Store salary growth projections and scenarios.
+    
+    Allows users to model different career paths with multiple job offers,
+    including salary progression, promotions, and total compensation over time.
+    """
+    SCENARIO_TYPES = [
+        ('conservative', 'Conservative Growth'),
+        ('expected', 'Expected Growth'),
+        ('optimistic', 'Optimistic Growth'),
+    ]
+    
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='career_scenarios')
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='career_scenarios', null=True, blank=True)
+    
+    # Scenario details
+    scenario_name = models.CharField(max_length=200, help_text="User-defined name for this scenario")
+    scenario_type = models.CharField(max_length=20, choices=SCENARIO_TYPES, default='expected')
+    
+    # Starting compensation
+    starting_salary = models.DecimalField(max_digits=12, decimal_places=2, help_text="Initial base salary")
+    starting_bonus = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, default=0)
+    starting_equity_value = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, default=0)
+    
+    # Growth assumptions
+    annual_raise_percent = models.DecimalField(max_digits=5, decimal_places=2, help_text="Expected annual raise %")
+    bonus_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, default=0, help_text="Annual bonus as % of salary")
+    equity_refresh_annual = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, default=0)
+    
+    # Company and role details
+    company_name = models.CharField(max_length=200, blank=True)
+    job_title = models.CharField(max_length=200, blank=True)
+    location = models.CharField(max_length=200, blank=True)
+    
+    # Career milestones (stored as JSON array)
+    milestones = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of career milestones: [{year, title, salary_increase_percent, promotion_bonus, notes}]"
+    )
+    
+    # Calculated projections (cached for performance)
+    projections_5_year = models.JSONField(default=dict, blank=True, help_text="Year-by-year breakdown for 5 years")
+    projections_10_year = models.JSONField(default=dict, blank=True, help_text="Year-by-year breakdown for 10 years")
+    
+    # Total compensation summaries
+    total_comp_5_year = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    total_comp_10_year = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    
+    # Non-financial considerations
+    career_goals_notes = models.TextField(blank=True, help_text="Notes about non-financial career goals")
+    work_life_balance_score = models.PositiveSmallIntegerField(null=True, blank=True, help_text="1-10 score")
+    growth_opportunity_score = models.PositiveSmallIntegerField(null=True, blank=True, help_text="1-10 score")
+    culture_fit_score = models.PositiveSmallIntegerField(null=True, blank=True, help_text="1-10 score")
+    
+    # Market data integration
+    market_salary_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="External salary data from Glassdoor, etc."
+    )
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True, help_text="Active scenarios for comparison")
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['job']),
+            models.Index(fields=['is_active']),
+        ]
+    
+    def __str__(self):
+        return f"{self.scenario_name} - {self.user.username}"
+    
+    def calculate_projections(self):
+        """
+        Calculate year-by-year salary and total compensation projections.
+        Returns both 5-year and 10-year projections.
+        """
+        projections_5 = []
+        projections_10 = []
+        
+        current_salary = float(self.starting_salary)
+        annual_raise = float(self.annual_raise_percent) / 100
+        bonus_rate = float(self.bonus_percent or 0) / 100
+        
+        # For simplicity, assume equity vests over 4 years
+        equity_vesting_years = 4
+        equity_per_year = float(self.starting_equity_value or 0) / equity_vesting_years if self.starting_equity_value else 0
+        
+        # Create milestone lookup
+        milestone_map = {}
+        for milestone in self.milestones:
+            year = milestone.get('year')
+            if year:
+                milestone_map[year] = milestone
+        
+        for year in range(1, 11):
+            # Check for milestone in this year
+            milestone = milestone_map.get(year)
+            
+            if milestone:
+                # Apply promotion/milestone adjustments
+                salary_increase = milestone.get('salary_increase_percent', 0)
+                current_salary *= (1 + salary_increase / 100)
+                # Bonus can also change with milestone
+                bonus_change = milestone.get('bonus_change', 0)
+                bonus_rate += (bonus_change / 100)
+            else:
+                # Regular annual raise
+                current_salary *= (1 + annual_raise)
+            
+            # Calculate annual bonus and equity
+            annual_bonus = current_salary * bonus_rate
+            annual_equity = equity_per_year if year <= equity_vesting_years else 0
+            
+            # Total compensation for this year
+            total_comp = current_salary + annual_bonus + annual_equity
+            
+            year_data = {
+                'year': year,
+                'base_salary': round(current_salary, 2),
+                'bonus': round(annual_bonus, 2),
+                'equity': round(annual_equity, 2),
+                'total_comp': round(total_comp, 2),
+                'milestone': milestone.get('title', '') if milestone else '',
+                'milestone_description': milestone.get('description', '') if milestone else '',
+            }
+            
+            if year <= 5:
+                projections_5.append(year_data)
+            projections_10.append(year_data)
+        
+        # Calculate cumulative totals
+        total_5_year = sum(p['total_comp'] for p in projections_5)
+        total_10_year = sum(p['total_comp'] for p in projections_10)
+        
+        # Update the model
+        self.projections_5_year = projections_5
+        self.projections_10_year = projections_10
+        self.total_comp_5_year = total_5_year
+        self.total_comp_10_year = total_10_year
+        self.save(update_fields=['projections_5_year', 'projections_10_year', 'total_comp_5_year', 'total_comp_10_year', 'updated_at'])
+        
+        return {
+            '5_year': projections_5,
+            '10_year': projections_10,
+            'total_5_year': total_5_year,
+            'total_10_year': total_10_year,
+        }

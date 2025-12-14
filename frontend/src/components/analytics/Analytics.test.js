@@ -156,6 +156,11 @@ describe('Analytics component', () => {
     jest.clearAllMocks();
     useAuth.mockReturnValue({ loading: false });
     jobsAPI.getAnalytics.mockResolvedValue(mockAnalyticsData);
+    try {
+      window.localStorage.setItem('firebaseToken', 'test-token');
+    } catch (_) {
+      // ignore in non-browser test environments
+    }
   });
 
   describe('Main Analytics Component', () => {

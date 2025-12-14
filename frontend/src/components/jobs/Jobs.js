@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jobsAPI, materialsAPI, interviewsAPI, companyAPI } from '../../services/api';
+import { authorizedFetch } from '../../services/authToken';
 import Icon from '../common/Icon';
 import DeadlineCalendar from '../common/DeadlineCalendar';
 import AutomationDashboard from '../automation/AutomationDashboard';
@@ -905,15 +906,12 @@ const companyDropdownRef = useRef(null);
 
   const handleDownloadMaterial = (docId, docName) => {
     const url = materialsAPI.getDownloadUrl(docId);
-    const token = localStorage.getItem('firebaseToken');
-    if (token) {
-      fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+    authorizedFetch(url)
+      .then((response) => {
+        if (!response.ok) throw new Error('Download failed');
+        return response.blob();
       })
-      .then(response => response.blob())
-      .then(blob => {
+      .then((blob) => {
         const blobUrl = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = blobUrl;
@@ -923,11 +921,10 @@ const companyDropdownRef = useRef(null);
         document.body.removeChild(link);
         window.URL.revokeObjectURL(blobUrl);
       })
-      .catch(err => {
+      .catch((err) => {
         setError('Failed to download document');
         console.error('Download error:', err);
       });
-    }
   };
 
   const handleSubmit = async (e) => {

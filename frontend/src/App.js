@@ -43,6 +43,7 @@ import MentorshipMenteeDashboard from './components/mentorship/MenteeDashboard';
 import PeerSupportHub from './components/community/PeerSupportHub';
 import MarketIntelligence from './components/tools/MarketIntelligence';
 import SalaryProgression from './components/tools/SalaryProgression';
+import CareerGrowthCalculator from './components/tools/CareerGrowthCalculator';
 import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
 import { AiCoverLetterGenerator } from './features/cover-letter';
@@ -555,6 +556,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <SalaryProgression />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/tools/career-growth-calculator"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <CareerGrowthCalculator />
               </PrivateRoute>
             }
           />

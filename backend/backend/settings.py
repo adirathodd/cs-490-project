@@ -181,18 +181,22 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # When using credentials, do NOT use wildcard origins; explicitly list dev origins
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = [
-    origin.strip() for origin in os.environ.get(
-        'CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000'
-    ).split(',') if origin.strip()
-]
+
 # Optional: allow Authorization header for Firebase token
 CORS_ALLOW_HEADERS = list(set([
     'accept', 'accept-encoding', 'authorization', 'content-type', 'dnt', 'origin', 'user-agent', 'x-csrftoken', 'x-requested-with'
 ]))
 
-# Trust the frontend origin for CSRF in development
-CSRF_TRUSTED_ORIGINS = ['http://localhost:3000']
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:3001',  # add whichever port you’re using
+]
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+]
+
 
 # Relax cookie and CORS credentials in development to allow OAuth redirects across localhost ports
 if DEBUG:

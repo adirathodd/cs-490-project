@@ -208,6 +208,7 @@ const salaryAPI = {
 	getSalaryResearch: jestFn(),
 	triggerResearch: jestFn(),
 	exportResearch: jestFn(),
+	getSalaryBenchmarks: jestFn(),
 };
 
 const salaryNegotiationAPI = {

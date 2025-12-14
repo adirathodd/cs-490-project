@@ -75,7 +75,7 @@ const Dashboard = () => {
     };
 
     fetchProfilePicture();
-  }, [currentUser]);
+  }, [currentUser, userProfile]);
 
   const handleUpdateProfile = () => {
     if (!authLoading && currentUser) {
@@ -87,7 +87,7 @@ const Dashboard = () => {
   const [activeSection, setActiveSection] = useState('Profile');
   const [calendarSummary, setCalendarSummary] = useState(null);
 
-  const showCard = (section) => activeSection === section;
+  // showCard helper removed - not currently used
 
   if (authLoading) {
     return (
@@ -188,6 +188,7 @@ const Dashboard = () => {
                   { key: 'document_review', icon: <Icon name="file-text" size="lg" ariaLabel="Document Review" />, title: 'Document Review', desc: 'Get AI-powered feedback on your resumes and cover letters', action: () => navigate('/tools/document-review'), actionText: 'Review Documents' },
                   { key: 'market_intelligence', icon: <Icon name="chart" size="lg" ariaLabel="Market Intelligence" />, title: 'Market Intelligence', desc: 'Track market trends, salaries, and skill demand', action: () => navigate('/tools/market-intelligence'), actionText: 'Open Market Intelligence' },
                   { key: 'salary_progression', icon: <Icon name="dollar" size="lg" ariaLabel="Salary Progression" />, title: 'Salary Progression', desc: 'Analyze offers, market positioning, and negotiation wins', action: () => navigate('/tools/salary-progression'), actionText: 'Open Salary Analytics' },
+                  { key: 'career_growth', icon: <Icon name="trending-up" size="lg" ariaLabel="Career Growth Calculator" />, title: 'Career Growth Calculator', desc: 'Model your career trajectory with salary projections and scenarios', action: () => navigate('/tools/career-growth-calculator'), actionText: 'Plan Career Growth' },
                   { key: 'mock_interview', icon: <Icon name="mic" size="lg" color="#000000" ariaLabel="Mock Interview" />, title: 'Mock Interview Practice', desc: 'Practice full interview sessions with AI feedback', action: () => navigate('/mock-interview'), actionText: 'Start Mock Interview' },
                 ];
 

@@ -5,6 +5,7 @@ Authentication views for Firebase-based user registration and login.
 See core/api_monitoring.py for details. Wrap Gemini, LinkedIn, Gmail, and all
 external API calls with the monitoring context manager.
 """
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from datetime import timezone as datetime_timezone, timedelta
@@ -31,11 +32,16 @@ from django.utils.text import slugify
 from django.conf import settings
 from core.authentication import FirebaseAuthentication
 from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_GEMINI, SERVICE_GITHUB
+from core.salary_benchmarks import salary_benchmark_service
 from django.views.decorators.http import require_GET
 import os
 import requests
 from urllib.parse import urlencode
-from core.models import GitHubAccount
+from core.models import GitHubAccount, ApplicationQualityReview
+from core import followup_utils
+import sys
+from django.conf import settings
+from core.application_quality import ApplicationQualityScorer, build_quality_history
 from core.serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
@@ -5850,6 +5856,13 @@ def jobs_bulk_status(request):
                     JobStatusChange.objects.create(job=job, old_status=old, new_status=new_status)
                 except Exception:
                     pass
+                try:
+                    if new_status == 'rejected':
+                        followup_utils.dismiss_pending_for_job(job)
+                    else:
+                        followup_utils.create_stage_followup(job, new_status, auto=True)
+                except Exception:
+                    logger.debug("Follow-up scheduling skipped for job %s", job.id)
                 updated += 1
         return Response({'updated': updated}, status=status.HTTP_200_OK)
     except CandidateProfile.DoesNotExist:
@@ -6449,6 +6462,146 @@ def materials_defaults(request):
         return Response({'error': {'code': 'internal_error', 'message': 'Failed to update defaults'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+def _serialize_quality_review(review, request, history=None, analysis_override=None):
+    """Serialize ApplicationQualityReview with optional overridden analysis values."""
+    analysis = analysis_override or {}
+    history = history or []
+
+    def _val(field, default=None):
+        return analysis.get(field, getattr(review, field, default))
+
+    comparison = analysis.get('comparison') or getattr(review, 'comparison_snapshot', {}) or {}
+    score_delta = analysis.get('score_delta')
+    if score_delta is None and getattr(review, 'score_delta', None) is not None:
+        score_delta = float(review.score_delta)
+
+    resume_doc_data = DocumentSummarySerializer(
+        review.resume_doc,
+        context={'request': request}
+    ).data if getattr(review, 'resume_doc', None) else None
+    cover_doc_data = DocumentSummarySerializer(
+        review.cover_letter_doc,
+        context={'request': request}
+    ).data if getattr(review, 'cover_letter_doc', None) else None
+
+    return {
+        'job_id': review.job_id,
+        'score': float(_val('score', review.overall_score)),
+        'alignment_score': float(_val('alignment_score', review.alignment_score)),
+        'keyword_score': float(_val('keyword_score', review.keyword_score)),
+        'consistency_score': float(_val('consistency_score', review.consistency_score)),
+        'formatting_score': float(_val('formatting_score', review.formatting_score)),
+        'missing_keywords': _val('missing_keywords', []) or [],
+        'missing_skills': _val('missing_skills', []) or [],
+        'formatting_issues': _val('formatting_issues', []) or [],
+        'suggestions': _val('suggestions', []) or getattr(review, 'improvement_suggestions', []) or [],
+        'comparison': comparison,
+        'threshold': int(_val('threshold', review.threshold)),
+        'meets_threshold': bool(_val('meets_threshold', review.meets_threshold)),
+        'score_delta': score_delta,
+        'history': history,
+        'resume_doc': resume_doc_data,
+        'cover_letter_doc': cover_doc_data,
+        'last_reviewed_at': getattr(review, 'created_at', None).isoformat() if getattr(review, 'created_at', None) else None,
+    }
+
+
+def _enforce_quality_gate() -> bool:
+    """Return True when quality checks should block submissions (skip in tests)."""
+    if getattr(settings, 'TESTING', False):
+        return False
+    if any('test' in arg.lower() or 'pytest' in arg.lower() for arg in sys.argv):
+        return False
+    if os.environ.get('SKIP_QUALITY_GATE', '').lower() == 'true':
+        return False
+    return True
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def job_application_quality(request, job_id):
+    """
+    Generate or fetch an application quality score for a job application package.
+
+    GET: Returns the latest review (use refresh=true to recalc)
+    POST: Forces a recalculation using optional resume/cover/LinkedIn overrides
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Candidate profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    try:
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return Response(
+            {'error': {'code': 'job_not_found', 'message': 'Job entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    try:
+        from core.models import Document  # Local import to avoid circulars
+
+        resume_doc = job.resume_doc or profile.default_resume_doc
+        cover_doc = job.cover_letter_doc or profile.default_cover_letter_doc
+        analysis = None
+
+        if request.method == 'POST':
+            # Optional overrides
+            resume_id = request.data.get('resume_doc_id')
+            cover_id = request.data.get('cover_letter_doc_id')
+            threshold_raw = request.data.get('threshold') or request.data.get('min_score_threshold')
+            linkedin_url = request.data.get('linkedin_url') or profile.linkedin_url
+
+            if resume_id:
+                resume_doc = Document.objects.filter(id=resume_id, candidate=profile).first() or resume_doc
+            if cover_id:
+                cover_doc = Document.objects.filter(id=cover_id, candidate=profile).first() or cover_doc
+
+            threshold_val = None
+            if threshold_raw is not None:
+                try:
+                    threshold_val = int(threshold_raw)
+                except (TypeError, ValueError):
+                    threshold_val = None
+
+            scorer = ApplicationQualityScorer(
+                job,
+                profile,
+                resume_doc=resume_doc,
+                cover_letter_doc=cover_doc,
+                linkedin_url=linkedin_url,
+                threshold=threshold_val,
+            )
+            review, analysis = scorer.persist()
+        else:
+            refresh = (request.query_params.get('refresh') or '').lower() == 'true'
+            review = ApplicationQualityReview.objects.filter(candidate=profile, job=job).order_by('-created_at', '-id').first()
+
+            if review is None or refresh:
+                scorer = ApplicationQualityScorer(
+                    job,
+                    profile,
+                    resume_doc=resume_doc,
+                    cover_letter_doc=cover_doc,
+                    linkedin_url=profile.linkedin_url,
+                )
+                review, analysis = scorer.persist()
+
+        history = build_quality_history(profile, job)
+        payload = _serialize_quality_review(review, request, history=history, analysis_override=analysis)
+        return Response(payload, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"job_application_quality error: {e}", exc_info=True)
+        return Response(
+            {'error': {'code': 'quality_generation_failed', 'message': 'Failed to score application quality.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 # 
 # 
 # =
@@ -6661,14 +6814,17 @@ def job_delete(request, job_id):
 
 # Predefined categories (can be expanded later or driven from data)
 CERTIFICATION_CATEGORIES = [
+    "Coding & Practice",
     "Cloud",
     "Security",
-    "Project Management",
     "Data & Analytics",
-    "Networking",
+    "AI & Machine Learning",
     "Software Development",
     "DevOps",
+    "Project Management",
+    "Business & Strategy",
     "Design / UX",
+    "Product & Growth",
     "Healthcare",
     "Finance",
     "Other",
@@ -6793,9 +6949,16 @@ def certifications_list_create(request):
         instance = serializer.save(candidate=profile)
 
         # Handle file upload if present
+        updated = False
         document = request.FILES.get('document')
         if document:
             instance.document = document
+            updated = True
+        badge_image = request.FILES.get('badge_image')
+        if badge_image:
+            instance.badge_image = badge_image
+            updated = True
+        if updated:
             instance.save()
 
         return Response(CertificationSerializer(instance, context={'request': request}).data, status=status.HTTP_201_CREATED)
@@ -6853,13 +7016,25 @@ def certification_detail(request, certification_id):
             instance = serializer.save()
 
             # Update document if provided
+            updated = False
             document = request.FILES.get('document')
             if document is not None:
                 instance.document = document
-                instance.save()
+                updated = True
             # Allow clearing document by sending empty value
             elif 'document' in request.data and (request.data.get('document') in ['', None]):
                 instance.document = None
+                updated = True
+
+            badge_image = request.FILES.get('badge_image')
+            if badge_image is not None:
+                instance.badge_image = badge_image
+                updated = True
+            elif 'badge_image' in request.data and (request.data.get('badge_image') in ['', None]):
+                instance.badge_image = None
+                updated = True
+
+            if updated:
                 instance.save()
 
             return Response(CertificationSerializer(instance, context={'request': request}).data, status=status.HTTP_200_OK)
@@ -8748,6 +8923,54 @@ def refresh_company_research(request, company_name):
         )
 
 
+#
+#
+# =
+# Salary Benchmarks (BLS + community)
+# =
+#
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def salary_benchmarks(request, job_id: int):
+    """
+    Lightweight salary benchmark lookup for a job entry.
+
+    Query params:
+    - refresh=true to bypass cache
+    """
+    from core.models import CandidateProfile, JobEntry
+
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except (CandidateProfile.DoesNotExist, JobEntry.DoesNotExist):
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Job entry not found.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+    location = job.location or profile.get_full_location() or 'United States'
+    result = salary_benchmark_service.get_benchmarks(
+        job_title=job.title,
+        location=location,
+        experience_level=profile.experience_level,
+        force_refresh=force_refresh,
+    )
+
+    payload = result.as_dict()
+    payload.update(
+        {
+            "job_title": job.title,
+            "location_used": location,
+            "experience_level": profile.experience_level,
+        }
+    )
+    return Response(payload, status=status.HTTP_200_OK)
+
+
 # 
 # 
 # =
@@ -8801,11 +9024,18 @@ def salary_research(request, job_id):
     if request.method == 'GET':
         # Return existing research or indicate none exists
         research = SalaryResearch.objects.filter(job=job).order_by('-created_at').first()
+        benchmark = salary_benchmark_service.get_benchmarks(
+            job_title=job.title,
+            location=job.location or 'Remote',
+            experience_level=profile.experience_level,
+        )
         
         if not research:
             return Response({
                 'has_data': False,
-                'message': 'No salary research available. Trigger research to generate data.'
+                'message': 'No salary research available. Trigger research to generate data.',
+                'benchmarks': benchmark.as_dict(),
+                'benchmark_location': job.location or 'Remote',
             }, status=status.HTTP_200_OK)
         
         return Response({
@@ -8841,6 +9071,8 @@ def salary_research(request, job_id):
             'historical_data': research.historical_data,
             'created_at': research.created_at.isoformat(),
             'updated_at': research.updated_at.isoformat(),
+            'benchmarks': benchmark.as_dict(),
+            'benchmark_location': job.location or 'Remote',
         }, status=status.HTTP_200_OK)
     
     # POST: Trigger new research
@@ -10703,7 +10935,7 @@ def skill_progress(request, skill_id):
             progress_records = SkillDevelopmentProgress.objects.filter(
                 candidate=profile,
                 skill=skill
-            ).order_by('-activity_date')
+            ).order_by('-activity_date', '-id')  # stable ordering even when timestamps tie
             
             data = []
             for record in progress_records:
@@ -18731,6 +18963,43 @@ def scheduled_submissions(request):
     elif request.method == 'POST':
         serializer = ScheduledSubmissionCreateSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
+            validated = serializer.validated_data
+            job = validated.get('job')
+            application_package = validated.get('application_package')
+
+            if _enforce_quality_gate():
+                resume_doc = None
+                cover_doc = None
+                if application_package:
+                    resume_doc = getattr(application_package, 'resume_document', None)
+                    cover_doc = getattr(application_package, 'cover_letter_document', None)
+                if not resume_doc:
+                    resume_doc = getattr(job, 'resume_doc', None) or candidate.default_resume_doc
+                if not cover_doc:
+                    cover_doc = getattr(job, 'cover_letter_doc', None) or candidate.default_cover_letter_doc
+
+                scorer = ApplicationQualityScorer(
+                    job,
+                    candidate,
+                    resume_doc=resume_doc,
+                    cover_letter_doc=cover_doc,
+                    linkedin_url=candidate.linkedin_url,
+                )
+                review, analysis = scorer.persist()
+
+                if not analysis.get('meets_threshold'):
+                    history = build_quality_history(candidate, job)
+                    return Response(
+                        {
+                            'error': {
+                                'code': 'quality_below_threshold',
+                                'message': f"Quality score {analysis.get('score')} is below the required threshold of {analysis.get('threshold')}.",
+                                'quality': _serialize_quality_review(review, request, history=history, analysis_override=analysis),
+                            }
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
             submission = serializer.save()
             return Response(
                 ScheduledSubmissionSerializer(submission).data,
@@ -18818,6 +19087,39 @@ def execute_scheduled_submission(request, submission_id):
             {'error': f'Cannot execute submission with status: {submission.status}'},
             status=status.HTTP_400_BAD_REQUEST
         )
+
+    if _enforce_quality_gate():
+        job = submission.job
+        resume_doc = None
+        cover_doc = None
+        if submission.application_package:
+            resume_doc = getattr(submission.application_package, 'resume_document', None)
+            cover_doc = getattr(submission.application_package, 'cover_letter_document', None)
+        if not resume_doc:
+            resume_doc = getattr(job, 'resume_doc', None) or candidate.default_resume_doc
+        if not cover_doc:
+            cover_doc = getattr(job, 'cover_letter_doc', None) or candidate.default_cover_letter_doc
+
+        scorer = ApplicationQualityScorer(
+            job,
+            candidate,
+            resume_doc=resume_doc,
+            cover_letter_doc=cover_doc,
+            linkedin_url=candidate.linkedin_url,
+        )
+        review, analysis = scorer.persist()
+        if not analysis.get('meets_threshold'):
+            history = build_quality_history(candidate, job)
+            return Response(
+                {
+                    'error': {
+                        'code': 'quality_below_threshold',
+                        'message': f"Quality score {analysis.get('score')} is below the required threshold of {analysis.get('threshold')}.",
+                        'quality': _serialize_quality_review(review, request, history=history, analysis_override=analysis),
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
     
     # Mark as submitted
     submission.mark_submitted()
@@ -18863,6 +19165,46 @@ def followup_reminders(request):
                 status=status.HTTP_201_CREATED
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def followup_playbook(request, job_id):
+    """
+    GET: Return a recommended follow-up plan (timing, template, etiquette tips) for a job.
+    POST: Create (or reuse) the recommended reminder for the job/stage.
+    """
+    from core.models import CandidateProfile, JobEntry
+
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+
+    try:
+        job = JobEntry.objects.get(id=job_id, candidate=candidate)
+    except JobEntry.DoesNotExist:
+        return Response({'error': 'Job not found'}, status=404)
+
+    stage = request.data.get('stage') or request.query_params.get('stage') or job.status
+    plan = followup_utils.build_followup_plan(job, stage)
+    if plan is None:
+        return Response({'error': 'Reminders are disabled for rejected applications.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    serialized_plan = followup_utils.serialize_plan(plan)
+    if request.method == 'POST':
+        reminder, created = followup_utils.create_stage_followup(job, stage, auto=True)
+        serializer = FollowUpReminderSerializer(reminder)
+        return Response(
+            {
+                'plan': serialized_plan,
+                'reminder': serializer.data,
+                'created': created,
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        )
+
+    return Response(serialized_plan)
 
 
 @api_view(['GET', 'PUT', 'DELETE'])
@@ -18918,6 +19260,85 @@ def dismiss_reminder(request, reminder_id):
         return Response({'error': 'Reminder not found'}, status=404)
     
     reminder.dismiss()
+    return Response(FollowUpReminderSerializer(reminder).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def snooze_followup_reminder(request, reminder_id):
+    """Snooze a reminder to a later time."""
+    from core.models import FollowUpReminder, CandidateProfile
+
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+
+    try:
+        reminder = FollowUpReminder.objects.get(id=reminder_id, candidate=candidate)
+    except FollowUpReminder.DoesNotExist:
+        return Response({'error': 'Reminder not found'}, status=404)
+
+    snooze_hours = request.data.get('hours') or request.data.get('snooze_hours') or 24
+    until_param = request.data.get('until') or request.data.get('snoozed_until')
+    try:
+        if until_param:
+            parsed = parse_datetime(until_param)
+            if parsed is None:
+                raise ValueError("Invalid datetime format")
+            if timezone.is_naive(parsed):
+                parsed = timezone.make_aware(parsed)
+            new_time = parsed
+        else:
+            snooze_hours = int(snooze_hours)
+            new_time = timezone.now() + timedelta(hours=snooze_hours)
+    except Exception as exc:
+        return Response({'error': f'Invalid snooze value: {exc}'}, status=status.HTTP_400_BAD_REQUEST)
+
+    reminder.snooze(new_time)
+    return Response(FollowUpReminderSerializer(reminder).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def complete_followup_reminder(request, reminder_id):
+    """Mark a reminder as completed and optionally record a response."""
+    from core.models import FollowUpReminder, CandidateProfile
+
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+
+    try:
+        reminder = FollowUpReminder.objects.get(id=reminder_id, candidate=candidate)
+    except FollowUpReminder.DoesNotExist:
+        return Response({'error': 'Reminder not found'}, status=404)
+
+    response_received = bool(request.data.get('response_received'))
+    response_date = request.data.get('response_date')
+    response_dt = None
+    if response_date:
+        parsed = parse_datetime(response_date)
+        if parsed:
+            response_dt = timezone.make_aware(parsed) if timezone.is_naive(parsed) else parsed
+    if response_dt is None and response_received:
+        response_dt = timezone.now()
+
+    reminder.mark_completed(response_received=response_received, response_date=response_dt)
+
+    # Store responsiveness on the job so future reminders can adjust cadence
+    try:
+        job = reminder.job
+        if response_received and job and not job.first_response_at:
+            job.first_response_at = response_dt
+            if job.application_submitted_at and response_dt:
+                delta_days = (response_dt - job.application_submitted_at).total_seconds() / 86400.0
+                job.days_to_response = max(int(round(delta_days)), 0)
+            job.save(update_fields=['first_response_at', 'days_to_response', 'updated_at'])
+    except Exception:
+        pass
+
     return Response(FollowUpReminderSerializer(reminder).data)
 
 
@@ -19183,3 +19604,645 @@ def application_calendar_view(request):
     })
 
 
+# 
+# 
+# =
+# UC-128: CAREER GROWTH CALCULATOR
+# 
+# 
+# =
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def career_growth_scenarios(request):
+    """
+    List all career growth scenarios or create a new one.
+    GET: Returns all scenarios for the authenticated user.
+    POST: Creates a new scenario and calculates initial projections.
+    """
+    from .models import CareerGrowthScenario
+    from .career_growth_utils import career_growth_analyzer
+    from decimal import Decimal
+    
+    if request.method == 'GET':
+        scenarios = CareerGrowthScenario.objects.filter(user=request.user).order_by('-created_at')
+        
+        scenarios_data = []
+        for scenario in scenarios:
+            # Ensure projections exist so we can surface end-of-period salary
+            if not scenario.projections_10_year:
+                scenario.calculate_projections()
+            # Extract salary at the end of 5 and 10 years (base salary line from projections)
+            salary_after_5 = None
+            salary_after_10 = None
+            total_comp_year_5 = None
+            total_comp_year_10 = None
+            if scenario.projections_5_year:
+                salary_after_5 = scenario.projections_5_year[-1].get('base_salary')
+                total_comp_year_5 = scenario.projections_5_year[-1].get('total_comp')
+            if scenario.projections_10_year:
+                salary_after_10 = scenario.projections_10_year[-1].get('base_salary')
+                total_comp_year_10 = scenario.projections_10_year[-1].get('total_comp')
+
+            scenarios_data.append({
+                'id': scenario.id,
+                'scenario_name': scenario.scenario_name,
+                'job_title': scenario.job_title,
+                'company_name': scenario.company_name,
+                'starting_salary': str(scenario.starting_salary),
+                'annual_raise_percent': str(scenario.annual_raise_percent),
+                'scenario_type': scenario.scenario_type,
+                'total_comp_5_year': str(scenario.total_comp_5_year) if scenario.total_comp_5_year else None,
+                'total_comp_10_year': str(scenario.total_comp_10_year) if scenario.total_comp_10_year else None,
+                'salary_after_5_years': salary_after_5,
+                'salary_after_10_years': salary_after_10,
+                'total_comp_year_5': total_comp_year_5,
+                'total_comp_year_10': total_comp_year_10,
+                'created_at': scenario.created_at.isoformat(),
+                'updated_at': scenario.updated_at.isoformat(),
+            })
+        
+        return Response({'scenarios': scenarios_data}, status=status.HTTP_200_OK)
+    
+    elif request.method == 'POST':
+        data = request.data
+        
+        # Required fields
+        required_fields = ['scenario_name', 'job_title', 'starting_salary']
+        for field in required_fields:
+            if not data.get(field):
+                return Response(
+                    {'error': f'{field} is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        try:
+            # Create scenario (map frontend names to database names)
+            scenario = CareerGrowthScenario.objects.create(
+                user=request.user,
+                scenario_name=data['scenario_name'],
+                job_title=data['job_title'],
+                company_name=data.get('company_name', ''),
+                starting_salary=Decimal(str(data['starting_salary'])),
+                annual_raise_percent=Decimal(str(data.get('annual_raise_percent', 3.0))),
+                bonus_percent=Decimal(str(data.get('annual_bonus_percent', 0))),
+                starting_equity_value=Decimal(str(data.get('equity_value', 0))),
+                milestones=data.get('milestones', []),
+                career_goals_notes=data.get('notes', ''),
+                scenario_type=data.get('scenario_type', 'expected'),
+            )
+            
+            # Calculate projections
+            scenario.calculate_projections()
+            
+            return Response({
+                'id': scenario.id,
+                'scenario_name': scenario.scenario_name,
+                'total_comp_5_year': str(scenario.total_comp_5_year),
+                'total_comp_10_year': str(scenario.total_comp_10_year),
+                'message': 'Scenario created successfully'
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.error(f"Error creating career growth scenario: {e}")
+            return Response(
+                {'error': f'Error creating scenario: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def career_growth_scenario_detail(request, scenario_id):
+    """
+    Retrieve, update, or delete a specific career growth scenario.
+    """
+    from .models import CareerGrowthScenario
+    
+    try:
+        scenario = CareerGrowthScenario.objects.get(id=scenario_id, user=request.user)
+    except CareerGrowthScenario.DoesNotExist:
+        return Response(
+            {'error': 'Scenario not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == 'GET':
+        return Response({
+            'id': scenario.id,
+            'scenario_name': scenario.scenario_name,
+            'job_title': scenario.job_title,
+            'company_name': scenario.company_name,
+            'starting_salary': str(scenario.starting_salary),
+            'annual_raise_percent': str(scenario.annual_raise_percent),
+            'annual_bonus_percent': str(scenario.bonus_percent or 0),
+            'equity_value': str(scenario.starting_equity_value or 0),
+            'equity_vesting_years': 4,
+            'milestones': scenario.milestones,
+            'notes': scenario.career_goals_notes,
+            'scenario_type': scenario.scenario_type,
+            'projections_5_year': scenario.projections_5_year,
+            'projections_10_year': scenario.projections_10_year,
+            'total_comp_5_year': str(scenario.total_comp_5_year) if scenario.total_comp_5_year else None,
+            'total_comp_10_year': str(scenario.total_comp_10_year) if scenario.total_comp_10_year else None,
+            'created_at': scenario.created_at.isoformat(),
+            'updated_at': scenario.updated_at.isoformat(),
+        }, status=status.HTTP_200_OK)
+    
+    elif request.method == 'PUT':
+        data = request.data
+        
+        # Update fields
+        if 'scenario_name' in data:
+            scenario.scenario_name = data['scenario_name']
+        if 'job_title' in data:
+            scenario.job_title = data['job_title']
+        if 'company_name' in data:
+            scenario.company_name = data['company_name']
+        if 'starting_salary' in data:
+            scenario.starting_salary = Decimal(str(data['starting_salary']))
+        if 'annual_raise_percent' in data:
+            scenario.annual_raise_percent = Decimal(str(data['annual_raise_percent']))
+        if 'annual_bonus_percent' in data:
+            scenario.bonus_percent = Decimal(str(data['annual_bonus_percent']))
+        if 'equity_value' in data:
+            scenario.starting_equity_value = Decimal(str(data['equity_value']))
+        if 'milestones' in data:
+            scenario.milestones = data['milestones']
+        if 'notes' in data:
+            scenario.career_goals_notes = data['notes']
+        if 'scenario_type' in data:
+            scenario.scenario_type = data['scenario_type']
+        
+        scenario.save()
+        
+        # Recalculate projections
+        scenario.calculate_projections()
+        
+        return Response({
+            'id': scenario.id,
+            'scenario_name': scenario.scenario_name,
+            'total_comp_5_year': str(scenario.total_comp_5_year),
+            'total_comp_10_year': str(scenario.total_comp_10_year),
+            'message': 'Scenario updated successfully'
+        }, status=status.HTTP_200_OK)
+    
+    elif request.method == 'DELETE':
+        scenario.delete()
+        return Response(
+            {'message': 'Scenario deleted successfully'},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def calculate_scenario_projections(request):
+    """
+    Calculate projections for a scenario without saving.
+    Useful for "what-if" analysis before committing to a scenario.
+    """
+    from .models import CareerGrowthScenario
+    from decimal import Decimal
+    
+    data = request.data
+    
+    # Create temporary scenario (don't save)
+    temp_scenario = CareerGrowthScenario(
+        user=request.user,
+        scenario_name=data.get('scenario_name', 'Temporary'),
+        job_title=data.get('job_title', ''),
+        starting_salary=Decimal(str(data.get('starting_salary', 100000))),
+        annual_raise_percent=Decimal(str(data.get('annual_raise_percent', 3.0))),
+        bonus_percent=Decimal(str(data.get('annual_bonus_percent', 0))),
+        starting_equity_value=Decimal(str(data.get('equity_value', 0))),
+        milestones=data.get('milestones', []),
+        scenario_type=data.get('scenario_type', 'expected'),
+    )
+    
+    # Calculate without saving
+    temp_scenario.calculate_projections()
+    
+    return Response({
+        'projections_5_year': temp_scenario.projections_5_year,
+        'projections_10_year': temp_scenario.projections_10_year,
+        'total_comp_5_year': str(temp_scenario.total_comp_5_year),
+        'total_comp_10_year': str(temp_scenario.total_comp_10_year),
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def compare_career_scenarios(request):
+    """
+    Compare multiple career scenarios side-by-side.
+    Accepts list of scenario IDs and returns comparative analysis.
+    """
+    from .models import CareerGrowthScenario
+    from .career_growth_utils import career_growth_analyzer
+    
+    scenario_ids = request.data.get('scenario_ids', [])
+    
+    if not scenario_ids:
+        return Response(
+            {'error': 'scenario_ids list is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Fetch scenarios
+    scenarios = CareerGrowthScenario.objects.filter(
+        id__in=scenario_ids,
+        user=request.user
+    )
+    
+    if not scenarios.exists():
+        return Response(
+            {'error': 'No scenarios found with provided IDs'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Convert to dict format for comparison
+    scenarios_data = []
+    for scenario in scenarios:
+        scenarios_data.append({
+            'id': scenario.id,
+            'scenario_name': scenario.scenario_name,
+            'job_title': scenario.job_title,
+            'company_name': scenario.company_name,
+            'starting_salary': float(scenario.starting_salary),
+            'annual_raise_percent': float(scenario.annual_raise_percent),
+            'total_comp_5_year': float(scenario.total_comp_5_year or 0),
+            'total_comp_10_year': float(scenario.total_comp_10_year or 0),
+            'projections_5_year': scenario.projections_5_year,
+            'projections_10_year': scenario.projections_10_year,
+            'milestones': scenario.milestones,
+        })
+    
+    # Perform comparison
+    comparison = career_growth_analyzer.calculate_scenario_comparison(scenarios_data)
+    # Include projections for charting on the frontend
+    comparison['projections'] = scenarios_data
+    
+    return Response(comparison, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_career_progression_data(request):
+    """
+    Get career progression data for a job title and company.
+    Uses career_growth_utils to fetch industry data.
+    """
+    from .career_growth_utils import career_growth_analyzer
+    
+    job_title = request.query_params.get('job_title')
+    company_name = request.query_params.get('company_name', '')
+    industry = request.query_params.get('industry')
+    
+    if not job_title:
+        return Response(
+            {'error': 'job_title parameter is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Get promotion timeline data
+    progression = career_growth_analyzer.get_promotion_timeline(
+        job_title=job_title,
+        company_name=company_name,
+        industry=industry
+    )
+    
+    # Get Glassdoor career path (if available)
+    glassdoor_data = None
+    if company_name:
+        glassdoor_data = career_growth_analyzer.fetch_glassdoor_career_path(
+            job_title=job_title,
+            company_name=company_name
+        )
+    
+    return Response({
+        'progression': progression,
+        'glassdoor_data': glassdoor_data,
+    }, status=status.HTTP_200_OK)
+
+
+# 
+# 
+# =
+# UC-128: CAREER GROWTH CALCULATOR
+# 
+# 
+# =
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def career_growth_scenarios(request):
+    """
+    List all career growth scenarios or create a new one.
+    GET: Returns all scenarios for the authenticated user.
+    POST: Creates a new scenario and calculates initial projections.
+    """
+    from .models import CareerGrowthScenario
+    from .career_growth_utils import career_growth_analyzer
+    from decimal import Decimal
+    
+    if request.method == 'GET':
+        scenarios = CareerGrowthScenario.objects.filter(user=request.user).order_by('-created_at')
+        
+        scenarios_data = []
+        for scenario in scenarios:
+            # Ensure projections exist so we can surface end-of-period salary
+            if not scenario.projections_10_year:
+                scenario.calculate_projections()
+            # Extract salary at the end of 5 and 10 years (base salary line from projections)
+            salary_after_5 = None
+            salary_after_10 = None
+            total_comp_year_5 = None
+            total_comp_year_10 = None
+            if scenario.projections_5_year:
+                salary_after_5 = scenario.projections_5_year[-1].get('base_salary')
+                total_comp_year_5 = scenario.projections_5_year[-1].get('total_comp')
+            if scenario.projections_10_year:
+                salary_after_10 = scenario.projections_10_year[-1].get('base_salary')
+                total_comp_year_10 = scenario.projections_10_year[-1].get('total_comp')
+
+            scenarios_data.append({
+                'id': scenario.id,
+                'scenario_name': scenario.scenario_name,
+                'job_title': scenario.job_title,
+                'company_name': scenario.company_name,
+                'starting_salary': str(scenario.starting_salary),
+                'annual_raise_percent': str(scenario.annual_raise_percent),
+                'scenario_type': scenario.scenario_type,
+                'total_comp_5_year': str(scenario.total_comp_5_year) if scenario.total_comp_5_year else None,
+                'total_comp_10_year': str(scenario.total_comp_10_year) if scenario.total_comp_10_year else None,
+                'salary_after_5_years': salary_after_5,
+                'salary_after_10_years': salary_after_10,
+                'total_comp_year_5': total_comp_year_5,
+                'total_comp_year_10': total_comp_year_10,
+                'created_at': scenario.created_at.isoformat(),
+                'updated_at': scenario.updated_at.isoformat(),
+            })
+        
+        return Response({'scenarios': scenarios_data}, status=status.HTTP_200_OK)
+    
+    elif request.method == 'POST':
+        data = request.data
+        
+        # Required fields
+        required_fields = ['scenario_name', 'job_title', 'starting_salary']
+        for field in required_fields:
+            if not data.get(field):
+                return Response(
+                    {'error': f'{field} is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        try:
+            # Create scenario (map frontend names to database names)
+            scenario = CareerGrowthScenario.objects.create(
+                user=request.user,
+                scenario_name=data['scenario_name'],
+                job_title=data['job_title'],
+                company_name=data.get('company_name', ''),
+                starting_salary=Decimal(str(data['starting_salary'])),
+                annual_raise_percent=Decimal(str(data.get('annual_raise_percent', 3.0))),
+                bonus_percent=Decimal(str(data.get('annual_bonus_percent', 0))),
+                starting_equity_value=Decimal(str(data.get('equity_value', 0))),
+                milestones=data.get('milestones', []),
+                career_goals_notes=data.get('notes', ''),
+                scenario_type=data.get('scenario_type', 'expected'),
+            )
+            
+            # Calculate projections
+            scenario.calculate_projections()
+            
+            return Response({
+                'id': scenario.id,
+                'scenario_name': scenario.scenario_name,
+                'total_comp_5_year': str(scenario.total_comp_5_year),
+                'total_comp_10_year': str(scenario.total_comp_10_year),
+                'message': 'Scenario created successfully'
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.error(f"Error creating career growth scenario: {e}")
+            return Response(
+                {'error': f'Error creating scenario: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def career_growth_scenario_detail(request, scenario_id):
+    """
+    Retrieve, update, or delete a specific career growth scenario.
+    """
+    from .models import CareerGrowthScenario
+    
+    try:
+        scenario = CareerGrowthScenario.objects.get(id=scenario_id, user=request.user)
+    except CareerGrowthScenario.DoesNotExist:
+        return Response(
+            {'error': 'Scenario not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == 'GET':
+        return Response({
+            'id': scenario.id,
+            'scenario_name': scenario.scenario_name,
+            'job_title': scenario.job_title,
+            'company_name': scenario.company_name,
+            'starting_salary': str(scenario.starting_salary),
+            'annual_raise_percent': str(scenario.annual_raise_percent),
+            'annual_bonus_percent': str(scenario.bonus_percent or 0),
+            'equity_value': str(scenario.starting_equity_value or 0),
+            'equity_vesting_years': 4,
+            'milestones': scenario.milestones,
+            'notes': scenario.career_goals_notes,
+            'scenario_type': scenario.scenario_type,
+            'projections_5_year': scenario.projections_5_year,
+            'projections_10_year': scenario.projections_10_year,
+            'total_comp_5_year': str(scenario.total_comp_5_year) if scenario.total_comp_5_year else None,
+            'total_comp_10_year': str(scenario.total_comp_10_year) if scenario.total_comp_10_year else None,
+            'created_at': scenario.created_at.isoformat(),
+            'updated_at': scenario.updated_at.isoformat(),
+        }, status=status.HTTP_200_OK)
+    
+    elif request.method == 'PUT':
+        data = request.data
+        
+        # Update fields
+        if 'scenario_name' in data:
+            scenario.scenario_name = data['scenario_name']
+        if 'job_title' in data:
+            scenario.job_title = data['job_title']
+        if 'company_name' in data:
+            scenario.company_name = data['company_name']
+        if 'starting_salary' in data:
+            scenario.starting_salary = Decimal(str(data['starting_salary']))
+        if 'annual_raise_percent' in data:
+            scenario.annual_raise_percent = Decimal(str(data['annual_raise_percent']))
+        if 'annual_bonus_percent' in data:
+            scenario.bonus_percent = Decimal(str(data['annual_bonus_percent']))
+        if 'equity_value' in data:
+            scenario.starting_equity_value = Decimal(str(data['equity_value']))
+        if 'milestones' in data:
+            scenario.milestones = data['milestones']
+        if 'notes' in data:
+            scenario.career_goals_notes = data['notes']
+        if 'scenario_type' in data:
+            scenario.scenario_type = data['scenario_type']
+        
+        scenario.save()
+        
+        # Recalculate projections
+        scenario.calculate_projections()
+        
+        return Response({
+            'id': scenario.id,
+            'scenario_name': scenario.scenario_name,
+            'total_comp_5_year': str(scenario.total_comp_5_year),
+            'total_comp_10_year': str(scenario.total_comp_10_year),
+            'message': 'Scenario updated successfully'
+        }, status=status.HTTP_200_OK)
+    
+    elif request.method == 'DELETE':
+        scenario.delete()
+        return Response(
+            {'message': 'Scenario deleted successfully'},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def calculate_scenario_projections(request):
+    """
+    Calculate projections for a scenario without saving.
+    Useful for "what-if" analysis before committing to a scenario.
+    """
+    from .models import CareerGrowthScenario
+    from decimal import Decimal
+    
+    data = request.data
+    
+    # Create temporary scenario (don't save)
+    temp_scenario = CareerGrowthScenario(
+        user=request.user,
+        scenario_name=data.get('scenario_name', 'Temporary'),
+        job_title=data.get('job_title', ''),
+        starting_salary=Decimal(str(data.get('starting_salary', 100000))),
+        annual_raise_percent=Decimal(str(data.get('annual_raise_percent', 3.0))),
+        bonus_percent=Decimal(str(data.get('annual_bonus_percent', 0))),
+        starting_equity_value=Decimal(str(data.get('equity_value', 0))),
+        milestones=data.get('milestones', []),
+        scenario_type=data.get('scenario_type', 'expected'),
+    )
+    
+    # Calculate without saving
+    temp_scenario.calculate_projections()
+    
+    return Response({
+        'projections_5_year': temp_scenario.projections_5_year,
+        'projections_10_year': temp_scenario.projections_10_year,
+        'total_comp_5_year': str(temp_scenario.total_comp_5_year),
+        'total_comp_10_year': str(temp_scenario.total_comp_10_year),
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def compare_career_scenarios(request):
+    """
+    Compare multiple career scenarios side-by-side.
+    Accepts list of scenario IDs and returns comparative analysis.
+    """
+    from .models import CareerGrowthScenario
+    from .career_growth_utils import career_growth_analyzer
+    
+    scenario_ids = request.data.get('scenario_ids', [])
+    
+    if not scenario_ids:
+        return Response(
+            {'error': 'scenario_ids list is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Fetch scenarios
+    scenarios = CareerGrowthScenario.objects.filter(
+        id__in=scenario_ids,
+        user=request.user
+    )
+    
+    if not scenarios.exists():
+        return Response(
+            {'error': 'No scenarios found with provided IDs'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Convert to dict format for comparison
+    scenarios_data = []
+    for scenario in scenarios:
+        scenarios_data.append({
+            'id': scenario.id,
+            'scenario_name': scenario.scenario_name,
+            'job_title': scenario.job_title,
+            'company_name': scenario.company_name,
+            'starting_salary': float(scenario.starting_salary),
+            'annual_raise_percent': float(scenario.annual_raise_percent),
+            'total_comp_5_year': float(scenario.total_comp_5_year or 0),
+            'total_comp_10_year': float(scenario.total_comp_10_year or 0),
+            'projections_5_year': scenario.projections_5_year,
+            'projections_10_year': scenario.projections_10_year,
+            'milestones': scenario.milestones,
+        })
+    
+    # Perform comparison
+    comparison = career_growth_analyzer.calculate_scenario_comparison(scenarios_data)
+    # Include projections for charting on the frontend
+    comparison['projections'] = scenarios_data
+    
+    return Response(comparison, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_career_progression_data(request):
+    """
+    Get career progression data for a job title and company.
+    Uses career_growth_utils to fetch industry data.
+    """
+    from .career_growth_utils import career_growth_analyzer
+    
+    job_title = request.query_params.get('job_title')
+    company_name = request.query_params.get('company_name', '')
+    industry = request.query_params.get('industry')
+    
+    if not job_title:
+        return Response(
+            {'error': 'job_title parameter is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Get promotion timeline data
+    progression = career_growth_analyzer.get_promotion_timeline(
+        job_title=job_title,
+        company_name=company_name,
+        industry=industry
+    )
+    
+    # Get Glassdoor career path (if available)
+    glassdoor_data = None
+    if company_name:
+        glassdoor_data = career_growth_analyzer.fetch_glassdoor_career_path(
+            job_title=job_title,
+            company_name=company_name
+        )
+    
+    return Response({
+        'progression': progression,
+        'glassdoor_data': glassdoor_data,
+    }, status=status.HTTP_200_OK)

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { materialsAPI, coverLetterTemplateAPI } from '../../services/api';
+import { materialsAPI } from '../../services/api';
+import { authorizedFetch } from '../../services/authToken';
 import Icon from '../common/Icon';
 import CoverLetterTemplates from '../CoverLetterTemplates';
 
@@ -23,7 +24,7 @@ const Documents = () => {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [filter, setFilter] = useState('all'); // 'all', 'resume', 'cover_letter', 'templates'
   const [dragActive, setDragActive] = useState(false);
-  const [activeTab, setActiveTab] = useState('documents'); // 'documents' or 'templates'
+  // activeTab state removed - using filter state instead
   const location = useLocation();
 
   useEffect(() => {
@@ -175,32 +176,23 @@ const Documents = () => {
     }
   };
 
-  const handleDownload = (doc) => {
-    const url = materialsAPI.getDownloadUrl(doc.id);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = doc.document_name || 'document';
-    // Add auth token to the request
-    const token = localStorage.getItem('firebaseToken');
-    if (token) {
-      fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      .then(response => response.blob())
-      .then(blob => {
-        const blobUrl = window.URL.createObjectURL(blob);
-        link.href = blobUrl;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(blobUrl);
-      })
-      .catch(err => {
-        setError('Failed to download document');
-        console.error('Download error:', err);
-      });
+  const handleDownload = async (doc) => {
+    try {
+      const url = materialsAPI.getDownloadUrl(doc.id);
+      const response = await authorizedFetch(url);
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = doc.document_name || 'document';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      setError('Failed to download document');
+      console.error('Download error:', err);
     }
   };
 

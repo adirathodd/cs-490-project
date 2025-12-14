@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from decimal import Decimal
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
@@ -38,6 +39,30 @@ class CertificationCRUDTests(APITestCase):
             candidate=self.profile,
             name='AWS Certified Solutions Architect'
         ).exists())
+
+    def test_add_certification_with_assessment_details(self):
+        """Ensure manual assessment metadata is persisted"""
+        data = {
+            'name': 'HackerRank SQL',
+            'issuing_organization': 'HackerRank',
+            'issue_date': str(date.today()),
+            'category': 'Coding & Practice',
+            'assessment_score': '95',
+            'assessment_max_score': '100',
+            'assessment_units': 'percentile',
+            'achievement_highlights': 'Top 5% worldwide',
+            'description': '<p>Advanced SQL challenge</p>',
+        }
+
+        response = self.client.post(self.url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        cert = Certification.objects.get(candidate=self.profile, name='HackerRank SQL')
+        self.assertEqual(cert.assessment_score, Decimal('95'))
+        self.assertEqual(cert.assessment_max_score, Decimal('100'))
+        self.assertEqual(cert.assessment_units, 'percentile')
+        self.assertEqual(cert.achievement_highlights, 'Top 5% worldwide')
+        self.assertEqual(cert.description, '<p>Advanced SQL challenge</p>')
     
     def test_list_certifications(self):
         """Test viewing certifications"""

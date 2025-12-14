@@ -399,7 +399,12 @@ const ScheduleSubmissionModal = ({ onClose, onSuccess, setError }) => {
       await timingAPI.createScheduledSubmission(submitData);
       onSuccess();
     } catch (err) {
-      setError(err.message || 'Failed to schedule submission');
+      if (err?.quality) {
+        const score = err.quality?.score ? ` (score ${Math.round(err.quality.score)}%)` : '';
+        setError((err.message || 'Quality gate blocked this submission') + score + '. Open the job Quality Score tab to improve it.');
+      } else {
+        setError(err.message || 'Failed to schedule submission');
+      }
     } finally {
       setLoading(false);
     }
