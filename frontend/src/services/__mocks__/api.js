@@ -218,6 +218,16 @@ const salaryNegotiationAPI = {
 	createOutcome: jestFn(),
 };
 
+const offerAPI = {
+	list: jestFn(),
+	create: jestFn(),
+	update: jestFn(),
+	delete: jestFn(),
+	archive: jestFn(),
+	getComparison: jestFn(),
+	runScenario: jestFn(),
+};
+
 const documentsAPI = {
 	getDocuments: jest.fn().mockResolvedValue([]),
 	getDocument: jestFn(),
@@ -349,6 +359,7 @@ module.exports = {
 	networkingAPI,
 	salaryAPI,
 	salaryNegotiationAPI,
+	offerAPI,
 	documentsAPI,
 	resumeVersionAPI,
 	resumeExportAPI,

@@ -5,7 +5,7 @@ Authentication views for Firebase-based user registration and login.
 See core/api_monitoring.py for details. Wrap Gemini, LinkedIn, Gmail, and all
 external API calls with the monitoring context manager.
 """
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
 from datetime import timezone as datetime_timezone, timedelta
@@ -33,6 +33,7 @@ from django.conf import settings
 from core.authentication import FirebaseAuthentication
 from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_GEMINI, SERVICE_GITHUB
 from core.salary_benchmarks import salary_benchmark_service
+from core.offer_analysis import OfferComparisonEngine, infer_cost_of_living_index, compute_benefits_total
 from django.views.decorators.http import require_GET
 import os
 import requests
@@ -140,6 +141,7 @@ from core.models import (
     WorkExperience,
     UserAccount,
     JobEntry,
+    JobOffer,
     JobOpportunity,
     Application,
     Referral,
@@ -9543,6 +9545,337 @@ def salary_negotiation_outcome_detail(request, job_id, outcome_id):
 
     outcome.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+#
+# =
+# UC-127: Offer comparison + scenario analysis
+# =
+#
+
+def _parse_offer_decimal(value, field_name):
+    if value in (None, '', 'null'):
+        return Decimal('0')
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError(f'{field_name} must be a numeric value.')
+    return amount if amount >= 0 else Decimal('0')
+
+
+def _clamp_score(value, field_name):
+    if value in (None, '', 'null'):
+        return None
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f'{field_name} must be between 0 and 10.')
+    score = max(0, min(10, score))
+    return int(round(score))
+
+
+def _normalize_benefits_payload(payload):
+    payload = payload or {}
+    normalized = {}
+    mapping = {
+        'health_value': ['healthValue', 'health_value'],
+        'retirement_value': ['retirementValue', 'retirement_value'],
+        'wellness_value': ['wellnessValue', 'wellness_value'],
+        'other_value': ['otherValue', 'other_value'],
+    }
+    for dest, keys in mapping.items():
+        for key in keys:
+            if key in payload and payload[key] not in (None, '', 'null'):
+                try:
+                    normalized[dest] = float(payload[key])
+                except (TypeError, ValueError):
+                    raise ValueError(f'{dest.replace("_", " ").title()} must be numeric.')
+                break
+
+    pto_days = payload.get('ptoDays', payload.get('pto_days'))
+    if pto_days not in (None, '', 'null'):
+        try:
+            normalized['pto_days'] = float(pto_days)
+        except (TypeError, ValueError):
+            raise ValueError('PTO days must be numeric.')
+    return normalized
+
+
+def _serialize_job_offer(offer):
+    return {
+        'id': offer.id,
+        'job_id': offer.job_id,
+        'role_title': offer.role_title,
+        'company_name': offer.company_name,
+        'location': offer.location,
+        'remote_policy': offer.remote_policy,
+        'base_salary': float(offer.base_salary),
+        'bonus': float(offer.bonus),
+        'equity': float(offer.equity),
+        'benefits_total_value': float(offer.benefits_total_value),
+        'benefits_breakdown': offer.benefits_breakdown,
+        'benefits_notes': offer.benefits_notes,
+        'culture_fit_score': offer.culture_fit_score,
+        'growth_opportunity_score': offer.growth_opportunity_score,
+        'work_life_balance_score': offer.work_life_balance_score,
+        'cost_of_living_index': float(offer.cost_of_living_index),
+        'status': offer.status,
+        'decline_reason': offer.decline_reason,
+        'archived_reason': offer.archived_reason,
+        'archived_at': offer.archived_at.isoformat() if offer.archived_at else None,
+        'notes': offer.notes,
+        'created_at': offer.created_at.isoformat(),
+        'updated_at': offer.updated_at.isoformat(),
+    }
+
+
+def _apply_offer_payload(offer, payload, *, partial=False):
+    payload = payload or {}
+    required = ['role_title', 'company_name']
+    if not partial:
+        for field in required:
+            candidate_keys = [field]
+            if field == 'role_title':
+                candidate_keys.append('title')
+            if field == 'company_name':
+                candidate_keys.append('company')
+            if not any(payload.get(key) for key in candidate_keys):
+                raise ValueError(f'{field.replace("_", " ").title()} is required.')
+
+    if 'role_title' in payload or ('title' in payload and not payload.get('role_title')):
+        role_value = payload.get('role_title') or payload.get('title')
+        if not role_value:
+            raise ValueError('Role title cannot be empty.')
+        offer.role_title = role_value
+
+    if 'company_name' in payload or ('company' in payload and not payload.get('company_name')):
+        company_value = payload.get('company_name') or payload.get('company')
+        if not company_value:
+            raise ValueError('Company name cannot be empty.')
+        offer.company_name = company_value
+
+    if 'location' in payload or (not partial and not offer.location):
+        offer.location = payload.get('location', '') or ''
+
+    if 'remote_policy' in payload:
+        policy = payload.get('remote_policy', '').lower()
+        valid = {choice[0] for choice in JobOffer.REMOTE_POLICIES}
+        if policy and policy not in valid:
+            raise ValueError('Remote policy must be onsite, hybrid, or remote.')
+        if policy:
+            offer.remote_policy = policy
+
+    base_salary_changed = False
+    if 'base_salary' in payload or (not partial and offer.base_salary is None):
+        offer.base_salary = _parse_offer_decimal(payload.get('base_salary'), 'Base salary')
+        base_salary_changed = True
+    if 'bonus' in payload or (not partial and offer.bonus is None):
+        offer.bonus = _parse_offer_decimal(payload.get('bonus'), 'Bonus')
+    if 'equity' in payload or (not partial and offer.equity is None):
+        offer.equity = _parse_offer_decimal(payload.get('equity'), 'Equity')
+
+    benefits_payload = payload.get('benefits') or payload.get('benefits_breakdown')
+    benefits_updated = False
+    if benefits_payload is not None or (not partial and not offer.benefits_breakdown):
+        normalized = _normalize_benefits_payload(benefits_payload or {})
+        offer.benefits_breakdown = normalized
+        benefits_updated = True
+    if benefits_updated or base_salary_changed:
+        offer.benefits_total_value = compute_benefits_total(offer.benefits_breakdown, offer.base_salary)
+
+    if 'benefits_notes' in payload:
+        offer.benefits_notes = payload.get('benefits_notes') or ''
+
+    for field, label in [
+        ('culture_fit_score', 'Culture fit score'),
+        ('growth_opportunity_score', 'Growth opportunity score'),
+        ('work_life_balance_score', 'Work-life balance score'),
+    ]:
+        if field in payload:
+            offer.__dict__[field] = _clamp_score(payload.get(field), label)
+
+    if 'status' in payload:
+        status_value = payload.get('status')
+        valid_status = {choice[0] for choice in JobOffer.STATUS_CHOICES}
+        if status_value not in valid_status:
+            raise ValueError('Invalid status value.')
+        offer.status = status_value
+
+    if 'decline_reason' in payload:
+        offer.decline_reason = payload.get('decline_reason') or ''
+    if 'notes' in payload:
+        offer.notes = payload.get('notes') or ''
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def job_offers_view(request):
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_required', 'message': 'Candidate profile required.'}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if request.method == 'GET':
+        status_filter = request.query_params.get('status')
+        include_archived = request.query_params.get('include_archived') == 'true'
+        offers = JobOffer.objects.filter(candidate=profile)
+        if status_filter:
+            offers = offers.filter(status=status_filter)
+        elif not include_archived:
+            offers = offers.exclude(status='archived')
+        offers = offers.order_by('-updated_at')
+        return Response({'results': [_serialize_job_offer(offer) for offer in offers]}, status=status.HTTP_200_OK)
+
+    payload = request.data or {}
+    job_id = payload.get('job_id')
+    if job_id:
+        try:
+            job = JobEntry.objects.get(id=job_id, candidate=profile)
+        except JobEntry.DoesNotExist:
+            return Response(
+                {'error': {'code': 'job_not_found', 'message': 'Job not found.'}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+    else:
+        job = None
+
+    offer = JobOffer(candidate=profile, job=job)
+    try:
+        _apply_offer_payload(offer, payload, partial=False)
+    except ValueError as exc:
+        return Response({'error': {'code': 'invalid_payload', 'message': str(exc)}}, status=status.HTTP_400_BAD_REQUEST)
+
+    offer.cost_of_living_index = infer_cost_of_living_index(offer.location or '')
+    offer.save()
+    return Response({'result': _serialize_job_offer(offer)}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def job_offer_detail(request, offer_id):
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_required', 'message': 'Candidate profile required.'}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    offer = JobOffer.objects.filter(id=offer_id, candidate=profile).first()
+    if not offer:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Offer not found.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if request.method == 'GET':
+        return Response({'result': _serialize_job_offer(offer)}, status=status.HTTP_200_OK)
+
+    if request.method == 'DELETE':
+        offer.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    payload = request.data or {}
+    if 'job_id' in payload:
+        job_id = payload.get('job_id')
+        if job_id:
+            try:
+                job = JobEntry.objects.get(id=job_id, candidate=profile)
+            except JobEntry.DoesNotExist:
+                return Response(
+                    {'error': {'code': 'job_not_found', 'message': 'Job not found.'}},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            offer.job = job
+        else:
+            offer.job = None
+
+    try:
+        _apply_offer_payload(offer, payload, partial=True)
+    except ValueError as exc:
+        return Response({'error': {'code': 'invalid_payload', 'message': str(exc)}}, status=status.HTTP_400_BAD_REQUEST)
+
+    if 'location' in payload:
+        offer.cost_of_living_index = infer_cost_of_living_index(offer.location or '')
+
+    offer.save()
+    return Response({'result': _serialize_job_offer(offer)}, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def job_offer_archive(request, offer_id):
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_required', 'message': 'Candidate profile required.'}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    offer = JobOffer.objects.filter(id=offer_id, candidate=profile).first()
+    if not offer:
+        return Response(
+            {'error': {'code': 'not_found', 'message': 'Offer not found.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    reason = request.data.get('reason', 'declined')
+    offer.status = 'archived'
+    offer.archived_reason = reason
+    offer.decline_reason = request.data.get('decline_reason', reason)
+    offer.archived_at = timezone.now()
+    offer.save(update_fields=['status', 'archived_reason', 'decline_reason', 'archived_at', 'updated_at'])
+    return Response({'result': _serialize_job_offer(offer)}, status=status.HTTP_200_OK)
+
+
+def _normalize_scenario_payload(payload):
+    payload = payload or {}
+    scenario = {}
+    for key in ('salary_increase_percent', 'bonus_increase_percent', 'equity_increase_percent', 'benefits_increase_percent'):
+        if payload.get(key) not in (None, '', 'null'):
+            scenario[key] = payload.get(key)
+    if payload.get('offer_ids'):
+        ids = []
+        for value in payload.get('offer_ids', []):
+            try:
+                ids.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        if ids:
+            scenario['offer_ids'] = ids
+    if payload.get('label'):
+        scenario['label'] = payload.get('label')
+    return scenario
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def job_offer_comparison(request):
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_required', 'message': 'Candidate profile required.'}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    include_archived = request.query_params.get('include_archived') == 'true'
+    scenario_payload = request.data.get('scenario') if request.method == 'POST' else {}
+    scenario = _normalize_scenario_payload(scenario_payload)
+
+    base_qs = JobOffer.objects.filter(candidate=profile).order_by('-updated_at')
+    active_offers = base_qs.exclude(status='archived')
+    archived_offers = base_qs.filter(status='archived') if include_archived else JobOffer.objects.none()
+
+    engine = OfferComparisonEngine(scenario=scenario)
+    comparison = engine.build(active_offers)
+    comparison['raw_offers'] = [_serialize_job_offer(offer) for offer in active_offers]
+    comparison['archived_offers'] = [_serialize_job_offer(offer) for offer in archived_offers]
+    return Response(comparison, status=status.HTTP_200_OK)
 
 
 # 
@@ -19189,7 +19522,13 @@ def followup_playbook(request, job_id):
     stage = request.data.get('stage') or request.query_params.get('stage') or job.status
     plan = followup_utils.build_followup_plan(job, stage)
     if plan is None:
-        return Response({'error': 'Reminders are disabled for rejected applications.'}, status=status.HTTP_400_BAD_REQUEST)
+        # Return empty playbook for rejected applications (not an error, just no actions needed)
+        return Response({
+            'stage': stage,
+            'disabled': True,
+            'message': 'Follow-up reminders are not applicable for rejected applications.',
+            'etiquette_tips': [],
+        })
 
     serialized_plan = followup_utils.serialize_plan(plan)
     if request.method == 'POST':

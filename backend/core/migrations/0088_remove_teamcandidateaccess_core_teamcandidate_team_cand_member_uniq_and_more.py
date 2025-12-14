@@ -3,6 +3,59 @@
 from django.db import migrations
 
 
+def safe_remove_constraints_and_rename_indexes(apps, schema_editor):
+    """Safely remove constraints and rename indexes that may or may not exist."""
+    connection = schema_editor.connection
+    
+    # Constraints to remove
+    constraints_to_remove = [
+        ('core_teamcandidateaccess', 'core_teamcandidate_team_cand_member_uniq'),
+        ('core_teammembership', 'core_teammembership_team_user_uniq'),
+    ]
+    
+    for table_name, constraint_name in constraints_to_remove:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT 1 FROM pg_constraint 
+                WHERE conname = %s 
+                AND conrelid = %s::regclass
+            """, [constraint_name, table_name])
+            if cursor.fetchone():
+                cursor.execute(
+                    f'ALTER TABLE "{table_name}" DROP CONSTRAINT "{constraint_name}"'
+                )
+    
+    # Indexes to rename (old_name -> new_name)
+    indexes_to_rename = [
+        ('core_linked_user_id_idx', 'core_linked_user_id_c0550f_idx'),
+        ('core_linked_linkedin_id_idx', 'core_linked_linkedi_290f08_idx'),
+        ('core_teamac_owner_c1fe62_idx', 'core_teamac_owner_i_b66d84_idx'),
+        ('core_teamac_subscri_5df6f4_idx', 'core_teamac_subscri_2eb392_idx'),
+        ('core_teamcan_team_id_a24e14_idx', 'core_teamca_team_id_514ea0_idx'),
+        ('core_teamcan_team_id_3f814f_idx', 'core_teamca_team_id_854e7a_idx'),
+        ('core_teamin_team_id_2e101d_idx', 'core_teamin_team_id_5ecc95_idx'),
+        ('core_teamin_email_031d6b_idx', 'core_teamin_email_5c2405_idx'),
+        ('core_teammem_team_id_930156_idx', 'core_teamme_team_id_31ddcd_idx'),
+        ('core_teammem_team_id_3e0925_idx', 'core_teamme_team_id_683f95_idx'),
+        ('core_teammem_user_id_3c5672_idx', 'core_teamme_user_id_18ce5c_idx'),
+        ('core_teammem_team_id_fc0b5d_idx', 'core_teamme_team_id_f5dd70_idx'),
+    ]
+    
+    for old_name, new_name in indexes_to_rename:
+        with connection.cursor() as cursor:
+            # Check if old index exists
+            cursor.execute("""
+                SELECT 1 FROM pg_indexes WHERE indexname = %s
+            """, [old_name])
+            if cursor.fetchone():
+                cursor.execute(f'ALTER INDEX "{old_name}" RENAME TO "{new_name}"')
+
+
+def noop(apps, schema_editor):
+    """No-op for reverse migration."""
+    pass
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,72 +63,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveConstraint(
-            model_name='teamcandidateaccess',
-            name='core_teamcandidate_team_cand_member_uniq',
-        ),
-        migrations.RemoveConstraint(
-            model_name='teammembership',
-            name='core_teammembership_team_user_uniq',
-        ),
-        migrations.RenameIndex(
-            model_name='linkedinintegration',
-            new_name='core_linked_user_id_c0550f_idx',
-            old_name='core_linked_user_id_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='linkedinintegration',
-            new_name='core_linked_linkedi_290f08_idx',
-            old_name='core_linked_linkedin_id_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='teamaccount',
-            new_name='core_teamac_owner_i_b66d84_idx',
-            old_name='core_teamac_owner_c1fe62_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='teamaccount',
-            new_name='core_teamac_subscri_2eb392_idx',
-            old_name='core_teamac_subscri_5df6f4_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='teamcandidateaccess',
-            new_name='core_teamca_team_id_514ea0_idx',
-            old_name='core_teamcan_team_id_a24e14_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='teamcandidateaccess',
-            new_name='core_teamca_team_id_854e7a_idx',
-            old_name='core_teamcan_team_id_3f814f_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='teaminvitation',
-            new_name='core_teamin_team_id_5ecc95_idx',
-            old_name='core_teamin_team_id_2e101d_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='teaminvitation',
-            new_name='core_teamin_email_5c2405_idx',
-            old_name='core_teamin_email_031d6b_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='teammembership',
-            new_name='core_teamme_team_id_31ddcd_idx',
-            old_name='core_teammem_team_id_930156_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='teammembership',
-            new_name='core_teamme_team_id_683f95_idx',
-            old_name='core_teammem_team_id_3e0925_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='teammembership',
-            new_name='core_teamme_user_id_18ce5c_idx',
-            old_name='core_teammem_user_id_3c5672_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='teammessage',
-            new_name='core_teamme_team_id_f5dd70_idx',
-            old_name='core_teammem_team_id_fc0b5d_idx',
-        ),
+        migrations.RunPython(safe_remove_constraints_and_rename_indexes, noop),
     ]

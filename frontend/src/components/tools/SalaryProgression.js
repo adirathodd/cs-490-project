@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Icon from '../common/Icon';
-import { jobsAPI, salaryNegotiationAPI } from '../../services/api';
+import { jobsAPI, salaryNegotiationAPI, offerAPI } from '../../services/api';
 import LoadingSpinner from '../common/LoadingSpinner';
 import './SalaryProgression.css';
 
@@ -26,6 +26,28 @@ const benefitsTrend = [
   { label: 'Time off', value: 'From 15 to 20 PTO days, rollover allowed' },
   { label: 'Flexibility', value: 'Hybrid/remote and learning stipends added' },
 ];
+
+const emptyOfferForm = {
+  job_id: '',
+  role_title: '',
+  company_name: '',
+  location: '',
+  remote_policy: 'onsite',
+  base_salary: '',
+  bonus: '',
+  equity: '',
+  benefits: {
+    healthValue: '',
+    retirementValue: '',
+    wellnessValue: '',
+    otherValue: '',
+    ptoDays: '',
+  },
+  culture_fit_score: 8,
+  growth_opportunity_score: 8,
+  work_life_balance_score: 8,
+  notes: '',
+};
 
 const formatCurrency = (value) => {
   const num = Number(value);
@@ -56,6 +78,16 @@ const SalaryProgression = () => {
   const [progression, setProgression] = useState(defaultProgressionStats);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [offerComparison, setOfferComparison] = useState(null);
+  const [rawOffers, setRawOffers] = useState([]);
+  const [archivedOffers, setArchivedOffers] = useState([]);
+  const [offersLoading, setOffersLoading] = useState(false);
+  const [offerError, setOfferError] = useState('');
+  const [offerForm, setOfferForm] = useState({ ...emptyOfferForm, benefits: { ...emptyOfferForm.benefits } });
+  const [savingOffer, setSavingOffer] = useState(false);
+  const [scenarioForm, setScenarioForm] = useState({ salary_increase_percent: 10, targetOffer: 'all' });
+  const [scenarioLoading, setScenarioLoading] = useState(false);
+  const [archiveReasons, setArchiveReasons] = useState({});
 
   useEffect(() => {
     const loadJobs = async () => {
@@ -103,6 +135,245 @@ const SalaryProgression = () => {
 
     loadJobData();
   }, [selectedJobId]);
+
+  const refreshOfferComparison = async () => {
+    setOffersLoading(true);
+    setOfferError('');
+    try {
+      const data = await offerAPI.getComparison({ includeArchived: true });
+      setOfferComparison(data);
+      setRawOffers(data.raw_offers ?? []);
+      setArchivedOffers(data.archived_offers ?? []);
+    } catch (err) {
+      setOfferError(err?.message || 'Failed to load offer comparison');
+    } finally {
+      setOffersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshOfferComparison();
+  }, []);
+
+  const resetOfferForm = () => setOfferForm({ ...emptyOfferForm, benefits: { ...emptyOfferForm.benefits } });
+
+  const handleJobSelectionForOffer = (event) => {
+    const jobId = event.target.value;
+    if (!jobId) {
+      resetOfferForm();
+      return;
+    }
+    const selectedJob = jobs.find((j) => String(j.id) === jobId);
+    if (selectedJob) {
+      setOfferForm((prev) => ({
+        ...prev,
+        job_id: jobId,
+        role_title: selectedJob.title || '',
+        company_name: selectedJob.company_name || '',
+        location: selectedJob.location || '',
+        base_salary: selectedJob.salary_min ? String(selectedJob.salary_min) : '',
+      }));
+    }
+  };
+
+  const handleOfferFieldChange = (field) => (event) => {
+    const value = event.target.value;
+    setOfferForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleBenefitFieldChange = (field) => (event) => {
+    const value = event.target.value;
+    setOfferForm((prev) => ({ ...prev, benefits: { ...prev.benefits, [field]: value } }));
+  };
+
+  const handleScenarioFieldChange = (field) => (event) => {
+    const value = event.target.value;
+    setScenarioForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleOfferSubmit = async (event) => {
+    event.preventDefault();
+    setSavingOffer(true);
+    setOfferError('');
+    try {
+      const benefitsPayload = {};
+      Object.entries(offerForm.benefits).forEach(([key, value]) => {
+        if (value !== '' && value !== null && value !== undefined) {
+          benefitsPayload[key] = Number(value);
+        }
+      });
+      const payload = {
+        job_id: offerForm.job_id ? Number(offerForm.job_id) : null,
+        role_title: offerForm.role_title,
+        company_name: offerForm.company_name,
+        location: offerForm.location,
+        remote_policy: offerForm.remote_policy,
+        base_salary: Number(offerForm.base_salary || 0),
+        bonus: Number(offerForm.bonus || 0),
+        equity: Number(offerForm.equity || 0),
+        benefits: benefitsPayload,
+        culture_fit_score: Number(offerForm.culture_fit_score || 0),
+        growth_opportunity_score: Number(offerForm.growth_opportunity_score || 0),
+        work_life_balance_score: Number(offerForm.work_life_balance_score || 0),
+        notes: offerForm.notes,
+      };
+      await offerAPI.create(payload);
+      resetOfferForm();
+      await refreshOfferComparison();
+    } catch (err) {
+      setOfferError(err?.message || 'Failed to save job offer');
+    } finally {
+      setSavingOffer(false);
+    }
+  };
+
+  const handleScenarioSubmit = async (event) => {
+    event.preventDefault();
+    if (!offerComparison?.offers?.length) return;
+    setScenarioLoading(true);
+    setOfferError('');
+    try {
+      const payload = {};
+      const percent = Number(scenarioForm.salary_increase_percent || 0);
+      if (percent) payload.salary_increase_percent = percent;
+      if (scenarioForm.targetOffer && scenarioForm.targetOffer !== 'all') {
+        payload.offer_ids = [Number(scenarioForm.targetOffer)];
+      }
+      const data = await offerAPI.runScenario(payload);
+      setOfferComparison(data);
+      setRawOffers(data.raw_offers ?? []);
+      setArchivedOffers(data.archived_offers ?? []);
+    } catch (err) {
+      setOfferError(err?.message || 'Failed to run scenario analysis');
+    } finally {
+      setScenarioLoading(false);
+    }
+  };
+
+  const handleScenarioReset = () => {
+    setScenarioForm({ salary_increase_percent: 10, targetOffer: 'all' });
+    refreshOfferComparison();
+  };
+
+  const handleArchiveReasonChange = (offerId, value) => {
+    setArchiveReasons((prev) => ({ ...prev, [offerId]: value }));
+  };
+
+  const handleArchiveOffer = async (offerId, reason) => {
+    setOfferError('');
+    try {
+      await offerAPI.archive(offerId, reason || 'declined');
+      await refreshOfferComparison();
+    } catch (err) {
+      setOfferError(err?.message || 'Failed to archive offer');
+    }
+  };
+
+  const renderComparisonMatrix = () => {
+    if (!offerComparison?.matrix?.headers?.length) {
+      return <p className="matrix-placeholder">Log at least one offer to unlock the comparison matrix.</p>;
+    }
+    const headers = offerComparison.matrix.headers;
+    const rows = offerComparison.matrix.rows || [];
+    const topOfferId = offerComparison?.summary?.top_overall?.offer_id;
+
+    const formatValue = (row, value) => {
+      if (value === null || value === undefined || value === '') return '—';
+      const num = Number(value);
+      if (Number.isNaN(num)) return value;
+      if (row.format === 'currency') return formatCurrency(num);
+      if (row.format === 'score') return num % 1 === 0 ? num : num.toFixed(1);
+      if (row.format === 'number') return num.toFixed(1);
+      return formatCurrency(num);
+    };
+
+    const getBestIndex = (row) => {
+      if (!row.values || row.values.length < 2) return -1;
+      const validValues = row.values.map((v, i) => ({ v: Number(v), i })).filter(({ v }) => Number.isFinite(v));
+      if (validValues.length < 2) return -1;
+      // For COL index, lower is better
+      if (row.key === 'cost_of_living_index') {
+        const min = Math.min(...validValues.map(({ v }) => v));
+        const best = validValues.find(({ v }) => v === min);
+        return best ? best.i : -1;
+      }
+      // For all other metrics, higher is better
+      const max = Math.max(...validValues.map(({ v }) => v));
+      const best = validValues.find(({ v }) => v === max);
+      return best ? best.i : -1;
+    };
+
+    const getRowIcon = (key) => {
+      const icons = {
+        base_salary: 'dollar-sign',
+        bonus: 'gift',
+        equity: 'trending-up',
+        benefits_value: 'heart',
+        total_comp: 'briefcase',
+        adjusted_total_comp: 'target',
+        cost_of_living_index: 'map-pin',
+        culture_fit_score: 'users',
+        growth_opportunity_score: 'arrow-up',
+        work_life_balance_score: 'sun',
+        overall_score: 'award',
+      };
+      return icons[key] || null;
+    };
+
+    const remotePolicyBadge = (policy) => {
+      const labels = { remote: 'Remote', hybrid: 'Hybrid', onsite: 'Onsite' };
+      const classes = { remote: 'badge-remote', hybrid: 'badge-hybrid', onsite: 'badge-onsite' };
+      return (
+        <span className={`matrix-badge ${classes[policy] || 'badge-onsite'}`}>
+          {labels[policy] || policy}
+        </span>
+      );
+    };
+
+    return (
+      <div className="offer-matrix">
+        <div className="matrix-row matrix-header">
+          <div className="matrix-cell metric">Metric</div>
+          {headers.map((header) => {
+            const isWinner = header.id === topOfferId;
+            return (
+              <div key={header.id} className={`matrix-cell highlight ${isWinner ? 'winner' : ''}`}>
+                {isWinner && <span className="winner-badge"><Icon name="award" size="sm" /> Top Pick</span>}
+                <div className="matrix-title">{header.company}</div>
+                <div className="matrix-subtitle">{header.label}</div>
+                <div className="matrix-location">
+                  <Icon name="map-pin" size="sm" /> {header.location || 'Remote'}
+                  {remotePolicyBadge(header.remote_policy)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {rows.map((row, rowIndex) => {
+          const bestIdx = getBestIndex(row);
+          const isHighlight = row.key === 'total_comp' || row.key === 'adjusted_total_comp' || row.key === 'overall_score';
+          const icon = getRowIcon(row.key);
+          return (
+            <div key={row.key} className={`matrix-row ${isHighlight ? 'row-highlight' : ''} ${rowIndex % 2 === 1 ? 'row-stripe' : ''}`}>
+              <div className="matrix-cell metric">
+                {icon && <Icon name={icon} size="sm" />}
+                {row.label}
+              </div>
+              {row.values.map((value, idx) => {
+                const isBest = idx === bestIdx && headers.length > 1;
+                return (
+                  <div key={`${row.key}-${headers[idx]?.id || idx}`} className={`matrix-cell ${isBest ? 'best-value' : ''}`}>
+                    {formatValue(row, value)}
+                    {isBest && <span className="best-indicator">★</span>}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   const offerHistory = useMemo(() => {
     if (!job) return [];
@@ -307,13 +578,14 @@ const SalaryProgression = () => {
       {loading && <LoadingSpinner />}
       {!loading && (
       <div className="salary-progression-hero">
-        <div>
-          <h1>Salary progression cockpit</h1>
+        <div className="hero-content">
+          <p className="eyebrow">Career Intelligence</p>
+          <h1>Salary Progression Cockpit</h1>
           <p className="lead">
-            Track compensation growth, negotiation outcomes, and market positioning to plan the next move with confidence.
+            Track compensation growth, negotiation outcomes, and market positioning to plan your next move with confidence.
           </p>
           <div className="job-picker">
-            <label htmlFor="job-select">Job</label>
+            <label htmlFor="job-select">Select Job</label>
             <select
               id="job-select"
               value={selectedJobId}
@@ -330,19 +602,19 @@ const SalaryProgression = () => {
           </div>
           <div className="hero-metrics">
             <div className="metric-pill">
-              <span className="label">Total comp trajectory</span>
+              <span className="label">Total Comp Trajectory</span>
               <strong>{latest ? formatCurrency(latestTotalComp) : '—'}</strong>
               <span className="subtext">{latest ? `+${averageGrowth.toFixed(1)}% since first offer` : 'Waiting for data'}</span>
             </div>
             <div className="metric-pill">
-              <span className="label">Market position</span>
+              <span className="label">Market Position</span>
               <strong>{(marketPosition.delta >= 0 ? '+' : '') + marketPosition.delta.toFixed(1)}% vs median</strong>
               <span className="subtext">
                 {marketPosition.industry} · {marketPosition.location}
               </span>
             </div>
             <div className="metric-pill">
-              <span className="label">Negotiation success</span>
+              <span className="label">Negotiation Success</span>
               <strong>{negotiationSuccessRate}% win rate</strong>
               <span className="subtext">Avg uplift {averageNegotiationLift.toFixed(1)}%</span>
             </div>
@@ -351,12 +623,291 @@ const SalaryProgression = () => {
         <div className="hero-badge">
           <Icon name="target" size="lg" />
           <div>
-            <p className="label">Optimal timing</p>
+            <p className="label">Optimal Timing</p>
             <strong>{bestTimingWindow.label}</strong>
             <p className="subtext">{bestTimingWindow.summary}</p>
           </div>
         </div>
       </div>
+      )}
+
+      {!loading && (
+        <div className="offer-comparison-section">
+          <div className="salary-card full-width">
+            <div className="card-header">
+              <h3>
+                <Icon name="layers" size="md" /> Offer Comparison Lab
+              </h3>
+              <p>Capture competing offers, compare total compensation, and score qualitative factors before making your decision.</p>
+            </div>
+            {offerError && (
+              <div className="progression-error">
+                <Icon name="alert-circle" size="sm" /> {offerError}
+              </div>
+            )}
+            <div className="offer-form-grid">
+              <form className="offer-form" onSubmit={handleOfferSubmit}>
+                <div className="form-row">
+                  <label htmlFor="offer-job-select">Link to existing job (optional)</label>
+                  <select id="offer-job-select" value={offerForm.job_id} onChange={handleJobSelectionForOffer}>
+                    <option value="">— Select a job to prefill —</option>
+                    {jobs.map((j) => (
+                      <option key={j.id} value={j.id}>
+                        {j.title} @ {j.company_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-row">
+                  <label htmlFor="offer-role-title">Role title *</label>
+                  <input id="offer-role-title" value={offerForm.role_title} onChange={handleOfferFieldChange('role_title')} required />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="offer-company">Company *</label>
+                  <input id="offer-company" value={offerForm.company_name} onChange={handleOfferFieldChange('company_name')} required />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="offer-location">Location *</label>
+                  <input
+                    id="offer-location"
+                    value={offerForm.location}
+                    onChange={handleOfferFieldChange('location')}
+                    required
+                    placeholder="City, ST or Remote"
+                  />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="offer-remote-policy">Remote policy</label>
+                  <select id="offer-remote-policy" value={offerForm.remote_policy} onChange={handleOfferFieldChange('remote_policy')}>
+                    <option value="onsite">Onsite</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="remote">Remote</option>
+                  </select>
+                </div>
+                <div className="form-grid">
+                  <div>
+                    <label htmlFor="offer-base-salary">Base salary ($)</label>
+                    <input
+                      id="offer-base-salary"
+                      type="number"
+                      min="0"
+                      value={offerForm.base_salary}
+                      onChange={handleOfferFieldChange('base_salary')}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="offer-bonus">Bonus ($)</label>
+                    <input id="offer-bonus" type="number" min="0" value={offerForm.bonus} onChange={handleOfferFieldChange('bonus')} />
+                  </div>
+                  <div>
+                    <label htmlFor="offer-equity">Equity ($)</label>
+                    <input id="offer-equity" type="number" min="0" value={offerForm.equity} onChange={handleOfferFieldChange('equity')} />
+                  </div>
+                </div>
+                <div className="form-grid">
+                  <div>
+                    <label htmlFor="offer-health">Health value ($)</label>
+                    <input
+                      id="offer-health"
+                      type="number"
+                      min="0"
+                      value={offerForm.benefits.healthValue}
+                      onChange={handleBenefitFieldChange('healthValue')}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="offer-retirement">Retirement match ($)</label>
+                    <input
+                      id="offer-retirement"
+                      type="number"
+                      min="0"
+                      value={offerForm.benefits.retirementValue}
+                      onChange={handleBenefitFieldChange('retirementValue')}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="offer-pto">PTO days</label>
+                    <input id="offer-pto" type="number" min="0" value={offerForm.benefits.ptoDays} onChange={handleBenefitFieldChange('ptoDays')} />
+                  </div>
+                </div>
+                <div className="form-grid">
+                  <div>
+                    <label htmlFor="offer-culture">Culture fit (1-10)</label>
+                    <input
+                      id="offer-culture"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={offerForm.culture_fit_score}
+                      onChange={handleOfferFieldChange('culture_fit_score')}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="offer-growth">Growth (1-10)</label>
+                    <input
+                      id="offer-growth"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={offerForm.growth_opportunity_score}
+                      onChange={handleOfferFieldChange('growth_opportunity_score')}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="offer-wlb">Work-life balance (1-10)</label>
+                    <input
+                      id="offer-wlb"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={offerForm.work_life_balance_score}
+                      onChange={handleOfferFieldChange('work_life_balance_score')}
+                    />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <label htmlFor="offer-notes">Notes</label>
+                  <textarea
+                    id="offer-notes"
+                    rows={2}
+                    value={offerForm.notes}
+                    onChange={handleOfferFieldChange('notes')}
+                    placeholder="Team dynamics, red flags, etc."
+                  />
+                </div>
+                <button type="submit" className="primary" disabled={savingOffer}>
+                  {savingOffer ? 'Saving...' : 'Save offer'}
+                </button>
+              </form>
+              <div className="offer-side-panel">
+                <div className="scenario-card">
+                  <h4><Icon name="activity" size="sm" /> Scenario Analysis</h4>
+                  <form onSubmit={handleScenarioSubmit}>
+                    <label htmlFor="scenario-salary">Salary Increase (%)</label>
+                    <input
+                      id="scenario-salary"
+                      type="number"
+                      min="0"
+                      value={scenarioForm.salary_increase_percent}
+                      onChange={handleScenarioFieldChange('salary_increase_percent')}
+                    />
+                    <label htmlFor="scenario-target">Apply To</label>
+                    <select id="scenario-target" value={scenarioForm.targetOffer} onChange={handleScenarioFieldChange('targetOffer')}>
+                      <option value="all">All offers</option>
+                      {rawOffers.map((offer) => (
+                        <option key={`target-${offer.id}`} value={offer.id}>
+                          {offer.company_name} · {offer.role_title}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="scenario-actions">
+                      <button type="submit" disabled={scenarioLoading || !offerComparison?.offers?.length}>
+                        {scenarioLoading ? 'Calculating...' : 'Run scenario'}
+                      </button>
+                      <button type="button" onClick={handleScenarioReset} disabled={scenarioLoading}>
+                        Reset
+                      </button>
+                    </div>
+                  </form>
+                  {offerComparison?.summary && (
+                    <div className="scenario-summary">
+                      {offerComparison.summary.top_overall && (
+                        <p>
+                          <strong>Top offer:</strong> {offerComparison.summary.top_overall.company} (
+                          {offerComparison.summary.top_overall.score} pts)
+                        </p>
+                      )}
+                      {offerComparison.summary.notes?.[0] && <p>{offerComparison.summary.notes[0]}</p>}
+                    </div>
+                  )}
+                </div>
+                <div className="offer-list">
+                  <h4><Icon name="briefcase" size="sm" /> Active Offers</h4>
+                  {rawOffers.length === 0 && <p className="matrix-placeholder">No offers captured yet.</p>}
+                  {rawOffers.map((offer) => (
+                    <div key={`offer-${offer.id}`} className="offer-list-item">
+                      <div>
+                        <strong>{offer.company_name}</strong>
+                        <p>{offer.role_title}</p>
+                        <p>{offer.location || 'Remote'}</p>
+                        <p>Total comp: {formatCurrency(offer.base_salary + offer.bonus + offer.equity + offer.benefits_total_value)}</p>
+                      </div>
+                      <div className="offer-list-actions">
+                        <select value={archiveReasons[offer.id] || 'declined'} onChange={(e) => handleArchiveReasonChange(offer.id, e.target.value)}>
+                          <option value="declined">Declined compensation</option>
+                          <option value="role_misalignment">Role misalignment</option>
+                          <option value="location_cost">Location / COL</option>
+                        </select>
+                        <button type="button" onClick={() => handleArchiveOffer(offer.id, archiveReasons[offer.id] || 'declined')}>
+                          Archive
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="salary-card full-width">
+            <div className="card-header">
+              <h3>
+                <Icon name="chart" size="md" /> Comparison Matrix
+              </h3>
+              <p>Side-by-side analysis with cost-of-living adjustments and weighted qualitative scores.</p>
+            </div>
+            {offersLoading ? (
+              <div className="matrix-loading">
+                <LoadingSpinner />
+              </div>
+            ) : (
+              renderComparisonMatrix()
+            )}
+          </div>
+
+          {offerComparison?.offers?.length > 0 && (
+            <div className="salary-card full-width">
+              <div className="card-header">
+                <h3>
+                  <Icon name="target" size="md" /> Negotiation recommendations
+                </h3>
+                <p>Actionable plays tailored to each offer's gaps.</p>
+              </div>
+              <div className="offer-recommendations-grid">
+                {offerComparison.offers.map((offer) => (
+                  <div key={`recommendation-${offer.id}`} className="offer-recommendation-card">
+                    <div className="recommendation-header">
+                      <div>
+                        <strong>{offer.company_name}</strong>
+                        <p>{offer.role_title}</p>
+                      </div>
+                      <span className="score-chip">{offer.overall_score} pts</span>
+                    </div>
+                    <ul>
+                      {offer.negotiation_recommendations.map((rec) => (
+                        <li key={rec}>
+                          <Icon name="arrow-right" size="sm" /> {rec}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+              {archivedOffers.length > 0 && (
+                <div className="archived-offers">
+                  <h4>Archived offers</h4>
+                  <ul>
+                    {archivedOffers.map((offer) => (
+                      <li key={`archived-${offer.id}`}>
+                        {offer.company_name} · {offer.role_title} — {offer.archived_reason || 'archived'}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {error && (
@@ -369,9 +920,9 @@ const SalaryProgression = () => {
         <div className="salary-card full-width" style={{ marginTop: 16 }}>
           <div className="card-header">
             <h3>
-              <Icon name="alert-circle" size="md" /> No salary data yet
+              <Icon name="alert-circle" size="md" /> No Salary Data Yet
             </h3>
-            <p>Capture an offer and log negotiation outcomes in the Salary Negotiation tool to see progression here.</p>
+            <p>Get started by capturing an offer and logging negotiation outcomes in the Salary Negotiation tool to see your progression here.</p>
           </div>
         </div>
       )}
@@ -381,9 +932,9 @@ const SalaryProgression = () => {
         <div className="salary-card full-width">
           <div className="card-header">
             <h3>
-              <Icon name="chart" size="md" /> Offer history & negotiation outcomes
+              <Icon name="chart" size="md" /> Offer History & Negotiation Outcomes
             </h3>
-            <p>Track each offer, the uplift won, and how total comp evolved over time.</p>
+            <p>Track every offer, negotiation wins, and how your total compensation has evolved over time.</p>
           </div>
           <div className="offer-timeline">
             {totals.map((offer) => {
@@ -420,9 +971,9 @@ const SalaryProgression = () => {
         <div className="salary-card">
           <div className="card-header">
             <h3>
-              <Icon name="briefcase" size="md" /> Market positioning by location
+              <Icon name="briefcase" size="md" /> Market Positioning by Location
             </h3>
-            <p>Compare personal comp against regional tech benchmarks.</p>
+            <p>Compare your compensation against regional tech industry benchmarks.</p>
           </div>
           <div className="benchmark-summary">
             <div>
@@ -468,9 +1019,9 @@ const SalaryProgression = () => {
         <div className="salary-card">
           <div className="card-header">
             <h3>
-              <Icon name="dollar" size="md" /> Total compensation evolution
+              <Icon name="dollar" size="md" /> Total Compensation Evolution
             </h3>
-            <p>Base, bonus, equity, and benefits progression.</p>
+            <p>Visualize how your base salary, bonus, equity, and benefits have grown.</p>
           </div>
           <div className="comp-grid">
             {totals.map((offer) => (
@@ -529,9 +1080,9 @@ const SalaryProgression = () => {
         <div className="salary-card">
           <div className="card-header">
             <h3>
-              <Icon name="activity" size="md" /> Negotiation performance
+              <Icon name="activity" size="md" /> Negotiation Performance
             </h3>
-            <p>Success rates, tactics, and improvement patterns.</p>
+            <p>Track your success rates, winning tactics, and improvement patterns.</p>
           </div>
           <div className="stat-grid">
             {negotiationPerformanceStats.map((item) => (
@@ -558,9 +1109,9 @@ const SalaryProgression = () => {
         <div className="salary-card">
           <div className="card-header">
             <h3>
-              <Icon name="layers" size="md" /> Benefits & perks trend
+              <Icon name="layers" size="md" /> Benefits & Perks Trend
             </h3>
-            <p>Benefits quality and perks added across roles.</p>
+            <p>Monitor how your benefits package has improved across different roles.</p>
           </div>
           <ul className="benefits-list">
             {benefitsTrend.map((item) => (
@@ -574,9 +1125,9 @@ const SalaryProgression = () => {
         <div className="salary-card">
           <div className="card-header">
             <h3>
-              <Icon name="target" size="md" /> Recommendations for salary growth
+              <Icon name="target" size="md" /> Recommendations for Salary Growth
             </h3>
-            <p>Actionable moves based on progression, market position, and negotiation wins.</p>
+            <p>Data-driven strategies based on your progression, market position, and negotiation history.</p>
           </div>
           <ul className="recommendations">
             {recommendations.map((item) => (

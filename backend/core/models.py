@@ -6229,3 +6229,65 @@ class CareerGrowthScenario(models.Model):
             'total_5_year': total_5_year,
             'total_10_year': total_10_year,
         }
+
+
+class JobOffer(models.Model):
+    """
+    UC-127: Capture comparative job offer data for side-by-side analysis.
+
+    Stores both financial and non-financial attributes so the frontend can
+    render a weighted comparison matrix and scenario modeling.
+    """
+    REMOTE_POLICIES = [
+        ('onsite', 'Onsite'),
+        ('hybrid', 'Hybrid'),
+        ('remote', 'Remote'),
+    ]
+
+    STATUS_CHOICES = [
+        ('pending', 'Decision Pending'),
+        ('accepted', 'Accepted'),
+        ('declined', 'Declined'),
+        ('archived', 'Archived'),
+    ]
+
+    candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name='job_offers')
+    job = models.ForeignKey(JobEntry, on_delete=models.SET_NULL, null=True, blank=True, related_name='job_offers')
+    role_title = models.CharField(max_length=220)
+    company_name = models.CharField(max_length=220)
+    location = models.CharField(max_length=200, blank=True)
+    remote_policy = models.CharField(max_length=20, choices=REMOTE_POLICIES, default='onsite')
+
+    base_salary = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    bonus = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    equity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    benefits_breakdown = models.JSONField(default=dict, blank=True)
+    benefits_total_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    benefits_notes = models.TextField(blank=True)
+
+    culture_fit_score = models.PositiveSmallIntegerField(null=True, blank=True, help_text='1-10 score')
+    growth_opportunity_score = models.PositiveSmallIntegerField(null=True, blank=True, help_text='1-10 score')
+    work_life_balance_score = models.PositiveSmallIntegerField(null=True, blank=True, help_text='1-10 score')
+
+    cost_of_living_index = models.DecimalField(max_digits=6, decimal_places=2, default=100)
+    notes = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    decline_reason = models.CharField(max_length=120, blank=True)
+    archived_reason = models.CharField(max_length=120, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    scenario_label = models.CharField(max_length=120, blank=True, help_text='Last scenario applied')
+    metadata = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['candidate', '-updated_at']),
+            models.Index(fields=['candidate', 'status']),
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f"{self.role_title} @ {self.company_name} ({self.status})"
