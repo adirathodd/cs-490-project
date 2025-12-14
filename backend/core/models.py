@@ -1534,6 +1534,102 @@ class QuestionResponseCoaching(models.Model):
         return f"CoachingSession(job={self.job_id}, question={self.question_id}, created={timestamp})"
 
 
+class InterviewResponseLibrary(models.Model):
+    """UC-126: User's library of prepared interview responses."""
+    
+    QUESTION_TYPE_CHOICES = [
+        ('behavioral', 'Behavioral'),
+        ('technical', 'Technical'),
+        ('situational', 'Situational'),
+    ]
+    
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='response_library')
+    question_text = models.TextField()
+    question_type = models.CharField(max_length=20, choices=QUESTION_TYPE_CHOICES)
+    
+    # Current best version
+    current_response_text = models.TextField()
+    current_star_response = models.JSONField(default=dict, blank=True)
+    
+    # Tagging and categorization
+    skills = models.JSONField(default=list, blank=True, help_text="List of skills demonstrated")
+    experiences = models.JSONField(default=list, blank=True, help_text="List of experiences referenced")
+    companies_used_for = models.JSONField(default=list, blank=True, help_text="Companies this response was used for")
+    tags = models.JSONField(default=list, blank=True, help_text="Custom tags for organization")
+    
+    # Success tracking
+    led_to_offer = models.BooleanField(default=False)
+    led_to_next_round = models.BooleanField(default=False)
+    times_used = models.PositiveIntegerField(default=0)
+    success_rate = models.FloatField(default=0.0, help_text="Calculated success rate based on outcomes")
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    
+    # Optional job linkage for context
+    related_jobs = models.ManyToManyField('JobEntry', blank=True, related_name='linked_responses')
+    
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['user', 'question_type']),
+            models.Index(fields=['user', '-updated_at']),
+            models.Index(fields=['user', 'led_to_offer']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.question_type} - {self.question_text[:50]}"
+    
+    def calculate_success_rate(self):
+        """Update success rate based on tracked outcomes."""
+        if self.times_used == 0:
+            self.success_rate = 0.0
+        else:
+            successful = 0
+            if self.led_to_offer:
+                successful = self.times_used  # If got offer, count all uses as successful
+            elif self.led_to_next_round:
+                successful = max(1, self.times_used // 2)  # Partial success
+            self.success_rate = (successful / self.times_used) * 100
+        self.save()
+
+
+class ResponseVersion(models.Model):
+    """Version history for interview responses (UC-126)."""
+    
+    response_library = models.ForeignKey(InterviewResponseLibrary, on_delete=models.CASCADE, related_name='versions')
+    version_number = models.PositiveIntegerField()
+    response_text = models.TextField()
+    star_response = models.JSONField(default=dict, blank=True)
+    
+    # What changed in this version
+    change_notes = models.TextField(blank=True, help_text="Notes about what was improved")
+    coaching_score = models.FloatField(null=True, blank=True, help_text="AI coaching score if available")
+    
+    # Link to original coaching session if applicable
+    coaching_session = models.ForeignKey(
+        'QuestionResponseCoaching', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='saved_versions'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-version_number']
+        unique_together = [('response_library', 'version_number')]
+        indexes = [
+            models.Index(fields=['response_library', '-version_number']),
+        ]
+    
+    def __str__(self):
+        return f"Version {self.version_number} - {self.response_library.question_text[:30]}"
+
+
 class MockInterviewSession(models.Model):
     """UC-077: Full mock interview practice sessions with AI-generated questions."""
     
@@ -1557,7 +1653,7 @@ class MockInterviewSession(models.Model):
     
     # Configuration
     question_count = models.PositiveIntegerField(default=5)
-    difficulty_level = models.CharField(max_length=20, default='mid')
+    difficulty_level = models.CharField(max_length=50, default='mid')
     focus_areas = models.JSONField(default=list, blank=True)  # e.g., ['leadership', 'conflict resolution']
     
     # Session metadata

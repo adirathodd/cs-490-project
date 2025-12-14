@@ -10053,12 +10053,15 @@ def _serialize_coaching_entry(entry: QuestionResponseCoaching | None) -> Dict[st
         return None
     payload = entry.coaching_payload or {}
     return {
-        'id': entry.id,
+        'session_id': entry.id,
         'created_at': entry.created_at.isoformat(),
         'scores': entry.scores,
         'word_count': entry.word_count,
         'summary': payload.get('summary'),
         'length_analysis': payload.get('length_analysis'),
+        'feedback': payload.get('feedback', {}),
+        'improvement_focus': payload.get('improvement_focus', []),
+        'star_adherence': payload.get('star_adherence'),
     }
 
 
@@ -10931,6 +10934,80 @@ def job_question_response_coach(request, job_id):
     return Response(response_payload, status=status.HTTP_200_OK)
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def general_response_coach(request):
+    """
+    UC-076: Generate AI-powered coaching for a written interview response (general, no job context).
+    """
+    data = request.data or {}
+    question_id = data.get('question_id', 'general')
+    question_text = data.get('question_text', 'Interview Question')
+    written_response = (data.get('written_response') or '').strip()
+    star_response = data.get('star_response') or {}
+
+    star_has_content = any((star_response.get(part) or '').strip() for part in ['situation', 'task', 'action', 'result'])
+
+    if not written_response and not star_has_content:
+        return Response(
+            {'error': {'code': 'invalid_request', 'message': 'Provide a written response or STAR breakdown for coaching.'}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response(
+            {'error': {'code': 'profile_not_found', 'message': 'Profile not found.'}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    combined_response = written_response or " ".join(
+        [
+            star_response.get('situation', ''),
+            star_response.get('task', ''),
+            star_response.get('action', ''),
+            star_response.get('result', ''),
+        ]
+    ).strip()
+
+    try:
+        coaching_payload = response_coach.generate_coaching_feedback(
+            profile=profile,
+            job=None,  # No job context for general coaching
+            question_text=question_text,
+            response_text=combined_response,
+            star_response=star_response,
+            previous_sessions=[],
+        )
+    except Exception as exc:
+        logger.error("Failed to generate general response coaching: %s", exc)
+        return Response(
+            {'error': {'code': 'coaching_failed', 'message': 'Unable to generate coaching feedback.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    length_info = coaching_payload.get('length_analysis') or {}
+    word_count = length_info.get('word_count') or response_coach.count_words(combined_response)
+    if not length_info.get('word_count'):
+        coaching_payload.setdefault('length_analysis', {})['word_count'] = word_count
+    if not length_info.get('spoken_time_seconds'):
+        coaching_payload['length_analysis']['spoken_time_seconds'] = max(30, int(math.ceil(word_count / 2.5))) if word_count else 90
+
+    response_payload = {
+        'question_id': question_id,
+        'coaching': coaching_payload,
+        'improvement': {
+            'delta': {},
+            'previous_scores': {},
+            'session_count': 0,
+            'last_session_id': None,
+        },
+    }
+
+    return Response(response_payload, status=status.HTTP_200_OK)
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_question_practice_history(request, job_id, question_id):
@@ -11559,6 +11636,426 @@ def job_match_score(request, job_id):
 # 
 # 
 # =
+# UC-126: Interview Response Library Views
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def response_library_list(request):
+    """
+    UC-126: List all responses or create a new response in the library.
+    
+    GET: List all responses with optional filters
+    POST: Create a new response
+    """
+    from core.models import InterviewResponseLibrary, ResponseVersion
+    from core.response_library import ResponseLibraryAnalyzer
+    
+    if request.method == 'GET':
+        question_type = request.query_params.get('type')
+        search = request.query_params.get('search')
+        
+        responses = InterviewResponseLibrary.objects.filter(user=request.user)
+        
+        if question_type:
+            responses = responses.filter(question_type=question_type)
+        
+        if search:
+            responses = responses.filter(
+                Q(question_text__icontains=search) |
+                Q(current_response_text__icontains=search) |
+                Q(tags__icontains=search)
+            )
+        
+        # Get gap analysis
+        gap_analysis = ResponseLibraryAnalyzer.analyze_gaps(request.user)
+        
+        response_data = []
+        for resp in responses:
+            response_data.append({
+                'id': resp.id,
+                'question_text': resp.question_text,
+                'question_type': resp.question_type,
+                'current_response_text': resp.current_response_text,
+                'current_star_response': resp.current_star_response,
+                'skills': resp.skills,
+                'experiences': resp.experiences,
+                'companies_used_for': resp.companies_used_for,
+                'tags': resp.tags,
+                'times_used': resp.times_used,
+                'success_rate': resp.success_rate,
+                'led_to_offer': resp.led_to_offer,
+                'led_to_next_round': resp.led_to_next_round,
+                'created_at': resp.created_at.isoformat() if resp.created_at else None,
+                'updated_at': resp.updated_at.isoformat() if resp.updated_at else None,
+                'last_used_at': resp.last_used_at.isoformat() if resp.last_used_at else None,
+                'version_count': resp.versions.count(),
+            })
+        
+        return Response({
+            'responses': response_data,
+            'gap_analysis': gap_analysis,
+        }, status=status.HTTP_200_OK)
+    
+    else:  # POST
+        data = request.data
+        
+        # Create the response
+        response = InterviewResponseLibrary.objects.create(
+            user=request.user,
+            question_text=data.get('question_text', ''),
+            question_type=data.get('question_type', 'behavioral'),
+            current_response_text=data.get('response_text', ''),
+            current_star_response=data.get('star_response', {}),
+            skills=data.get('skills', []),
+            experiences=data.get('experiences', []),
+            tags=data.get('tags', []),
+        )
+        
+        # Create initial version
+        ResponseVersion.objects.create(
+            response_library=response,
+            version_number=1,
+            response_text=response.current_response_text,
+            star_response=response.current_star_response,
+            change_notes="Initial version",
+        )
+        
+        # Link to jobs if specified
+        job_ids = data.get('job_ids', [])
+        if job_ids:
+            profile = CandidateProfile.objects.get(user=request.user)
+            jobs = JobEntry.objects.filter(id__in=job_ids, candidate=profile)
+            response.related_jobs.set(jobs)
+        
+        return Response({
+            'id': response.id,
+            'message': 'Response added to library',
+        }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def response_library_detail(request, response_id):
+    """
+    UC-126: Get, update, or delete a specific response.
+    """
+    from core.models import InterviewResponseLibrary, ResponseVersion
+    
+    try:
+        response = InterviewResponseLibrary.objects.get(id=response_id, user=request.user)
+    except InterviewResponseLibrary.DoesNotExist:
+        return Response(
+            {'error': 'Response not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == 'GET':
+        # Get all versions
+        versions = []
+        for version in response.versions.all():
+            versions.append({
+                'version_number': version.version_number,
+                'response_text': version.response_text,
+                'star_response': version.star_response,
+                'change_notes': version.change_notes,
+                'coaching_score': version.coaching_score,
+                'created_at': version.created_at.isoformat() if version.created_at else None,
+            })
+        
+        return Response({
+            'id': response.id,
+            'question_text': response.question_text,
+            'question_type': response.question_type,
+            'current_response_text': response.current_response_text,
+            'current_star_response': response.current_star_response,
+            'skills': response.skills,
+            'experiences': response.experiences,
+            'companies_used_for': response.companies_used_for,
+            'tags': response.tags,
+            'times_used': response.times_used,
+            'success_rate': response.success_rate,
+            'led_to_offer': response.led_to_offer,
+            'led_to_next_round': response.led_to_next_round,
+            'created_at': response.created_at.isoformat() if response.created_at else None,
+            'updated_at': response.updated_at.isoformat() if response.updated_at else None,
+            'last_used_at': response.last_used_at.isoformat() if response.last_used_at else None,
+            'versions': versions,
+        }, status=status.HTTP_200_OK)
+    
+    elif request.method == 'PUT':
+        data = request.data
+        
+        # Check if response text changed
+        response_changed = (
+            'response_text' in data and 
+            data['response_text'] != response.current_response_text
+        )
+        
+        # Update fields
+        if 'question_text' in data:
+            response.question_text = data['question_text']
+        if 'question_type' in data:
+            response.question_type = data['question_type']
+        if 'response_text' in data:
+            response.current_response_text = data['response_text']
+        if 'star_response' in data:
+            response.current_star_response = data['star_response']
+        if 'skills' in data:
+            response.skills = data['skills']
+        if 'experiences' in data:
+            response.experiences = data['experiences']
+        if 'companies_used_for' in data:
+            response.companies_used_for = data['companies_used_for']
+        if 'tags' in data:
+            response.tags = data['tags']
+        if 'led_to_offer' in data:
+            response.led_to_offer = data['led_to_offer']
+        if 'led_to_next_round' in data:
+            response.led_to_next_round = data['led_to_next_round']
+        
+        response.save()
+        
+        # Create new version if response changed
+        if response_changed:
+            latest_version = response.versions.order_by('-version_number').first()
+            new_version_number = (latest_version.version_number + 1) if latest_version else 1
+            
+            ResponseVersion.objects.create(
+                response_library=response,
+                version_number=new_version_number,
+                response_text=response.current_response_text,
+                star_response=response.current_star_response,
+                change_notes=data.get('change_notes', ''),
+                coaching_score=data.get('coaching_score'),
+            )
+        
+        # Update success rate
+        response.calculate_success_rate()
+        
+        return Response({
+            'id': response.id,
+            'message': 'Response updated',
+        }, status=status.HTTP_200_OK)
+    
+    else:  # DELETE
+        response.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def response_library_record_usage(request, response_id):
+    """
+    UC-126: Record that a response was used in an interview.
+    """
+    from core.models import InterviewResponseLibrary
+    
+    try:
+        response = InterviewResponseLibrary.objects.get(id=response_id, user=request.user)
+    except InterviewResponseLibrary.DoesNotExist:
+        return Response(
+            {'error': 'Response not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    data = request.data
+    
+    response.times_used += 1
+    response.last_used_at = timezone.now()
+    
+    # Update outcome if provided
+    if 'led_to_offer' in data:
+        response.led_to_offer = data['led_to_offer']
+    if 'led_to_next_round' in data:
+        response.led_to_next_round = data['led_to_next_round']
+    
+    # Add company if provided
+    company_name = data.get('company_name')
+    if company_name and company_name not in response.companies_used_for:
+        response.companies_used_for.append(company_name)
+    
+    response.save()
+    response.calculate_success_rate()
+    
+    return Response({
+        'times_used': response.times_used,
+        'success_rate': response.success_rate,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def response_library_suggestions(request, job_id):
+    """
+    UC-126: Get suggested responses for a specific job based on requirements.
+    """
+    from core.models import InterviewResponseLibrary
+    from core.response_library import ResponseSuggestionEngine
+    
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+        job = JobEntry.objects.get(id=job_id, candidate=profile)
+    except (CandidateProfile.DoesNotExist, JobEntry.DoesNotExist):
+        return Response(
+            {'error': 'Job not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    question_text = request.query_params.get('question')
+    question_type = request.query_params.get('type')
+    
+    suggestions = ResponseSuggestionEngine.suggest_responses_for_job(
+        job=job,
+        question_text=question_text,
+        question_type=question_type,
+        limit=5
+    )
+    
+    result = []
+    for response, score in suggestions:
+        result.append({
+            'id': response.id,
+            'question_text': response.question_text,
+            'question_type': response.question_type,
+            'response_text': response.current_response_text,
+            'star_response': response.current_star_response,
+            'skills': response.skills,
+            'tags': response.tags,
+            'success_rate': response.success_rate,
+            'match_score': round(score, 2),
+        })
+    
+    return Response({
+        'suggestions': result,
+        'job_title': job.title,
+        'company_name': job.company_name,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def response_library_export(request):
+    """
+    UC-126: Export response library as a formatted prep guide.
+    """
+    from core.response_library import ResponseLibraryExporter
+    
+    format_type = request.query_params.get('format', 'text')
+    question_type = request.query_params.get('type')
+    
+    if format_type == 'json':
+        export_content = ResponseLibraryExporter.export_as_json(request.user, question_type)
+        content_type = 'application/json'
+        filename = 'response_library.json'
+    else:
+        export_content = ResponseLibraryExporter.export_as_text(request.user, question_type)
+        content_type = 'text/plain'
+        filename = 'response_library.txt'
+    
+    response = HttpResponse(export_content, content_type=content_type)
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def response_library_save_from_coaching(request):
+    """
+    UC-126: Save a coached response to the library.
+    Integration point with UC-076 Response Coaching.
+    """
+    from core.models import InterviewResponseLibrary, ResponseVersion, QuestionResponseCoaching
+    
+    data = request.data
+    coaching_session_id = data.get('coaching_session_id')
+    
+    if not coaching_session_id:
+        return Response(
+            {'error': 'coaching_session_id is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        coaching_session = QuestionResponseCoaching.objects.get(
+            id=coaching_session_id,
+            job__candidate__user=request.user
+        )
+    except QuestionResponseCoaching.DoesNotExist:
+        return Response(
+            {'error': 'Coaching session not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Check if response already exists for this question
+    existing = InterviewResponseLibrary.objects.filter(
+        user=request.user,
+        question_text=coaching_session.question_text
+    ).first()
+    
+    if existing:
+        # Update existing response with new version
+        existing.current_response_text = coaching_session.response_text
+        existing.current_star_response = coaching_session.star_response
+        
+        # Add any new tags from request
+        if 'tags' in data:
+            existing_tags = set(existing.tags or [])
+            new_tags = set(data['tags'])
+            existing.tags = list(existing_tags | new_tags)
+        
+        existing.save()
+        
+        # Create new version
+        latest_version = existing.versions.order_by('-version_number').first()
+        new_version_number = (latest_version.version_number + 1) if latest_version else 1
+        
+        ResponseVersion.objects.create(
+            response_library=existing,
+            version_number=new_version_number,
+            response_text=coaching_session.response_text,
+            star_response=coaching_session.star_response,
+            change_notes=data.get('change_notes', 'Updated from coaching session'),
+            coaching_score=coaching_session.scores.get('overall') if coaching_session.scores else None,
+            coaching_session=coaching_session,
+        )
+        
+        return Response({
+            'id': existing.id,
+            'message': 'Response updated in library',
+            'action': 'updated',
+        }, status=status.HTTP_200_OK)
+    
+    else:
+        # Create new response
+        response = InterviewResponseLibrary.objects.create(
+            user=request.user,
+            question_text=coaching_session.question_text,
+            question_type=data.get('question_type', 'behavioral'),
+            current_response_text=coaching_session.response_text,
+            current_star_response=coaching_session.star_response,
+            skills=data.get('skills', []),
+            experiences=data.get('experiences', []),
+            tags=data.get('tags', []),
+        )
+        
+        # Create initial version
+        ResponseVersion.objects.create(
+            response_library=response,
+            version_number=1,
+            response_text=coaching_session.response_text,
+            star_response=coaching_session.star_response,
+            change_notes="Initial version from coaching session",
+            coaching_score=coaching_session.scores.get('overall') if coaching_session.scores else None,
+            coaching_session=coaching_session,
+        )
+        
+        return Response({
+            'id': response.id,
+            'message': 'Response saved to library',
+            'action': 'created',
+        }, status=status.HTTP_201_CREATED)
+
+
 # UC-051: RESUME EXPORT ENDPOINTS
 # 
 # 
@@ -17311,13 +17808,20 @@ def start_mock_interview(request):
     user = request.user
     data = request.data
     
+    # Get or create user's candidate profile
+    from core.models import CandidateProfile
+    try:
+        profile = CandidateProfile.objects.get(user=user)
+    except CandidateProfile.DoesNotExist:
+        profile = CandidateProfile.objects.create(user=user)
+    
     # Validate and get job if specified
     job = None
     job_title = None
     job_description = None
     if 'job_id' in data and data['job_id']:
         try:
-            job = JobEntry.objects.get(id=data['job_id'], candidate=user.profile)
+            job = JobEntry.objects.get(id=data['job_id'], candidate=profile)
             job_title = job.position_title
             job_description = job.description
         except JobEntry.DoesNotExist:
@@ -20057,6 +20561,7 @@ def career_growth_scenario_detail(request, scenario_id):
     Retrieve, update, or delete a specific career growth scenario.
     """
     from .models import CareerGrowthScenario
+    from decimal import Decimal
     
     try:
         scenario = CareerGrowthScenario.objects.get(id=scenario_id, user=request.user)

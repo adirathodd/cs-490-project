@@ -287,6 +287,14 @@ urlpatterns = [
     path('jobs/<int:job_id>/question-bank/practice/', views.job_question_practice, name='job-question-practice'),
     path('jobs/<int:job_id>/question-bank/practice/<str:question_id>/', views.get_question_practice_history, name='get-question-practice-history'),
     path('jobs/<int:job_id>/question-bank/coach/', views.job_question_response_coach, name='job-question-response-coach'),
+    path('general-response-coach/', views.general_response_coach, name='general-response-coach'),
+    # UC-126: Interview Response Library endpoints
+    path('response-library/', views.response_library_list, name='response-library-list'),
+    path('response-library/<int:response_id>/', views.response_library_detail, name='response-library-detail'),
+    path('response-library/<int:response_id>/record-usage/', views.response_library_record_usage, name='response-library-record-usage'),
+    path('response-library/export/', views.response_library_export, name='response-library-export'),
+    path('response-library/save-from-coaching/', views.response_library_save_from_coaching, name='response-library-save-from-coaching'),
+    path('jobs/<int:job_id>/response-suggestions/', views.response_library_suggestions, name='response-library-suggestions'),
     # UC-078: Technical interview preparation endpoints
     path('jobs/<int:job_id>/technical-prep/', views.job_technical_prep, name='job-technical-prep'),
     path('jobs/<int:job_id>/technical-prep/practice/', views.job_technical_prep_practice, name='job-technical-prep-practice'),

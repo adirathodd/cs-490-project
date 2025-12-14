@@ -994,10 +994,127 @@ export const questionBankAPI = {
   // Get AI coaching for a response
   coachQuestionResponse: async (jobId, data) => {
     try {
-      const response = await api.post(`/jobs/${jobId}/question-bank/coach/`, data);
+      // Use general endpoint if jobId is 'general'
+      const endpoint = jobId === 'general' 
+        ? '/general-response-coach/' 
+        : `/jobs/${jobId}/question-bank/coach/`;
+      const response = await api.post(endpoint, data);
       return response.data;
     } catch (error) {
       throw error.response?.data?.error || { message: 'Failed to generate coaching feedback' };
+    }
+  },
+};
+
+// UC-126: Response Library API
+export const responseLibraryAPI = {
+  // List all responses with optional filters
+  listResponses: async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.type) params.append('type', filters.type);
+      if (filters.search) params.append('search', filters.search);
+      
+      const path = params.toString() 
+        ? `/response-library/?${params.toString()}` 
+        : `/response-library/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch response library' };
+    }
+  },
+
+  // Create a new response
+  createResponse: async (data) => {
+    try {
+      const response = await api.post('/response-library/', data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to create response' };
+    }
+  },
+
+  // Get a specific response with version history
+  getResponse: async (responseId) => {
+    try {
+      const response = await api.get(`/response-library/${responseId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch response' };
+    }
+  },
+
+  // Update a response
+  updateResponse: async (responseId, data) => {
+    try {
+      const response = await api.put(`/response-library/${responseId}/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to update response' };
+    }
+  },
+
+  // Delete a response
+  deleteResponse: async (responseId) => {
+    try {
+      await api.delete(`/response-library/${responseId}/`);
+      return { success: true };
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete response' };
+    }
+  },
+
+  // Record usage of a response
+  recordUsage: async (responseId, data) => {
+    try {
+      const response = await api.post(`/response-library/${responseId}/record-usage/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to record usage' };
+    }
+  },
+
+  // Get response suggestions for a job
+  getSuggestions: async (jobId, filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.question) params.append('question', filters.question);
+      if (filters.type) params.append('type', filters.type);
+      
+      const path = params.toString()
+        ? `/jobs/${jobId}/response-suggestions/?${params.toString()}`
+        : `/jobs/${jobId}/response-suggestions/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch suggestions' };
+    }
+  },
+
+  // Export response library
+  exportLibrary: async (format = 'text', questionType = null) => {
+    try {
+      const params = new URLSearchParams();
+      params.append('format', format);
+      if (questionType) params.append('type', questionType);
+      
+      const response = await api.get(`/response-library/export/?${params.toString()}`, {
+        responseType: 'blob'
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to export library' };
+    }
+  },
+
+  // Save a coached response to the library
+  saveFromCoaching: async (data) => {
+    try {
+      const response = await api.post('/response-library/save-from-coaching/', data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to save to library' };
     }
   },
 };
@@ -2186,6 +2303,8 @@ const _defaultExport = {
   interviewsAPI,
   calendarAPI,
   githubAPI,
+  questionBankAPI,
+  responseLibraryAPI,
 };
 
 export default _defaultExport;

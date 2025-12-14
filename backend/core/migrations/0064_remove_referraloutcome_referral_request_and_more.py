@@ -40,12 +40,11 @@ def drop_column_if_exists_factory(table: str, column: str):
 def drop_table_if_exists_factory(table: str):
     """Factory function that returns a migrations operation."""
     def forward(apps, schema_editor):
+        if schema_editor.connection.vendor != 'postgresql':
+            # SQLite: check if table exists first
+            return  # Skip for SQLite in tests
         try:
-            if schema_editor.connection.vendor == 'postgresql':
-                sql = f"DROP TABLE IF EXISTS {table} CASCADE;"
-            else:
-                sql = f"DROP TABLE IF EXISTS {table};"
-            
+            sql = f"DROP TABLE IF EXISTS {table} CASCADE;"
             with schema_editor.connection.cursor() as cursor:
                 cursor.execute(sql)
         except Exception:
