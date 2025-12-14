@@ -2,7 +2,7 @@
  * Tests for Email API Service (UC-113)
  */
 import emailAPI from '../emailAPI';
-import api from '../api';
+import { api } from '../api';
 
 jest.mock('../api');
 

@@ -1,0 +1,17 @@
+{
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/backend"
+  ],
+  "python.analysis.ignore": [
+    "**/node_modules/**",
+    "**/.venv/**",
+    "**/.venv-win/**"
+  ],
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportMissingImports": "none",
+    "reportMissingModuleSource": "none"
+  },
+  "python.defaultInterpreterPath": "/usr/local/bin/python",
+  "python.linting.enabled": false,
+  "python.analysis.typeCheckingMode": "off"
+}
