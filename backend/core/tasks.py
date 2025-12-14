@@ -975,7 +975,7 @@ def _send_due_reminders_sync():
     due_reminders = FollowUpReminder.objects.filter(
         status='pending',
         scheduled_datetime__lte=now
-    ).select_related('job', 'candidate__user')
+    ).exclude(job__status='rejected').select_related('job', 'candidate__user')
     
     sent_count = 0
     failed_count = 0
@@ -1058,7 +1058,9 @@ def _check_upcoming_deadlines_sync():
                 reminder_type='application_deadline',
                 subject=f"Deadline in 3 days: {job.title} at {job.company_name}",
                 message_template=f"Hi {{user_name}},\n\nThis is a reminder that the application deadline for {job.title} at {job.company_name} is in 3 days ({job.application_deadline}).\n\nDon't forget to submit your application!",
-                scheduled_datetime=timezone.now() + timedelta(hours=9)  # 9 AM next day
+                scheduled_datetime=timezone.now() + timedelta(hours=9),  # 9 AM next day
+                followup_stage=getattr(job, 'status', None),
+                auto_scheduled=True,
             )
             reminder_count += 1
             logger.info(f"Created deadline reminder {reminder.id} for job {job.id}")
@@ -1129,4 +1131,3 @@ else:
 
     def refresh_salary_benchmarks():
         return _refresh_salary_benchmarks_sync()
-

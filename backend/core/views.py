@@ -37,6 +37,7 @@ import os
 import requests
 from urllib.parse import urlencode
 from core.models import GitHubAccount
+from core import followup_utils
 from core.serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
@@ -5851,6 +5852,13 @@ def jobs_bulk_status(request):
                     JobStatusChange.objects.create(job=job, old_status=old, new_status=new_status)
                 except Exception:
                     pass
+                try:
+                    if new_status == 'rejected':
+                        followup_utils.dismiss_pending_for_job(job)
+                    else:
+                        followup_utils.create_stage_followup(job, new_status, auto=True)
+                except Exception:
+                    logger.debug("Follow-up scheduling skipped for job %s", job.id)
                 updated += 1
         return Response({'updated': updated}, status=status.HTTP_200_OK)
     except CandidateProfile.DoesNotExist:
@@ -18923,6 +18931,46 @@ def followup_reminders(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def followup_playbook(request, job_id):
+    """
+    GET: Return a recommended follow-up plan (timing, template, etiquette tips) for a job.
+    POST: Create (or reuse) the recommended reminder for the job/stage.
+    """
+    from core.models import CandidateProfile, JobEntry
+
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+
+    try:
+        job = JobEntry.objects.get(id=job_id, candidate=candidate)
+    except JobEntry.DoesNotExist:
+        return Response({'error': 'Job not found'}, status=404)
+
+    stage = request.data.get('stage') or request.query_params.get('stage') or job.status
+    plan = followup_utils.build_followup_plan(job, stage)
+    if plan is None:
+        return Response({'error': 'Reminders are disabled for rejected applications.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    serialized_plan = followup_utils.serialize_plan(plan)
+    if request.method == 'POST':
+        reminder, created = followup_utils.create_stage_followup(job, stage, auto=True)
+        serializer = FollowUpReminderSerializer(reminder)
+        return Response(
+            {
+                'plan': serialized_plan,
+                'reminder': serializer.data,
+                'created': created,
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        )
+
+    return Response(serialized_plan)
+
+
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def followup_reminder_detail(request, reminder_id):
@@ -18976,6 +19024,85 @@ def dismiss_reminder(request, reminder_id):
         return Response({'error': 'Reminder not found'}, status=404)
     
     reminder.dismiss()
+    return Response(FollowUpReminderSerializer(reminder).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def snooze_followup_reminder(request, reminder_id):
+    """Snooze a reminder to a later time."""
+    from core.models import FollowUpReminder, CandidateProfile
+
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+
+    try:
+        reminder = FollowUpReminder.objects.get(id=reminder_id, candidate=candidate)
+    except FollowUpReminder.DoesNotExist:
+        return Response({'error': 'Reminder not found'}, status=404)
+
+    snooze_hours = request.data.get('hours') or request.data.get('snooze_hours') or 24
+    until_param = request.data.get('until') or request.data.get('snoozed_until')
+    try:
+        if until_param:
+            parsed = parse_datetime(until_param)
+            if parsed is None:
+                raise ValueError("Invalid datetime format")
+            if timezone.is_naive(parsed):
+                parsed = timezone.make_aware(parsed)
+            new_time = parsed
+        else:
+            snooze_hours = int(snooze_hours)
+            new_time = timezone.now() + timedelta(hours=snooze_hours)
+    except Exception as exc:
+        return Response({'error': f'Invalid snooze value: {exc}'}, status=status.HTTP_400_BAD_REQUEST)
+
+    reminder.snooze(new_time)
+    return Response(FollowUpReminderSerializer(reminder).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def complete_followup_reminder(request, reminder_id):
+    """Mark a reminder as completed and optionally record a response."""
+    from core.models import FollowUpReminder, CandidateProfile
+
+    try:
+        candidate = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': 'Candidate profile not found'}, status=404)
+
+    try:
+        reminder = FollowUpReminder.objects.get(id=reminder_id, candidate=candidate)
+    except FollowUpReminder.DoesNotExist:
+        return Response({'error': 'Reminder not found'}, status=404)
+
+    response_received = bool(request.data.get('response_received'))
+    response_date = request.data.get('response_date')
+    response_dt = None
+    if response_date:
+        parsed = parse_datetime(response_date)
+        if parsed:
+            response_dt = timezone.make_aware(parsed) if timezone.is_naive(parsed) else parsed
+    if response_dt is None and response_received:
+        response_dt = timezone.now()
+
+    reminder.mark_completed(response_received=response_received, response_date=response_dt)
+
+    # Store responsiveness on the job so future reminders can adjust cadence
+    try:
+        job = reminder.job
+        if response_received and job and not job.first_response_at:
+            job.first_response_at = response_dt
+            if job.application_submitted_at and response_dt:
+                delta_days = (response_dt - job.application_submitted_at).total_seconds() / 86400.0
+                job.days_to_response = max(int(round(delta_days)), 0)
+            job.save(update_fields=['first_response_at', 'days_to_response', 'updated_at'])
+    except Exception:
+        pass
+
     return Response(FollowUpReminderSerializer(reminder).data)
 
 
@@ -19561,4 +19688,3 @@ def get_career_progression_data(request):
         'progression': progression,
         'glassdoor_data': glassdoor_data,
     }, status=status.HTTP_200_OK)
-

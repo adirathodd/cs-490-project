@@ -8,6 +8,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from core import followup_utils
 from core.models import (
     CandidateProfile, Skill, CandidateSkill, Education, Certification,
     Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory,
@@ -1647,6 +1648,14 @@ class JobEntrySerializer(serializers.ModelSerializer):
                 try:
                     JobStatusChange.objects.create(job=instance, old_status=old_status, new_status=new_status)
                 except Exception:
+                    pass
+                try:
+                    if new_status == 'rejected':
+                        followup_utils.dismiss_pending_for_job(instance)
+                    else:
+                        followup_utils.create_stage_followup(instance, new_status, auto=True)
+                except Exception:
+                    # Do not block the update on reminder scheduling failures
                     pass
         except Exception:
             pass
@@ -4764,6 +4773,8 @@ class FollowUpReminderSerializer(serializers.ModelSerializer):
     job_title = serializers.CharField(source='job.title', read_only=True)
     company_name = serializers.CharField(source='job.company_name', read_only=True)
     is_overdue = serializers.SerializerMethodField()
+    etiquette_tips = serializers.SerializerMethodField()
+    reminder_type_label = serializers.SerializerMethodField()
     
     class Meta:
         model = FollowUpReminder
@@ -4772,6 +4783,7 @@ class FollowUpReminderSerializer(serializers.ModelSerializer):
             'candidate',
             'job',
             'reminder_type',
+            'reminder_type_label',
             'subject',
             'message_template',
             'scheduled_datetime',
@@ -4783,26 +4795,49 @@ class FollowUpReminderSerializer(serializers.ModelSerializer):
             'sent_at',
             'response_received',
             'response_date',
+            'followup_stage',
+            'auto_scheduled',
+            'recommendation_reason',
+            'snoozed_until',
+            'completed_at',
             'created_at',
             'updated_at',
             'job_title',
             'company_name',
             'is_overdue',
+            'etiquette_tips',
         ]
         read_only_fields = [
             'id',
             'candidate',
             'occurrence_count',
             'sent_at',
+            'auto_scheduled',
+            'snoozed_until',
+            'completed_at',
             'created_at',
             'updated_at',
             'job_title',
             'company_name',
+            'recommendation_reason',
         ]
     
     def get_is_overdue(self, obj):
         """Check if reminder is overdue"""
         return obj.status == 'pending' and obj.scheduled_datetime < timezone.now()
+
+    def get_etiquette_tips(self, obj):
+        """Expose etiquette tips based on the follow-up stage."""
+        stage = obj.followup_stage or getattr(obj.job, 'status', None)
+        plan = followup_utils.build_followup_plan(obj.job, stage)
+        return plan.get('etiquette_tips', []) if plan else followup_utils.GENERAL_ETIQUETTE_TIPS
+
+    def get_reminder_type_label(self, obj):
+        """Human-friendly reminder type label."""
+        try:
+            return obj.get_reminder_type_display()
+        except Exception:
+            return (obj.reminder_type or '').replace('_', ' ').title()
 
 
 class FollowUpReminderCreateSerializer(serializers.ModelSerializer):
@@ -4815,6 +4850,7 @@ class FollowUpReminderCreateSerializer(serializers.ModelSerializer):
         allow_null=True,
         help_text='Days between reminders for recurring'
     )
+    followup_stage = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     
     class Meta:
         model = FollowUpReminder
@@ -4827,8 +4863,31 @@ class FollowUpReminderCreateSerializer(serializers.ModelSerializer):
             'interval_days',
             'is_recurring',
             'max_occurrences',
+            'followup_stage',
         ]
     
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        job = data.get('job')
+        if job and job.status == 'rejected':
+            raise serializers.ValidationError({'job': 'Reminders are disabled for rejected applications.'})
+
+        # Auto-fill from playbook when values are missing
+        if job:
+            stage = data.get('followup_stage') or job.status
+            plan = followup_utils.build_followup_plan(job, stage)
+            if plan:
+                data.setdefault('scheduled_datetime', plan['scheduled_datetime'])
+                data.setdefault('reminder_type', plan['reminder_type'])
+                data.setdefault('subject', plan['subject'])
+                data.setdefault('message_template', plan['message_template'])
+                data.setdefault('interval_days', plan['interval_days'])
+                data.setdefault('is_recurring', plan['is_recurring'])
+                data.setdefault('max_occurrences', plan['max_occurrences'])
+                data.setdefault('followup_stage', plan['stage'])
+                data.setdefault('recommendation_reason', plan['recommendation_reason'])
+        return data
+
     def create(self, validated_data):
         """Create reminder with candidate from context"""
         validated_data['candidate'] = self.context['request'].user.profile

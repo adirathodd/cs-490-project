@@ -563,9 +563,20 @@ class AutomationEngine:
         delay_days = parameters.get('delay_days', 7)
         followup_time = timezone.now() + timedelta(days=delay_days)
         
-        # TODO: Create follow-up reminder (FollowUpReminder model not yet implemented)
-        # For now, just log that reminder would be created
-        logger.info(f"Would create follow-up reminder for {followup_time} (FollowUpReminder model not implemented)")
+        try:
+            from core import followup_utils
+            reminder, created = followup_utils.create_stage_followup(job, job.status, auto=True)
+            if not created and reminder:
+                # If one already exists, optionally push the date if automation demands earlier delivery
+                if reminder.scheduled_datetime > followup_time:
+                    reminder.scheduled_datetime = followup_time
+                    reminder.save(update_fields=['scheduled_datetime'])
+            logger.info(
+                "Automation created follow-up reminder for job %s (created=%s, scheduled=%s)",
+                job.id, created, getattr(reminder, 'scheduled_datetime', None)
+            )
+        except Exception as exc:
+            logger.warning("Failed to auto-schedule follow-up for job %s: %s", job.id, exc)
     
     @staticmethod
     def _execute_create_reminder(rule: ApplicationAutomationRule, context: Dict[str, Any],
