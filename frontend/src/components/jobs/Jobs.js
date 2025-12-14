@@ -4,6 +4,7 @@ import { jobsAPI, materialsAPI, interviewsAPI, companyAPI } from '../../services
 import Icon from '../common/Icon';
 import DeadlineCalendar from '../common/DeadlineCalendar';
 import AutomationDashboard from '../automation/AutomationDashboard';
+import JobsMap from './JobsMap';
 
 const defaultForm = {
   title: '',
@@ -78,6 +79,8 @@ const [companySearchStatus, setCompanySearchStatus] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
+  // UC-116: Trigger map refresh after job edits
+  const [mapReloadNonce, setMapReloadNonce] = useState(0);
 
   // UC-039: Search and Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -977,10 +980,12 @@ const companyDropdownRef = useRef(null);
         saved = await jobsAPI.updateJob(editingId, payload);
         setItems((prev) => prev.map((i) => (i.id === editingId ? saved : i)));
         setSuccess('Job updated.');
+        setMapReloadNonce((n) => n + 1);
       } else {
         saved = await jobsAPI.addJob(payload);
         setItems((prev) => [saved, ...prev]);
         setSuccess('Job saved.');
+        setMapReloadNonce((n) => n + 1);
       }
       resetForm();
       setTimeout(() => setSuccess(''), 2000);
@@ -1157,6 +1162,18 @@ const companyDropdownRef = useRef(null);
 
       {error && <div className="error-banner">{error}</div>}
       {success && <div className="success-banner">{success}</div>}
+
+      {/* UC-116: Overall Jobs Map */}
+      <div className="education-form-card" style={{ marginBottom: '20px' }}>
+        <div style={{ padding: '12px 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Icon name="map" size="md" />
+          <h3 style={{ margin: 0 }}>Jobs Map</h3>
+          <span style={{ marginLeft: 'auto', fontSize: '12px', color: '#64748b' }}>Filtered view</span>
+        </div>
+        <div style={{ padding: '12px' }}>
+          <JobsMap filters={{ ...filters, __nonce: mapReloadNonce }} />
+        </div>
+      </div>
 
       {/* UC-045: Undo Notification */}
       {undoNotification && (

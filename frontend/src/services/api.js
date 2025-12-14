@@ -3,11 +3,12 @@ import axios from 'axios';
 // ⚠️ UC-117: Backend API monitoring tracks all external API calls.
 // See backend/core/api_monitoring.py for implementation details.
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+// Prefer same-origin proxy path when not explicitly configured
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
 // Create axios instance with base configuration
 export const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000/api',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -17,7 +18,18 @@ export const api = axios.create({
 // Add token to requests if available
 api.interceptors.request.use(
   async (config) => {
-    const token = localStorage.getItem('firebaseToken');
+    let token = localStorage.getItem('firebaseToken');
+    if (!token) {
+      try {
+        const { auth } = await import('./firebase');
+        if (auth?.currentUser) {
+          token = await auth.currentUser.getIdToken();
+          if (token) localStorage.setItem('firebaseToken', token);
+        }
+      } catch {
+        // Ignore; will proceed unauthenticated
+      }
+    }
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -837,6 +849,20 @@ export const jobsAPI = {
   getUpcomingDeadlines: async (limit = 5) => {
     const response = await api.get(`/jobs/upcoming-deadlines?limit=${limit}`);
     return response.data;
+  },
+
+  // Commute time for a job (driving by default)
+  getJobCommute: async (jobId, options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      const mode = options.mode || 'drive';
+      if (mode) params.append('mode', mode);
+      const path = params.toString() ? `/jobs/${jobId}/commute?${params.toString()}` : `/jobs/${jobId}/commute`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch commute time' };
+    }
   },
 
   // UC-045: Job archiving methods
@@ -1978,6 +2004,49 @@ export const githubAPI = {
   },
 };
 
+// UC-116: Geocoding & Commute
+export const geoAPI = {
+  suggest: async (params = {}) => {
+    const usp = new URLSearchParams(params).toString();
+    const path = usp ? `/geo/suggest?${usp}` : '/geo/suggest';
+    const resp = await api.get(path);
+    return resp.data;
+  },
+  resolve: async (q) => {
+    const resp = await api.post('/geo/resolve', { q });
+    return resp.data;
+  },
+  commuteEstimate: async ({ from_lat, from_lon, to_lat, to_lon, mode = 'driving' }) => {
+    const usp = new URLSearchParams({ from_lat, from_lon, to_lat, to_lon, mode }).toString();
+    const resp = await api.get(`/commute/estimate?${usp}`);
+    return resp.data;
+  },
+  jobsGeo: async (filters = {}) => {
+    const params = new URLSearchParams(filters);
+    if (!params.has('office_only')) params.set('office_only', 'true');
+    const usp = params.toString();
+    const path = usp ? `/jobs/geo?${usp}` : '/jobs/geo';
+    const resp = await api.get(path);
+    return resp.data;
+  },
+  listOfficeLocations: async (jobId) => {
+    const resp = await api.get(`/jobs/${jobId}/locations`);
+    return resp.data; // { locations: [...] }
+  },
+  addOfficeLocation: async (jobId, payload) => {
+    const resp = await api.post(`/jobs/${jobId}/locations`, payload);
+    return resp.data; // { location: {...} }
+  },
+  updateOfficeLocation: async (jobId, locationId, payload) => {
+    const resp = await api.patch(`/jobs/${jobId}/locations/${locationId}`, payload);
+    return resp.data; // { location: {...} }
+  },
+  deleteOfficeLocation: async (jobId, locationId) => {
+    const resp = await api.delete(`/jobs/${jobId}/locations/${locationId}`);
+    return resp.data; // { deleted: true }
+  },
+};
+
 // Provide a forgiving default export that supports both
 // - `import authAPI from './services/api'` (legacy/default import)
 // - `import { authAPI } from './services/api'` (named import)
@@ -2004,6 +2073,7 @@ const _defaultExport = {
   interviewsAPI,
   calendarAPI,
   githubAPI,
+  geoAPI,
 };
 
 export default _defaultExport;

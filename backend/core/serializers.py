@@ -466,12 +466,14 @@ class BasicProfileSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField(read_only=True)
     full_location = serializers.SerializerMethodField(read_only=True)
     character_count = serializers.SerializerMethodField(read_only=True)
+    # Expose home address via legacy `location` field for commute purposes
+    home_address = serializers.CharField(source='location', required=False, allow_blank=True)
     
     class Meta:
         model = CandidateProfile
         fields = [
             'email', 'first_name', 'last_name', 'full_name',
-            'phone', 'city', 'state', 'full_location',
+            'phone', 'city', 'state', 'full_location', 'home_address',
             'headline', 'summary', 'character_count',
             'industry', 'experience_level'
         ]
@@ -1501,8 +1503,10 @@ class JobEntrySerializer(serializers.ModelSerializer):
             'company_info',
             # UC-042 materials
             'resume_doc_id', 'cover_letter_doc_id', 'resume_doc', 'cover_letter_doc',
+            # UC-116 geocoding fields (read-only for inspection)
+            'location_lat', 'location_lon', 'location_geo_precision', 'location_geo_updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'salary_range', 'last_status_change', 'days_in_stage', 'archived_at', 'company_info']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'salary_range', 'last_status_change', 'days_in_stage', 'archived_at', 'company_info', 'location_lat', 'location_lon', 'location_geo_precision', 'location_geo_updated_at']
 
     def get_salary_range(self, obj):
         if obj.salary_min is None and obj.salary_max is None:

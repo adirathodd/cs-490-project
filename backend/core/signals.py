@@ -6,7 +6,9 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
 
-from core.models import UserAccount
+from core.models import UserAccount, JobEntry
+import os
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -15,30 +17,31 @@ logger = logging.getLogger(__name__)
 def log_login_failed(sender, credentials, request, **kwargs):
     """Log details when a login attempt fails (e.g., admin form)."""
     try:
-        username = credentials.get('username') if isinstance(credentials, dict) else None
-    except Exception:
         username = None
+        if isinstance(credentials, dict):
+            username = credentials.get('username') or credentials.get('email')
 
-    remote_addr = None
-    user_agent = None
-    referer = None
-
-    try:
+        remote_addr = None
+        user_agent = None
+        referer = None
         if request is not None:
-            remote_addr = request.META.get('REMOTE_ADDR')
-            # Honor X-Forwarded-For if present (docker/nginx)
-            xff = request.META.get('HTTP_X_FORWARDED_FOR')
-            if xff:
-                remote_addr = xff.split(',')[0].strip()
-            user_agent = request.META.get('HTTP_USER_AGENT')
-            referer = request.META.get('HTTP_REFERER')
-    except Exception:
-        pass
+            try:
+                remote_addr = request.META.get('REMOTE_ADDR')
+                xff = request.META.get('HTTP_X_FORWARDED_FOR')
+                if xff:
+                    remote_addr = xff.split(',')[0].strip()
+                user_agent = request.META.get('HTTP_USER_AGENT')
+                referer = request.META.get('HTTP_REFERER')
+            except Exception:
+                pass
 
-    logger.warning(
-        "AUTH login_failed username=%s ip=%s ua=%s referer=%s",
-        username, remote_addr, user_agent, referer
-    )
+        logger.warning(
+            "AUTH login_failed username=%s ip=%s ua=%s referer=%s",
+            username, remote_addr, user_agent, referer
+        )
+    except Exception:
+        # Never break auth flow on logging
+        pass
 
 
 @receiver(user_logged_in)
@@ -165,3 +168,74 @@ def send_interview_reminder_email(sender, instance, created, **kwargs):
     except Exception as e:
         logger.error(f"Failed to send immediate interview reminder for interview {instance.id}: {str(e)}")
         # Don't raise - we don't want to break interview creation
+
+
+@receiver(post_save, sender=JobEntry)
+def geocode_job_location(sender, instance: JobEntry, created: bool, **kwargs):
+    """Best-effort geocode when a job's location is present but coordinates are missing.
+
+    This persists lat/lon so map rendering is fast and deterministic.
+    Lightweight and resilient: timeouts are short, failures are ignored.
+    """
+    try:
+        city = (getattr(instance, 'location', '') or '').strip()
+        if not city:
+            return
+        # Prevent recursion when we save updated coords below
+        if getattr(instance, '_skip_geocode', False):
+            return
+
+        base = os.environ.get('NOMINATIM_BASE_URL', 'https://nominatim.openstreetmap.org')
+        ua = os.environ.get('NOMINATIM_USER_AGENT', 'cs-490-project/1.0 (signals)')
+        headers = {'User-Agent': ua}
+        try:
+            resp = requests.get(
+                f"{base}/search",
+                params={'q': city, 'format': 'json', 'limit': '1'},
+                headers=headers,
+                timeout=6,
+            )
+            resp.raise_for_status()
+            data = resp.json() or []
+            if data:
+                lat = float(data[0].get('lat'))
+                lon = float(data[0].get('lon'))
+            else:
+                lat = lon = None
+        except Exception:
+            lat = lon = None
+
+        if lat is not None and lon is not None:
+            from django.utils import timezone
+            # If values are unchanged (e.g., location string edits that resolve to same coords), avoid extra save
+            cur_lat = getattr(instance, 'location_lat', None)
+            cur_lon = getattr(instance, 'location_lon', None)
+            if cur_lat is not None and cur_lon is not None:
+                try:
+                    if abs(cur_lat - lat) < 1e-5 and abs(cur_lon - lon) < 1e-5:
+                        return
+                except Exception:
+                    pass
+            instance.location_lat = lat
+            instance.location_lon = lon
+            # If we matched a house/place, mark as address; else city
+            try:
+                precision = 'city'
+                if 'data' in locals() and data:
+                    cls = data[0].get('class')
+                    typ = data[0].get('type')
+                    if cls == 'place' and typ == 'house':
+                        precision = 'address'
+                instance.location_geo_precision = precision
+            except Exception:
+                instance.location_geo_precision = 'city'
+            instance.location_geo_updated_at = timezone.now()
+            # Save only geo fields to avoid recursion issues; second post_save will be a quick no-op
+            try:
+                instance._skip_geocode = True
+                instance.save(update_fields=['location_lat', 'location_lon', 'location_geo_precision', 'location_geo_updated_at'])
+            except Exception:
+                pass
+    except Exception:
+        # Never raise from signal
+        pass

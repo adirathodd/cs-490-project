@@ -43,6 +43,37 @@
 			"type": "shell",
 			"command": "cd frontend; npm run build",
 			"group": "build"
+		},
+		{
+			"label": "build-frontend",
+			"type": "shell",
+			"command": "cd frontend && npm install && npm run build",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$eslint-stylish"
+			],
+			"group": "build"
+		},
+		{
+			"label": "build-frontend",
+			"type": "shell",
+			"command": "cd frontend; npm install; npm run build",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "build-frontend",
+			"type": "shell",
+			"command": "cd frontend; npm install; npm run build",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "build-frontend",
+			"type": "shell",
+			"command": "cd frontend && npm run build",
+			"group": "build"
 		}
 	]
 }

@@ -3,8 +3,10 @@ module.exports = {
   roots: ['<rootDir>/src'],
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.js'],
   moduleNameMapper: {
+    '^src/(.*)$': '<rootDir>/src/$1',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '\\.(jpg|jpeg|png|gif|svg|webp)$': '<rootDir>/__mocks__/fileMock.js',
+    '^leaflet$': '<rootDir>/__mocks__/leaflet.js',
     '^react-icons/fa$': '<rootDir>/__mocks__/react-icons/fa.js',
     '^rehype-sanitize$': '<rootDir>/src/__mocks__/rehype-sanitize.js',
     '^remark-gfm$': '<rootDir>/src/__mocks__/remark-gfm.js',

@@ -105,6 +105,26 @@ class CandidateProfile(models.Model):
         """Return candidate's full name from linked User"""
         return f"{self.user.first_name} {self.user.last_name}".strip()
 
+class JobOfficeLocation(models.Model):
+    """Office location linked to a job with optional stored commute metrics."""
+    job = models.ForeignKey('JobEntry', on_delete=models.CASCADE, related_name='office_locations')
+    label = models.CharField(max_length=120, blank=True)
+    address = models.CharField(max_length=240, blank=True)
+    lat = models.FloatField(null=True, blank=True)
+    lon = models.FloatField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True)
+    # Commute cache
+    last_commute_eta_min = models.FloatField(null=True, blank=True)
+    last_commute_distance_km = models.FloatField(null=True, blank=True)
+    last_commute_calculated_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['job']),
+            models.Index(fields=['job', 'created_at']),
+        ]
+
 class Skill(models.Model):
     name = models.CharField(max_length=120, unique=True)
     category = models.CharField(max_length=120, blank=True)
@@ -2179,6 +2199,12 @@ class JobEntry(models.Model):
         ('direct_contact', 'Direct Contact'),
         ('other', 'Other'),
     ]
+
+    # UC-116: Precomputed geocoding
+    location_lat = models.FloatField(null=True, blank=True)
+    location_lon = models.FloatField(null=True, blank=True)
+    location_geo_precision = models.CharField(max_length=20, blank=True, default='unknown')
+    location_geo_updated_at = models.DateTimeField(null=True, blank=True)
     
     COMPANY_SIZES = [
         ('startup', 'Startup (1-50)'),
@@ -2286,6 +2312,28 @@ class JobMaterialsHistory(models.Model):
         indexes = [
             models.Index(fields=["job", "-changed_at"]),
         ]
+
+
+class JobOfficeLocation(models.Model):
+    """Manually added office locations for a specific job entry.
+
+    Allows users to specify precise office/site coordinates that should
+    surface on the map alongside the job's city-level location.
+    """
+    job = models.ForeignKey(JobEntry, on_delete=models.CASCADE, related_name='office_locations')
+    label = models.CharField(max_length=160, blank=True)
+    address = models.CharField(max_length=255, blank=True)
+    lat = models.FloatField()
+    lon = models.FloatField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['job', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"Office @ ({self.lat}, {self.lon}) for job {self.job_id}"
 
 
 class SalaryResearch(models.Model):

@@ -208,6 +208,17 @@ urlpatterns = [
     path('jobs/<int:job_id>/restore', views.job_restore, name='job-restore'),
     path('jobs/<int:job_id>/delete', views.job_delete, name='job-delete'),
     path('jobs/bulk-archive', views.jobs_bulk_archive, name='jobs-bulk-archive'),
+
+    # UC-116: Geocoding & Commute (scaffold)
+    path('geo/suggest', views.geo_suggest, name='geo-suggest'),
+    path('geo/resolve', views.geo_resolve, name='geo-resolve'),
+    path('commute/estimate', views.commute_estimate, name='commute-estimate'),
+    path('jobs/geo', views.jobs_geo, name='jobs-geo'),
+    path('jobs/<int:job_id>/locations', views.job_office_locations, name='job-office-locations'),
+    path('jobs/<int:job_id>/locations/<int:location_id>', views.job_office_location_detail, name='job-office-location-detail'),
+    path('jobs/<int:job_id>/commute', views.job_commute_drive, name='job-commute-drive'),
+    path('jobs/<int:job_id>/regeocode', views.job_regeocode, name='job-regeocode'),
+    path('jobs/cleanup-geo', views.cleanup_city_level_coords, name='jobs-cleanup-geo'),
     
     # UC-055: Cover Letter Template Library endpoints
     path('cover-letter-templates', views.cover_letter_template_list_create, name='cover-letter-template-list-create'),

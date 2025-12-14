@@ -32,6 +32,7 @@
     "recharts": "^3.5.1",
     "rehype-sanitize": "^5.0.1",
     "remark-gfm": "^3.0.1",
+    "leaflet": "^1.9.4",
     "web-vitals": "^2.1.4",
     "yaml": "^2.8.1"
   },

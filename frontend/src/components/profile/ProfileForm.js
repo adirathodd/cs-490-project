@@ -72,6 +72,7 @@ const ProfileForm = () => {
     phone: '',
     city: '',
     state: '',
+    home_address: '',
     headline: '',
     summary: '',
     industry: '',
@@ -108,6 +109,7 @@ const ProfileForm = () => {
         phone: response?.phone || '',
         city: response?.city || '',
         state: response?.state || '',
+        home_address: response?.home_address || '',
         headline: response?.headline || '',
         summary: response?.summary || '',
         industry: response?.industry || '',
@@ -649,6 +651,24 @@ const ProfileForm = () => {
                   <span className="error-message">{fieldErrors.state}</span>
                 )}
               </div>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="home_address">Home Address (for commute)</label>
+              <input
+                type="text"
+                id="home_address"
+                name="home_address"
+                value={formData.home_address}
+                onChange={handleChange}
+                className={fieldErrors.home_address ? 'error' : ''}
+                disabled={loading}
+                placeholder="e.g., 1600 Amphitheatre Pkwy, Mountain View, CA"
+              />
+              {fieldErrors.home_address && (
+                <span className="error-message">{fieldErrors.home_address}</span>
+              )}
+              <small className="field-help">Used to calculate commute time to offices.</small>
             </div>
           </div>
 
