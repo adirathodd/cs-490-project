@@ -477,10 +477,15 @@
   background: #fee2e2;
   color: #991b1b;
   border: none;
-  padding: 0.375rem 0.75rem;
+  padding: 0.35rem 0.6rem;
   border-radius: 0.375rem;
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: max-content;
 }
 
 .btn-remove:hover {
