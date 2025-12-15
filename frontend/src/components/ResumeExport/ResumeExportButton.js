@@ -26,7 +26,7 @@ const ResumeExportButton = ({ className = '', variant = 'primary' }) => {
         onClose={() => setIsExportDialogOpen(false)}
       />
 
-      <style jsx>{`
+      <style>{`
         .resume-export-trigger {
           display: inline-flex;
           align-items: center;

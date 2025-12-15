@@ -202,6 +202,7 @@ export default function JobsPipeline() {
     } catch {}
     return 5;
   };
+  // eslint-disable-next-line no-unused-vars
   const [LARGE_MOVE_THRESHOLD, setLargeMoveThreshold] = useState(getConfiguredThreshold());
   // hovered column key for badge visibility
   const [hoveredStage, setHoveredStage] = useState(null);

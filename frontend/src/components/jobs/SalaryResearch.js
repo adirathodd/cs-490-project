@@ -20,6 +20,26 @@ const SalaryResearch = ({ jobId: propJobId, embedded = false }) => {
   const [researchData, setResearchData] = useState(null);
   const [hasData, setHasData] = useState(false);
   const [selectedView, setSelectedView] = useState('overview'); // overview, comparisons, trends, negotiation
+  const [benchmarks, setBenchmarks] = useState(null);
+  const [benchmarksLoading, setBenchmarksLoading] = useState(true);
+  const [benchmarksError, setBenchmarksError] = useState('');
+
+  const fetchBenchmarks = useCallback(
+    async (refresh = false) => {
+      try {
+        setBenchmarksLoading(true);
+        setBenchmarksError('');
+        const data = await salaryAPI.getSalaryBenchmarks(jobId, { refresh });
+        setBenchmarks(data);
+      } catch (err) {
+        console.error('Error fetching benchmarks:', err);
+        setBenchmarksError(err.message || 'Unable to load benchmarks');
+      } finally {
+        setBenchmarksLoading(false);
+      }
+    },
+    [jobId]
+  );
   
   const fetchJobAndResearch = useCallback(async () => {
     try {
@@ -37,13 +57,21 @@ const SalaryResearch = ({ jobId: propJobId, embedded = false }) => {
         setResearchData(null);
         setHasData(false);
       }
+      if (research.benchmarks) {
+        setBenchmarks({
+          ...research.benchmarks,
+          location_used: research.benchmark_location || research.benchmarks.location_used,
+        });
+        setBenchmarksLoading(false);
+      }
+      fetchBenchmarks(false);
     } catch (err) {
       console.error('Error fetching data:', err);
       setError(err.message || 'Failed to load salary research');
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [fetchBenchmarks, jobId]);
 
   useEffect(() => {
     fetchJobAndResearch();
@@ -123,6 +151,80 @@ const SalaryResearch = ({ jobId: propJobId, embedded = false }) => {
   const historicalRange = historicalMax - historicalMin || 1;
 
   const clampPercent = (value) => Math.min(100, Math.max(0, value));
+
+  const renderBenchmarkCard = () => (
+    <div className="salary-research-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ margin: 0 }}>Salary Benchmarks</h2>
+        <button
+          className="btn-secondary"
+          onClick={() => fetchBenchmarks(true)}
+          disabled={benchmarksLoading}
+        >
+          <Icon name="refresh" size="sm" /> {benchmarksLoading ? 'Refreshing...' : 'Refresh Benchmarks'}
+        </button>
+      </div>
+      {benchmarksError && (
+        <div className="error-message" style={{ marginTop: '8px' }}>
+          <Icon name="alert" size="sm" /> {benchmarksError}
+        </div>
+      )}
+      {benchmarksLoading ? (
+        <div style={{ padding: '20px 0' }}>
+          <LoadingSpinner />
+        </div>
+      ) : benchmarks ? (
+        <>
+          <p style={{ color: '#6b7280', marginTop: '8px', marginBottom: '16px' }}>
+            Based on BLS national wage data and community ranges adjusted for {benchmarks.location_used || 'location'}.
+          </p>
+          <div className="salary-stats">
+            <div className="stat-row">
+              <div className="stat-item">
+                <div className="stat-label">25th Percentile</div>
+                <div className="stat-value">{formatCurrency(benchmarks.percentile_25)}</div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-label">Median</div>
+                <div className="stat-value" style={{ color: '#6c3fb5', fontSize: '24px', fontWeight: 'bold' }}>
+                  {formatCurrency(benchmarks.percentile_50)}
+                </div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-label">75th Percentile</div>
+                <div className="stat-value">{formatCurrency(benchmarks.percentile_75)}</div>
+              </div>
+            </div>
+            <div className="stat-row" style={{ marginTop: '12px' }}>
+              <div className="stat-item">
+                <div className="stat-label">Sample Size</div>
+                <div className="stat-value">{benchmarks.sample_size || 'N/A'}</div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-label">Sources</div>
+                <div className="stat-value" style={{ fontSize: '14px', color: '#374151' }}>
+                  {(benchmarks.sources || []).join(', ') || 'Unknown'}
+                </div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-label">Cache</div>
+                <div className="stat-value" style={{ fontSize: '14px', color: '#374151' }}>
+                  {benchmarks.cached ? 'Cached (weekly refresh)' : 'Live lookup'}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style={{ marginTop: '16px', fontSize: '13px', color: '#6b7280', lineHeight: 1.5 }}>
+            {benchmarks.disclaimer || 'Benchmark data is informational and may not reflect exact offers.'}
+          </div>
+        </>
+      ) : (
+        <div style={{ color: '#6b7280', padding: '12px 0' }}>
+          No benchmark data available yet. Try refreshing above.
+        </div>
+      )}
+    </div>
+  );
   
   if (loading) {
     return <LoadingSpinner />;
@@ -197,32 +299,35 @@ const SalaryResearch = ({ jobId: propJobId, embedded = false }) => {
       
       {/* No Data State */}
       {!hasData && !researching && (
-        <div className="salary-research-card" style={{ maxWidth: '800px', margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <Icon name="briefcase" size="xl" color="#6c3fb5" />
-            <h2 style={{ marginTop: '20px', marginBottom: '10px' }}>No Salary Research Available</h2>
-            <p style={{ color: '#666', marginBottom: '30px' }}>
-              Generate comprehensive salary insights for this position including market ranges,
-              company comparisons, historical trends, and negotiation recommendations.
-            </p>
-            <button 
-              className="btn-primary" 
-              onClick={() => handleTriggerResearch(false)}
-              disabled={researching}
-              style={{ padding: '14px 32px', fontSize: '16px' }}
-            >
-              {researching ? (
-                <>
-                  <Icon name="refresh" size="sm" /> Generating Research...
-                </>
-              ) : (
-                <>
-                  <Icon name="idea" size="sm" /> Generate Salary Research
-                </>
-              )}
-            </button>
+        <>
+          <div className="salary-research-card" style={{ maxWidth: '800px', margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+              <Icon name="briefcase" size="xl" color="#6c3fb5" />
+              <h2 style={{ marginTop: '20px', marginBottom: '10px' }}>No Salary Research Available</h2>
+              <p style={{ color: '#666', marginBottom: '30px' }}>
+                Generate comprehensive salary insights for this position including market ranges,
+                company comparisons, historical trends, and negotiation recommendations.
+              </p>
+              <button 
+                className="btn-primary" 
+                onClick={() => handleTriggerResearch(false)}
+                disabled={researching}
+                style={{ padding: '14px 32px', fontSize: '16px' }}
+              >
+                {researching ? (
+                  <>
+                    <Icon name="refresh" size="sm" /> Generating Research...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="idea" size="sm" /> Generate Salary Research
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-        </div>
+          {renderBenchmarkCard()}
+        </>
       )}
       
       {/* Research Data View */}
@@ -260,123 +365,123 @@ const SalaryResearch = ({ jobId: propJobId, embedded = false }) => {
           
           {/* Overview Tab */}
           {selectedView === 'overview' && (
-            <div className="salary-research-grid">
-              {/* Salary Range Card */}
-              <div className="salary-research-card">
-                <h2>Salary Range</h2>
-                <div className="salary-stats">
-                  <div className="stat-row">
-                    <div className="stat-item">
-                      <div className="stat-label">Minimum</div>
-                      <div className="stat-value">{formatCurrency(researchData.salary_min)}</div>
-                    </div>
-                    <div className="stat-item">
-                      <div className="stat-label">Median</div>
-                      <div className="stat-value" style={{ color: '#6c3fb5', fontSize: '28px', fontWeight: 'bold' }}>
-                        {formatCurrency(researchData.salary_median)}
+            <div className="salary-research-overview">
+              {/* Top Section: Key Salary Data */}
+              <div className="salary-overview-hero">
+                {/* Salary Range Card - Full Width Hero */}
+                <div className="salary-research-card salary-hero-card">
+                  <h2>Salary Range for {job?.title || 'This Position'}</h2>
+                  <div className="salary-hero-content">
+                    <div className="salary-hero-stats">
+                      <div className="salary-hero-stat">
+                        <div className="stat-label">Minimum</div>
+                        <div className="stat-value">{formatCurrency(researchData.salary_min)}</div>
+                      </div>
+                      <div className="salary-hero-stat salary-hero-median">
+                        <div className="stat-label">Median Salary</div>
+                        <div className="stat-value">
+                          {formatCurrency(researchData.salary_median)}
+                        </div>
+                      </div>
+                      <div className="salary-hero-stat">
+                        <div className="stat-label">Maximum</div>
+                        <div className="stat-value">{formatCurrency(researchData.salary_max)}</div>
                       </div>
                     </div>
-                    <div className="stat-item">
-                      <div className="stat-label">Maximum</div>
-                      <div className="stat-value">{formatCurrency(researchData.salary_max)}</div>
+                    
+                    {/* Salary Range Bar */}
+                    <div className="salary-range-bar-container">
+                      <div className="salary-range-bar">
+                        {researchData.salary_median && (
+                          <div className="salary-range-marker" />
+                        )}
+                      </div>
+                      <div className="salary-range-labels">
+                        <span>25th Percentile: {formatCurrency(researchData.percentile_25)}</span>
+                        <span>75th Percentile: {formatCurrency(researchData.percentile_75)}</span>
+                      </div>
                     </div>
                   </div>
-                  
-                  {/* Salary Range Bar */}
-                  <div style={{ margin: '24px 0' }}>
-                    <div style={{ 
-                      height: '12px', 
-                      background: 'linear-gradient(90deg, #e0e0e0 0%, #6c3fb5 50%, #a855f7 100%)',
-                      borderRadius: '6px',
-                      position: 'relative'
-                    }}>
-                      {researchData.salary_median && (
-                        <div style={{
-                          position: 'absolute',
-                          left: '50%',
-                          top: '50%',
-                          transform: 'translate(-50%, -50%)',
-                          width: '4px',
-                          height: '20px',
-                          backgroundColor: '#fff',
-                          border: '2px solid #6c3fb5',
-                          borderRadius: '2px'
-                        }} />
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '12px', color: '#666' }}>
-                      <span>25th Percentile: {formatCurrency(researchData.percentile_25)}</span>
-                      <span>75th Percentile: {formatCurrency(researchData.percentile_75)}</span>
-                    </div>
-                  </div>
-                  
                 </div>
               </div>
+
+              {/* Middle Section: Benchmarks & Compensation Side by Side */}
+              <div className="salary-research-grid salary-grid-2col">
               
-              {/* Total Compensation Card */}
-              <div className="salary-research-card">
-                <h2>Total Compensation</h2>
-                <div className="compensation-breakdown">
-                  <div className="comp-item">
-                    <span className="comp-label">Base Salary</span>
-                    <span className="comp-value">{formatCurrency(researchData.base_salary)}</span>
-                  </div>
-                  <div className="comp-item">
-                    <span className="comp-label">Average Bonus</span>
-                    <span className="comp-value">{formatCurrency(researchData.bonus_avg)}</span>
-                  </div>
-                  <div className="comp-item">
-                    <span className="comp-label">Stock/Equity</span>
-                    <span className="comp-value">{formatCurrency(researchData.stock_equity)}</span>
-                  </div>
-                  <div className="comp-divider"></div>
-                  <div className="comp-item comp-total">
-                    <span className="comp-label">Total Comp Range</span>
-                    <span className="comp-value">
-                      {formatCurrency(researchData.total_comp_min)} - {formatCurrency(researchData.total_comp_max)}
-                    </span>
+              {renderBenchmarkCard()}
+
+                {/* Total Compensation Card */}
+                <div className="salary-research-card">
+                  <h2>Total Compensation</h2>
+                  <div className="compensation-breakdown">
+                    <div className="comp-item">
+                      <span className="comp-label">Base Salary</span>
+                      <span className="comp-value">{formatCurrency(researchData.base_salary)}</span>
+                    </div>
+                    <div className="comp-item">
+                      <span className="comp-label">Average Bonus</span>
+                      <span className="comp-value">{formatCurrency(researchData.bonus_avg)}</span>
+                    </div>
+                    <div className="comp-item">
+                      <span className="comp-label">Stock/Equity</span>
+                      <span className="comp-value">{formatCurrency(researchData.stock_equity)}</span>
+                    </div>
+                    <div className="comp-divider"></div>
+                    <div className="comp-item comp-total">
+                      <span className="comp-label">Total Comp Range</span>
+                      <span className="comp-value">
+                        {formatCurrency(researchData.total_comp_min)} - {formatCurrency(researchData.total_comp_max)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
+
+              {/* Bottom Section: Insights & Benefits Side by Side */}
+              <div className="salary-research-grid salary-grid-2col">
               
               {/* Market Insights Card */}
               <div className="salary-research-card">
                 <h2>Market Insights</h2>
                 <div className="market-insights">
-                  <div className="insight-item">
-                    <Icon name="chart" size="md" color="#6c3fb5" />
-                    <div>
-                      <div className="insight-label">Market Trend</div>
-                      <div className="insight-value" style={{ textTransform: 'capitalize' }}>
-                        {researchData.market_trend || 'Stable'}
-                        {researchData.market_trend === 'up' && ' 📈'}
-                        {researchData.market_trend === 'down' && ' 📉'}
+                  <div className="insight-row">
+                    <div className="insight-item">
+                      <Icon name="chart" size="md" color="#6c3fb5" />
+                      <div>
+                        <div className="insight-label">Market Trend</div>
+                        <div className="insight-value" style={{ textTransform: 'capitalize' }}>
+                          {researchData.market_trend || 'Stable'}
+                          {researchData.market_trend === 'up' && ' 📈'}
+                          {researchData.market_trend === 'down' && ' 📉'}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="insight-item">
+                      <Icon name="users" size="md" color="#6c3fb5" />
+                      <div>
+                        <div className="insight-label">Data Points</div>
+                        <div className="insight-value">{researchData.sample_size || 'N/A'} salaries analyzed</div>
                       </div>
                     </div>
                   </div>
                   
-                  <div className="insight-item">
-                    <Icon name="users" size="md" color="#6c3fb5" />
-                    <div>
-                      <div className="insight-label">Data Points</div>
-                      <div className="insight-value">{researchData.sample_size || 'N/A'} salaries analyzed</div>
+                  <div className="insight-row">
+                    <div className="insight-item">
+                      <Icon name="location" size="md" color="#6c3fb5" />
+                      <div>
+                        <div className="insight-label">Location</div>
+                        <div className="insight-value">{researchData.location}</div>
+                      </div>
                     </div>
-                  </div>
-                  
-                  <div className="insight-item">
-                    <Icon name="location" size="md" color="#6c3fb5" />
-                    <div>
-                      <div className="insight-label">Location</div>
-                      <div className="insight-value">{researchData.location}</div>
-                    </div>
-                  </div>
-                  
-                  <div className="insight-item">
-                    <Icon name="briefcase" size="md" color="#6c3fb5" />
-                    <div>
-                      <div className="insight-label">Experience Level</div>
-                      <div className="insight-value" style={{ textTransform: 'capitalize' }}>
-                        {researchData.experience_level || 'N/A'}
+                    
+                    <div className="insight-item">
+                      <Icon name="briefcase" size="md" color="#6c3fb5" />
+                      <div>
+                        <div className="insight-label">Experience Level</div>
+                        <div className="insight-value" style={{ textTransform: 'capitalize' }}>
+                          {researchData.experience_level || 'N/A'}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -384,10 +489,10 @@ const SalaryResearch = ({ jobId: propJobId, embedded = false }) => {
               </div>
               
               {/* Benefits Card */}
-              {researchData.benefits && Object.keys(researchData.benefits).length > 0 && (
+              {researchData.benefits && Object.keys(researchData.benefits).length > 0 ? (
                 <div className="salary-research-card">
                   <h2>Benefits Package</h2>
-                  <div className="benefits-list">
+                  <div className="benefits-grid">
                     {Object.entries(researchData.benefits).map(([key, value]) => (
                       <div key={key} className="benefit-item">
                         <Icon name="check" size="sm" color="#4caf50" />
@@ -399,7 +504,16 @@ const SalaryResearch = ({ jobId: propJobId, embedded = false }) => {
                     ))}
                   </div>
                 </div>
+              ) : (
+                <div className="salary-research-card">
+                  <h2>Benefits Package</h2>
+                  <div className="benefits-empty">
+                    <Icon name="info" size="md" color="#9ca3af" />
+                    <p>No benefits data available for this position</p>
+                  </div>
+                </div>
               )}
+              </div>
             </div>
           )}
           

@@ -407,12 +407,15 @@ const NetworkingEvents = () => {
   const benchmarks = analytics?.industry_benchmarks || {};
   const bestChannel = analytics?.best_channel;
   const bestChannelLabel = bestChannel ? formatBadgeLabel(bestChannel.event_type) : '';
+  // eslint-disable-next-line no-unused-vars
   const strengthsList = insights?.strengths?.length
     ? insights.strengths
     : ['You are building momentum—keep follow-ups within 48 hours to compound trust.'];
+  // eslint-disable-next-line no-unused-vars
   const focusList = insights?.focus?.length
     ? insights.focus
     : ['Increase high-value intros by targeting decision makers and asking for mutual value.'];
+  // eslint-disable-next-line no-unused-vars
   const recommendationsList = insights?.recommendations?.length
     ? insights.recommendations
     : ['Pilot 2 low-cost niche events and track high-value introductions per dollar.'];

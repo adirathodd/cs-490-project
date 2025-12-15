@@ -21,6 +21,7 @@ import ProjectDetail from './components/profile/ProjectDetail';
 import Jobs from './components/jobs/Jobs';
 import JobsPipeline from './components/jobs/JobsPipeline';
 import JobStats from './components/jobs/JobStats';
+import ApplicationTimingOptimizer from './components/jobs/ApplicationTimingOptimizer';
 import Analytics from './components/analytics/Analytics';
 import ApplicationSuccessAnalysis from './components/analytics/ApplicationSuccessAnalysis';
 import JobDetailView from './components/jobs/JobDetailView';
@@ -42,6 +43,7 @@ import MentorshipMenteeDashboard from './components/mentorship/MenteeDashboard';
 import PeerSupportHub from './components/community/PeerSupportHub';
 import MarketIntelligence from './components/tools/MarketIntelligence';
 import SalaryProgression from './components/tools/SalaryProgression';
+import CareerGrowthCalculator from './components/tools/CareerGrowthCalculator';
 import { CompanyInsights } from './features/company';
 import { AiResumeGenerator } from './features/resume';
 import { AiCoverLetterGenerator } from './features/cover-letter';
@@ -57,7 +59,7 @@ import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
 import NavBar from './components/common/NavBar';
 import Breadcrumbs from './components/common/Breadcrumbs';
-import { MockInterviewContainer, QuestionBankBrowser, ResponseCoach, InterviewResearchBrief } from './components/interview';
+import { MockInterviewContainer, QuestionBankBrowser, ResponseCoach, ResponseCoachLanding, InterviewResearchBrief, ResponseLibrary } from './components/interview';
 import APIMonitoringDashboard from './components/admin/APIMonitoringDashboard';
 import './App.css';
 
@@ -282,6 +284,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <JobStats />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/jobs/timing-optimizer"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ApplicationTimingOptimizer />
               </PrivateRoute>
             }
           />
@@ -546,6 +559,16 @@ function App() {
               </PrivateRoute>
             }
           />
+          <Route
+            path="/tools/career-growth-calculator"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <CareerGrowthCalculator />
+              </PrivateRoute>
+            }
+          />
 
           {/* Mock Interview and related interview tooling routes (from origin/main) */}
           <Route
@@ -566,6 +589,17 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <QuestionBankBrowser />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/response-coach"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <ResponseCoachLanding />
               </PrivateRoute>
             }
           />

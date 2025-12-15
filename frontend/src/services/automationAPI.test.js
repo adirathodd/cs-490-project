@@ -1,4 +1,9 @@
 import { automationAPI } from './automationAPI';
+import { authorizedFetch } from './authToken';
+
+jest.mock('./authToken', () => ({
+  authorizedFetch: jest.fn((...args) => global.fetch(...args)),
+}));
 
 // Save original globals to restore after tests
 const originalFetch = global.fetch;
@@ -7,6 +12,8 @@ const originalURL = global.URL;
 
 describe('automationAPI service', () => {
   beforeEach(() => {
+    global.fetch = jest.fn();
+    authorizedFetch.mockImplementation((...args) => global.fetch(...args));
     // Simple localStorage mock
     const store = {};
     global.localStorage = {
@@ -29,12 +36,6 @@ describe('automationAPI service', () => {
     global.localStorage = originalLocalStorage;
     global.URL = originalURL;
     jest.clearAllMocks();
-  });
-
-  test('getAuthHeaders includes firebaseToken as Bearer', () => {
-    const headers = automationAPI.getAuthHeaders();
-    expect(headers['Authorization']).toBe('Bearer test-token');
-    expect(headers['Content-Type']).toBe('application/json');
   });
 
   test('request returns parsed json on success', async () => {

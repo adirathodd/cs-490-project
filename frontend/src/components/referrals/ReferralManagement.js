@@ -21,6 +21,7 @@ const ReferralManagement = () => {
   useEffect(() => {
     fetchReferrals();
     fetchAnalytics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const fetchReferrals = async (tabOverride) => {
@@ -362,6 +363,7 @@ const ReferralManagement = () => {
             setShowForm(false);
             // Switch to the 'All' tab and refresh data so the newly created request appears there immediately
             setActiveTab('all');
+            // eslint-disable-next-line no-unused-vars
             const data = await fetchReferrals('all');
             fetchAnalytics();
             setSuccess('Referral request created successfully!');

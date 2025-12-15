@@ -19,6 +19,7 @@ from core.models import (
 from core.google_import import fetch_and_normalize, GooglePeopleAPIError
 from core.technical_prep import build_technical_prep
 from core import gmail_utils
+from core.salary_benchmarks import salary_benchmark_service
 
 logger = logging.getLogger(__name__)
 
@@ -815,3 +816,318 @@ else:
     def generate_weekly_api_report():
         return _generate_weekly_api_report_sync()
 
+
+# ========================================
+# UC-124: Job Application Timing Optimizer Tasks
+# ========================================
+
+def _process_scheduled_submissions_sync():
+    """
+    Process scheduled submissions that are due.
+    This should be called periodically (e.g., every 15 minutes).
+    """
+    from core.models import ScheduledSubmission
+    from django.core.mail import send_mail, EmailMessage
+    from django.conf import settings
+    
+    now = timezone.now()
+    
+    # Get submissions that are due
+    due_submissions = ScheduledSubmission.objects.filter(
+        status='scheduled',
+        scheduled_datetime__lte=now
+    ).select_related('job', 'candidate', 'application_package')
+    
+    processed_count = 0
+    failed_count = 0
+    
+    for submission in due_submissions:
+        try:
+            logger.info(f"Processing scheduled submission {submission.id} for job {submission.job.id}")
+            
+            # Perform actual submission based on method
+            if submission.submission_method == 'email':
+                _send_application_email(submission)
+            elif submission.submission_method == 'portal':
+                # For portal submissions, just mark as submitted
+                # User would have to manually submit through the portal
+                logger.info(f"Portal submission {submission.id} marked for manual completion")
+            else:
+                logger.info(f"Other submission method for {submission.id}, marking as submitted")
+            
+            # Mark as submitted
+            submission.mark_submitted()
+            processed_count += 1
+            
+            logger.info(f"Successfully processed submission {submission.id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to process submission {submission.id}: {str(e)}")
+            submission.status = 'failed'
+            submission.error_message = str(e)
+            submission.retry_count += 1
+            
+            # Retry if under max retries
+            if submission.retry_count < submission.max_retries:
+                submission.status = 'scheduled'
+                submission.scheduled_datetime = now + timedelta(minutes=15)
+                logger.info(f"Rescheduling submission {submission.id} for retry")
+            
+            submission.save()
+            failed_count += 1
+    
+    logger.info(f"Processed {processed_count} submissions, {failed_count} failed")
+    return {'processed': processed_count, 'failed': failed_count}
+
+
+def _send_application_email(submission):
+    """
+    Send application email with resume and cover letter attachments.
+    """
+    from django.core.mail import EmailMessage
+    from django.conf import settings
+    import os
+    
+    job = submission.job
+    candidate = submission.candidate
+    package = submission.application_package
+    user = candidate.user
+    
+    # Build email subject
+    subject = f"Application for {job.title} - {user.get_full_name() or user.email}"
+    
+    # Build email body
+    body = f"""Dear Hiring Manager,
+
+I am writing to express my interest in the {job.title} position at {job.company_name}.
+
+{candidate.summary or 'I am excited about this opportunity and believe my skills and experience make me a strong candidate for this role.'}
+
+Please find attached my resume and cover letter for your consideration.
+
+Thank you for your time and consideration.
+
+Best regards,
+{user.get_full_name() or user.first_name or 'Applicant'}
+{candidate.phone or ''}
+{user.email}
+"""
+    
+    # Get recipient email
+    # Try to get from job metadata
+    to_email = None
+    if hasattr(job, 'metadata') and job.metadata:
+        if isinstance(job.metadata, dict):
+            to_email = job.metadata.get('contact_email') or job.metadata.get('recruiter_email')
+    
+    # If no email found, we can't send - mark for manual submission
+    if not to_email:
+        raise ValueError(f"No recipient email found for job {job.id}. Please add contact email to job metadata or submit manually.")
+    
+    # Create email message
+    email = EmailMessage(
+        subject=subject,
+        body=body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[to_email],
+        reply_to=[user.email]
+    )
+    
+    # Attach resume and cover letter if available
+    if package:
+        # Attach resume
+        if package.resume_doc:
+            resume_path = package.resume_doc.file_path.path if hasattr(package.resume_doc.file_path, 'path') else None
+            if resume_path and os.path.exists(resume_path):
+                email.attach_file(resume_path)
+            else:
+                logger.warning(f"Resume file not found at {resume_path}")
+        
+        # Attach cover letter
+        if package.cover_letter_doc:
+            cover_letter_path = package.cover_letter_doc.file_path.path if hasattr(package.cover_letter_doc.file_path, 'path') else None
+            if cover_letter_path and os.path.exists(cover_letter_path):
+                email.attach_file(cover_letter_path)
+            else:
+                logger.warning(f"Cover letter file not found at {cover_letter_path}")
+    
+    # Send email
+    try:
+        email.send(fail_silently=False)
+        logger.info(f"Application email sent to {to_email} for submission {submission.id}")
+    except Exception as e:
+        logger.error(f"Failed to send application email: {str(e)}")
+        raise
+
+
+def _send_due_reminders_sync():
+    """
+    Send reminders that are due.
+    This should be called periodically (e.g., every 15 minutes).
+    """
+    from core.models import FollowUpReminder
+    from django.core.mail import send_mail
+    from django.conf import settings
+    
+    now = timezone.now()
+    
+    # Get reminders that are due
+    due_reminders = FollowUpReminder.objects.filter(
+        status='pending',
+        scheduled_datetime__lte=now
+    ).exclude(job__status='rejected').select_related('job', 'candidate__user')
+    
+    sent_count = 0
+    failed_count = 0
+    
+    for reminder in due_reminders:
+        try:
+            user = reminder.candidate.user
+            if not user.email:
+                logger.warning(f"No email for reminder {reminder.id}, skipping")
+                reminder.status = 'failed'
+                reminder.save()
+                continue
+            
+            logger.info(f"Sending reminder {reminder.id} to {user.email}")
+            
+            # Format the message
+            message = reminder.message_template
+            message = message.replace('{job_title}', reminder.job.title)
+            message = message.replace('{company_name}', reminder.job.company_name)
+            message = message.replace('{user_name}', user.get_full_name() or user.email)
+            
+            # Send email
+            send_mail(
+                subject=reminder.subject,
+                message=message,
+                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@example.com'),
+                recipient_list=[user.email],
+                fail_silently=False
+            )
+            
+            # Mark as sent and potentially create next occurrence
+            reminder.mark_sent()
+            sent_count += 1
+            
+            logger.info(f"Successfully sent reminder {reminder.id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to send reminder {reminder.id}: {str(e)}")
+            reminder.status = 'failed'
+            reminder.save()
+            failed_count += 1
+    
+    logger.info(f"Sent {sent_count} reminders, {failed_count} failed")
+    return {'sent': sent_count, 'failed': failed_count}
+
+
+def _check_upcoming_deadlines_sync():
+    """
+    Check for upcoming application deadlines and create reminders.
+    This should be called daily.
+    """
+    from core.models import JobEntry, FollowUpReminder, CandidateProfile
+    from datetime import date
+    
+    today = date.today()
+    three_days_from_now = today + timedelta(days=3)
+    
+    # Find jobs with deadlines in 3 days that don't have reminders
+    jobs_with_deadlines = JobEntry.objects.filter(
+        application_deadline=three_days_from_now,
+        status='interested'
+    ).select_related('candidate')
+    
+    reminder_count = 0
+    
+    for job in jobs_with_deadlines:
+        # Check if reminder already exists
+        existing = FollowUpReminder.objects.filter(
+            candidate=job.candidate,
+            job=job,
+            reminder_type='application_deadline',
+            status='pending'
+        ).exists()
+        
+        if not existing:
+            # Create reminder
+            reminder = FollowUpReminder.objects.create(
+                candidate=job.candidate,
+                job=job,
+                reminder_type='application_deadline',
+                subject=f"Deadline in 3 days: {job.title} at {job.company_name}",
+                message_template=f"Hi {{user_name}},\n\nThis is a reminder that the application deadline for {job.title} at {job.company_name} is in 3 days ({job.application_deadline}).\n\nDon't forget to submit your application!",
+                scheduled_datetime=timezone.now() + timedelta(hours=9),  # 9 AM next day
+                followup_stage=getattr(job, 'status', None),
+                auto_scheduled=True,
+            )
+            reminder_count += 1
+            logger.info(f"Created deadline reminder {reminder.id} for job {job.id}")
+    
+    logger.info(f"Created {reminder_count} deadline reminders")
+    return {'reminders_created': reminder_count}
+
+
+def _refresh_salary_benchmarks_sync(limit: int = 15):
+    """
+    Refresh cached salary benchmarks for stale entries (runs weekly/monthly).
+    Uses stored MarketIntelligence rows to avoid redundant API calls.
+    """
+    from core.models import MarketIntelligence
+
+    cutoff = timezone.now() - timedelta(days=30)
+    stale = (
+        MarketIntelligence.objects.filter(last_updated__lt=cutoff)
+        .order_by("last_updated")[:limit]
+    )
+    refreshed = 0
+
+    for record in stale:
+        try:
+            salary_benchmark_service.get_benchmarks(
+                job_title=record.job_title,
+                location=record.location,
+                experience_level=record.experience_level,
+                force_refresh=True,
+            )
+            refreshed += 1
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.warning("Failed to refresh salary benchmark for %s (%s): %s", record.job_title, record.location, exc)
+
+    return {"refreshed": refreshed, "checked": stale.count()}
+
+
+# Celery task wrappers
+if CELERY_AVAILABLE:
+    @shared_task
+    def process_scheduled_submissions():
+        """Process scheduled submissions that are due."""
+        return _process_scheduled_submissions_sync()
+    
+    @shared_task
+    def send_due_reminders():
+        """Send reminders that are due."""
+        return _send_due_reminders_sync()
+    
+    @shared_task
+    def check_upcoming_deadlines():
+        """Check for upcoming deadlines and create reminders."""
+        return _check_upcoming_deadlines_sync()
+
+    @shared_task
+    def refresh_salary_benchmarks():
+        """Refresh salary benchmarks for stale market intelligence rows."""
+        return _refresh_salary_benchmarks_sync()
+else:
+    def process_scheduled_submissions():
+        return _process_scheduled_submissions_sync()
+    
+    def send_due_reminders():
+        return _send_due_reminders_sync()
+    
+    def check_upcoming_deadlines():
+        return _check_upcoming_deadlines_sync()
+
+    def refresh_salary_benchmarks():
+        return _refresh_salary_benchmarks_sync()

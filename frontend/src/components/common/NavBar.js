@@ -186,6 +186,13 @@ const NavBar = () => {
         >
           Mock Interview Practice
         </NavLink>
+        <NavLink
+          to="/response-coach"
+          className="nav-dropdown-item"
+          onClick={() => { setToolsDropdownOpen(false); setOpen(false); }}
+        >
+          Response Coach & Library
+        </NavLink>
 
       </div>
     )}

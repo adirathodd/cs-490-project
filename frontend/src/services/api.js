@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { ensureFirebaseToken } from './authToken';
 
 // ⚠️ UC-117: Backend API monitoring tracks all external API calls.
 // See backend/core/api_monitoring.py for implementation details.
@@ -18,26 +19,16 @@ export const api = axios.create({
 // Add token to requests if available
 api.interceptors.request.use(
   async (config) => {
-    let token = localStorage.getItem('firebaseToken');
-    if (!token) {
-      try {
-        const { auth } = await import('./firebase');
-        if (auth?.currentUser) {
-          token = await auth.currentUser.getIdToken();
-          if (token) localStorage.setItem('firebaseToken', token);
-        }
-      } catch {
-        // Ignore; will proceed unauthenticated
-      }
-    }
+    const token = await ensureFirebaseToken(false);
+    if (!config.headers) config.headers = {};
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    } else if (config.headers.Authorization) {
+      delete config.headers.Authorization;
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // Normalize errors and add light retry for transient GET failures
@@ -53,26 +44,22 @@ api.interceptors.response.use(
 
     // Handle token expiration (401/403 with authentication error)
     if (status === 401 || status === 403) {
-      const errorMessage = error?.response?.data?.error?.message || error?.response?.data?.detail || '';
-      if (errorMessage.toLowerCase().includes('token') || errorMessage.toLowerCase().includes('authentication')) {
-        // Token expired - try to refresh it
-        if (!config.__tokenRefreshAttempted) {
+      const errorMessage = (error?.response?.data?.error?.message || error?.response?.data?.detail || '').toLowerCase();
+      if (!config.__tokenRefreshAttempted && (errorMessage.includes('token') || errorMessage.includes('authentication'))) {
+        try {
           config.__tokenRefreshAttempted = true;
-          
+          const newToken = await ensureFirebaseToken(true);
+          if (newToken) {
+            if (!config.headers) config.headers = {};
+            config.headers.Authorization = `Bearer ${newToken}`;
+            return api.request(config);
+          }
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
           try {
-            // Get fresh token from Firebase
-            const { auth } = await import('./firebase');
-            const user = auth.currentUser;
-            if (user) {
-              const newToken = await user.getIdToken(true); // Force refresh
-              localStorage.setItem('firebaseToken', newToken);
-              config.headers.Authorization = `Bearer ${newToken}`;
-              return api.request(config); // Retry with new token
-            }
-          } catch (refreshError) {
-            console.error('Token refresh failed:', refreshError);
             localStorage.removeItem('firebaseToken');
-            // Redirect to login or let the error propagate
+          } catch (_) {
+            // ignore
           }
         }
       }
@@ -99,7 +86,8 @@ api.interceptors.response.use(
   }
 );
 
-const extractErrorMessage = (error, fallback) => {
+// eslint-disable-next-line no-unused-vars
+const _extractErrorMessage = (error, fallback) => {
   const data = error?.response?.data;
   if (!data) return fallback;
 
@@ -508,8 +496,8 @@ export const certificationsAPI = {
 
   addCertification: async (data) => {
     try {
-      // If document file is included, send multipart
-      if (data.document instanceof File) {
+      // If document or badge file is included, send multipart
+      if (data.document instanceof File || data.badge_image instanceof File) {
         const form = new FormData();
         Object.entries(data).forEach(([k, v]) => {
           if (v !== undefined && v !== null) form.append(k, v);
@@ -526,7 +514,12 @@ export const certificationsAPI = {
 
   updateCertification: async (id, data) => {
     try {
-      if (data.document instanceof File || data.document === null) {
+      const requiresMultipart =
+        data.document instanceof File ||
+        data.document === null ||
+        data.badge_image instanceof File ||
+        data.badge_image === null;
+      if (requiresMultipart) {
         const form = new FormData();
         Object.entries(data).forEach(([k, v]) => {
           if (v === null) {
@@ -836,6 +829,10 @@ export const jobsAPI = {
     const response = await api.get('/jobs/success-analysis');
     return response.data;
   },
+  getOptimizationInsights: async () => {
+    const response = await api.get('/jobs/optimization-dashboard');
+    return response.data;
+  },
 
   bulkUpdateStatus: async (ids, status) => {
     const response = await api.post('/jobs/bulk-status', { ids, status });
@@ -862,6 +859,16 @@ export const jobsAPI = {
       return response.data;
     } catch (error) {
       throw error.response?.data?.error || { message: 'Failed to fetch commute time' };
+    }
+  },
+
+  // Jobs ranked by fastest stored commute time
+  getCommuteRanking: async () => {
+    try {
+      const response = await api.get('/jobs/commute-ranking');
+      return response.data; // { results: [{ job_id, title, company_name, min_commute_eta_min, min_commute_distance_km }] }
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to load commute ranking' };
     }
   },
 
@@ -937,6 +944,28 @@ export const jobsAPI = {
       throw error.response?.data?.error || { message: 'Failed to fetch bulk job match scores' };
     }
   },
+
+  // Application quality scoring
+  getApplicationQuality: async (id, options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.refresh) params.append('refresh', 'true');
+      const path = params.toString() ? `/jobs/${id}/quality/?${params.toString()}` : `/jobs/${id}/quality/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch application quality' };
+    }
+  },
+
+  refreshApplicationQuality: async (id, data = {}) => {
+    try {
+      const response = await api.post(`/jobs/${id}/quality/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to score application quality' };
+    }
+  },
 };
 
 export const companyAPI = {
@@ -994,10 +1023,127 @@ export const questionBankAPI = {
   // Get AI coaching for a response
   coachQuestionResponse: async (jobId, data) => {
     try {
-      const response = await api.post(`/jobs/${jobId}/question-bank/coach/`, data);
+      // Use general endpoint if jobId is 'general'
+      const endpoint = jobId === 'general' 
+        ? '/general-response-coach/' 
+        : `/jobs/${jobId}/question-bank/coach/`;
+      const response = await api.post(endpoint, data);
       return response.data;
     } catch (error) {
       throw error.response?.data?.error || { message: 'Failed to generate coaching feedback' };
+    }
+  },
+};
+
+// UC-126: Response Library API
+export const responseLibraryAPI = {
+  // List all responses with optional filters
+  listResponses: async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.type) params.append('type', filters.type);
+      if (filters.search) params.append('search', filters.search);
+      
+      const path = params.toString() 
+        ? `/response-library/?${params.toString()}` 
+        : `/response-library/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch response library' };
+    }
+  },
+
+  // Create a new response
+  createResponse: async (data) => {
+    try {
+      const response = await api.post('/response-library/', data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to create response' };
+    }
+  },
+
+  // Get a specific response with version history
+  getResponse: async (responseId) => {
+    try {
+      const response = await api.get(`/response-library/${responseId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch response' };
+    }
+  },
+
+  // Update a response
+  updateResponse: async (responseId, data) => {
+    try {
+      const response = await api.put(`/response-library/${responseId}/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to update response' };
+    }
+  },
+
+  // Delete a response
+  deleteResponse: async (responseId) => {
+    try {
+      await api.delete(`/response-library/${responseId}/`);
+      return { success: true };
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete response' };
+    }
+  },
+
+  // Record usage of a response
+  recordUsage: async (responseId, data) => {
+    try {
+      const response = await api.post(`/response-library/${responseId}/record-usage/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to record usage' };
+    }
+  },
+
+  // Get response suggestions for a job
+  getSuggestions: async (jobId, filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.question) params.append('question', filters.question);
+      if (filters.type) params.append('type', filters.type);
+      
+      const path = params.toString()
+        ? `/jobs/${jobId}/response-suggestions/?${params.toString()}`
+        : `/jobs/${jobId}/response-suggestions/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch suggestions' };
+    }
+  },
+
+  // Export response library
+  exportLibrary: async (format = 'text', questionType = null) => {
+    try {
+      const params = new URLSearchParams();
+      params.append('format', format);
+      if (questionType) params.append('type', questionType);
+      
+      const response = await api.get(`/response-library/export/?${params.toString()}`, {
+        responseType: 'blob'
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to export library' };
+    }
+  },
+
+  // Save a coached response to the library
+  saveFromCoaching: async (data) => {
+    try {
+      const response = await api.post('/response-library/save-from-coaching/', data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to save to library' };
     }
   },
 };
@@ -1143,6 +1289,21 @@ export const salaryAPI = {
       throw error.response?.data?.error || { message: 'Failed to export salary research' };
     }
   },
+
+  // Get salary benchmarks (BLS + community) with caching
+  getSalaryBenchmarks: async (jobId, options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.refresh) params.append('refresh', 'true');
+      const path = params.toString()
+        ? `/jobs/${jobId}/salary-benchmarks/?${params.toString()}`
+        : `/jobs/${jobId}/salary-benchmarks/`;
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to fetch salary benchmarks' };
+    }
+  },
 };
 
 // UC-083: Salary Negotiation planning + outcome tracking
@@ -1189,6 +1350,80 @@ export const salaryNegotiationAPI = {
       return response.data;
     } catch (error) {
       throw error.response?.data?.error || { message: 'Failed to delete negotiation outcome' };
+    }
+  },
+};
+
+// UC-127: Offer comparison + scenario analysis
+export const offerAPI = {
+  list: async (params = {}) => {
+    try {
+      const usp = new URLSearchParams();
+      Object.entries(params || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') return;
+        usp.append(key, value);
+      });
+      const path = usp.toString() ? `/job-offers/?${usp.toString()}` : '/job-offers/';
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to load job offers' };
+    }
+  },
+
+  create: async (payload) => {
+    try {
+      const response = await api.post('/job-offers/', payload);
+      return response.data?.result;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to save job offer' };
+    }
+  },
+
+  update: async (offerId, payload) => {
+    try {
+      const response = await api.patch(`/job-offers/${offerId}/`, payload);
+      return response.data?.result;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to update job offer' };
+    }
+  },
+
+  delete: async (offerId) => {
+    try {
+      await api.delete(`/job-offers/${offerId}/`);
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to delete job offer' };
+    }
+  },
+
+  archive: async (offerId, reason = 'declined') => {
+    try {
+      const response = await api.post(`/job-offers/${offerId}/archive/`, { reason });
+      return response.data?.result;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to archive job offer' };
+    }
+  },
+
+  getComparison: async (options = {}) => {
+    try {
+      const usp = new URLSearchParams();
+      if (options.includeArchived) usp.append('include_archived', 'true');
+      const path = usp.toString() ? `/job-offers/comparison/?${usp.toString()}` : '/job-offers/comparison/';
+      const response = await api.get(path);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to load offer comparison' };
+    }
+  },
+
+  runScenario: async (scenario = {}) => {
+    try {
+      const response = await api.post('/job-offers/comparison/', { scenario });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || { message: 'Failed to run scenario analysis' };
     }
   },
 };
@@ -1291,9 +1526,9 @@ export const interviewsAPI = {
         const errorMessage = error.error[0];
         if (typeof errorMessage === 'string') {
           // This is likely a conflict message, so put it in scheduled_at field
-          throw { scheduled_at: errorMessage };
+          throw new Error(JSON.stringify({ scheduled_at: errorMessage }));
         }
-        throw error.error[0];
+        throw new Error(JSON.stringify(error.error[0]));
       }
       
       throw error.response?.data || error.error || { message: 'Failed to create interview' };
@@ -1316,12 +1551,15 @@ export const interviewsAPI = {
         const errorMessage = error.error[0];
         if (typeof errorMessage === 'string') {
           // This is likely a conflict message, so put it in scheduled_at field
-          throw { scheduled_at: errorMessage };
+          const err = new Error(errorMessage);
+          err.scheduled_at = errorMessage;
+          throw err;
         }
-        throw error.error[0];
+        throw new Error(JSON.stringify(error.error[0]));
       }
       
-      throw error.response?.data || error.error || { message: 'Failed to update interview' };
+      const errData = error.response?.data || error.error || { message: 'Failed to update interview' };
+      throw new Error(typeof errData === 'string' ? errData : JSON.stringify(errData));
     }
   },
 
@@ -1766,12 +2004,14 @@ export const resumeExportAPI = {
         const text = await error.response.data.text();
         try {
           const errorData = JSON.parse(text);
-          throw errorData.error || { code: 'export_failed', message: 'Export failed' };
-        } catch {
-          throw { code: 'export_failed', message: 'Export failed' };
+          throw new Error(JSON.stringify(errorData.error || { code: 'export_failed', message: 'Export failed' }));
+        } catch (parseErr) {
+          if (parseErr instanceof Error && parseErr.message.includes('export_failed')) throw parseErr;
+          throw new Error(JSON.stringify({ code: 'export_failed', message: 'Export failed' }));
         }
       }
-      throw error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+      const errInfo = error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+      throw new Error(typeof errInfo === 'string' ? errInfo : JSON.stringify(errInfo));
     }
   },
 
@@ -1827,12 +2067,14 @@ export const resumeExportAPI = {
         const text = await error.response.data.text();
         try {
           const errorData = JSON.parse(text);
-          throw errorData.error || { code: 'export_failed', message: 'Export failed' };
-        } catch {
-          throw { code: 'export_failed', message: 'Export failed' };
+          throw new Error(JSON.stringify(errorData.error || { code: 'export_failed', message: 'Export failed' }));
+        } catch (parseErr) {
+          if (parseErr instanceof Error && parseErr.message.includes('export_failed')) throw parseErr;
+          throw new Error(JSON.stringify({ code: 'export_failed', message: 'Export failed' }));
         }
       }
-      throw error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+      const errInfo = error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+      throw new Error(typeof errInfo === 'string' ? errInfo : JSON.stringify(errInfo));
     }
   },
 };
@@ -1901,12 +2143,72 @@ export const coverLetterExportAPI = {
         const text = await error.response.data.text();
         try {
           const errorData = JSON.parse(text);
-          throw errorData.error || { code: 'export_failed', message: 'Export failed' };
-        } catch {
-          throw { code: 'export_failed', message: 'Export failed' };
+          throw new Error(JSON.stringify(errorData.error || { code: 'export_failed', message: 'Export failed' }));
+        } catch (parseErr) {
+          if (parseErr instanceof Error && parseErr.message.includes('export_failed')) throw parseErr;
+          throw new Error(JSON.stringify({ code: 'export_failed', message: 'Export failed' }));
         }
       }
-      throw error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+      const errInfo = error.error || error.response?.data?.error || { code: 'export_failed', message: 'Export failed' };
+      throw new Error(typeof errInfo === 'string' ? errInfo : JSON.stringify(errInfo));
+    }
+  },
+};
+
+// Application follow-up reminders (UC-124 intelligent reminders)
+export const followupAPI = {
+  getPlaybook: async ({ jobId, stage }) => {
+    try {
+      const params = stage ? `?stage=${encodeURIComponent(stage)}` : '';
+      const response = await api.get(`/reminders/playbook/${jobId}/${params}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to load follow-up suggestion' };
+    }
+  },
+
+  createFromPlaybook: async ({ jobId, stage }) => {
+    try {
+      const response = await api.post(`/reminders/playbook/${jobId}/`, stage ? { stage } : {});
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to schedule follow-up' };
+    }
+  },
+
+  list: async () => {
+    try {
+      const response = await api.get('/reminders/');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to fetch reminders' };
+    }
+  },
+
+  snooze: async (id, payload) => {
+    try {
+      const response = await api.post(`/reminders/${id}/snooze/`, payload || {});
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to snooze reminder' };
+    }
+  },
+
+  dismiss: async (id) => {
+    try {
+      const response = await api.post(`/reminders/${id}/dismiss/`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to dismiss reminder' };
+    }
+  },
+
+  complete: async (id, payload) => {
+    try {
+      const response = await api.post(`/reminders/${id}/complete/`, payload || {});
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error.response?.data?.error || { message: 'Failed to complete reminder' };
     }
   },
 };
@@ -2048,11 +2350,11 @@ export const geoAPI = {
 };
 
 // Provide a forgiving default export that supports both
-// - `import authAPI from './services/api'` (legacy/default import)
-// - `import { authAPI } from './services/api'` (named import)
+// - `import api from './services/api'` and calling `api.get(...)`
+// - `import { authAPI } from './services/api'`
 // and also exposes other API groups as properties for callers that expect `api.authAPI`.
-const _defaultExport = {
-  // Expose the raw axios instance under a stable key to avoid property collisions
+const _defaultExport = Object.assign(api, {
+  // Preserve direct axios usage while giving callers access to the raw instance
   http: api,
   // include grouped namespaces as properties
   authAPI,
@@ -2074,7 +2376,8 @@ const _defaultExport = {
   calendarAPI,
   githubAPI,
   geoAPI,
-};
+  responseLibraryAPI,
+});
 
 export default _defaultExport;
 
@@ -2314,14 +2617,13 @@ export const resumeSharingAPI = {
       
       // Pass through the response data which contains requires_password, requires_reviewer_info flags
       const errorData = error.response?.data || {};
-      throw {
-        message: errorData.error || error.message || 'Failed to access shared resume',
-        status: error.response?.status,
-        requires_password: errorData.requires_password || false,
-        requires_reviewer_info: errorData.requires_reviewer_info || false,
-        requires_email: errorData.requires_email || false,
-        ...errorData
-      };
+      const errObj = new Error(errorData.error || error.message || 'Failed to access shared resume');
+      errObj.status = error.response?.status;
+      errObj.requires_password = errorData.requires_password || false;
+      errObj.requires_reviewer_info = errorData.requires_reviewer_info || false;
+      errObj.requires_email = errorData.requires_email || false;
+      Object.assign(errObj, errorData);
+      throw errObj;
     }
   },
   // Download PDF for shared resume (with auth context)
@@ -3503,7 +3805,7 @@ export const teamAPI = {
       return response.data;
     } catch (error) {
       const errMsg = error.response?.data?.error || 'Failed to share job';
-      throw { message: errMsg };
+      throw new Error(errMsg);
     }
   },
   unshareJob: async (teamId, sharedJobId) => {
@@ -3538,6 +3840,21 @@ export const teamAPI = {
       throw error.error || error.response?.data?.error || { message: 'Failed to delete comment' };
     }
   },
+};
+
+// UC-128: Career Growth Calculator API
+export const careerGrowthAPI = {
+  getScenarios: () => api.get('/career-growth/scenarios/'),
+  getScenario: (scenarioId) => api.get(`/career-growth/scenarios/${scenarioId}/`),
+  createScenario: (data) => api.post('/career-growth/scenarios/', data),
+  updateScenario: (scenarioId, data) => api.put(`/career-growth/scenarios/${scenarioId}/`, data),
+  deleteScenario: (scenarioId) => api.delete(`/career-growth/scenarios/${scenarioId}/`),
+  calculateProjection: (data) => api.post('/career-growth/calculate/', data),
+  compareScenarios: (scenarioIds) => api.post('/career-growth/compare/', { scenario_ids: scenarioIds }),
+  getProgressionData: (jobTitle, companyName, industry) => 
+    api.get('/career-growth/progression-data/', {
+      params: { job_title: jobTitle, company_name: companyName, industry }
+    }),
 };
 
 // ESM-only: no CommonJS interop here to avoid init-order issues

@@ -1,3 +1,32 @@
+/* UC-113: Job Detail Layout */
+.job-detail-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.job-detail-main {
+  min-width: 0; /* Prevents blowout */
+}
+
+/* Related Emails Section */
+.related-emails-section {
+  margin-top: 24px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  padding: 20px;
+}
+
+@media (max-width: 768px) {
+  .related-emails-section {
+    margin-top: 16px;
+    border-radius: 12px;
+  }
+}
+
 .job-tabs {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -70,6 +99,223 @@
   font-size: 13px;
   color: #6b7280;
   margin-top: 2px;
+}
+
+.followup-card .form-header {
+  background: transparent;
+  color: #111827;
+  padding: 0 0 12px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.followup-card h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.followup-card {
+  padding: 16px 20px;
+}
+
+.followup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+  padding: 0 6px;
+}
+
+.followup-panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 14px;
+  background: #f9fafb;
+}
+
+.followup-label {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+  margin: 0 0 6px;
+}
+
+.followup-template {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+}
+
+.template-subject {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #111827;
+}
+
+.template-body {
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.followup-meta {
+  color: #4b5563;
+  font-size: 14px;
+  margin: 4px 0;
+}
+
+.followup-meta-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.followup-tips {
+  margin-top: 16px;
+  padding: 0 6px;
+}
+
+.followup-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.followup-chip {
+  background: #eef2ff;
+  color: #4338ca;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  border: 1px solid #c7d2fe;
+}
+
+.followup-reminders {
+  margin-top: 18px;
+  padding: 0 6px;
+}
+
+.followup-reminders-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.followup-count {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.followup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.followup-reminder-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+}
+
+.followup-reminder-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.followup-reminder-title {
+  font-weight: 700;
+  color: #111827;
+}
+
+.followup-reminder-meta {
+  color: #6b7280;
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.followup-reminder-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.followup-reminder-actions button {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  cursor: pointer;
+  font-weight: 600;
+  color: #111827;
+}
+
+.followup-reminder-actions button.ghost {
+  background: white;
+  color: #6b7280;
+}
+
+.followup-reminder-body {
+  margin-top: 8px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.followup-empty {
+  border: 1px dashed #d1d5db;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #6b7280;
+}
+
+.followup-pill {
+  background: #eef2ff;
+  color: #4338ca;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #c7d2fe;
+  font-size: 12px;
+}
+
+.pill {
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.pill-pending {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.pill-sent {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.pill-dismissed, .pill-failed {
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 @media (max-width: 768px) {

@@ -75,6 +75,7 @@ import {
   FaPause,
   FaStop,
   FaLinkedin,
+  FaGithub,
   FaHeart,
   FaComment,
   FaBalanceScale,
@@ -82,6 +83,7 @@ import {
   FaArrowUp,
   FaUserCheck,
   FaCode,
+  FaCar,
 } from 'react-icons/fa';
 
 // Simple, centralized Icon wrapper used across the app.
@@ -192,6 +194,7 @@ const iconMap = {
   pause: FaPause,
   stop: FaStop,
   linkedin: FaLinkedin,
+  github: FaGithub,
   heart: FaHeart,
   'message-circle': FaComment,
   'book-open': FaBookOpen,
@@ -199,6 +202,9 @@ const iconMap = {
   'arrow-up': FaArrowUp,
   'user-check': FaUserCheck,
   code: FaCode,
+  car: FaCar,
+  drive: FaCar,
+  commute: FaCar,
 };
 
 export default function Icon({ name, size = 'md', color, className = '', ariaLabel, ...rest }) {

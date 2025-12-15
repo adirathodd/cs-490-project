@@ -111,24 +111,10 @@ describe('SalaryNegotiation (UC-083)', () => {
     expect(salaryNegotiationAPI.getOutcomes).toHaveBeenCalled();
   });
 
-  test('saves offer details and refreshes plan', async () => {
+  test('shows link to Offer Comparison Lab', async () => {
     renderComponent();
 
-    // There are two 'Base Salary' inputs (offer capture and outcome form).
-    // Target the offer-capture input which is prefilled from the plan (120000).
-    const baseInputs = await screen.findAllByLabelText(/base salary/i);
-    const baseInput = baseInputs.find((el) => el.value === '120000') || baseInputs[0];
-    expect(baseInput).toBeDefined();
-    await userEvent.clear(baseInput);
-    await userEvent.type(baseInput, '130000');
-
-    const saveButton = screen.getByRole('button', { name: /save offer details/i });
-    await userEvent.click(saveButton);
-
-    await waitFor(() => expect(salaryNegotiationAPI.refreshPlan).toHaveBeenCalledTimes(1));
-    expect(salaryNegotiationAPI.refreshPlan).toHaveBeenCalledWith('12', expect.objectContaining({
-      force_refresh: true,
-      offer_details: expect.objectContaining({ base_salary: 130000 })
-    }));
+    const comparisonButton = await screen.findByRole('button', { name: /open offer comparison lab/i });
+    expect(comparisonButton).toBeInTheDocument();
   });
 });

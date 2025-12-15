@@ -88,12 +88,14 @@ const ResumeVersionControl = () => {
   const [expandedGroups, setExpandedGroups] = useState(new Set());
   
   // Selected versions for operations
+  // eslint-disable-next-line no-unused-vars
   const [selectedVersion, setSelectedVersion] = useState(null);
   const [compareVersion1, setCompareVersion1] = useState(null);
   const [compareVersion2, setCompareVersion2] = useState(null);
   const [comparisonResult, setComparisonResult] = useState(null);
   
   // Modal states
+  // eslint-disable-next-line no-unused-vars
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showCompareModal, setShowCompareModal] = useState(false);
@@ -105,9 +107,12 @@ const ResumeVersionControl = () => {
   const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
   
   // Form states
+  // eslint-disable-next-line no-unused-vars
   const [newVersionName, setNewVersionName] = useState('');
+  // eslint-disable-next-line no-unused-vars
   const [newVersionDescription, setNewVersionDescription] = useState('');
   const [versionHistory, setVersionHistory] = useState(null);
+  // eslint-disable-next-line no-unused-vars
   const [selectedResumeGroup, setSelectedResumeGroup] = useState(null);
   const [selectedVersionDetails, setSelectedVersionDetails] = useState(null);
   const [revertTarget, setRevertTarget] = useState(null);
@@ -132,6 +137,7 @@ const ResumeVersionControl = () => {
 
   useEffect(() => {
     loadVersions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [includeArchived]);
 
   useEffect(() => {

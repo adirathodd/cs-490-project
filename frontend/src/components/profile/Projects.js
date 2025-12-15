@@ -1,7 +1,47 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import apiSvc, { projectsAPI, githubAPI } from '../../services/api';
+import { projectsAPI, githubAPI } from '../../services/api';
 import './Projects.css';
 import Icon from '../common/Icon';
+
+// GitHub cache configuration
+const GITHUB_CACHE_KEY = 'github_cache';
+const GITHUB_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+const getGithubCache = () => {
+  try {
+    const cached = localStorage.getItem(GITHUB_CACHE_KEY);
+    if (!cached) return null;
+    const data = JSON.parse(cached);
+    if (Date.now() - data.timestamp > GITHUB_CACHE_DURATION) {
+      localStorage.removeItem(GITHUB_CACHE_KEY);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+};
+
+const setGithubCache = (github, contribSummary, repoCommits) => {
+  try {
+    localStorage.setItem(GITHUB_CACHE_KEY, JSON.stringify({
+      timestamp: Date.now(),
+      github,
+      contribSummary,
+      repoCommits,
+    }));
+  } catch {
+    // Ignore storage errors
+  }
+};
+
+const clearGithubCache = () => {
+  try {
+    localStorage.removeItem(GITHUB_CACHE_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+};
 
 // Component wrapper and state initializations
 const Projects = () => {
@@ -98,12 +138,29 @@ const displayDate = (value) => sanitizeDateInput(value) || '—';
       }
     };
     init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 
-  // Load GitHub repos (if connected)
+  // Load GitHub repos (if connected) - with caching
   useEffect(() => {
+    // Skip if OAuth callback is present - let that handler take over
+    const usp = new URLSearchParams(window.location.search);
+    if (usp.get('github') === 'connected') {
+      return;
+    }
+
     const loadGithub = async () => {
+      // Check cache first
+      const cached = getGithubCache();
+      if (cached && cached.github && (cached.github.connected || (cached.github.repos && cached.github.repos.length > 0))) {
+        setGithub(cached.github);
+        setContribSummary(cached.contribSummary || {});
+        setRepoCommits(cached.repoCommits || { total_commits: 0, byRepo: {} });
+        updateProfileProjectCount((items || []).length + ((cached.github.featured || []).length));
+        return;
+      }
+
       setGhLoading(true);
       setGhError('');
       try {
@@ -112,12 +169,23 @@ const displayDate = (value) => sanitizeDateInput(value) || '—';
         const contrib = await githubAPI.contribSummary();
         const commits = await githubAPI.totalCommits();
         const perRepo = await githubAPI.commitsByRepo();
-        setGithub({ connected: !!repos.connected, repos: repos.repos || [], featured: featured.featured || [] });
-        setContribSummary({ ...(contrib.summary || {}), total_commits: commits.total_commits || 0 });
-        setRepoCommits({
+        
+        const githubData = { connected: !!repos.connected, repos: repos.repos || [], featured: featured.featured || [] };
+        const contribData = { ...(contrib.summary || {}), total_commits: commits.total_commits || 0 };
+        const repoCommitsData = {
           total_commits: perRepo.total_commits || 0,
           byRepo: Object.fromEntries((perRepo.repos || []).map((r) => [r.full_name, r.commits || 0])),
-        });
+        };
+        
+        setGithub(githubData);
+        setContribSummary(contribData);
+        setRepoCommits(repoCommitsData);
+        
+        // Cache the data if connected or has repos (meaning it was successful)
+        if (githubData.connected || (githubData.repos && githubData.repos.length > 0)) {
+          setGithubCache(githubData, contribData, repoCommitsData);
+        }
+        
         updateProfileProjectCount((items || []).length + ((featured.featured || []).length));
       } catch (e) {
         // If not connected, mark as false without noise
@@ -128,27 +196,38 @@ const displayDate = (value) => sanitizeDateInput(value) || '—';
       }
     };
     loadGithub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // After returning from OAuth callback (?github=connected), avoid unauthorized flash
   useEffect(() => {
     const usp = new URLSearchParams(window.location.search);
     if (usp.get('github') === 'connected') {
-      // Force a light refresh and clear the flag from URL
+      // Force a fresh fetch and update cache
       (async () => {
         setGhLoading(true);
+        clearGithubCache(); // Clear old cache on fresh connect
         try {
           const repos = await githubAPI.listRepos(true);
           const featured = await githubAPI.getFeatured();
           const contrib = await githubAPI.contribSummary();
           const commits = await githubAPI.totalCommits();
           const perRepo = await githubAPI.commitsByRepo();
-          setGithub({ connected: true, repos: repos.repos || [], featured: featured.featured || [] });
-          setContribSummary({ ...(contrib.summary || {}), total_commits: commits.total_commits || 0 });
-          setRepoCommits({
+          
+          const githubData = { connected: true, repos: repos.repos || [], featured: featured.featured || [] };
+          const contribData = { ...(contrib.summary || {}), total_commits: commits.total_commits || 0 };
+          const repoCommitsData = {
             total_commits: perRepo.total_commits || 0,
             byRepo: Object.fromEntries((perRepo.repos || []).map((r) => [r.full_name, r.commits || 0])),
-          });
+          };
+          
+          setGithub(githubData);
+          setContribSummary(contribData);
+          setRepoCommits(repoCommitsData);
+          
+          // Cache the fresh data
+          setGithubCache(githubData, contribData, repoCommitsData);
+          
           updateProfileProjectCount((items || []).length + ((featured.featured || []).length));
         } catch {
           // leave existing state
@@ -161,6 +240,7 @@ const displayDate = (value) => sanitizeDateInput(value) || '—';
         }
       })();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const sortProjects = (arr) => {
@@ -429,239 +509,199 @@ const displayDate = (value) => sanitizeDateInput(value) || '—';
       {!showForm && (
         <div className="projects-header">
           <h2><Icon name="folder" size="md" /> Your Projects</h2>
-          <button
-            className="add-button"
-            onClick={() => {
-              resetForm();
-              setShowForm(true);
-            }}
-          >
-            + Add Project
-          </button>
-        </div>
-      )}
-
-      {/* GitHub Showcase Integration */}
-      <section className="projects-card" style={{ marginTop: 16 }}>
-        <header className="projects-card__header section-header">
-          <div>
-            <h3 className="section-title"><Icon name="github" size="sm" /> GitHub Repository Showcase</h3>
-            <p>Connect your GitHub account to feature repositories on your profile.</p>
-          </div>
-          <div>
-            {github.connected !== true ? (
-              <button
-                type="button"
-                className="add-button"
-                onClick={() => {
+          <div className="projects-header-actions">
+            <button
+              type="button"
+              className={github.connected ? 'btn-github-connected' : 'btn-github'}
+              onClick={async () => {
+                if (github.connected) {
+                  setGhLoading(true);
+                  try {
+                    await githubAPI.disconnect();
+                    clearGithubCache(); // Clear cache on disconnect
+                    const repos = await githubAPI.listRepos(false);
+                    const featured = await githubAPI.getFeatured();
+                    setGithub({ connected: false, repos: repos.repos || [], featured: featured.featured || [] });
+                    setContribSummary({});
+                    setGhError('');
+                  } catch (e) {
+                    setGhError('Failed to disconnect GitHub');
+                  } finally {
+                    setGhLoading(false);
+                  }
+                } else {
                   try {
                     const token = localStorage.getItem('firebaseToken');
                     if (!token) {
                       setGhError('Please log in to connect GitHub');
-                      // Optional: route to login page if available
                       return;
                     }
                     githubAPI.connect(false);
                   } catch (e) {
                     setGhError('Unable to start GitHub connect');
                   }
-                }}
-              >
-                Connect GitHub
-              </button>
+                }
+              }}
+            >
+              <Icon name="github" size="sm" /> {github.connected ? 'Disconnect GitHub' : 'Connect GitHub'}
+            </button>
+            <button
+              className="add-button"
+              onClick={() => {
+                resetForm();
+                setShowForm(true);
+              }}
+            >
+              + Add Project
+            </button>
+          </div>
+        </div>
+      )}
+
+      {ghError && <div className="error-banner">{ghError}</div>}
+
+      {github.connected && contribSummary && contribSummary.login && (
+        <div className="stat-cards">
+          <div className="stat-card">
+            <div className="label">Login</div>
+            <div className="value">{contribSummary.login}</div>
+          </div>
+          <div className="stat-card">
+            <div className="label">Public Repos</div>
+            <div className="value">{contribSummary.public_repos}</div>
+          </div>
+          <div className="stat-card">
+            <div className="label">Followers</div>
+            <div className="value">{contribSummary.followers}</div>
+          </div>
+          <div className="stat-card">
+            <div className="label">Following</div>
+            <div className="value">{contribSummary.following}</div>
+          </div>
+          <div className="stat-card">
+            <div className="label">Total Repos</div>
+            <div className="value">{contribSummary.total_repos}</div>
+          </div>
+          <div className="stat-card">
+            <div className="label">Authored Commits</div>
+            <div className="value">{repoCommits.total_commits || 0}</div>
+          </div>
+        </div>
+      )}
+
+      {ghLoading ? (
+        <div className="projects-loading">Loading GitHub data...</div>
+      ) : github.connected ? (
+        <div className="github-showcase">
+          <hr className="section-divider" />
+          <div className="github-featured">
+            <div className="section-header">
+              <h4 className="section-title">Featured Repositories</h4>
+            </div>
+            {(github.featured || []).length === 0 ? (
+              <p className="muted">No featured repositories yet. Pick some from your list below.</p>
             ) : (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  type="button"
-                  className="add-button"
-                  onClick={async () => {
-                    setGhLoading(true);
-                    try {
-                      const repos = await githubAPI.listRepos(true);
-                      const featured = await githubAPI.getFeatured();
-                      const contrib = await githubAPI.contribSummary();
-                      const perRepo = await githubAPI.commitsByRepo();
-                      setGithub((prev) => ({ ...prev, repos: repos.repos || [], featured: featured.featured || [] }));
-                      setContribSummary(contrib.summary || {});
-                      setRepoCommits({
-                        total_commits: perRepo.total_commits || 0,
-                        byRepo: Object.fromEntries((perRepo.repos || []).map((r) => [r.full_name, r.commits || 0])),
-                      });
-                    } catch (e) {
-                      setGhError('Failed to refresh repositories');
-                    } finally {
-                      setGhLoading(false);
-                    }
-                  }}
-                >
-                  Refresh
-                </button>
-                <button
-                  type="button"
-                  className="add-button"
-                  onClick={async () => {
-                    setGhLoading(true);
-                    try {
-                      await githubAPI.disconnect();
-                      const repos = await githubAPI.listRepos(false);
-                      const featured = await githubAPI.getFeatured();
-                      setGithub({ connected: false, repos: repos.repos || [], featured: featured.featured || [] });
-                      setContribSummary({});
-                      setGhError('');
-                    } catch (e) {
-                      setGhError('Failed to disconnect GitHub');
-                    } finally {
-                      setGhLoading(false);
-                    }
-                  }}
-                >
-                  Disconnect
-                </button>
+              <div className="github-cards">
+                {github.featured.map((fr) => (
+                  <div key={fr.id} className="project-item project-card">
+                    <div className="project-header">
+                      <div className="project-title">
+                        <div className="project-main">
+                          <h3>
+                            <a href={fr.html_url} target="_blank" rel="noreferrer">{wrapRepoName(fr.full_name)}</a>
+                          </h3>
+                          <div className="project-meta">
+                            {(fr.primary_language || '—')} • ★ {fr.stars || 0}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="project-actions">
+                        <button
+                          type="button"
+                          className="action-button"
+                          onClick={async () => {
+                            try {
+                              const current = (github.featured || []).map((f) => f.id);
+                              const next = current.filter((id) => id !== fr.id);
+                              await githubAPI.setFeatured(next);
+                              const featured = await githubAPI.getFeatured();
+                              const updatedGithub = { ...github, featured: featured.featured || [] };
+                              setGithub(updatedGithub);
+                              // Update cache with new featured list
+                              setGithubCache(updatedGithub, contribSummary, repoCommits);
+                              updateProfileProjectCount((items || []).length + ((featured.featured || []).length));
+                            } catch (e) {
+                              setGhError('Failed to update featured repositories');
+                            }
+                          }}
+                          title="Unfeature"
+                          aria-label="Unfeature"
+                        >
+                          <Icon name="star" size="sm" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
-        </header>
 
-        {ghError && <div className="error-banner">{ghError}</div>}
-        {github.connected && contribSummary && contribSummary.login && (
-          <div className="stat-cards">
-            <div className="stat-card">
-              <div className="label">Login</div>
-              <div className="value">{contribSummary.login}</div>
+          <hr className="section-divider" />
+          <div className="github-repos">
+            <div className="section-header">
+              <h4 className="section-title">Your GitHub Repositories</h4>
             </div>
-            <div className="stat-card">
-              <div className="label">Public Repos</div>
-              <div className="value">{contribSummary.public_repos}</div>
-            </div>
-            <div className="stat-card">
-              <div className="label">Followers</div>
-              <div className="value">{contribSummary.followers}</div>
-            </div>
-            <div className="stat-card">
-              <div className="label">Following</div>
-              <div className="value">{contribSummary.following}</div>
-            </div>
-            <div className="stat-card">
-              <div className="label">Total Repos</div>
-              <div className="value">{contribSummary.total_repos}</div>
-            </div>
-            <div className="stat-card">
-              <div className="label">Authored Commits</div>
-              <div className="value">{repoCommits.total_commits || 0}</div>
-            </div>
-          </div>
-        )}
-        {ghLoading ? (
-          <div className="projects-loading">Loading GitHub data...</div>
-        ) : github.connected ? (
-          <div className="github-showcase">
-            {/* condensed stats are already shown above as cards; remove duplicate list */}
-            <hr className="section-divider" />
-            <div className="github-featured">
-              <div className="section-header">
-                <h4 className="section-title">Featured Repositories</h4>
-              </div>
-              {(github.featured || []).length === 0 ? (
-                <p className="muted">No featured repositories yet. Pick some from your list below.</p>
-              ) : (
-                <div className="github-cards">
-                  {github.featured.map((fr) => (
-                    <div key={fr.id} className="project-item project-card">
-                      <div className="project-header">
-                        <div className="project-title">
-                          <div className="project-main">
-                            <h3>
-                              <a href={fr.html_url} target="_blank" rel="noreferrer">{wrapRepoName(fr.full_name)}</a>
-                            </h3>
-                            <div className="project-meta">
-                              {(fr.primary_language || '—')} • ★ {fr.stars || 0}
-                            </div>
+            {(github.repos || []).length === 0 ? (
+              <p className="muted">No repositories synced. Try Refresh.</p>
+            ) : (
+              <div className="github-cards">
+                {github.repos.slice(0, 20).map((r) => (
+                  <div key={r.id} className="project-item project-card">
+                    <div className="project-header">
+                      <div className="project-title">
+                        <div className="project-main">
+                          <h3>
+                            <a href={r.html_url} target="_blank" rel="noreferrer">{wrapRepoName(r.full_name)}</a>
+                          </h3>
+                          <div className="project-meta">
+                            {r.primary_language || '—'} • ★ {r.stars || 0} • ⑂ {r.forks || 0} • ⊚ {(repoCommits.byRepo || {})[r.full_name] || 0}
                           </div>
                         </div>
-                        <div className="project-actions">
-                          <button
-                            type="button"
-                            className="action-button"
-                            onClick={async () => {
-                              try {
-                                const current = (github.featured || []).map((f) => f.id);
-                                const next = current.filter((id) => id !== fr.id);
-                                await githubAPI.setFeatured(next);
-                                const featured = await githubAPI.getFeatured();
-                                setGithub((prev) => ({ ...prev, featured: featured.featured || [] }));
-                                updateProfileProjectCount((items || []).length + ((featured.featured || []).length));
-                              } catch (e) {
-                                setGhError('Failed to update featured repositories');
-                              }
-                            }}
-                            title="Unfeature"
-                            aria-label="Unfeature"
-                          >
-                            <Icon name="star" size="sm" />
-                          </button>
-                        </div>
+                      </div>
+                      <div className="project-actions">
+                        <button
+                          type="button"
+                          className="action-button"
+                          onClick={async () => {
+                            try {
+                              const current = (github.featured || []).map((f) => f.id);
+                              const next = Array.from(new Set([...current, r.id]));
+                              await githubAPI.setFeatured(next);
+                              const featured = await githubAPI.getFeatured();
+                              const updatedGithub = { ...github, featured: featured.featured || [] };
+                              setGithub(updatedGithub);
+                              // Update cache with new featured list
+                              setGithubCache(updatedGithub, contribSummary, repoCommits);
+                              updateProfileProjectCount((items || []).length + ((featured.featured || []).length));
+                            } catch (e) {
+                              setGhError('Failed to update featured repositories');
+                            }
+                          }}
+                          title="Feature"
+                          aria-label="Feature"
+                        >
+                          <Icon name="star" size="sm" />
+                        </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <hr className="section-divider" />
-            <div className="github-repos">
-              <div className="section-header">
-                <h4 className="section-title">Your GitHub Repositories</h4>
+                  </div>
+                ))}
               </div>
-              {(github.repos || []).length === 0 ? (
-                <p className="muted">No repositories synced. Try Refresh.</p>
-              ) : (
-                <div className="github-cards">
-                  {github.repos.slice(0, 20).map((r) => (
-                    <div key={r.id} className="project-item project-card">
-                      <div className="project-header">
-                        <div className="project-title">
-                          <div className="project-main">
-                            <h3>
-                              <a href={r.html_url} target="_blank" rel="noreferrer">{wrapRepoName(r.full_name)}</a>
-                            </h3>
-                            <div className="project-meta">
-                              {r.primary_language || '—'} • ★ {r.stars || 0} • ⑂ {r.forks || 0} • ⊚ {(repoCommits.byRepo || {})[r.full_name] || 0}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="project-actions">
-                          <button
-                            type="button"
-                            className="action-button"
-                            onClick={async () => {
-                              try {
-                                const current = (github.featured || []).map((f) => f.id);
-                                const next = Array.from(new Set([...current, r.id]));
-                                await githubAPI.setFeatured(next);
-                                const featured = await githubAPI.getFeatured();
-                                setGithub((prev) => ({ ...prev, featured: featured.featured || [] }));
-                                updateProfileProjectCount((items || []).length + ((featured.featured || []).length));
-                              } catch (e) {
-                                setGhError('Failed to update featured repositories');
-                              }
-                            }}
-                            title="Feature"
-                            aria-label="Feature"
-                          >
-                            <Icon name="star" size="sm" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            )}
           </div>
-        ) : (
-          <p className="muted">Connect GitHub to import public repositories with languages, stars, forks, and last update.</p>
-        )}
-      </section>
+        </div>
+      ) : null}
 
       <hr className="section-divider" />
       {showForm && (

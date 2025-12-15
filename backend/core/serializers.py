@@ -8,6 +8,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from core import followup_utils
 from core.models import (
     CandidateProfile, Skill, CandidateSkill, Education, Certification,
     Project, ProjectMedia, WorkExperience, JobEntry, Document, JobMaterialsHistory,
@@ -20,6 +21,7 @@ from core.models import (
     MentorshipGoal, MentorshipMessage,
     MarketIntelligence, MockInterviewSession, MockInterviewQuestion, MockInterviewSummary,
     GmailIntegration, ApplicationEmail, EmailScanLog,
+    ScheduledSubmission, FollowUpReminder, ApplicationPackage,
 )
 from core.models import (
     Contact, Interaction, ContactNote, Tag, Reminder, ImportJob, MutualConnection, ContactCompanyLink, ContactJobLink,
@@ -1036,6 +1038,7 @@ class CertificationSerializer(serializers.ModelSerializer):
     never_expires = serializers.BooleanField(required=False)
     does_not_expire = serializers.BooleanField(source='never_expires', required=False)
     document_url = serializers.SerializerMethodField(read_only=True)
+    badge_image_url = serializers.SerializerMethodField(read_only=True)
     is_expired = serializers.SerializerMethodField(read_only=True)
     days_until_expiration = serializers.SerializerMethodField(read_only=True)
     reminder_date = serializers.DateField(read_only=True)
@@ -1048,15 +1051,24 @@ class CertificationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'issuing_organization', 'issue_date', 'expiry_date',
             'never_expires', 'does_not_expire', 'credential_id', 'credential_url', 'category',
-            'verification_status', 'document_url', 'is_expired', 'days_until_expiration',
-            'renewal_reminder_enabled', 'reminder_days_before', 'reminder_date', 'candidate',
+            'verification_status', 'document_url', 'badge_image_url', 'description',
+            'achievement_highlights', 'assessment_score', 'assessment_max_score', 'assessment_units',
+            'is_expired', 'days_until_expiration', 'renewal_reminder_enabled',
+            'reminder_days_before', 'reminder_date', 'candidate',
         ]
-        read_only_fields = ['id', 'document_url', 'is_expired', 'days_until_expiration', 'reminder_date']
+        read_only_fields = ['id', 'document_url', 'badge_image_url', 'is_expired', 'days_until_expiration', 'reminder_date']
 
     def get_document_url(self, obj):
         request = self.context.get('request')
         if obj.document:
             url = obj.document.url
+            return request.build_absolute_uri(url) if request else url
+        return None
+
+    def get_badge_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.badge_image:
+            url = obj.badge_image.url
             return request.build_absolute_uri(url) if request else url
         return None
 
@@ -1651,6 +1663,14 @@ class JobEntrySerializer(serializers.ModelSerializer):
                     JobStatusChange.objects.create(job=instance, old_status=old_status, new_status=new_status)
                 except Exception:
                     pass
+                try:
+                    if new_status == 'rejected':
+                        followup_utils.dismiss_pending_for_job(instance)
+                    else:
+                        followup_utils.create_stage_followup(instance, new_status, auto=True)
+                except Exception:
+                    # Do not block the update on reminder scheduling failures
+                    pass
         except Exception:
             pass
         return res
@@ -1940,13 +1960,11 @@ class GmailIntegrationSerializer(serializers.ModelSerializer):
     """Serializer for Gmail integration settings"""
     
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    scan_frequency_display = serializers.CharField(source='get_scan_frequency_display', read_only=True)
     
     class Meta:
         model = GmailIntegration
         fields = [
-            'id', 'status', 'status_display', 'scan_enabled', 'scan_frequency', 
-            'scan_frequency_display', 'auto_update_status', 'gmail_address', 
+            'id', 'status', 'status_display', 'scan_enabled', 'gmail_address', 
             'last_scan_at', 'emails_scanned_count', 'last_error', 
             'created_at', 'updated_at'
         ]
@@ -4666,3 +4684,251 @@ class TeamSharedJobSerializer(serializers.ModelSerializer):
 
     def get_comment_count(self, obj):
         return obj.comments.count()
+
+
+class ScheduledSubmissionSerializer(serializers.ModelSerializer):
+    """
+    UC-124: Serializer for scheduled application submissions
+    """
+    job_title = serializers.CharField(source='job.title', read_only=True)
+    company_name = serializers.CharField(source='job.company_name', read_only=True)
+    can_execute = serializers.SerializerMethodField()
+    can_reschedule = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ScheduledSubmission
+        fields = [
+            'id',
+            'candidate',
+            'job',
+            'application_package',
+            'scheduled_datetime',
+            'timezone',
+            'submission_method',
+            'status',
+            'priority',
+            'retry_count',
+            'max_retries',
+            'submission_parameters',
+            'submission_result',
+            'submitted_at',
+            'error_message',
+            'day_of_week',
+            'hour_of_day',
+            'created_at',
+            'updated_at',
+            'job_title',
+            'company_name',
+            'can_execute',
+            'can_reschedule',
+        ]
+        read_only_fields = [
+            'id',
+            'candidate',
+            'submitted_at',
+            'day_of_week',
+            'hour_of_day',
+            'created_at',
+            'updated_at',
+            'retry_count',
+            'submission_result',
+            'job_title',
+            'company_name',
+        ]
+    
+    def get_can_execute(self, obj):
+        """Check if submission can be executed now"""
+        return obj.status in ['pending', 'scheduled', 'failed']
+    
+    def get_can_reschedule(self, obj):
+        """Check if submission can be rescheduled"""
+        return obj.status in ['pending', 'scheduled']
+
+
+class ScheduledSubmissionCreateSerializer(serializers.ModelSerializer):
+    """
+    UC-124: Create serializer for scheduled submissions
+    """
+    application_package = serializers.PrimaryKeyRelatedField(
+        queryset=ApplicationPackage.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    
+    class Meta:
+        model = ScheduledSubmission
+        fields = [
+            'job',
+            'application_package',
+            'scheduled_datetime',
+            'timezone',
+            'submission_method',
+            'priority',
+            'submission_parameters',
+        ]
+    
+    def validate_scheduled_datetime(self, value):
+        """Ensure scheduled time is in the future"""
+        if value <= timezone.now():
+            raise serializers.ValidationError("Scheduled time must be in the future")
+        return value
+    
+    def create(self, validated_data):
+        """Create scheduled submission with candidate from context"""
+        validated_data['candidate'] = self.context['request'].user.profile
+        validated_data['status'] = 'scheduled'
+        return super().create(validated_data)
+
+
+class FollowUpReminderSerializer(serializers.ModelSerializer):
+    """
+    UC-124: Serializer for follow-up reminders
+    """
+    job_title = serializers.CharField(source='job.title', read_only=True)
+    company_name = serializers.CharField(source='job.company_name', read_only=True)
+    is_overdue = serializers.SerializerMethodField()
+    etiquette_tips = serializers.SerializerMethodField()
+    reminder_type_label = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = FollowUpReminder
+        fields = [
+            'id',
+            'candidate',
+            'job',
+            'reminder_type',
+            'reminder_type_label',
+            'subject',
+            'message_template',
+            'scheduled_datetime',
+            'interval_days',
+            'is_recurring',
+            'max_occurrences',
+            'occurrence_count',
+            'status',
+            'sent_at',
+            'response_received',
+            'response_date',
+            'followup_stage',
+            'auto_scheduled',
+            'recommendation_reason',
+            'snoozed_until',
+            'completed_at',
+            'created_at',
+            'updated_at',
+            'job_title',
+            'company_name',
+            'is_overdue',
+            'etiquette_tips',
+        ]
+        read_only_fields = [
+            'id',
+            'candidate',
+            'occurrence_count',
+            'sent_at',
+            'auto_scheduled',
+            'snoozed_until',
+            'completed_at',
+            'created_at',
+            'updated_at',
+            'job_title',
+            'company_name',
+            'recommendation_reason',
+        ]
+    
+    def get_is_overdue(self, obj):
+        """Check if reminder is overdue"""
+        return obj.status == 'pending' and obj.scheduled_datetime < timezone.now()
+
+    def get_etiquette_tips(self, obj):
+        """Expose etiquette tips based on the follow-up stage."""
+        stage = obj.followup_stage or getattr(obj.job, 'status', None)
+        plan = followup_utils.build_followup_plan(obj.job, stage)
+        return plan.get('etiquette_tips', []) if plan else followup_utils.GENERAL_ETIQUETTE_TIPS
+
+    def get_reminder_type_label(self, obj):
+        """Human-friendly reminder type label."""
+        try:
+            return obj.get_reminder_type_display()
+        except Exception:
+            return (obj.reminder_type or '').replace('_', ' ').title()
+
+
+class FollowUpReminderCreateSerializer(serializers.ModelSerializer):
+    """
+    UC-124: Create serializer for follow-up reminders
+    """
+    # Explicitly define optional fields to handle null values properly
+    interval_days = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text='Days between reminders for recurring'
+    )
+    followup_stage = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    
+    class Meta:
+        model = FollowUpReminder
+        fields = [
+            'job',
+            'reminder_type',
+            'subject',
+            'message_template',
+            'scheduled_datetime',
+            'interval_days',
+            'is_recurring',
+            'max_occurrences',
+            'followup_stage',
+        ]
+    
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        job = data.get('job')
+        if job and job.status == 'rejected':
+            raise serializers.ValidationError({'job': 'Reminders are disabled for rejected applications.'})
+
+        # Auto-fill from playbook when values are missing
+        if job:
+            stage = data.get('followup_stage') or job.status
+            plan = followup_utils.build_followup_plan(job, stage)
+            if plan:
+                data.setdefault('scheduled_datetime', plan['scheduled_datetime'])
+                data.setdefault('reminder_type', plan['reminder_type'])
+                data.setdefault('subject', plan['subject'])
+                data.setdefault('message_template', plan['message_template'])
+                data.setdefault('interval_days', plan['interval_days'])
+                data.setdefault('is_recurring', plan['is_recurring'])
+                data.setdefault('max_occurrences', plan['max_occurrences'])
+                data.setdefault('followup_stage', plan['stage'])
+                data.setdefault('recommendation_reason', plan['recommendation_reason'])
+        return data
+
+    def create(self, validated_data):
+        """Create reminder with candidate from context"""
+        validated_data['candidate'] = self.context['request'].user.profile
+        return super().create(validated_data)
+
+
+class ApplicationTimingBestPracticesSerializer(serializers.Serializer):
+    """
+    UC-124: Serializer for application timing best practices
+    """
+    best_days = serializers.ListField(child=serializers.DictField())
+    best_hours = serializers.ListField(child=serializers.DictField())
+    avoid_times = serializers.ListField(child=serializers.CharField())
+    general_tips = serializers.ListField(child=serializers.CharField())
+    user_patterns = serializers.DictField(required=False)
+
+
+class ApplicationTimingAnalyticsSerializer(serializers.Serializer):
+    """
+    UC-124: Serializer for user's application timing analytics
+    """
+    total_applications = serializers.IntegerField()
+    response_rate_by_day = serializers.DictField(child=serializers.FloatField())
+    response_rate_by_hour = serializers.DictField(child=serializers.FloatField())
+    best_performing_day = serializers.DictField()
+    best_performing_hour = serializers.DictField()
+    submissions_by_day = serializers.DictField(child=serializers.IntegerField())
+    submissions_by_hour = serializers.DictField(child=serializers.IntegerField())
+    avg_days_to_response = serializers.FloatField()
+    recommendations = serializers.ListField(child=serializers.CharField())

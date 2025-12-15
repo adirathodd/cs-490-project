@@ -208,6 +208,7 @@ const salaryAPI = {
 	getSalaryResearch: jestFn(),
 	triggerResearch: jestFn(),
 	exportResearch: jestFn(),
+	getSalaryBenchmarks: jestFn(),
 };
 
 const salaryNegotiationAPI = {
@@ -215,6 +216,16 @@ const salaryNegotiationAPI = {
 	refreshPlan: jestFn(),
 	getOutcomes: jestFn(),
 	createOutcome: jestFn(),
+};
+
+const offerAPI = {
+	list: jestFn(),
+	create: jestFn(),
+	update: jestFn(),
+	delete: jestFn(),
+	archive: jestFn(),
+	getComparison: jestFn(),
+	runScenario: jestFn(),
 };
 
 const documentsAPI = {
@@ -335,6 +346,7 @@ const axiosInstance = {
 module.exports = {
 	__esModule: true,
 	default: axiosInstance,
+	api: axiosInstance,
 	profileAPI,
 	authAPI,
 	skillsAPI,
@@ -348,6 +360,7 @@ module.exports = {
 	networkingAPI,
 	salaryAPI,
 	salaryNegotiationAPI,
+	offerAPI,
 	documentsAPI,
 	resumeVersionAPI,
 	resumeExportAPI,

@@ -1,4 +1,4 @@
-import api from './api';
+import { api } from './api';
 
 const emailAPI = {
   // Gmail integration
@@ -34,14 +34,6 @@ const emailAPI = {
     return response.data;
   },
 
-  updatePreferences: async (scanFrequency, autoUpdateStatus) => {
-    const response = await api.patch('/gmail/preferences/', {
-      scan_frequency: scanFrequency,
-      auto_update_status: autoUpdateStatus
-    });
-    return response.data;
-  },
-
   triggerScan: async () => {
     const response = await api.post('/gmail/scan/');
     return response.data;
@@ -65,11 +57,6 @@ const emailAPI = {
 
   linkEmailToJob: async (emailId, jobId) => {
     const response = await api.post(`/emails/${emailId}/link/`, { job_id: jobId });
-    return response.data;
-  },
-
-  applyStatusSuggestion: async (emailId) => {
-    const response = await api.post(`/emails/${emailId}/apply-status/`);
     return response.data;
   },
 

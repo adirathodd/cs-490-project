@@ -5,14 +5,6 @@ import LoadingSpinner from '../common/LoadingSpinner';
 import Icon from '../common/Icon';
 import './SalaryNegotiation.css';
 
-const defaultOffer = {
-	base_salary: '',
-	bonus: '',
-	equity: '',
-	respond_by: '',
-	notes: '',
-};
-
 const defaultOutcomeForm = {
 	stage: 'offer',
 	status: 'pending',
@@ -91,7 +83,6 @@ const SalaryNegotiation = ({ jobId: propJobId, embedded = false }) => {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState('');
 	const [planResponse, setPlanResponse] = useState(null);
-	const [offerForm, setOfferForm] = useState(defaultOffer);
 	const [refreshing, setRefreshing] = useState(false);
 	const [outcomes, setOutcomes] = useState([]);
 	const [progression, setProgression] = useState(defaultProgression);
@@ -147,29 +138,9 @@ const SalaryNegotiation = ({ jobId: propJobId, embedded = false }) => {
 	const hydratePlan = (payload) => {
 		if (!payload) return;
 		setPlanResponse(payload);
-		setOfferForm({
-			base_salary: payload.offer_details?.base_salary ?? '',
-			bonus: payload.offer_details?.bonus ?? '',
-			equity: payload.offer_details?.equity ?? '',
-			respond_by: payload.offer_details?.respond_by ?? '',
-			notes: payload.offer_details?.notes ?? '',
-		});
 		setOutcomes((payload.outcomes || []).map(sanitizeOutcome));
 		setProgression(payload.progression || defaultProgression);
 	};
-
-	const handleOfferChange = (e) => {
-		const { name, value } = e.target;
-		setOfferForm((prev) => ({ ...prev, [name]: value }));
-	};
-
-	const buildOfferPayload = () => ({
-		base_salary: toNumberOrNull(offerForm.base_salary),
-		bonus: toNumberOrNull(offerForm.bonus),
-		equity: toNumberOrNull(offerForm.equity),
-		respond_by: offerForm.respond_by || null,
-		notes: offerForm.notes?.trim() || '',
-	});
 
 	const handleRefreshPlan = async (payload = {}) => {
 		setRefreshing(true);
@@ -182,13 +153,6 @@ const SalaryNegotiation = ({ jobId: propJobId, embedded = false }) => {
 		} finally {
 			setRefreshing(false);
 		}
-	};
-
-	const handleSaveOffer = async () => {
-		await handleRefreshPlan({
-			force_refresh: true,
-			offer_details: buildOfferPayload(),
-		});
 	};
 
 	const handleOutcomeChange = (e) => {
@@ -369,32 +333,11 @@ const SalaryNegotiation = ({ jobId: propJobId, embedded = false }) => {
 				</section>
 
 				<section className="negotiation-card">
-					<h2>Offer Capture</h2>
-					<div className="form-grid">
-						<label>
-							Base Salary
-							<input name="base_salary" type="number" value={offerForm.base_salary} onChange={handleOfferChange} placeholder="e.g. 135000" />
-						</label>
-						<label>
-							Bonus
-							<input name="bonus" type="number" value={offerForm.bonus} onChange={handleOfferChange} placeholder="e.g. 15000" />
-						</label>
-						<label>
-							Equity / Stock
-							<input name="equity" type="number" value={offerForm.equity} onChange={handleOfferChange} placeholder="e.g. 25000" />
-						</label>
-						<label>
-							Respond By
-							<input name="respond_by" type="date" value={offerForm.respond_by || ''} onChange={handleOfferChange} />
-						</label>
-					</div>
-					<label className="full-width">
-						Notes
-						<textarea name="notes" rows={3} value={offerForm.notes} onChange={handleOfferChange} placeholder="Key context or trade-offs discussed" />
-					</label>
+					<h2>Offer Comparison</h2>
+					<p className="small-muted">Use the Offer Comparison Lab to capture, compare, and analyze multiple job offers with full compensation details, benefits breakdown, and scenario analysis.</p>
 					<div className="card-actions">
-						<button className="btn-primary" onClick={handleSaveOffer} disabled={refreshing}>
-							{refreshing ? 'Saving…' : 'Save Offer Details'}
+						<button className="btn-primary" onClick={() => navigate('/tools/salary-progression')}>
+							<Icon name="layers" size="sm" /> Open Offer Comparison Lab
 						</button>
 					</div>
 				</section>

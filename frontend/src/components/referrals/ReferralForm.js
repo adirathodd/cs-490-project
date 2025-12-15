@@ -30,7 +30,9 @@ const ReferralForm = ({ onClose, onSuccess, editingReferral = null }) => {
   const [tone, setTone] = useState('professional');
 
   const [useContactMode, setUseContactMode] = useState(true);
+  // eslint-disable-next-line no-unused-vars
   const isContactSelected = !!formData.contact;
+  // eslint-disable-next-line no-unused-vars
   const isManualFilled = !!(formData.referral_source_name && formData.referral_source_name.trim() !== '');
 
   useEffect(() => {

@@ -4,9 +4,8 @@
  */
 import React, { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { resumeSharingAPI, feedbackAPI, commentAPI } from '../../services/api';
+import { resumeSharingAPI, feedbackAPI } from '../../services/api';
 import { AuthContext } from '../../context/AuthContext';
-import { auth } from '../../services/firebase';
 import Icon from '../common/Icon';
 import LaTeXRenderer from './LaTeXRenderer';
 import './SharedResumeView.css';
@@ -113,6 +112,7 @@ const SharedResumeView = () => {
       // User is logged in, now try to load the resume
       loadSharedResume();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shareToken, currentUser, authLoading]); // Reload when user changes (after login)
 
   useEffect(() => {

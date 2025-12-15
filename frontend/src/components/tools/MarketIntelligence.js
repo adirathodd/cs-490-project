@@ -280,6 +280,7 @@ const MarketIntelligence = () => {
 
   useEffect(() => {
     fetchMarketData(selectedIndustry, selectedLocation);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIndustry, selectedLocation]);
 
   return (

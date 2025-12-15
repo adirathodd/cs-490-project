@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import LinkedInConnect from './LinkedInConnect';
 import ProfileOptimization from './ProfileOptimization';
 import NetworkingMessageGenerator from './NetworkingMessageGenerator';
@@ -9,7 +8,6 @@ import APIErrorBanner from '../common/APIErrorBanner'; // UC-117: User-facing AP
 import './LinkedIn.css';
 
 const LinkedInIntegration = () => {
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('connect');
   const [showMessageGenerator, setShowMessageGenerator] = useState(false);
 
@@ -190,6 +188,7 @@ const ContentStrategyView = () => {
       }
     };
     init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) {

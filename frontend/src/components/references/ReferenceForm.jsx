@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import Icon from '../common/Icon';
 
 const ReferenceForm = ({ reference, onSave, onClose }) => {
   const [formData, setFormData] = useState({

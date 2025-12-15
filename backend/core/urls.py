@@ -191,15 +191,22 @@ urlpatterns = [
     path('jobs/competitive-analysis', analytics_views.competitive_analysis_view, name='competitive-analysis'),
     path('productivity/analytics', analytics_views.productivity_analytics_view, name='productivity-analytics'),
     path('jobs/success-analysis', views.application_success_analysis, name='application-success-analysis'),  # UC-097
+    path('jobs/optimization-dashboard', views.application_optimization_dashboard, name='application-optimization-dashboard'),
     path('jobs/analytics/goals', analytics_views.update_application_targets_view, name='analytics-goals'),
     path('jobs/bulk-status', views.jobs_bulk_status, name='jobs-bulk-status'),
     path('jobs/bulk-deadline', views.jobs_bulk_deadline, name='jobs-bulk-deadline'),
     path('jobs/upcoming-deadlines', views.jobs_upcoming_deadlines, name='jobs-upcoming-deadlines'),
+    # UC-127: Job offer comparison
+    path('job-offers/', views.job_offers_view, name='job-offers'),
+    path('job-offers/<int:offer_id>/', views.job_offer_detail, name='job-offer-detail'),
+    path('job-offers/<int:offer_id>/archive/', views.job_offer_archive, name='job-offer-archive'),
+    path('job-offers/comparison/', views.job_offer_comparison, name='job-offer-comparison'),
     # UC-042: Application Materials endpoints
     path('documents/', views.documents_list, name='documents-list'),
     path('documents/<int:doc_id>/', views.document_delete, name='document-delete'),
     path('documents/<int:doc_id>/download/', views.document_download, name='document-download'),
     path('jobs/<int:job_id>/materials/', views.job_materials, name='job-materials'),
+    path('jobs/<int:job_id>/quality/', views.job_application_quality, name='job-application-quality'),
     path('materials/defaults/', views.materials_defaults, name='materials-defaults'),
     path('materials/analytics/', views.materials_analytics, name='materials-analytics'),
     
@@ -214,6 +221,7 @@ urlpatterns = [
     path('geo/resolve', views.geo_resolve, name='geo-resolve'),
     path('commute/estimate', views.commute_estimate, name='commute-estimate'),
     path('jobs/geo', views.jobs_geo, name='jobs-geo'),
+    path('jobs/commute-ranking', views.jobs_commute_ranking, name='jobs-commute-ranking'),
     path('jobs/<int:job_id>/locations', views.job_office_locations, name='job-office-locations'),
     path('jobs/<int:job_id>/locations/<int:location_id>', views.job_office_location_detail, name='job-office-location-detail'),
     path('jobs/<int:job_id>/commute', views.job_commute_drive, name='job-commute-drive'),
@@ -273,6 +281,7 @@ urlpatterns = [
     path('companies/<str:company_name>/research/refresh', views.refresh_company_research, name='refresh-company-research'),
     
     # UC-067: Salary Research and Benchmarking endpoints
+    path('jobs/<int:job_id>/salary-benchmarks/', views.salary_benchmarks, name='salary-benchmarks'),
     path('jobs/<int:job_id>/salary-research/', views.salary_research, name='salary-research'),
     path('jobs/<int:job_id>/salary-research/export/', views.salary_research_export, name='salary-research-export'),
     path('jobs/<int:job_id>/salary-negotiation/', views.salary_negotiation_prep, name='salary-negotiation-prep'),
@@ -291,6 +300,14 @@ urlpatterns = [
     path('jobs/<int:job_id>/question-bank/practice/', views.job_question_practice, name='job-question-practice'),
     path('jobs/<int:job_id>/question-bank/practice/<str:question_id>/', views.get_question_practice_history, name='get-question-practice-history'),
     path('jobs/<int:job_id>/question-bank/coach/', views.job_question_response_coach, name='job-question-response-coach'),
+    path('general-response-coach/', views.general_response_coach, name='general-response-coach'),
+    # UC-126: Interview Response Library endpoints
+    path('response-library/', views.response_library_list, name='response-library-list'),
+    path('response-library/<int:response_id>/', views.response_library_detail, name='response-library-detail'),
+    path('response-library/<int:response_id>/record-usage/', views.response_library_record_usage, name='response-library-record-usage'),
+    path('response-library/export/', views.response_library_export, name='response-library-export'),
+    path('response-library/save-from-coaching/', views.response_library_save_from_coaching, name='response-library-save-from-coaching'),
+    path('jobs/<int:job_id>/response-suggestions/', views.response_library_suggestions, name='response-library-suggestions'),
     # UC-078: Technical interview preparation endpoints
     path('jobs/<int:job_id>/technical-prep/', views.job_technical_prep, name='job-technical-prep'),
     path('jobs/<int:job_id>/technical-prep/practice/', views.job_technical_prep_practice, name='job-technical-prep-practice'),
@@ -463,14 +480,12 @@ urlpatterns = [
     path('gmail/status/', views.gmail_integration_status, name='gmail-status'),
     path('gmail/disconnect/', views.gmail_disconnect, name='gmail-disconnect'),
     path('gmail/enable-scanning/', views.gmail_enable_scanning, name='gmail-enable-scanning'),
-    path('gmail/preferences/', views.gmail_update_preferences, name='gmail-update-preferences'),
     path('gmail/scan/', views.gmail_scan_now, name='gmail-scan'),
     path('gmail/scan-now/', views.gmail_scan_now, name='gmail-scan-now'),
     path('gmail/scan-logs/', views.gmail_scan_logs, name='gmail-scan-logs'),
     path('emails/', views.application_emails_list, name='application-emails-list'),
     path('emails/<uuid:email_id>/', views.application_email_detail, name='application-email-detail'),
     path('emails/<uuid:email_id>/link/', views.link_email_to_job, name='link-email-to-job'),
-    path('emails/<uuid:email_id>/apply-status/', views.apply_email_status_suggestion, name='apply-email-status'),
     path('emails/<uuid:email_id>/dismiss/', views.dismiss_email, name='dismiss-email'),
 
     # UC-117: API Rate Limiting and Error Handling Dashboard
@@ -484,5 +499,27 @@ urlpatterns = [
     path('admin/api-monitoring/alerts/<int:alert_id>/resolve/', api_monitoring_views.resolve_alert, name='resolve-alert'),
     path('admin/api-monitoring/weekly-reports/', api_monitoring_views.api_weekly_reports, name='api-weekly-reports'),
     path('admin/api-monitoring/weekly-reports/<int:report_id>/', api_monitoring_views.api_weekly_report_detail, name='api-weekly-report-detail'),
+
+    # UC-124: Job Application Timing Optimizer
+    path('scheduled-submissions/', views.scheduled_submissions, name='scheduled-submissions'),
+    path('scheduled-submissions/<int:submission_id>/', views.scheduled_submission_detail, name='scheduled-submission-detail'),
+    path('scheduled-submissions/<int:submission_id>/cancel/', views.cancel_scheduled_submission, name='cancel-scheduled-submission'),
+    path('scheduled-submissions/<int:submission_id>/execute/', views.execute_scheduled_submission, name='execute-scheduled-submission'),
+    path('reminders/', views.followup_reminders, name='followup-reminders'),
+    path('reminders/<int:reminder_id>/', views.followup_reminder_detail, name='followup-reminder-detail'),
+    path('reminders/<int:reminder_id>/dismiss/', views.dismiss_reminder, name='dismiss-reminder'),
+    path('reminders/<int:reminder_id>/snooze/', views.snooze_followup_reminder, name='snooze-reminder'),
+    path('reminders/<int:reminder_id>/complete/', views.complete_followup_reminder, name='complete-reminder'),
+    path('reminders/playbook/<int:job_id>/', views.followup_playbook, name='followup-playbook'),
+    path('application-timing/best-practices/', views.application_timing_best_practices, name='application-timing-best-practices'),
+    path('application-timing/analytics/', views.application_timing_analytics, name='application-timing-analytics'),
+    path('application-timing/calendar/', views.application_calendar_view, name='application-calendar-view'),
+    
+    # UC-128: Career Growth Calculator
+    path('career-growth/scenarios/', views.career_growth_scenarios, name='career-growth-scenarios'),
+    path('career-growth/scenarios/<int:scenario_id>/', views.career_growth_scenario_detail, name='career-growth-scenario-detail'),
+    path('career-growth/calculate/', views.calculate_scenario_projections, name='calculate-scenario-projections'),
+    path('career-growth/compare/', views.compare_career_scenarios, name='compare-career-scenarios'),
+    path('career-growth/progression-data/', views.get_career_progression_data, name='career-progression-data'),
 
 ]

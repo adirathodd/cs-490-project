@@ -25,6 +25,7 @@ const ReferencesPage = () => {
 
   useEffect(() => {
     loadReferences();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const loadReferences = async () => {

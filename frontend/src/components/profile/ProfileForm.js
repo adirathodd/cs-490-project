@@ -40,7 +40,7 @@ const US_STATES = [
 ];
 
 const ProfileForm = () => {
-  const { currentUser, loading: authLoading, signOut, refreshUserProfile } = useAuth();
+  const { currentUser, loading: authLoading, refreshUserProfile } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [fetchingProfile, setFetchingProfile] = useState(true);
@@ -88,6 +88,7 @@ const ProfileForm = () => {
       setIsInitialized(true);
       fetchProfile();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, isInitialized]);
 
   const fetchProfile = async () => {
@@ -205,7 +206,7 @@ const ProfileForm = () => {
 
     // Validate phone format if provided
     if (formData.phone) {
-      const phoneRegex = /^[\d\s\-\(\)\+\.]+$/;
+      const phoneRegex = /^[\d\s\-()+ .]+$/;
       if (!phoneRegex.test(formData.phone)) {
         errors.phone = 'Please enter a valid phone number';
       }
@@ -300,6 +301,7 @@ const ProfileForm = () => {
     }
   };
 
+  // eslint-disable-next-line no-unused-vars
   const handleBackClick = (e) => {
     if (e && e.preventDefault) e.preventDefault();
     // Check if there are unsaved changes

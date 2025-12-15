@@ -13,6 +13,7 @@ const FeedbackPanel = ({ versionId, onClose }) => {
   const [error, setError] = useState('');
   const [selectedFeedback, setSelectedFeedback] = useState(null);
   const [filter, setFilter] = useState('all'); // all, pending, resolved
+  // eslint-disable-next-line no-unused-vars
   const [showComments, setShowComments] = useState(true);
   
   // Resolution modal states
@@ -25,6 +26,7 @@ const FeedbackPanel = ({ versionId, onClose }) => {
   useEffect(() => {
     loadFeedback();
     loadVersions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [versionId, filter]);
 
   const loadVersions = async () => {

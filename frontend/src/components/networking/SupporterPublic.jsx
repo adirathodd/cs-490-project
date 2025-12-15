@@ -81,8 +81,10 @@ const SupporterPublic = () => {
 
   useEffect(() => {
     loadChat();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  // eslint-disable-next-line no-unused-vars
   const formatTiming = (days) => {
     if (days == null) return 'No data';
     if (days >= 1) return `${days} days`;

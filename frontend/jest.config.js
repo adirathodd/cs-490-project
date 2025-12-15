@@ -12,6 +12,8 @@ module.exports = {
     '^remark-gfm$': '<rootDir>/src/__mocks__/remark-gfm.js',
     '^react-markdown$': '<rootDir>/src/__mocks__/react-markdown.js',
     '^recharts$': '<rootDir>/__mocks__/recharts.js',
+    '^react-chartjs-2$': '<rootDir>/__mocks__/react-chartjs-2.js',
+    '^chart.js$': '<rootDir>/__mocks__/chart.js.js',
     '^@fullcalendar/react$': '<rootDir>/__mocks__/FullCalendarReact.js',
     '^@fullcalendar/(daygrid|timegrid|interaction|list)$': '<rootDir>/__mocks__/FullCalendarPlugin.js',
     '^@mui/material$': '<rootDir>/__mocks__/@mui/material.js',

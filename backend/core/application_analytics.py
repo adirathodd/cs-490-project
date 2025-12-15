@@ -1036,3 +1036,277 @@ class ApplicationSuccessAnalyzer:
             'scenario_planning': self.scenario_planning(),
             'interview_conversion': self.analyze_interview_conversion(),
         }
+
+    def analyze_material_version_performance(self):
+        """Success metrics grouped by resume and cover letter documents."""
+
+        def _format_stats(field, label_prefix):
+            field_name = field
+            label_field = f"{field}__document_name"
+            version_field = f"{field}__version"
+            subset = (
+                self.applications
+                .filter(**{f"{field_name}__isnull": False})
+                .values(field_name, label_field, version_field)
+                .annotate(
+                    total=Count('id'),
+                    applied=Count('id', filter=~Q(status='interested')),
+                    responded=Count('id', filter=~Q(status__in=['interested', 'applied'])),
+                    interviews=Count('id', filter=Q(status__in=['phone_screen', 'interview', 'offer'])),
+                    offers=Count('id', filter=Q(status='offer')),
+                )
+                .order_by('-offers', '-responded', '-total')
+            )
+            results = []
+            for row in subset:
+                applied = row['applied'] or 0
+                if applied == 0:
+                    continue
+                label = row.get(label_field) or f"{label_prefix} v{row.get(version_field) or 1}"
+                results.append({
+                    'document_id': str(row[field_name]),
+                    'label': label,
+                    'applications': row['total'],
+                    'response_rate': round((row['responded'] / applied) * 100, 2) if applied else 0,
+                    'interview_rate': round((row['interviews'] / applied) * 100, 2) if applied else 0,
+                    'offer_rate': round((row['offers'] / applied) * 100, 2) if applied else 0,
+                })
+            return results
+
+        return {
+            'resume_versions': _format_stats('resume_doc', 'Resume'),
+            'cover_letters': _format_stats('cover_letter_doc', 'Cover Letter'),
+        }
+
+    def analyze_application_approaches(self):
+        """Effectiveness of different application sources/methods."""
+
+        def _aggregate(field, mapping):
+            stats = (
+                self.applications
+                .exclude(**{field: ''})
+                .values(field)
+                .annotate(
+                    total=Count('id'),
+                    applied=Count('id', filter=~Q(status='interested')),
+                    responded=Count('id', filter=~Q(status__in=['interested', 'applied'])),
+                    interviews=Count('id', filter=Q(status__in=['phone_screen', 'interview', 'offer'])),
+                    offers=Count('id', filter=Q(status='offer')),
+                )
+                .order_by('-offers', '-responded', '-total')
+            )
+            formatted = []
+            for row in stats:
+                key = row[field]
+                if not key:
+                    continue
+                applied = row['applied'] or 0
+                if applied == 0:
+                    continue
+                formatted.append({
+                    'code': key,
+                    'label': dict(mapping).get(key, (key or '').replace('_', ' ').title()),
+                    'applications': row['total'],
+                    'response_rate': round((row['responded'] / applied) * 100, 2) if applied else 0,
+                    'interview_rate': round((row['interviews'] / applied) * 100, 2) if applied else 0,
+                    'offer_rate': round((row['offers'] / applied) * 100, 2) if applied else 0,
+                })
+            return formatted
+
+        by_method = _aggregate('application_method', JobEntry.APPLICATION_METHODS)
+        by_source = _aggregate('application_source', JobEntry.APPLICATION_SOURCES)
+        return {
+            'by_method': by_method,
+            'by_source': by_source,
+            'top_method': by_method[0] if by_method else None,
+            'top_source': by_source[0] if by_source else None,
+        }
+
+    def analyze_role_fit_summary(self):
+        """Highlight job types/industries with best response rates."""
+        job_type_map = dict(JobEntry.JOB_TYPES)
+        job_type_rows = (
+            self.applications
+            .values('job_type')
+            .annotate(
+                total=Count('id'),
+                applied=Count('id', filter=~Q(status='interested')),
+                responded=Count('id', filter=~Q(status__in=['interested', 'applied'])),
+                offers=Count('id', filter=Q(status='offer')),
+            )
+            .order_by('-offers', '-responded', '-total')
+        )
+        job_types = []
+        for row in job_type_rows:
+            code = row['job_type']
+            applied = row['applied'] or 0
+            if not code or applied == 0:
+                continue
+            job_types.append({
+                'code': code,
+                'label': job_type_map.get(code, code.title()),
+                'applications': row['total'],
+                'response_rate': round((row['responded'] / applied) * 100, 2),
+                'offer_rate': round((row['offers'] / applied) * 100, 2),
+            })
+
+        title_rows = (
+            self.applications
+            .values('title')
+            .annotate(
+                total=Count('id'),
+                applied=Count('id', filter=~Q(status='interested')),
+                responded=Count('id', filter=~Q(status__in=['interested', 'applied'])),
+                offers=Count('id', filter=Q(status='offer')),
+            )
+            .filter(total__gte=2)
+            .order_by('-offers', '-responded', '-total')[:5]
+        )
+        role_examples = []
+        for row in title_rows:
+            applied = row['applied'] or 0
+            if applied == 0:
+                continue
+            role_examples.append({
+                'title': row['title'] or 'Role',
+                'applications': row['total'],
+                'response_rate': round((row['responded'] / applied) * 100, 2),
+                'offer_rate': round((row['offers'] / applied) * 100, 2),
+            })
+
+        return {
+            'job_types': job_types,
+            'industries': self.analyze_by_industry()[:5],
+            'role_examples': role_examples,
+        }
+
+    def build_experiment_results(self, materials, customization, approaches):
+        """Compose lightweight A/B style experiment summaries."""
+        experiments = []
+
+        def _variant(label, data):
+            if not data:
+                return None
+            return {
+                'label': label,
+                'applications': data.get('total_applications') or data.get('applications'),
+                'response_rate': data.get('response_rate'),
+                'interview_rate': data.get('interview_rate'),
+                'offer_rate': data.get('offer_rate'),
+            }
+
+        resume_custom = (customization or {}).get('resume_customization', {})
+        if resume_custom.get('customized') and resume_custom.get('not_customized'):
+            winner = 'customized' if resume_custom['customized']['offer_rate'] >= resume_custom['not_customized']['offer_rate'] else 'not_customized'
+            experiments.append({
+                'id': 'resume_customization',
+                'title': 'Resume Customization',
+                'variants': [
+                    _variant('Customized', resume_custom['customized']),
+                    _variant('Generic', resume_custom['not_customized']),
+                ],
+                'winner': 'Customized' if winner == 'customized' else 'Generic',
+                'insight': 'Customized resumes consistently earn stronger offer rates.',
+            })
+
+        cover_custom = (customization or {}).get('cover_letter_customization', {})
+        if cover_custom.get('customized') and cover_custom.get('not_customized'):
+            winner = 'customized' if cover_custom['customized']['response_rate'] >= cover_custom['not_customized']['response_rate'] else 'not_customized'
+            experiments.append({
+                'id': 'cover_letter_customization',
+                'title': 'Cover Letter Personalization',
+                'variants': [
+                    _variant('Tailored Letters', cover_custom['customized']),
+                    _variant('Standard Letters', cover_custom['not_customized']),
+                ],
+                'winner': 'Tailored Letters' if winner == 'customized' else 'Standard Letters',
+                'insight': 'Tailored cover letters correlate with better response rates.',
+            })
+
+        method_stats = (approaches or {}).get('by_method') or []
+        if method_stats and len(method_stats) >= 2:
+            primary, challenger = method_stats[0], method_stats[1]
+            experiments.append({
+                'id': 'application_method',
+                'title': 'Application Method Focus',
+                'variants': [
+                    _variant(primary['label'], primary),
+                    _variant(challenger['label'], challenger),
+                ],
+                'winner': primary['label'],
+                'insight': f"{primary['label']} is outperforming {challenger['label']} on offer rate; prioritize that workflow.",
+            })
+
+        resume_variants = (materials or {}).get('resume_versions') or []
+        if resume_variants and len(resume_variants) >= 2:
+            lead, challenger = resume_variants[0], resume_variants[1]
+            experiments.append({
+                'id': 'resume_versions',
+                'title': 'Resume Version A/B',
+                'variants': [
+                    _variant(lead['label'], lead),
+                    _variant(challenger['label'], challenger),
+                ],
+                'winner': lead['label'],
+                'insight': f"{lead['label']} yields the highest conversion; reuse it for similar roles.",
+            })
+
+        return experiments
+
+    def summarize_trend(self, trend):
+        """Add quick insight about momentum based on recent trend entries."""
+        if not trend:
+            return {
+                'success_trend': [],
+                'offer_rate_change': 0,
+                'response_rate_change': 0,
+                'momentum': 'flat',
+            }
+        if len(trend) < 2:
+            latest = trend[-1]
+            return {
+                'success_trend': trend,
+                'offer_rate_change': latest.get('offer_rate', 0),
+                'response_rate_change': latest.get('response_rate', 0),
+                'momentum': 'up' if latest.get('offer_rate', 0) > 0 else 'flat',
+            }
+        prev = trend[-2]
+        latest = trend[-1]
+        offer_delta = round((latest.get('offer_rate', 0) - (prev.get('offer_rate', 0) or 0)), 2)
+        response_delta = round((latest.get('response_rate', 0) - (prev.get('response_rate', 0) or 0)), 2)
+        momentum = 'up' if offer_delta > 0 or response_delta > 0 else ('down' if offer_delta < 0 or response_delta < 0 else 'flat')
+        return {
+            'success_trend': trend,
+            'offer_rate_change': offer_delta,
+            'response_rate_change': response_delta,
+            'momentum': momentum,
+        }
+
+    def build_optimization_dashboard(self):
+        """Aggregate optimization-focused insights for the dashboard use case."""
+        overall = self.get_overall_metrics()
+        materials = self.analyze_material_version_performance()
+        approaches = self.analyze_application_approaches()
+        timing = self.analyze_timing_patterns()
+        role_fit = self.analyze_role_fit_summary()
+        recommendations = self.get_recommendations()
+        customization = self.analyze_customization_impact()
+        experiments = self.build_experiment_results(materials, customization, approaches)
+        trend = self.summarize_trend(self.analyze_success_trend())
+
+        return {
+            'success_metrics': {
+                'response_rate': overall.get('response_rate'),
+                'interview_rate': overall.get('interview_rate'),
+                'offer_rate': overall.get('offer_rate'),
+                'total_applications': overall.get('total_applications'),
+                'applied': overall.get('applied_count'),
+            },
+            'materials_performance': materials,
+            'approach_effectiveness': approaches,
+            'timing_insights': timing,
+            'role_fit': role_fit,
+            'recommendations': recommendations[:5],
+            'experiments': experiments,
+            'trend': trend,
+        }

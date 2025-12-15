@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { jobsAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import Icon from '../common/Icon';
+import { authorizedFetch } from '../../services/authToken';
 
 const card = { padding: 12, borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb' };
 
@@ -51,8 +52,7 @@ export default function JobStats() {
       const base = (process.env.REACT_APP_API_URL || '') + '/jobs/stats';
       const monthParam = `&month=${formatMonth(month)}`;
       const url = `${base}?export=csv${monthParam}`;
-      const token = localStorage.getItem('firebaseToken') || '';
-      const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const resp = await authorizedFetch(url);
       if (!resp.ok) throw new Error('Export failed');
       const blob = await resp.blob();
       const link = document.createElement('a');

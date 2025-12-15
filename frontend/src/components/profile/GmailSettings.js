@@ -11,7 +11,6 @@ const GmailSettings = () => {
   const [scanning, setScanning] = useState(false);
   const [toast, setToast] = useState({ isOpen: false, message: '', type: 'info' });
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false });
-  const [savingPreferences, setSavingPreferences] = useState(false);
   const [pollingInterval, setPollingInterval] = useState(null);
   const [apiError, setApiError] = useState(null); // UC-117: Track API errors
 
@@ -37,6 +36,7 @@ const GmailSettings = () => {
         window.dispatchEvent(new CustomEvent('gmail-scan-complete'));
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [integration?.status]);
 
   const loadStatus = async () => {
@@ -128,7 +128,7 @@ const GmailSettings = () => {
       
       setToast({
         isOpen: true,
-        message: 'Email scanning enabled! Initial scan starting...',
+        message: 'Email scanning enabled! You can now scan for emails manually.',
         type: 'success',
         duration: 4000
       });
@@ -141,40 +141,6 @@ const GmailSettings = () => {
       });
     } finally {
       setScanning(false);
-    }
-  };
-
-  const handleUpdatePreferences = async (field, value) => {
-    setSavingPreferences(true);
-    try {
-      const updates = {};
-      if (field === 'scan_frequency') {
-        updates.scan_frequency = value;
-      } else if (field === 'auto_update_status') {
-        updates.auto_update_status = value;
-      }
-      
-      await emailAPI.updatePreferences(
-        field === 'scan_frequency' ? value : integration.scan_frequency,
-        field === 'auto_update_status' ? value : integration.auto_update_status
-      );
-      
-      await loadStatus(); // Reload to get updated values
-      setToast({
-        isOpen: true,
-        message: 'Preferences updated successfully',
-        type: 'success',
-        duration: 3000
-      });
-    } catch (error) {
-      console.error('Failed to update preferences:', error);
-      setToast({
-        isOpen: true,
-        message: 'Failed to update preferences. Please try again.',
-        type: 'error'
-      });
-    } finally {
-      setSavingPreferences(false);
     }
   };
 
@@ -317,43 +283,9 @@ const GmailSettings = () => {
                 )}
               </div>
               
-              <div className="gmail-preferences">
-                <h4>Scanning Preferences</h4>
-                
-                <div className="preference-group">
-                  <label htmlFor="scan-frequency">
-                    <strong>⏱️ Scan Frequency</strong>
-                    <span className="preference-description">How often should we check for new emails?</span>
-                  </label>
-                  <select
-                    id="scan-frequency"
-                    value={integration.scan_frequency || 'daily'}
-                    onChange={(e) => handleUpdatePreferences('scan_frequency', e.target.value)}
-                    disabled={savingPreferences}
-                    className="preference-select"
-                  >
-                    <option value="realtime">Real-time (as they arrive)</option>
-                    <option value="hourly">Every hour</option>
-                    <option value="daily">Once per day</option>
-                    <option value="manual">Manual only</option>
-                  </select>
-                </div>
-                
-                <div className="preference-group">
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={integration.auto_update_status || false}
-                      onChange={(e) => handleUpdatePreferences('auto_update_status', e.target.checked)}
-                      disabled={savingPreferences}
-                    />
-                    <div>
-                      <strong>🔄 Auto-update Application Status</strong>
-                      <span className="preference-description">Automatically apply suggested status updates when confidence is high</span>
-                    </div>
-                  </label>
-                </div>
-              </div>
+              <p style={{ marginTop: '20px', color: '#6b7280', fontSize: '14px' }}>
+                Click "Scan Now" to manually search for job-related emails in your inbox.
+              </p>
               
               <div className="gmail-actions">
             <button 

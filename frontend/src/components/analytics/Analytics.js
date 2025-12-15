@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { jobsAPI } from '../../services/api';
+import { authorizedFetch } from '../../services/authToken';
 import { useAuth } from '../../context/AuthContext';
 import Icon from '../common/Icon';
 import InterviewPerformanceTracking from './InterviewPerformanceTracking';
 import ApplicationSuccessAnalysis from './ApplicationSuccessAnalysis';
 import CompetitiveAnalysisPanel from './CompetitiveAnalysisPanel';
 import ProductivityAnalytics from './ProductivityAnalytics';
+import OptimizationDashboard from './OptimizationDashboard';
 
 const card = { padding: 16, borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb', marginBottom: 16 };
 const sectionTitle = { fontSize: 18, fontWeight: 700, marginBottom: 12, color: '#1f2937' };
@@ -30,6 +32,7 @@ export default function Analytics() {
     { id: 'interviews', label: 'Interview Performance' },
     { id: 'competitive', label: 'Competitive Analysis' },
     { id: 'productivity', label: 'Productivity' },
+    { id: 'optimization', label: 'Optimization' },
   ];
 
   return (
@@ -67,6 +70,7 @@ export default function Analytics() {
         {activeTab === 'interviews' && <InterviewPerformanceTracking />}
         {activeTab === 'competitive' && <CompetitiveAnalysisPanel />}
         {activeTab === 'productivity' && <ProductivityAnalytics />}
+        {activeTab === 'optimization' && <OptimizationDashboard />}
       </div>
     </div>
   );
@@ -107,7 +111,7 @@ function ApplicationAnalyticsPanel() {
     return params;
   };
 
-  const loadAnalytics = async (activeFilters = filters) => {
+  const loadAnalytics = useCallback(async (activeFilters = filters) => {
     setLoading(true);
     try {
       const params = buildParams(activeFilters);
@@ -124,13 +128,13 @@ function ApplicationAnalyticsPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
 
   useEffect(() => {
     if (!authLoading) {
       loadAnalytics();
     }
-  }, [authLoading]);
+  }, [authLoading, loadAnalytics]);
 
   const handleFilterChange = (field, value) => {
     setFilters((prev) => ({ ...prev, [field]: value }));
@@ -181,11 +185,7 @@ function ApplicationAnalyticsPanel() {
 
   const exportAnalytics = async () => {
     try {
-      const response = await fetch('/api/jobs/stats?export=csv', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('firebaseToken') || ''}`,
-        },
-      });
+      const response = await authorizedFetch('/api/jobs/stats?export=csv');
       
       if (!response.ok) throw new Error('Export failed');
       

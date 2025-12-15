@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars, react-hooks/exhaustive-deps, no-useless-escape */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';

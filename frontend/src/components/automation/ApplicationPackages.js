@@ -3,65 +3,37 @@ import Icon from '../common/Icon';
 import './ApplicationPackages.css';
 import { automationAPI } from '../../services/automationAPI';
 
-const ApplicationPackages = ({ packages, onRefresh }) => {
-  const [showMenu, setShowMenu] = useState(null);
-  const [selectedPackage, setSelectedPackage] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+const ApplicationPackages = ({ packages = [], onRefresh }) => {
+  const [status, setStatus] = useState({ state: 'idle', message: '' });
+  const error = status.state === 'error' ? status.message : null;
+  const setError = (msg) => setStatus(prev => ({ ...prev, state: msg ? 'error' : 'idle', message: msg || '' }));
 
-  const handleMenuToggle = (packageId) => {
-    setShowMenu(showMenu === packageId ? null : packageId);
-    const pkg = packages.find(p => p.id === packageId);
-    setSelectedPackage(pkg);
-  };
-
-  const handleViewPackage = async (pkg) => {
+  const runWithStatus = async (label, action) => {
+    setStatus({ state: 'loading', message: label });
     try {
-      const packageDetails = await automationAPI.getApplicationPackageDetails(pkg.id);
-      console.log('Package details:', packageDetails);
-      // TODO: Navigate to detailed package view or show modal with package details
-      alert(`Package Details:\nJob: ${pkg.job?.title}\nCompany: ${pkg.job?.company_name}\nDocuments: ${packageDetails.documents?.length || 0} files`);
-    } catch (err) {
-      console.error('Failed to view package:', err);
-      setError('Failed to view package');
+      await action();
+      setStatus({ state: 'success', message: '' });
+    } catch (error) {
+      console.error(label, error);
+      setStatus({ state: 'error', message: label });
     }
-    setShowMenu(null);
   };
 
-  const handleRegeneratePackage = async (pkg) => {
-    setLoading(true);
-    try {
-      await automationAPI.regenerateApplicationPackage(pkg.id);
-      onRefresh();
-    } catch (err) {
-      console.error('Failed to regenerate package:', err);
-      setError('Failed to regenerate package');
-    } finally {
-      setLoading(false);
-    }
-    setShowMenu(null);
-  };
+  const handleRegeneratePackage = (pkg) => runWithStatus('Regenerating package', async () => {
+    await automationAPI.regenerateApplicationPackage(pkg.id);
+    onRefresh?.();
+  });
 
-  const handleDownloadPackage = async (pkg) => {
-    try {
-      const downloadUrl = await automationAPI.downloadApplicationPackage(pkg.id);
-      
-      // Create a temporary link to trigger download
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `application-package-${pkg.job?.title || 'package'}.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // Clean up the blob URL
-      window.URL.revokeObjectURL(downloadUrl);
-    } catch (err) {
-      console.error('Failed to download package:', err);
-      setError('Failed to download package');
-    }
-    setShowMenu(null);
-  };
+  const handleDownloadPackage = (pkg) => runWithStatus('Preparing download', async () => {
+    const downloadUrl = await automationAPI.downloadApplicationPackage(pkg.id);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `application-package-${pkg.job?.title || 'package'}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(downloadUrl);
+  });
 
   const getStatusClass = (status) => {
     return `status status-${status}`;
@@ -125,36 +97,8 @@ const ApplicationPackages = ({ packages, onRefresh }) => {
                 <p className="company-name">{pkg.job?.company_name || 'Unknown Company'}</p>
               </div>
               <div className="package-actions">
-                {/* Simple direct download button */}
                 <button 
-                  onClick={async () => {
-                    try {
-                      const response = await fetch(`http://localhost:8000/api/automation/packages/${pkg.id}/download/`, {
-                        headers: {
-                          'Authorization': `Bearer ${localStorage.getItem('firebaseToken') || ''}`,
-                        },
-                      });
-                      
-                      if (!response.ok) {
-                        throw new Error('Download failed');
-                      }
-                      
-                      const blob = await response.blob();
-                      const url = window.URL.createObjectURL(blob);
-                      const link = document.createElement('a');
-                      link.href = url;
-                      link.download = `package-${pkg.id}.zip`;
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                      window.URL.revokeObjectURL(url);
-                      
-                      alert('Download started!');
-                    } catch (error) {
-                      console.error('Download error:', error);
-                      alert('Download failed: ' + error.message);
-                    }
-                  }}
+                  onClick={() => handleDownloadPackage(pkg)}
                   style={{
                     background: '#28a745',
                     color: 'white',
@@ -170,31 +114,8 @@ const ApplicationPackages = ({ packages, onRefresh }) => {
                   💾 DOWNLOAD ZIP
                 </button>
                 
-                {/* Simple regenerate button */}
                 <button 
-                  onClick={async () => {
-                    try {
-                      if (!window.confirm('Regenerate this package? This will create new AI documents.')) return;
-                      
-                      const response = await fetch(`http://localhost:8000/api/automation/packages/${pkg.id}/regenerate/`, {
-                        method: 'POST',
-                        headers: {
-                          'Authorization': `Bearer ${localStorage.getItem('firebaseToken') || ''}`,
-                          'Content-Type': 'application/json',
-                        },
-                      });
-                      
-                      if (!response.ok) {
-                        throw new Error('Regeneration failed');
-                      }
-                      
-                      alert('Package regenerated successfully! Try downloading now.');
-                      window.location.reload(); // Refresh the page
-                    } catch (error) {
-                      console.error('Regeneration error:', error);
-                      alert('Regeneration failed: ' + error.message);
-                    }
-                  }}
+                  onClick={() => handleRegeneratePackage(pkg)}
                   style={{
                     background: '#ffc107',
                     color: 'black',

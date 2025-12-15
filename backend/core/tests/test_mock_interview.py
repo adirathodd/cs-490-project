@@ -341,8 +341,7 @@ class TestMockInterviewAPI:
 class TestMockInterviewService:
     """Test mock interview service layer."""
 
-    @patch('core.mock_interview.genai.Client')
-    def test_generate_questions(self, mock_client_class):
+    def test_generate_questions(self):
         """Test AI question generation."""
         from core.mock_interview import MockInterviewGenerator
 
@@ -361,7 +360,6 @@ class TestMockInterviewService:
         mock_models = Mock()
         mock_models.generate_content.return_value = mock_response
         mock_client.models = mock_models
-        mock_client_class.return_value = mock_client
 
         # Pass mocked client directly to avoid API key check
         generator = MockInterviewGenerator(client=mock_client)
@@ -378,8 +376,7 @@ class TestMockInterviewService:
         assert questions[0]['framework'] == 'STAR'
         assert len(questions[0]['ideal_points']) == 3
 
-    @patch('core.mock_interview.genai.Client')
-    def test_evaluate_answer(self, mock_client_class):
+    def test_evaluate_answer(self):
         """Test AI answer evaluation."""
         from core.mock_interview import MockInterviewCoach
 
@@ -397,7 +394,6 @@ class TestMockInterviewService:
         mock_models = Mock()
         mock_models.generate_content.return_value = mock_response
         mock_client.models = mock_models
-        mock_client_class.return_value = mock_client
 
         # Pass mocked client directly to avoid API key check
         coach = MockInterviewCoach(client=mock_client)

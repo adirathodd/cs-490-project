@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { authAPI, skillsAPI, educationAPI, projectsAPI } from '../../services/api';
 import api from '../../services/api';
+import { authorizedFetch } from '../../services/authToken';
 import SummaryCard from './SummaryCard';
 import ProfileProgress from './ProfileProgress';
 import SkillDistribution from './SkillDistribution';
@@ -40,15 +41,16 @@ const DashboardOverview = () => {
       try {
         setLoading(true);
         // Fetch in parallel where possible
+        const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
         const [me, skillsRes, eduRes, projRes, empList, contactSuggestions] = await Promise.all([
           authAPI.getCurrentUser().catch(() => null),
           (skillsAPI?.getSkills ? skillsAPI.getSkills() : Promise.resolve([])).catch(() => []),
           (educationAPI?.getEducations ? educationAPI.getEducations() : Promise.resolve({ results: [] })).catch(() => ({ results: [] })),
           (projectsAPI?.getProjects ? projectsAPI.getProjects() : Promise.resolve([])).catch(() => []),
           // Employment endpoint exists under /profile/employment
-          fetch((process.env.REACT_APP_API_URL || 'http://localhost:8000/api') + '/profile/employment', {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('firebaseToken') || ''}` }
-          }).then(r => r.ok ? r.json() : Promise.resolve({ results: [] })).catch(() => ({ results: [] })),
+          authorizedFetch(`${apiBase}/profile/employment`)
+            .then((r) => (r.ok ? r.json() : Promise.resolve({ results: [] })))
+            .catch(() => ({ results: [] })),
           // Fetch suggested contacts
           api.get('/contact-suggestions', { params: { status: 'suggested' } })
             .then(res => res.data || [])
@@ -73,7 +75,7 @@ const DashboardOverview = () => {
     return () => { isMounted = false; };
   }, []);
 
-  const progress = useMemo(() => {
+  const _profileProgress = useMemo(() => {
     // Simple heuristic: required buckets present
     let total = 5, done = 0;
     if (profile) done += 1;

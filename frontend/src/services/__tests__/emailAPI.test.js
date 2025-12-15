@@ -2,7 +2,7 @@
  * Tests for Email API Service (UC-113)
  */
 import emailAPI from '../emailAPI';
-import api from '../api';
+import { api } from '../api';
 
 jest.mock('../api');
 
@@ -244,29 +244,6 @@ describe('Email API Service', () => {
       api.post.mockRejectedValue(new Error('Job not found'));
 
       await expect(emailAPI.linkEmailToJob(1, 999)).rejects.toThrow('Job not found');
-    });
-  });
-
-  describe('applyStatusSuggestion', () => {
-    it('should apply status suggestion', async () => {
-      const mockResponse = {
-        data: {
-          message: 'Status applied',
-          job_status: 'phone'
-        }
-      };
-      api.post.mockResolvedValue(mockResponse);
-
-      const result = await emailAPI.applyStatusSuggestion(1);
-
-      expect(api.post).toHaveBeenCalledWith('/emails/1/apply-status/');
-      expect(result).toEqual(mockResponse.data);
-    });
-
-    it('should handle no suggestion error', async () => {
-      api.post.mockRejectedValue(new Error('No suggestion available'));
-
-      await expect(emailAPI.applyStatusSuggestion(1)).rejects.toThrow('No suggestion available');
     });
   });
 
