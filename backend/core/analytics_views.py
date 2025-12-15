@@ -39,6 +39,190 @@ JOB_TYPE_PARAM_MAP = {
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def response_time_analytics_view(request):
+    """Response-time analytics: summary, monthly trend, and pending applications.
+
+    Query params supported:
+    - since: ISO date to filter jobs created on/after this date
+    - industry, source, method: optional filters aligned with JobEntry fields
+    """
+    try:
+        profile = CandidateProfile.objects.get(user=request.user)
+    except CandidateProfile.DoesNotExist:
+        return Response({'error': {'message': 'Profile not found'}}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        qs = JobEntry.objects.filter(candidate=profile, is_archived=False)
+
+        # Basic filters
+        params = request.query_params
+        since = params.get('since')
+        if since:
+            try:
+                dt = parse_date(since)
+                if dt:
+                    qs = qs.filter(created_at__date__gte=dt)
+            except Exception:
+                pass
+        industry = params.get('industry')
+        if industry:
+            qs = qs.filter(industry=industry)
+        source = params.get('source')
+        if source:
+            qs = qs.filter(application_source=source)
+        method = params.get('method')
+        if method:
+            qs = qs.filter(application_method=method)
+
+        # Summary
+        applied_qs = qs.exclude(status='interested')
+        responded_qs = qs.exclude(status__in=['interested', 'applied'])
+        applied_count = applied_qs.count()
+        responded_count = responded_qs.count()
+
+        # Compute response durations using status changes (first response = phone_screen/interview/offer)
+        job_ids = list(applied_qs.values_list('id', flat=True))
+        responses = []
+        if job_ids:
+            # Minimal job info map
+            jobs = {
+                j.id: j
+                for j in applied_qs.only('id', 'company_name', 'title', 'application_submitted_at', 'created_at')
+            }
+            changes = (
+                JobStatusChange.objects.filter(job_id__in=job_ids, new_status__in=['phone_screen', 'interview', 'offer'])
+                .values('job_id', 'new_status', 'changed_at')
+                .order_by('job_id', 'changed_at')
+            )
+            first_resp_map = {}
+            for ch in changes:
+                jid = ch['job_id']
+                if jid not in first_resp_map:
+                    first_resp_map[jid] = ch['changed_at']
+
+            for jid, first_resp_at in first_resp_map.items():
+                job = jobs.get(jid)
+                if not job:
+                    continue
+                base = job.application_submitted_at or job.created_at
+                end = first_resp_at
+                if base and end and end >= base:
+                    try:
+                        days = (end - base).total_seconds() / 86400
+                        if days >= 0:
+                            responses.append({
+                                'id': jid,
+                                'company_name': job.company_name,
+                                'title': job.title,
+                                'applied_date': base.date() if hasattr(base, 'date') else None,
+                                'days_to_response': round(days, 2),
+                            })
+                    except Exception:
+                        continue
+
+        avg_days_to_response = round(sum(r['days_to_response'] for r in responses) / len(responses), 2) if responses else 0
+        fastest = min(responses, key=lambda r: r['days_to_response']) if responses else None
+        slowest = max(responses, key=lambda r: r['days_to_response']) if responses else None
+
+        summary = {
+            'applied_count': applied_count,
+            'responded_count': responded_count,
+            'response_rate_percent': round((responded_count / applied_count * 100), 2) if applied_count > 0 else 0,
+            'avg_days_to_response': avg_days_to_response,
+            'fastest': fastest,
+            'slowest': slowest,
+        }
+
+        # Monthly trend of avg days_to_response (last 12 months) using applied month
+        from django.utils import timezone as dj_tz
+        import datetime as _dt
+        trend = []
+        if responses:
+            buckets = {}
+            for r in responses:
+                applied = r.get('applied_date')
+                if not applied:
+                    continue
+                mm = applied.replace(day=1)
+                if mm not in buckets:
+                    buckets[mm] = []
+                buckets[mm].append(r['days_to_response'])
+
+            today = dj_tz.now().date()
+            start_month = today.replace(day=1)
+            months = []
+            for i in range(11, -1, -1):
+                # approximate month stepping by going to previous month via day=1 and subtracting 1 day
+                # build month list chronologically
+                m = (start_month - _dt.timedelta(days=1)) if i == 11 else months[-1]
+                if i == 11:
+                    m = start_month
+                months.append(m)
+                # next iteration will compute from last entry
+                if i > 0:
+                    prev_end = months[-1] - _dt.timedelta(days=1)
+                    months[-1] = months[-1]
+                    # nothing else; we'll compute below
+            # Recompute properly to avoid mistakes: build months by decrementing month
+            months = []
+            cur = start_month
+            for _ in range(12):
+                months.insert(0, cur)
+                # move to previous month
+                prev = (cur.replace(day=1) - _dt.timedelta(days=1)).replace(day=1)
+                cur = prev
+
+            for mm in months:
+                vals = buckets.get(mm, [])
+                avg = round(sum(vals) / len(vals), 2) if vals else 0
+                trend.append({'month': mm.isoformat(), 'avg_days_to_response': avg, 'count': len(vals)})
+
+        # Pending applications that have not received a response yet
+        # Heuristic: status in ['applied'] and first_response_at is null
+        pending_qs = qs.filter(status='applied').filter(first_response_at__isnull=True)
+        now_ts = timezone.now()
+        pending_list = []
+        for j in pending_qs.only('id', 'company_name', 'title', 'created_at', 'application_submitted_at', 'last_status_change'):
+            applied_at = j.last_status_change or j.application_submitted_at or j.created_at
+            if not applied_at:
+                days_since = None
+                exceeds = False
+            else:
+                try:
+                    days_since = (now_ts - applied_at).days
+                except Exception:
+                    days_since = None
+                exceeds = (days_since is not None and (days_since > (avg_days_to_response or 0)))
+            pending_list.append({
+                'id': j.id,
+                'company_name': j.company_name,
+                'title': j.title,
+                'created_at': (j.created_at.date().isoformat() if j.created_at else None),
+                'days_since_applied': days_since,
+                'exceeds_avg': exceeds,
+            })
+
+        return Response({
+            'summary': summary,
+            'trend': trend,
+            'pending': pending_list,
+            'filters': {
+                'since': since,
+                'industry': industry,
+                'source': source,
+                'method': method,
+            },
+            'available_industries': list(qs.exclude(industry='').values_list('industry', flat=True).distinct()),
+        })
+    except Exception as e:
+        logger.error(f"Response-time analytics error: {e}")
+        return Response(
+            {'error': {'code': 'analytics_error', 'message': 'Unable to build response-time analytics'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+@api_view(['GET'])
 @permission_classes([IsAuthenticated]) 
 def cover_letter_analytics_view(request):
     """Enhanced analytics endpoint with comprehensive job analytics AND cover letter performance."""

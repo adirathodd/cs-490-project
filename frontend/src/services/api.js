@@ -811,6 +811,10 @@ export const jobsAPI = {
     const response = await api.get('/jobs/analytics', { params });
     return response.data; // Enhanced analytics data
   },
+  getResponseTimeAnalytics: async (params = {}) => {
+    const response = await api.get('/jobs/analytics/response-time', { params });
+    return response.data;
+  },
   getProductivityAnalytics: async () => {
     const response = await api.get('/productivity/analytics');
     return response.data;
