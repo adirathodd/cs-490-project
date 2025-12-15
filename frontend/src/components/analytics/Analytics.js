@@ -9,6 +9,7 @@ import CompetitiveAnalysisPanel from './CompetitiveAnalysisPanel';
 import ProductivityAnalytics from './ProductivityAnalytics';
 import OptimizationDashboard from './OptimizationDashboard';
 import MaterialVersionComparison from './MaterialVersionComparison';
+import { industryOptions } from '../jobs/Jobs';
 
 const card = { padding: 16, borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb', marginBottom: 16 };
 const sectionTitle = { fontSize: 18, fontWeight: 700, marginBottom: 12, color: '#1f2937' };
@@ -168,6 +169,9 @@ function ApplicationAnalyticsPanel() {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [respAnalytics, setRespAnalytics] = useState(null);
+  const [respError, setRespError] = useState('');
+  const [respIndustry, setRespIndustry] = useState('');
   const [filters, setFilters] = useState(() => ({
     startDate: '',
     endDate: '',
@@ -221,8 +225,18 @@ function ApplicationAnalyticsPanel() {
   useEffect(() => {
     if (!authLoading) {
       loadAnalytics();
+      (async () => {
+        try {
+          const ra = await jobsAPI.getResponseTimeAnalytics(respIndustry ? { industry: respIndustry } : {});
+          setRespAnalytics(ra);
+          setRespError('');
+        } catch (e) {
+          console.error('Response-time analytics error:', e);
+          setRespError(''); // Keep UI clean if backend not ready
+        }
+      })();
     }
-  }, [authLoading, loadAnalytics]);
+  }, [authLoading, loadAnalytics, respIndustry]);
 
   const handleFilterChange = (field, value) => {
     setFilters((prev) => ({ ...prev, [field]: value }));
@@ -307,6 +321,7 @@ function ApplicationAnalyticsPanel() {
 
   const timeMetrics = time_to_response || {};
   const salaryMetrics = salary_insights || {};
+  const statItem = { padding: 12, borderRadius: 8, border: '1px solid #e5e7eb', background: '#f9fafb' };
 
   return (
     <div style={{ display: 'grid', gap: 16, padding: 16, maxWidth: 1200, margin: '0 auto' }}>
@@ -448,6 +463,160 @@ function ApplicationAnalyticsPanel() {
           <div style={{ fontSize: 24, fontWeight: 700 }}>
             {funnel_analytics?.response_rate || 0}%
           </div>
+        </div>
+      </div>
+
+      {/* Response-Time Cards (integrated) */}
+      <div style={card}>
+        <h2 style={sectionTitle}>Response Time</h2>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>Industry</label>
+            <select
+              value={respIndustry}
+              onChange={(e) => setRespIndustry(e.target.value)}
+              style={{ padding: 8, borderRadius: 6, border: '1px solid #d1d5db', minWidth: 160 }}
+            >
+              <option value="">All</option>
+              {industryOptions.map((ind) => (
+                <option key={ind} value={ind}>{ind}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div style={{
+              padding: '8px 12px',
+              borderRadius: 8,
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              color: '#1e40af',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontWeight: 600
+            }}>
+              <Icon name="bell" />
+              Follow up on applications older than {respAnalytics?.summary?.avg_days_to_response != null
+                ? (Number(respAnalytics.summary.avg_days_to_response) >= 1
+                  ? `${respAnalytics.summary.avg_days_to_response} days`
+                  : `${(Number(respAnalytics.summary.avg_days_to_response) * 24).toFixed(1)} hrs`)
+                : '—'}.
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+          <div style={statItem}>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>Applied</div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{respAnalytics?.summary?.applied_count ?? 0}</div>
+          </div>
+          <div style={statItem}>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>Responded</div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{respAnalytics?.summary?.responded_count ?? 0}</div>
+          </div>
+          <div style={statItem}>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>Response Rate</div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{respAnalytics?.summary?.response_rate_percent != null ? `${respAnalytics.summary.response_rate_percent}%` : '—'}</div>
+          </div>
+          <div style={statItem}>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>Avg Days to Response</div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>
+              {respAnalytics?.summary?.avg_days_to_response == null
+                ? '—'
+                : (Number(respAnalytics.summary.avg_days_to_response) >= 1
+                    ? `${respAnalytics.summary.avg_days_to_response} days`
+                    : `${(Number(respAnalytics.summary.avg_days_to_response) * 24).toFixed(1)} hrs`)}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12, marginTop: 12 }}>
+          <div style={{ ...statItem, background: '#ecfdf5', borderColor: '#d1fae5' }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Fastest Response</div>
+            {respAnalytics?.summary?.fastest ? (
+              <div>
+                <div style={{ fontWeight: 600 }}>{respAnalytics.summary.fastest.company_name} — {respAnalytics.summary.fastest.title}</div>
+                <div style={{ fontSize: 12, color: '#065f46' }}>
+                  {Number(respAnalytics.summary.fastest.days_to_response) >= 1
+                    ? `${respAnalytics.summary.fastest.days_to_response} days`
+                    : `${(Number(respAnalytics.summary.fastest.days_to_response) * 24).toFixed(1)} hrs`}
+                </div>
+              </div>
+            ) : (
+              <div style={{ color: '#6b7280' }}>No responded applications yet.</div>
+            )}
+          </div>
+          <div style={{ ...statItem, background: '#fef3c7', borderColor: '#fde68a' }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Slowest Response</div>
+            {respAnalytics?.summary?.slowest ? (
+              <div>
+                <div style={{ fontWeight: 600 }}>{respAnalytics.summary.slowest.company_name} — {respAnalytics.summary.slowest.title}</div>
+                <div style={{ fontSize: 12, color: '#92400e' }}>
+                  {Number(respAnalytics.summary.slowest.days_to_response) >= 1
+                    ? `${respAnalytics.summary.slowest.days_to_response} days`
+                    : `${(Number(respAnalytics.summary.slowest.days_to_response) * 24).toFixed(1)} hrs`}
+                </div>
+              </div>
+            ) : (
+              <div style={{ color: '#6b7280' }}>No responded applications yet.</div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Monthly Trend</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
+            {respAnalytics?.trend?.length ? (
+              respAnalytics.trend.map((row) => {
+                const avgDays = Number(row.avg_days_to_response || 0);
+                const count = Number(row.count || 0);
+                let display = 'N/A';
+                if (count > 0) {
+                  display = avgDays >= 1 ? `${avgDays} days` : `${(avgDays * 24).toFixed(1)} hrs`;
+                }
+                return (
+                  <div key={row.month} style={{ ...statItem, background: '#f3f4f6' }}>
+                    <div style={{ fontSize: 12, color: '#6b7280' }}>{row.month}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{display}</div>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>{count} applications</div>
+                  </div>
+                );
+              })
+            ) : (
+              <div style={{ color: '#6b7280' }}>No trend data.</div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Pending Applications</div>
+          {(() => {
+            const pending = respAnalytics?.pending || [];
+            const exceededCount = pending.filter(p => p.exceeds_avg).length;
+            if (pending.length > 0 && exceededCount === 0) {
+              return <div style={{ color: '#6b7280', marginBottom: 8 }}>No jobs have exceeded the average response time currently.</div>;
+            }
+            if (exceededCount > 0) {
+              return <div style={{ color: '#b91c1c', marginBottom: 8, fontWeight: 600 }}>Exceeding average: {exceededCount}</div>;
+            }
+            return null;
+          })()}
+          {respAnalytics?.pending?.length ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+              {respAnalytics.pending.map((j) => (
+                <div key={j.id} style={{ ...statItem, background: j.exceeds_avg ? '#fee2e2' : '#f9fafb', borderColor: j.exceeds_avg ? '#fecaca' : '#e5e7eb' }}>
+                  <div style={{ fontWeight: 600 }}>{j.company_name} — {j.title}</div>
+                  <div style={{ fontSize: 12, color: '#6b7280' }}>Applied: {j.created_at || '—'}</div>
+                  <div style={{ marginTop: 6 }}>
+                    <span style={{ fontSize: 12, color: '#374151' }}>Days since applied: </span>
+                    <strong>{j.days_since_applied != null ? j.days_since_applied : '—'}</strong>
+                    {j.exceeds_avg && <span style={{ marginLeft: 8, fontSize: 12, color: '#b91c1c' }}>Above avg</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ color: '#6b7280' }}>No pending applications awaiting responses.</div>
+          )}
         </div>
       </div>
 

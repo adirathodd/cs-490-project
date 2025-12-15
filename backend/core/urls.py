@@ -193,6 +193,7 @@ urlpatterns = [
     path('jobs/success-analysis', views.application_success_analysis, name='application-success-analysis'),  # UC-097
     path('jobs/optimization-dashboard', views.application_optimization_dashboard, name='application-optimization-dashboard'),
     path('jobs/analytics/goals', analytics_views.update_application_targets_view, name='analytics-goals'),
+    path('jobs/analytics/response-time', analytics_views.response_time_analytics_view, name='response-time-analytics'),
     path('jobs/bulk-status', views.jobs_bulk_status, name='jobs-bulk-status'),
     path('jobs/bulk-deadline', views.jobs_bulk_deadline, name='jobs-bulk-deadline'),
     path('jobs/upcoming-deadlines', views.jobs_upcoming_deadlines, name='jobs-upcoming-deadlines'),
