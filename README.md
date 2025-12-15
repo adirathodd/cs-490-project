@@ -167,9 +167,64 @@ Transform chaotic job searching into a strategic, organized, and data-driven pro
 - Comprehensive testing and security auditing
 - Beta user onboarding and feedback collection
 
+## Deployment (Sprint 4 UC-129+)
+
+Follow these steps to get the project live on free-tier services. Adjust provider choices if you already have equivalents.
+
+### 1) Provision cloud services
+- Frontend: Vercel (preferred) or Netlify.
+- Backend: Render, Railway, or Fly.io; enable HTTPS and CORS.
+- Database: Supabase or Neon (Postgres); enable backups if offered; configure connection pooling.
+- Domain: Use the platform subdomain (e.g., ats-candidates.vercel.app) or add a custom domain with SSL.
+- Monitoring: Sentry (errors) and UptimeRobot (uptime) on free tiers.
+
+### 2) Prepare environment configuration
+- Create separate env files/values for dev, staging, prod; keep secrets in the provider’s dashboard.
+- Set distinct API keys and DB URLs per environment; production logging should be error-level only.
+- Provide a `.env.example` with required keys for new contributors.
+- Add feature flags for gradual rollout when supported.
+
+### 3) Database setup & migration
+- Create the production Postgres instance on Supabase/Neon.
+- Run all migrations against production; then seed required reference data (industries, roles, sample jobs, FAQs, ToS/Privacy, templates).
+- Enable automated backups (daily, 7-day retention if available) and test a restore.
+- Verify connectivity from the deployed backend before exposing the app publicly.
+
+### 4) Deploy backend
+- Push the backend repo to the chosen host; set all env vars (DB URL, API keys, feature flags, Sentry DSN).
+- Enable build/start commands per the host (e.g., `npm install`/`npm run build`/`npm run start`).
+- Turn on connection pooling; add Redis caching if your host offers a free tier.
+- Configure CORS to allow the frontend domain(s).
+
+### 5) Deploy frontend
+- Connect the frontend repo to Vercel/Netlify; set env vars for API base URL and feature flags.
+- Enable production optimizations (tree shaking, code splitting/lazy loading).
+- Use the platform’s default domain or attach your custom domain; ensure HTTPS is active.
+
+### 6) CI/CD
+- GitHub Actions: run tests on every push/PR; block deploys on failures.
+- Auto-deploy to staging on `develop` merges; auto-deploy to production on `main` merges.
+- Keep deployment history and notifications enabled; prepare a simple rollback (revert to last successful build).
+
+### 7) Security & performance hardening
+- Enable CSRF protection, input sanitization, parameterized queries, secure sessions.
+- Add security headers (CSP, HSTS) at the backend/edge layer.
+- Enable gzip/Brotli and caching for static assets; serve via CDN (Cloudflare free tier).
+- Target Lighthouse > 90 and TTFB < 600 ms; paginate large lists and index hot queries.
+
+### 8) Monitoring, alerting, and QA
+- Sentry for errors (with release tags); UptimeRobot for uptime; track API latency/error rates.
+- Set alerts for critical errors/downtime; create a simple incident response/runbook.
+- Run E2E smoke tests after each deploy; add load tests (k6/JMeter) for 50–100 concurrent users.
+- Verify cross-browser and accessibility (WCAG AA) before launch.
+
+### 9) Domain & DNS
+- Configure A/CNAME/TXT as required; verify ownership.
+- Force www ↔ non-www redirect; confirm SSL is valid.
+- Test domain accessibility from multiple networks.
+
 ## Conclusion
 
 This ATS for candidates represents an opportunity to improve the job search experience by placing powerful, AI-driven tools directly in the hands of candidates. By building a comprehensive, candidate-centric ATS platform, this capstone project demonstrates the potential to create meaningful technological solutions that address real-world career challenges while showcasing advanced software development skills and business acumen.
 
 The platform's success will be measured not only by technical excellence and code quality but also by its ability to genuinely improve job search outcomes for users, making it a compelling portfolio piece that demonstrates both technical capability and market understanding.
-
