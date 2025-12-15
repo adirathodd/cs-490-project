@@ -24,47 +24,132 @@ const createDefaultJobTypeState = () =>
     return acc;
   }, {});
 
+const tabsConfig = [
+  { id: 'applications', label: 'Applications', icon: 'briefcase', description: 'Track job applications' },
+  { id: 'success', label: 'Success', icon: 'check-circle', description: 'Analyze success patterns' },
+  { id: 'interviews', label: 'Interviews', icon: 'calendar', description: 'Performance tracking' },
+  { id: 'competitive', label: 'Competitive', icon: 'users', description: 'Market comparison' },
+  { id: 'productivity', label: 'Productivity', icon: 'activity', description: 'Efficiency metrics' },
+  { id: 'optimization', label: 'Optimization', icon: 'target', description: 'AI recommendations' },
+];
+
+const tabContainerStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+  gap: 12,
+  maxWidth: 1200,
+  margin: '0 auto',
+  padding: '0 0 8px 0',
+};
+
+const getTabStyle = (isActive) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '16px 12px',
+  borderRadius: 12,
+  border: isActive ? '2px solid #2563eb' : '1px solid #e5e7eb',
+  background: isActive ? 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)' : '#fff',
+  color: isActive ? '#1d4ed8' : '#4b5563',
+  fontWeight: 600,
+  cursor: 'pointer',
+  transition: 'all 0.2s ease',
+  boxShadow: isActive ? '0 4px 12px rgba(37, 99, 235, 0.15)' : '0 1px 3px rgba(0, 0, 0, 0.05)',
+  minHeight: 90,
+  textAlign: 'center',
+});
+
+const tabIconStyle = (isActive) => ({
+  width: 36,
+  height: 36,
+  borderRadius: 10,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginBottom: 8,
+  background: isActive ? '#2563eb' : '#f3f4f6',
+  color: isActive ? '#fff' : '#6b7280',
+  transition: 'all 0.2s ease',
+});
+
+const tabLabelStyle = {
+  fontSize: 14,
+  fontWeight: 600,
+  marginBottom: 2,
+};
+
+const tabDescriptionStyle = {
+  fontSize: 11,
+  fontWeight: 400,
+  opacity: 0.75,
+};
+
 export default function Analytics() {
   const [activeTab, setActiveTab] = useState('applications');
-  const tabs = [
-    { id: 'applications', label: 'Application Analytics' },
-    { id: 'success', label: 'Success Analysis' },
-    { id: 'interviews', label: 'Interview Performance' },
-    { id: 'competitive', label: 'Competitive Analysis' },
-    { id: 'productivity', label: 'Productivity' },
-    { id: 'optimization', label: 'Optimization' },
-  ];
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ maxWidth: 1200, margin: '0 auto', marginBottom: 12 }}>
-        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700 }}>Analytics Command Center</h1>
-        <p style={{ margin: '6px 0 0', color: '#6b7280' }}>
-          Track application metrics, analyze success patterns, and review interview performance insights.
-        </p>
+    <div style={{ padding: 16, background: '#f9fafb', minHeight: '100vh' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+          <div style={{ 
+            width: 42, 
+            height: 42, 
+            borderRadius: 12, 
+            background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)'
+          }}>
+            <Icon name="bar-chart" size={22} color="#fff" />
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#111827' }}>Analytics Command Center</h1>
+            <p style={{ margin: 0, color: '#6b7280', fontSize: 14 }}>
+              Track metrics, analyze patterns, and optimize your job search strategy
+            </p>
+          </div>
+        </div>
       </div>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', maxWidth: 1200, margin: '0 auto' }}>
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              padding: '10px 18px',
-              borderRadius: 999,
-              border: activeTab === tab.id ? '2px solid #2563eb' : '1px solid #d1d5db',
-              background: activeTab === tab.id ? '#eff6ff' : '#fff',
-              color: activeTab === tab.id ? '#1d4ed8' : '#374151',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+      
+      <div style={tabContainerStyle}>
+        {tabsConfig.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              style={getTabStyle(isActive)}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.borderColor = '#c7d2fe';
+                  e.currentTarget.style.background = '#fafbff';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(37, 99, 235, 0.1)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.borderColor = '#e5e7eb';
+                  e.currentTarget.style.background = '#fff';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.05)';
+                }
+              }}
+            >
+              <div style={tabIconStyle(isActive)}>
+                <Icon name={tab.icon} size={18} />
+              </div>
+              <span style={tabLabelStyle}>{tab.label}</span>
+              <span style={tabDescriptionStyle}>{tab.description}</span>
+            </button>
+          );
+        })}
       </div>
-      <div style={{ marginTop: 24 }}>
+      
+      <div style={{ marginTop: 24, maxWidth: 1200, margin: '24px auto 0' }}>
         {activeTab === 'applications' && <ApplicationAnalyticsPanel />}
         {activeTab === 'success' && <ApplicationSuccessAnalysis />}
         {activeTab === 'interviews' && <InterviewPerformanceTracking />}
