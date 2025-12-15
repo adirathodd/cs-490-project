@@ -2308,6 +2308,7 @@ const _defaultExport = Object.assign(api, {
   calendarAPI,
   githubAPI,
   responseLibraryAPI,
+  questionBankAPI,
 });
 
 export default _defaultExport;
