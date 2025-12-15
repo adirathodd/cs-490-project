@@ -522,4 +522,16 @@ urlpatterns = [
     path('career-growth/compare/', views.compare_career_scenarios, name='compare-career-scenarios'),
     path('career-growth/progression-data/', views.get_career_progression_data, name='career-progression-data'),
 
+    # Material Version Performance Comparison
+    path('material-versions/', views.material_versions_list_create, name='material-versions-list-create'),
+    path('material-versions/<uuid:version_id>/', views.material_version_detail, name='material-version-detail'),
+    path('material-versions/<uuid:version_id>/archive/', views.material_version_archive, name='material-version-archive'),
+    path('material-versions/<uuid:version_id>/restore/', views.material_version_restore, name='material-version-restore'),
+    path('material-versions/<uuid:version_id>/applications/', views.material_version_applications, name='material-version-applications'),
+    path('material-versions/<uuid:version_id>/bulk-import/', views.material_version_bulk_import, name='material-version-bulk-import'),
+    path('material-version-applications/<uuid:application_id>/', views.material_version_application_detail, name='material-version-application-detail'),
+    path('material-version-applications/<uuid:application_id>/outcome/', views.material_version_application_outcome, name='material-version-application-outcome'),
+    path('material-versions/comparison/', views.material_version_comparison, name='material-version-comparison'),
+    path('material-versions/analytics/', views.material_version_analytics, name='material-version-analytics'),
+
 ]

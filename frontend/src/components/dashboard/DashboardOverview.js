@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { authAPI, skillsAPI, educationAPI, projectsAPI } from '../../services/api';
 import api from '../../services/api';
-import { authorizedFetch } from '../../services/authToken';
 import SummaryCard from './SummaryCard';
 import ProfileProgress from './ProfileProgress';
 import SkillDistribution from './SkillDistribution';
@@ -41,16 +40,15 @@ const DashboardOverview = () => {
       try {
         setLoading(true);
         // Fetch in parallel where possible
-        const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
         const [me, skillsRes, eduRes, projRes, empList, contactSuggestions] = await Promise.all([
           authAPI.getCurrentUser().catch(() => null),
           (skillsAPI?.getSkills ? skillsAPI.getSkills() : Promise.resolve([])).catch(() => []),
           (educationAPI?.getEducations ? educationAPI.getEducations() : Promise.resolve({ results: [] })).catch(() => ({ results: [] })),
           (projectsAPI?.getProjects ? projectsAPI.getProjects() : Promise.resolve([])).catch(() => []),
-          // Employment endpoint exists under /profile/employment
-          authorizedFetch(`${apiBase}/profile/employment`)
-            .then((r) => (r.ok ? r.json() : Promise.resolve({ results: [] })))
-            .catch(() => ({ results: [] })),
+          // Employment endpoint returns { employment_history: [...], total_entries: N }
+          authAPI.getEmploymentHistory()
+            .then((res) => res?.employment_history || [])
+            .catch(() => []),
           // Fetch suggested contacts
           api.get('/contact-suggestions', { params: { status: 'suggested' } })
             .then(res => res.data || [])
@@ -62,7 +60,7 @@ const DashboardOverview = () => {
         setSkills(Array.isArray(skillsRes) ? skillsRes : (skillsRes?.results || []));
         setEducation(Array.isArray(eduRes) ? eduRes : (eduRes?.results || []));
         setProjects(Array.isArray(projRes) ? projRes : (projRes?.results || []));
-        setEmploymentCount(Array.isArray(empList) ? empList.length : ((empList?.results || []).length));
+        setEmploymentCount(Array.isArray(empList) ? empList.length : 0);
         setSuggestedContacts((Array.isArray(contactSuggestions) ? contactSuggestions : []).slice(0, 3));
         setError(null);
       } catch (e) {

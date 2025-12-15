@@ -4932,3 +4932,238 @@ class ApplicationTimingAnalyticsSerializer(serializers.Serializer):
     submissions_by_hour = serializers.DictField(child=serializers.IntegerField())
     avg_days_to_response = serializers.FloatField()
     recommendations = serializers.ListField(child=serializers.CharField())
+
+# =============================================================================
+# Material Version Performance Comparison Serializers
+# =============================================================================
+
+from core.models import MaterialVersion, MaterialVersionApplication
+
+
+class MaterialVersionSerializer(serializers.ModelSerializer):
+    """Serializer for MaterialVersion model."""
+    application_count = serializers.SerializerMethodField()
+    document_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MaterialVersion
+        fields = [
+            'id', 'material_type', 'version_label', 'description',
+            'document', 'document_name', 'is_archived', 'is_active',
+            'application_count', 'created_at', 'updated_at', 'archived_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'archived_at', 'application_count']
+    
+    def get_application_count(self, obj):
+        return obj.applications.count()
+    
+    def get_document_name(self, obj):
+        if obj.document:
+            return obj.document.document_name or obj.document.name or 'Unnamed Document'
+        return None
+
+
+class MaterialVersionCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating MaterialVersion."""
+    
+    class Meta:
+        model = MaterialVersion
+        fields = ['material_type', 'version_label', 'description', 'document']
+    
+    def validate_version_label(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Version label is required.")
+        return value.strip()
+    
+    def validate(self, data):
+        candidate = self.context['request'].user.profile
+        material_type = data.get('material_type')
+        version_label = data.get('version_label')
+        
+        # Check for duplicate label
+        if MaterialVersion.objects.filter(
+            candidate=candidate,
+            material_type=material_type,
+            version_label=version_label
+        ).exists():
+            raise serializers.ValidationError({
+                'version_label': f"A {material_type} version with this label already exists."
+            })
+        
+        return data
+    
+    def create(self, validated_data):
+        validated_data['candidate'] = self.context['request'].user.profile
+        version = super().create(validated_data)
+        
+        # Auto-import job applications that used this document
+        if version.document:
+            self._auto_import_job_applications(version)
+        
+        return version
+    
+    def _auto_import_job_applications(self, version):
+        """
+        Automatically create MaterialVersionApplication records for JobEntry records
+        that used the same document (resume or cover letter).
+        """
+        from core.models import JobEntry, MaterialVersionApplication
+        
+        candidate = version.candidate
+        document = version.document
+        
+        # Find jobs that used this document based on material type
+        if version.material_type == 'resume':
+            jobs = JobEntry.objects.filter(
+                candidate=candidate,
+                resume_doc=document
+            )
+        else:  # cover_letter
+            jobs = JobEntry.objects.filter(
+                candidate=candidate,
+                cover_letter_doc=document
+            )
+        
+        # Map job status to outcome
+        status_to_outcome = {
+            'interested': 'pending',
+            'applied': 'pending',
+            'phone_screen': 'interview',
+            'interview': 'interview',
+            'offer': 'offer',
+            'rejected': 'rejection',
+            'withdrawn': 'rejection',
+        }
+        
+        for job in jobs:
+            # Skip if already tracked
+            if MaterialVersionApplication.objects.filter(
+                material_version=version,
+                job=job
+            ).exists():
+                continue
+            
+            # Determine applied_date
+            if job.application_submitted_at:
+                applied_date = job.application_submitted_at.date()
+            else:
+                applied_date = job.created_at.date()
+            
+            # Map status to outcome
+            job_status = getattr(job, 'status', 'interested')
+            outcome = status_to_outcome.get(job_status, 'pending')
+            
+            # Determine outcome_date if there was a response
+            outcome_date = None
+            if job.first_response_at:
+                outcome_date = job.first_response_at.date()
+            
+            # Create the application record
+            MaterialVersionApplication.objects.create(
+                material_version=version,
+                job=job,
+                company_name=job.company_name,
+                job_title=job.title,
+                applied_date=applied_date,
+                outcome=outcome,
+                outcome_date=outcome_date,
+            )
+
+
+class MaterialVersionApplicationSerializer(serializers.ModelSerializer):
+    """Serializer for MaterialVersionApplication model."""
+    material_version_label = serializers.CharField(source='material_version.version_label', read_only=True)
+    material_type = serializers.CharField(source='material_version.material_type', read_only=True)
+    days_to_response = serializers.IntegerField(read_only=True)
+    
+    class Meta:
+        model = MaterialVersionApplication
+        fields = [
+            'id', 'material_version', 'material_version_label', 'material_type',
+            'job', 'application', 'company_name', 'job_title', 'applied_date',
+            'outcome', 'outcome_date', 'outcome_notes', 'days_to_response',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'days_to_response']
+
+
+class MaterialVersionApplicationCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating/tracking an application with a material version."""
+    job_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    
+    class Meta:
+        model = MaterialVersionApplication
+        fields = [
+            'material_version', 'job', 'job_id', 'application',
+            'company_name', 'job_title', 'applied_date',
+            'outcome', 'outcome_date', 'outcome_notes'
+        ]
+        extra_kwargs = {
+            'job': {'required': False, 'allow_null': True},
+            'company_name': {'required': False, 'allow_blank': True},
+            'job_title': {'required': False, 'allow_blank': True},
+        }
+    
+    def validate_material_version(self, value):
+        # Ensure the material version belongs to the current user
+        request = self.context.get('request')
+        if request and value.candidate != request.user.profile:
+            raise serializers.ValidationError("Invalid material version.")
+        return value
+    
+    def validate(self, data):
+        """Auto-populate company_name and job_title from job if provided."""
+        job_id = data.pop('job_id', None)
+        if job_id:
+            from core.models import JobEntry
+            try:
+                request = self.context.get('request')
+                job = JobEntry.objects.get(id=job_id, candidate=request.user.profile)
+                data['job'] = job
+                # Auto-fill company_name and job_title if not provided
+                if not data.get('company_name'):
+                    data['company_name'] = job.company_name
+                if not data.get('job_title'):
+                    data['job_title'] = job.title
+                # Use application date from job if available
+                if not data.get('applied_date') and job.application_submitted_at:
+                    data['applied_date'] = job.application_submitted_at.date()
+            except JobEntry.DoesNotExist:
+                raise serializers.ValidationError({'job_id': 'Job not found.'})
+        return data
+
+
+class MaterialVersionOutcomeUpdateSerializer(serializers.Serializer):
+    """Serializer for updating application outcome."""
+    outcome = serializers.ChoiceField(choices=MaterialVersionApplication.OUTCOME_CHOICES)
+    outcome_date = serializers.DateField(required=False, allow_null=True)
+    outcome_notes = serializers.CharField(required=False, allow_blank=True)
+
+
+class MaterialVersionComparisonSerializer(serializers.Serializer):
+    """Serializer for version comparison metrics."""
+    version_id = serializers.UUIDField()
+    version_label = serializers.CharField()
+    material_type = serializers.CharField()
+    description = serializers.CharField(allow_blank=True)
+    is_archived = serializers.BooleanField()
+    
+    # Application counts
+    total_applications = serializers.IntegerField()
+    
+    # Outcome counts
+    pending_count = serializers.IntegerField()
+    no_response_count = serializers.IntegerField()
+    response_received_count = serializers.IntegerField()
+    interview_count = serializers.IntegerField()
+    offer_count = serializers.IntegerField()
+    rejection_count = serializers.IntegerField()
+    
+    # Calculated metrics
+    response_rate = serializers.FloatField()
+    interview_rate = serializers.FloatField()
+    offer_rate = serializers.FloatField()
+    avg_days_to_response = serializers.FloatField(allow_null=True)
+    
+    # Confidence indicator
+    has_sufficient_data = serializers.BooleanField()

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import authAPI from '../../services/api';
+import { authAPI } from '../../services/api';
 import './Employment.css';
 import Icon from '../common/Icon';
 import LoadingSpinner from '../common/LoadingSpinner';

@@ -18,6 +18,10 @@ const authAPI = {
 	deleteAccount: jestFn(),
 	requestAccountDeletion: jestFn(),
 	linkProviderToken: jestFn(),
+	getEmploymentHistory: jest.fn().mockResolvedValue({ employment_history: [] }),
+	createEmployment: jestFn(),
+	updateEmployment: jestFn(),
+	deleteEmployment: jestFn(),
 };
 
 const skillsAPI = {
@@ -333,6 +337,25 @@ const contactsAPI = {
 	delete: jestFn(),
 };
 
+const questionBankAPI = {
+	getQuestionBank: jestFn(),
+	logQuestionPractice: jestFn(),
+	getQuestionPracticeHistory: jestFn(),
+	coachQuestionResponse: jestFn(),
+};
+
+const responseLibraryAPI = {
+	listResponses: jest.fn().mockResolvedValue({ responses: [], gap_analysis: null }),
+	createResponse: jestFn(),
+	getResponse: jestFn(),
+	updateResponse: jestFn(),
+	deleteResponse: jestFn(),
+	recordUsage: jestFn(),
+	getSuggestions: jestFn(),
+	exportLibrary: jestFn(),
+	saveFromCoaching: jestFn(),
+};
+
 // Mock for axios instance
 const axiosInstance = {
 	get: jest.fn(),
@@ -370,4 +393,6 @@ module.exports = {
 	referralAPI,
 	informationalInterviewsAPI,
 	contactsAPI,
+	questionBankAPI,
+	responseLibraryAPI,
 };
