@@ -176,10 +176,10 @@ describe('Analytics component', () => {
         expect(screen.getByText('Analytics Command Center')).toBeInTheDocument();
       });
 
-      expect(screen.getByText('Track application metrics, analyze success patterns, and review interview performance insights.')).toBeInTheDocument();
-      expect(screen.getByText('Application Analytics')).toBeInTheDocument();
-      expect(screen.getByText('Success Analysis')).toBeInTheDocument();
-      expect(screen.getByText('Interview Performance')).toBeInTheDocument();
+      expect(screen.getByText('Track metrics, analyze patterns, and optimize your job search strategy')).toBeInTheDocument();
+      expect(screen.getByText('Applications')).toBeInTheDocument();
+      expect(screen.getByText('Success')).toBeInTheDocument();
+      expect(screen.getByText('Interviews')).toBeInTheDocument();
       expect(screen.getByText('Optimization')).toBeInTheDocument();
     });
 
@@ -190,16 +190,16 @@ describe('Analytics component', () => {
         expect(screen.getByText('Application Analytics Dashboard')).toBeInTheDocument();
       });
 
-      // Click Success Analysis tab
-      const successTab = screen.getByText('Success Analysis');
+      // Click Success tab
+      const successTab = screen.getByText('Success');
       fireEvent.click(successTab);
 
       await waitFor(() => {
         expect(screen.getByTestId('application-success-analysis')).toBeInTheDocument();
       });
 
-      // Click Interview Performance tab
-      const interviewTab = screen.getByText('Interview Performance');
+      // Click Interviews tab
+      const interviewTab = screen.getByText('Interviews');
       fireEvent.click(interviewTab);
 
       await waitFor(() => {
@@ -207,7 +207,7 @@ describe('Analytics component', () => {
       });
 
       // Switch back to applications
-      const applicationsTab = screen.getByText('Application Analytics');
+      const applicationsTab = screen.getByText('Applications');
       fireEvent.click(applicationsTab);
 
       await waitFor(() => {
