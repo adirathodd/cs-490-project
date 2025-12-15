@@ -50,6 +50,29 @@ jest.mock('recharts', () => ({
 	CartesianGrid: () => null,
 }));
 
+// Mock chart libraries (ESM packages can be problematic in Jest v27)
+jest.mock('react-chartjs-2', () => ({
+	__esModule: true,
+	Line: () => <div data-testid="line-chart" />,
+}));
+
+jest.mock('chart.js', () => {
+	const Chart = { register: jest.fn() };
+	// Export named elements referenced in component registration
+	return {
+		__esModule: true,
+		Chart,
+		CategoryScale: function () {},
+		LinearScale: function () {},
+		PointElement: function () {},
+		LineElement: function () {},
+		Title: function () {},
+		Tooltip: function () {},
+		Legend: function () {},
+		Filler: function () {},
+	};
+});
+
 // Mock Firebase services to avoid initializing real SDK in tests
 jest.mock('./services/firebase', () => ({
 	__esModule: true,

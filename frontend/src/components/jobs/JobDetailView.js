@@ -6,6 +6,7 @@ import { CompanyInfo } from '../../features/company';
 import InterviewInsights from './InterviewInsights';
 import SkillGapAnalysis from './SkillGapAnalysis';
 import JobMatchAnalysis from './JobMatchAnalysis';
+import OfficeLocationsPanel from './OfficeLocationsPanel';
 import InterviewScheduler from './InterviewScheduler';
 import InterviewFollowUp from './InterviewFollowUp';
 import RoleQuestionBank from './RoleQuestionBank';
@@ -1137,6 +1138,12 @@ const JobDetailView = () => {
         {companyInfo && (
           <div style={{ width: '100%' }}>
             <CompanyInfo companyInfo={companyInfo} jobId={job.id} />
+          </div>
+        )}
+        {/* UC-116: Office Locations management */}
+        {job?.id && (
+          <div style={{ width: '100%' }}>
+            <OfficeLocationsPanel jobId={job.id} onChanged={() => {/* map refresh handled when returning to list */}} />
           </div>
         )}
       </div>

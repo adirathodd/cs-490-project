@@ -10,40 +10,61 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RenameIndex(
-            model_name='applicationqualityreview',
-            new_name='core_applic_candida_3c42f0_idx',
-            old_name='core_applic_candidat_39cc77_idx',
+        migrations.RunSQL(
+            sql=(
+                "ALTER INDEX IF EXISTS core_applic_candidat_39cc77_idx RENAME TO core_applic_candida_3c42f0_idx;"
+            ),
+            reverse_sql=(
+                "ALTER INDEX IF EXISTS core_applic_candida_3c42f0_idx RENAME TO core_applic_candidat_39cc77_idx;"
+            ),
         ),
-        migrations.RenameIndex(
-            model_name='applicationqualityreview',
-            new_name='core_applic_job_id_1e5f25_idx',
-            old_name='core_applic_job_id_a5a6ba_idx',
+        migrations.RunSQL(
+            sql=(
+                "ALTER INDEX IF EXISTS core_applic_job_id_a5a6ba_idx RENAME TO core_applic_job_id_1e5f25_idx;"
+            ),
+            reverse_sql=(
+                "ALTER INDEX IF EXISTS core_applic_job_id_1e5f25_idx RENAME TO core_applic_job_id_a5a6ba_idx;"
+            ),
         ),
-        migrations.RenameIndex(
-            model_name='applicationqualityreview',
-            new_name='core_applic_candida_e1666c_idx',
-            old_name='core_applic_candidat_ba38a1_idx',
+        migrations.RunSQL(
+            sql=(
+                "ALTER INDEX IF EXISTS core_applic_candidat_ba38a1_idx RENAME TO core_applic_candida_e1666c_idx;"
+            ),
+            reverse_sql=(
+                "ALTER INDEX IF EXISTS core_applic_candida_e1666c_idx RENAME TO core_applic_candidat_ba38a1_idx;"
+            ),
         ),
-        migrations.RenameIndex(
-            model_name='followupreminder',
-            new_name='core_follow_job_id_c3206f_idx',
-            old_name='core_follow_job_id_stg_idx',
+        migrations.RunSQL(
+            sql=(
+                "ALTER INDEX IF EXISTS core_follow_job_id_stg_idx RENAME TO core_follow_job_id_c3206f_idx;"
+            ),
+            reverse_sql=(
+                "ALTER INDEX IF EXISTS core_follow_job_id_c3206f_idx RENAME TO core_follow_job_id_stg_idx;"
+            ),
         ),
-        migrations.RenameIndex(
-            model_name='joboffer',
-            new_name='core_joboff_candida_135e4a_idx',
-            old_name='core_joboff_candidat_4fbb41_idx',
+        migrations.RunSQL(
+            sql=(
+                "ALTER INDEX IF EXISTS core_joboff_candidat_4fbb41_idx RENAME TO core_joboff_candida_135e4a_idx;"
+            ),
+            reverse_sql=(
+                "ALTER INDEX IF EXISTS core_joboff_candida_135e4a_idx RENAME TO core_joboff_candidat_4fbb41_idx;"
+            ),
         ),
-        migrations.RenameIndex(
-            model_name='joboffer',
-            new_name='core_joboff_candida_a61f93_idx',
-            old_name='core_joboff_candidat_6055e4_idx',
+        migrations.RunSQL(
+            sql=(
+                "ALTER INDEX IF EXISTS core_joboff_candidat_6055e4_idx RENAME TO core_joboff_candida_a61f93_idx;"
+            ),
+            reverse_sql=(
+                "ALTER INDEX IF EXISTS core_joboff_candida_a61f93_idx RENAME TO core_joboff_candidat_6055e4_idx;"
+            ),
         ),
-        migrations.RenameIndex(
-            model_name='joboffer',
-            new_name='core_joboff_status_3beac8_idx',
-            old_name='core_joboff_status_5450a9_idx',
+        migrations.RunSQL(
+            sql=(
+                "ALTER INDEX IF EXISTS core_joboff_status_5450a9_idx RENAME TO core_joboff_status_3beac8_idx;"
+            ),
+            reverse_sql=(
+                "ALTER INDEX IF EXISTS core_joboff_status_3beac8_idx RENAME TO core_joboff_status_5450a9_idx;"
+            ),
         ),
         # Removed RemoveField operations for auto_update_status and scan_frequency
         # as these columns don't exist in the database

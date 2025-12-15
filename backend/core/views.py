@@ -25,6 +25,7 @@ from rest_framework.authentication import SessionAuthentication
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.db.models import Min, Q
 from django.core.management import call_command
 from django.core.mail import send_mail
 from django.http import HttpResponse, JsonResponse, HttpResponseRedirect
@@ -34,9 +35,10 @@ from core.authentication import FirebaseAuthentication
 from core.api_monitoring import track_api_call, get_or_create_service, SERVICE_GEMINI, SERVICE_GITHUB
 from core.salary_benchmarks import salary_benchmark_service
 from core.offer_analysis import OfferComparisonEngine, infer_cost_of_living_index, compute_benefits_total
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_http_methods
 import os
 import requests
+import json
 from urllib.parse import urlencode
 from core.models import GitHubAccount, ApplicationQualityReview
 from core import followup_utils
@@ -225,11 +227,713 @@ from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 from core import google_import
 
 import uuid
+import os
+import requests
+
+# UC-116: Geocoding and commute helpers
+NOMINATIM_BASE_URL = os.environ.get('NOMINATIM_BASE_URL', 'https://nominatim.openstreetmap.org')
+NOMINATIM_USER_AGENT = os.environ.get('NOMINATIM_USER_AGENT', 'cs-490-project/1.0 (local-dev)')
+CITY_COORDS = {
+    'new york, ny': (40.7128, -74.0060),
+    'whippany, nj': (40.8243, -74.4171),
+    'jersey city, nj': (40.7178, -74.0431),
+    'newark, nj': (40.7357, -74.1724),
+}
+_CITY_CACHE: Dict[str, tuple] = {}
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
+def _estimate_time_minutes(distance_km: float, mode: str = 'driving'):
+    speeds = {
+        'driving': 45.0,  # urban average
+        'walking': 5.0,
+        'cycling': 15.0,
+    }
+    speed = speeds.get(mode, 45.0)
+    return int((distance_km / speed) * 60)
+
+@require_http_methods(["GET"])
+def geo_suggest(request):
+    q = request.GET.get('q', '').strip()
+    company = request.GET.get('company', '').strip()
+    city = request.GET.get('city', '').strip()
+    country = request.GET.get('country', '').strip()
+    limit = int(request.GET.get('limit', '5'))
+    if not q and not company and not city:
+        return JsonResponse({'results': []})
+    query = ' '.join([t for t in [company, city, q] if t])
+    params = {
+        'q': query,
+        'format': 'json',
+        'limit': str(min(limit, 10)),
+        'addressdetails': '1',
+    }
+    if country:
+        params['countrycodes'] = country.lower()
+    headers = {'User-Agent': NOMINATIM_USER_AGENT}
+    try:
+        resp = requests.get(f"{NOMINATIM_BASE_URL}/search", params=params, headers=headers, timeout=8)
+        resp.raise_for_status()
+        data = resp.json() if resp.content else []
+        results = []
+        for item in data:
+            results.append({
+                'id': item.get('osm_id'),
+                'name': item.get('display_name', '').split(',')[0],
+                'lat': float(item.get('lat')) if item.get('lat') else None,
+                'lon': float(item.get('lon')) if item.get('lon') else None,
+                'display_name': item.get('display_name'),
+                'class': item.get('class'),
+                'type': item.get('type'),
+                'address': item.get('address', {}),
+            })
+        return JsonResponse({'results': results})
+    except Exception:
+        return JsonResponse({'results': [], 'error': 'suggest_failed'}, status=200)
+
+from django.views.decorators.csrf import csrf_exempt
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def geo_resolve(request):
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        payload = {}
+    q = (payload.get('q') or '').strip()
+    if not q:
+        return JsonResponse({'error': 'missing_query'}, status=400)
+    params = {'q': q, 'format': 'json', 'limit': '1'}
+    headers = {'User-Agent': NOMINATIM_USER_AGENT}
+    try:
+        resp = requests.get(f"{NOMINATIM_BASE_URL}/search", params=params, headers=headers, timeout=8)
+        resp.raise_for_status()
+        data = resp.json() if resp.content else []
+        if not data:
+            return JsonResponse({'resolved': None})
+        item = data[0]
+        resolved = {
+            'lat': float(item.get('lat')) if item.get('lat') else None,
+            'lon': float(item.get('lon')) if item.get('lon') else None,
+            'display_name': item.get('display_name'),
+            'precision': 'address' if item.get('class') == 'place' and item.get('type') == 'house' else 'approx',
+        }
+        return JsonResponse({'resolved': resolved})
+    except Exception:
+        return JsonResponse({'resolved': None, 'error': 'resolve_failed'})
+
+@require_http_methods(["GET"])
+def commute_estimate(request):
+    try:
+        lat1 = float(request.GET.get('from_lat'))
+        lon1 = float(request.GET.get('from_lon'))
+        lat2 = float(request.GET.get('to_lat'))
+        lon2 = float(request.GET.get('to_lon'))
+    except Exception:
+        return JsonResponse({'error': 'invalid_coords'}, status=400)
+    mode = request.GET.get('mode', 'driving')
+    dist_km = _haversine_km(lat1, lon1, lat2, lon2)
+    minutes = _estimate_time_minutes(dist_km, mode)
+    return JsonResponse({'distance_km': round(dist_km, 2), 'eta_min': minutes, 'mode': mode})
+
+@api_view(['GET'])
+@authentication_classes([FirebaseAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def job_commute_drive(request, job_id: int):
+    """Compute commute times from user's home to a job's office locations.
+
+    Uses OpenRouteService when `ORS_API_KEY` is configured; otherwise falls back to
+    a simple haversine distance + average speed estimate.
+    Home origin is derived from `CandidateProfile.location` or from a provided
+    `home_address` query param.
+    """
+    try:
+        job = JobEntry.objects.get(pk=job_id)
+    except JobEntry.DoesNotExist:
+        return Response({'error': {'code': 'job_not_found', 'message': 'Job not found'}}, status=status.HTTP_404_NOT_FOUND)
+
+    # Ensure ownership
+    profile = None
+    try:
+        profile = CandidateProfile.objects.filter(user=request.user).first()
+    except Exception:
+        profile = None
+    if not profile or job.candidate_id != getattr(profile, 'id', None):
+        return Response({'error': {'code': 'forbidden', 'message': 'Not allowed'}}, status=status.HTTP_403_FORBIDDEN)
+
+    # Get origin: query param overrides stored location
+    home_address = (request.GET.get('home_address') or '').strip()
+    if not home_address:
+        home_address = (profile.location or '').strip()
+    if not home_address:
+        return Response({'error': {'code': 'missing_home', 'message': 'Home address not set'}}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Geocode origin
+    headers = {'User-Agent': NOMINATIM_USER_AGENT}
+    try:
+        resp = requests.get(
+            f"{NOMINATIM_BASE_URL}/search",
+            params={'q': home_address, 'format': 'json', 'limit': '1'},
+            headers=headers,
+            timeout=8,
+        )
+        resp.raise_for_status()
+        jj = resp.json() or []
+        if not jj:
+            return Response({'error': {'code': 'unable_to_geocode_home', 'message': 'Home address could not be geocoded'}}, status=status.HTTP_400_BAD_REQUEST)
+        origin_lat = float(jj[0].get('lat'))
+        origin_lon = float(jj[0].get('lon'))
+    except Exception:
+        return Response({'error': {'code': 'home_geocode_failed', 'message': 'Failed to geocode home address'}}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Collect destinations from office locations
+    try:
+        offices = list(getattr(job, 'office_locations', []).all())
+    except Exception:
+        offices = []
+    destinations = [
+        {'id': o.id, 'label': o.label, 'address': o.address, 'lat': float(o.lat), 'lon': float(o.lon)}
+        for o in offices if o.lat is not None and o.lon is not None
+    ]
+    if not destinations:
+        return Response({'error': {'code': 'no_offices', 'message': 'No office destinations with coordinates'}}, status=status.HTTP_400_BAD_REQUEST)
+
+    ors_key = os.environ.get('ORS_API_KEY') or os.environ.get('OPENROUTESERVICE_API_KEY')
+    results = []
+    if ors_key:
+        # Use ORS Matrix API for multiple destinations
+        try:
+            url = 'https://api.openrouteservice.org/v2/matrix/driving-car'
+            payload = {
+                'sources': [0],
+                'destinations': list(range(1, len(destinations)+1)),
+                'locations': [[origin_lon, origin_lat]] + [[d['lon'], d['lat']] for d in destinations],
+                'metrics': ['distance', 'duration']
+            }
+            r = requests.post(url, json=payload, headers={'Authorization': ors_key, 'Content-Type': 'application/json'}, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            durations = (data.get('durations') or [[]])[0]
+            distances = (data.get('distances') or [[]])[0]
+            from django.utils import timezone
+            from core.models import JobOfficeLocation
+            for idx, d in enumerate(destinations):
+                duration_sec = durations[idx] if idx < len(durations) else None
+                distance_m = distances[idx] if idx < len(distances) else None
+                results.append({
+                    'office_id': d['id'],
+                    'label': d['label'],
+                    'address': d['address'],
+                    'eta_min': round((duration_sec or 0)/60, 1) if duration_sec is not None else None,
+                    'distance_km': round((distance_m or 0)/1000, 2) if distance_m is not None else None,
+                    'origin': {'lat': origin_lat, 'lon': origin_lon},
+                    'destination': {'lat': d['lat'], 'lon': d['lon']},
+                    'mode': 'driving'
+                })
+                # Persist commute metrics
+                try:
+                    o = JobOfficeLocation.objects.get(pk=d['id'], job=job)
+                    o.last_commute_eta_min = round((duration_sec or 0)/60, 1) if duration_sec is not None else None
+                    o.last_commute_distance_km = round((distance_m or 0)/1000, 2) if distance_m is not None else None
+                    o.last_commute_calculated_at = timezone.now()
+                    o.save(update_fields=['last_commute_eta_min', 'last_commute_distance_km', 'last_commute_calculated_at'])
+                except Exception:
+                    pass
+        except Exception as e:
+            # Fallback to simple estimate on error
+            from django.utils import timezone
+            from core.models import JobOfficeLocation
+            for d in destinations:
+                dist = _haversine_km(origin_lat, origin_lon, d['lat'], d['lon'])
+                minutes = _estimate_time_minutes(dist, 'driving')
+                results.append({
+                    'office_id': d['id'], 'label': d['label'], 'address': d['address'],
+                    'eta_min': minutes, 'distance_km': round(dist, 2),
+                    'origin': {'lat': origin_lat, 'lon': origin_lon},
+                    'destination': {'lat': d['lat'], 'lon': d['lon']},
+                    'mode': 'driving', 'fallback': True
+                })
+                try:
+                    o = JobOfficeLocation.objects.get(pk=d['id'], job=job)
+                    o.last_commute_eta_min = minutes
+                    o.last_commute_distance_km = round(dist, 2)
+                    o.last_commute_calculated_at = timezone.now()
+                    o.save(update_fields=['last_commute_eta_min', 'last_commute_distance_km', 'last_commute_calculated_at'])
+                except Exception:
+                    pass
+    else:
+        # No ORS key: simple estimate
+        from django.utils import timezone
+        from core.models import JobOfficeLocation
+        for d in destinations:
+            dist = _haversine_km(origin_lat, origin_lon, d['lat'], d['lon'])
+            minutes = _estimate_time_minutes(dist, 'driving')
+            results.append({
+                'office_id': d['id'], 'label': d['label'], 'address': d['address'],
+                'eta_min': minutes, 'distance_km': round(dist, 2),
+                'origin': {'lat': origin_lat, 'lon': origin_lon},
+                'destination': {'lat': d['lat'], 'lon': d['lon']},
+                'mode': 'driving', 'fallback': True
+            })
+            try:
+                o = JobOfficeLocation.objects.get(pk=d['id'], job=job)
+                o.last_commute_eta_min = minutes
+                o.last_commute_distance_km = round(dist, 2)
+                o.last_commute_calculated_at = timezone.now()
+                o.save(update_fields=['last_commute_eta_min', 'last_commute_distance_km', 'last_commute_calculated_at'])
+            except Exception:
+                pass
+
+    return Response({'commute': results}, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+@authentication_classes([FirebaseAuthentication, SessionAuthentication])
+@permission_classes([AllowAny])
+def jobs_geo(request):
+    """Return jobs with best-effort coordinates.
+
+    Default: scope to the authenticated user's candidate profile.
+    If `demo=true` is provided, return recent jobs globally (unauth allowed).
+    """
+    demo = (request.GET.get('demo') or '').strip().lower() == 'true'
+    office_only = (request.GET.get('office_only') or '').strip().lower() == 'true'
+
+    qs = JobEntry.objects.all().order_by('-id')
+    # Scope to current user's candidate profile unless demo=true
+    profile = None
+    if request.user and getattr(request.user, 'is_authenticated', False):
+        try:
+            profile = CandidateProfile.objects.filter(user=request.user).first()
+        except Exception:
+            profile = None
+    if not demo and profile is not None:
+        qs = qs.filter(candidate=profile)
+    elif not demo and not profile:
+        # Unauthenticated or no profile: return empty list by default
+        return JsonResponse({'jobs': []})
+
+    jobs = qs.exclude(location__isnull=True).exclude(location__exact='')[:50]
+
+    headers = {'User-Agent': NOMINATIM_USER_AGENT}
+    out = []
+    temp = []
+    for j in jobs:
+        lat = getattr(j, 'location_lat', None)
+        lon = getattr(j, 'location_lon', None)
+        precision = (getattr(j, 'location_geo_precision', None) or '').strip().lower() or 'city'
+        city = (getattr(j, 'location', '') or '').strip()
+        # If stored coords missing, attempt lightweight geocode/fallback on the job's city text
+        if (lat is None or lon is None) and city:
+            q = city
+            try:
+                resp = requests.get(
+                    f"{NOMINATIM_BASE_URL}/search",
+                    params={'q': q, 'format': 'json', 'limit': '1'},
+                    headers=headers,
+                    timeout=6,
+                )
+                resp.raise_for_status()
+                data = resp.json() or []
+                if data:
+                    lat = float(data[0].get('lat'))
+                    lon = float(data[0].get('lon'))
+                    # Do not promote precision to 'address' from ad-hoc request-time geocode; treat as approx
+                    if not precision:
+                        precision = 'city'
+            except Exception:
+                key = q.lower().strip()
+                if key in _CITY_CACHE:
+                    lat, lon = _CITY_CACHE[key]
+                elif key in CITY_COORDS:
+                    lat, lon = CITY_COORDS[key]
+                    _CITY_CACHE[key] = CITY_COORDS[key]
+
+        # Include any manually added office locations for this job
+        try:
+            offices = list(getattr(j, 'office_locations', []).all())
+        except Exception:
+            offices = []
+        has_offices = any(o.lat is not None and o.lon is not None for o in offices)
+        # Rule 1: If job has any office points, include ONLY office markers and suppress all general job markers.
+        if has_offices:
+            for o in offices:
+                if o.lat is not None and o.lon is not None:
+                    temp.append({
+                        'id': j.id,
+                        'company': getattr(j, 'company_name', ''),
+                        'title': getattr(j, 'title', ''),
+                        'location': o.address or city,
+                        'lat': float(o.lat),
+                        'lon': float(o.lon),
+                        'geo_precision': 'office',
+                        'kind': 'office',
+                        'label': getattr(o, 'label', ''),
+                        'commute_eta_min': getattr(o, 'last_commute_eta_min', None),
+                        'commute_distance_km': getattr(o, 'last_commute_distance_km', None),
+                        'commute_last_at': getattr(o, 'last_commute_calculated_at', None),
+                    })
+        # Rule 2: If no offices exist and office_only is not requested, include the general job marker when we have coords.
+        elif not office_only and lat is not None and lon is not None:
+            temp.append({
+                'id': j.id,
+                'company': getattr(j, 'company_name', ''),
+                'title': getattr(j, 'title', ''),
+                'location': city,
+                'lat': lat,
+                'lon': lon,
+                'geo_precision': precision or 'city',
+                'kind': 'job',
+            })
+
+    # Company-level suppression: if any office exists for a company, suppress all non-office markers for that company
+    office_companies = {item['company'] for item in temp if item.get('kind') == 'office' and item.get('company')}
+    for item in temp:
+        if item.get('kind') == 'job' and item.get('company') in office_companies:
+            continue
+        out.append(item)
+
+    return JsonResponse({'jobs': out})
+
+@api_view(['GET'])
+@authentication_classes([FirebaseAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def jobs_commute_ranking(request):
+    """Return current user's jobs ranked by fastest persisted commute time.
+
+    Uses JobOfficeLocation.last_commute_eta_min and last_commute_distance_km.
+    Only includes jobs with at least one office location having commute metrics.
+    """
+    profile = None
+    if request.user and getattr(request.user, 'is_authenticated', False):
+        profile = CandidateProfile.objects.filter(user=request.user).first()
+    if not profile:
+        return JsonResponse({'results': []})
+
+    qs = (
+        JobEntry.objects.filter(candidate=profile)
+        .annotate(
+            min_commute_eta=Min('office_locations__last_commute_eta_min'),
+            min_commute_distance_km=Min('office_locations__last_commute_distance_km'),
+            office_count=Min('office_locations__id')  # just to force join; count not needed here
+        )
+        .filter(office_locations__last_commute_eta_min__isnull=False)
+        .order_by('min_commute_eta')
+    )
+
+    out = []
+    for j in qs[:100]:
+        out.append({
+            'job_id': j.id,
+            'title': getattr(j, 'title', ''),
+            'company_name': getattr(j, 'company_name', ''),
+            'min_commute_eta_min': j.min_commute_eta,
+            'min_commute_distance_km': j.min_commute_distance_km,
+        })
+
+    return JsonResponse({'results': out})
+
+@api_view(['GET', 'POST'])
+@authentication_classes([FirebaseAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def job_office_locations(request, job_id: int):
+    """List or add office locations for a specific job.
+
+    POST body: { label?: str, address?: str, lat?: float, lon?: float }
+    If lat/lon are missing and address is provided, a best-effort geocode is performed.
+    Requires that the job belongs to the current authenticated user.
+    """
+    try:
+        job = JobEntry.objects.get(pk=job_id)
+    except JobEntry.DoesNotExist:
+        return JsonResponse({'error': 'job_not_found'}, status=404)
+
+    # Ensure ownership
+    profile = None
+    if request.user and getattr(request.user, 'is_authenticated', False):
+        try:
+            profile = CandidateProfile.objects.filter(user=request.user).first()
+        except Exception:
+            profile = None
+    if not profile or job.candidate_id != getattr(profile, 'id', None):
+        return JsonResponse({'error': 'forbidden'}, status=403)
+
+    if request.method == 'GET':
+        items = []
+        for o in job.office_locations.all():
+            items.append({
+                'id': o.id,
+                'label': o.label,
+                'address': o.address,
+                'lat': o.lat,
+                'lon': o.lon,
+                'created_at': getattr(o, 'created_at', None),
+            })
+        return JsonResponse({'locations': items})
+
+    # POST: add a new location
+    data = request.data if hasattr(request, 'data') else {}
+    label = (data.get('label') or '').strip()
+    address = (data.get('address') or '').strip()
+    lat = data.get('lat')
+    lon = data.get('lon')
+
+    if (lat is None or lon is None) and address:
+        headers = {'User-Agent': NOMINATIM_USER_AGENT}
+        def _try_geocode(q: str):
+            try:
+                resp = requests.get(
+                    f"{NOMINATIM_BASE_URL}/search",
+                    params={'q': q, 'format': 'json', 'limit': '1'},
+                    headers=headers,
+                    timeout=8,
+                )
+                resp.raise_for_status()
+                dd = resp.json() or []
+                if dd:
+                    return float(dd[0].get('lat')), float(dd[0].get('lon'))
+            except Exception:
+                return None, None
+            return None, None
+
+        # Attempt 1: raw address
+        lat, lon = _try_geocode(address)
+        # Attempt 2: include company name for brand offices (e.g., Barclays)
+        if (lat is None or lon is None):
+            company = (job.company_name or '').strip()
+            if company:
+                lat, lon = _try_geocode(f"{company} {address}")
+        # Attempt 3: include job city/location context
+        if (lat is None or lon is None):
+            city = (job.location or '').strip()
+            if city:
+                lat, lon = _try_geocode(f"{address} {city}")
+
+    if lat is None or lon is None:
+        return JsonResponse({'error': 'unable_to_geocode'}, status=400)
+
+    try:
+        from core.models import JobOfficeLocation
+        o = JobOfficeLocation.objects.create(job=job, label=label, address=address, lat=float(lat), lon=float(lon))
+        return JsonResponse({'location': {
+            'id': o.id,
+            'label': o.label,
+            'address': o.address,
+            'lat': o.lat,
+            'lon': o.lon,
+            'created_at': getattr(o, 'created_at', None),
+        }}, status=201)
+    except Exception:
+        return JsonResponse({'error': 'failed_to_create'}, status=500)
+
+@api_view(['PATCH', 'DELETE'])
+@authentication_classes([FirebaseAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def job_office_location_detail(request, job_id: int, location_id: int):
+    """Update or delete a specific office location for a job.
+
+    PATCH body may include: { label?: str, address?: str, lat?: float, lon?: float }
+    If address is provided without lat/lon, attempts best-effort geocode.
+    Only allowed for jobs owned by the current user.
+    """
+    try:
+        job = JobEntry.objects.get(pk=job_id)
+    except JobEntry.DoesNotExist:
+        return JsonResponse({'error': 'job_not_found'}, status=404)
+
+    # Ensure ownership
+    profile = None
+    if request.user and getattr(request.user, 'is_authenticated', False):
+        try:
+            profile = CandidateProfile.objects.filter(user=request.user).first()
+        except Exception:
+            profile = None
+    if not profile or job.candidate_id != getattr(profile, 'id', None):
+        return JsonResponse({'error': 'forbidden'}, status=403)
+
+    from core.models import JobOfficeLocation
+    try:
+        o = JobOfficeLocation.objects.get(pk=location_id, job=job)
+    except JobOfficeLocation.DoesNotExist:
+        return JsonResponse({'error': 'location_not_found'}, status=404)
+
+    if request.method == 'DELETE':
+        o.delete()
+        return JsonResponse({'deleted': True})
+
+    # PATCH
+    data = request.data if hasattr(request, 'data') else {}
+    label = data.get('label')
+    address = data.get('address')
+    lat = data.get('lat')
+    lon = data.get('lon')
+
+    if label is not None:
+        o.label = (label or '').strip()
+    if address is not None:
+        o.address = (address or '').strip()
+
+    # If address changed and no lat/lon provided, try geocode
+    if (lat is None or lon is None) and address:
+        headers = {'User-Agent': NOMINATIM_USER_AGENT}
+        try:
+            resp = requests.get(
+                f"{NOMINATIM_BASE_URL}/search",
+                params={'q': o.address, 'format': 'json', 'limit': '1'},
+                headers=headers,
+                timeout=8,
+            )
+            resp.raise_for_status()
+            dd = resp.json() or []
+            if dd:
+                lat = float(dd[0].get('lat'))
+                lon = float(dd[0].get('lon'))
+        except Exception:
+            pass
+        # Fallback attempts for brand and city context
+        if lat is None or lon is None:
+            try:
+                company = (job.company_name or '').strip()
+                city = (job.location or '').strip()
+                if company:
+                    resp2 = requests.get(
+                        f"{NOMINATIM_BASE_URL}/search",
+                        params={'q': f"{company} {o.address}", 'format': 'json', 'limit': '1'},
+                        headers=headers,
+                        timeout=8,
+                    )
+                    if resp2.status_code == 200:
+                        dd2 = resp2.json() or []
+                        if dd2:
+                            lat = float(dd2[0].get('lat'))
+                            lon = float(dd2[0].get('lon'))
+                if (lat is None or lon is None) and city:
+                    resp3 = requests.get(
+                        f"{NOMINATIM_BASE_URL}/search",
+                        params={'q': f"{o.address} {city}", 'format': 'json', 'limit': '1'},
+                        headers=headers,
+                        timeout=8,
+                    )
+                    if resp3.status_code == 200:
+                        dd3 = resp3.json() or []
+                        if dd3:
+                            lat = float(dd3[0].get('lat'))
+                            lon = float(dd3[0].get('lon'))
+            except Exception:
+                pass
+
+    if lat is not None and lon is not None:
+        o.lat = float(lat)
+        o.lon = float(lon)
+
+    o.save()
+    return JsonResponse({'location': {
+        'id': o.id,
+        'label': o.label,
+        'address': o.address,
+        'lat': o.lat,
+        'lon': o.lon,
+        'created_at': getattr(o, 'created_at', None),
+    }})
+@api_view(['POST'])
+@authentication_classes([FirebaseAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def job_regeocode(request, job_id: int):
+    """Force re-geocode of a job's stored location and persist lat/lon."""
+    profile = None
+    if request.user and getattr(request.user, 'is_authenticated', False):
+        try:
+            profile = CandidateProfile.objects.filter(user=request.user).first()
+        except Exception:
+            profile = None
+    if not profile:
+        return JsonResponse({'error': 'profile_not_found'}, status=404)
+    try:
+        job = JobEntry.objects.get(pk=job_id, candidate=profile)
+    except JobEntry.DoesNotExist:
+        return JsonResponse({'error': 'job_not_found'}, status=404)
+
+    location = (job.location or '').strip()
+    if not location:
+        return JsonResponse({'error': 'no_location'}, status=400)
+
+    headers = {'User-Agent': NOMINATIM_USER_AGENT}
+    try:
+        resp = requests.get(
+            f"{NOMINATIM_BASE_URL}/search",
+            params={'q': location, 'format': 'json', 'limit': '1'},
+            headers=headers,
+            timeout=8,
+        )
+        resp.raise_for_status()
+        data = resp.json() or []
+        if not data:
+            return JsonResponse({'error': 'geocode_failed'}, status=502)
+        lat = float(data[0].get('lat'))
+        lon = float(data[0].get('lon'))
+        precision = 'address' if data[0].get('class') == 'place' and data[0].get('type') == 'house' else 'approx'
+    except Exception:
+        return JsonResponse({'error': 'geocode_failed'}, status=502)
+
+    from django.utils import timezone as dj_tz
+    job.location_lat = lat
+    job.location_lon = lon
+    job.location_geo_precision = precision
+    job.location_geo_updated_at = dj_tz.now()
+    job.save(update_fields=['location_lat', 'location_lon', 'location_geo_precision', 'location_geo_updated_at'])
+
+    return JsonResponse({
+        'id': job.id,
+        'location': job.location,
+        'location_lat': job.location_lat,
+        'location_lon': job.location_lon,
+        'location_geo_precision': job.location_geo_precision,
+        'location_geo_updated_at': job.location_geo_updated_at,
+    }, status=200)
 import secrets
 from rest_framework.permissions import AllowAny
 
 import json
 import os
+import math
+
+@api_view(['POST'])
+@authentication_classes([FirebaseAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def cleanup_city_level_coords(request):
+    """Clear stored approximate city-level coordinates for the current user's jobs.
+
+    For all JobEntry records belonging to the authenticated user where
+    location_geo_precision != 'address', set location_lat/lon to NULL and
+    update location_geo_precision to 'unknown'. Jobs with any office locations
+    are left untouched (their display uses office points only).
+    """
+    try:
+        profile = CandidateProfile.objects.filter(user=request.user).first()
+        if not profile:
+            return JsonResponse({'error': 'profile_not_found'}, status=404)
+        qs = JobEntry.objects.filter(candidate=profile)
+        updated = 0
+        for j in qs:
+            try:
+                has_offices = j.office_locations.exists()
+            except Exception:
+                has_offices = False
+            precision = (getattr(j, 'location_geo_precision', '') or '').strip().lower()
+            if not has_offices and precision != 'address':
+                j.location_lat = None
+                j.location_lon = None
+                j.location_geo_precision = 'unknown'
+                j.save(update_fields=['location_lat', 'location_lon', 'location_geo_precision'])
+                updated += 1
+        return JsonResponse({'updated': updated})
+    except Exception:
+        return JsonResponse({'error': 'cleanup_failed'}, status=500)
 import tempfile
 import requests
 from datetime import timedelta
@@ -4292,6 +4996,46 @@ def update_basic_profile(request):
 
         serializer.save()
         logger.info(f"Profile updated for user: {user.email}")
+
+        # Optional: Home address geocoding for commute
+        try:
+            home_address = (request.data.get('home_address') or '').strip()
+        except Exception:
+            home_address = ''
+        if home_address:
+            headers = {'User-Agent': NOMINATIM_USER_AGENT}
+            try:
+                resp = requests.get(
+                    f"{NOMINATIM_BASE_URL}/search",
+                    params={'q': home_address, 'format': 'json', 'limit': '1'},
+                    headers=headers,
+                    timeout=8,
+                )
+                resp.raise_for_status()
+                dd = resp.json() or []
+                if not dd:
+                    return Response({
+                        'error': {
+                            'code': 'unable_to_geocode_home',
+                            'message': 'Could not geocode the provided home address.',
+                            'details': {'home_address': ['Address could not be resolved']}
+                        }
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                # Persist the address string in legacy location for now
+                try:
+                    profile.location = home_address
+                    profile.save(update_fields=['location'])
+                except Exception:
+                    # Non-fatal: if persistence fails, proceed
+                    pass
+            except Exception:
+                return Response({
+                    'error': {
+                        'code': 'unable_to_geocode_home',
+                        'message': 'Failed to geocode home address.',
+                        'details': {'home_address': ['Geocoding service error']}
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({
             'profile': serializer.data,

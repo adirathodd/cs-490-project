@@ -5,6 +5,7 @@ import { authorizedFetch } from '../../services/authToken';
 import Icon from '../common/Icon';
 import DeadlineCalendar from '../common/DeadlineCalendar';
 import AutomationDashboard from '../automation/AutomationDashboard';
+import JobsMap from './JobsMap';
 
 const defaultForm = {
   title: '',
@@ -79,6 +80,8 @@ const [companySearchStatus, setCompanySearchStatus] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
+  // UC-116: Trigger map refresh after job edits
+  const [mapReloadNonce, setMapReloadNonce] = useState(0);
 
   // UC-039: Search and Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -125,6 +128,10 @@ const [companySearchStatus, setCompanySearchStatus] = useState('');
   const [jobMatchScores, setJobMatchScores] = useState([]);
   const [loadingMatchScores, setLoadingMatchScores] = useState(false);
   const [showMatchRanking, setShowMatchRanking] = useState(false);
+  // UC-116: Commute Ranking State
+  const [showCommuteRanking, setShowCommuteRanking] = useState(false);
+  const [loadingCommuteRanking, setLoadingCommuteRanking] = useState(false);
+  const [commuteRanking, setCommuteRanking] = useState([]);
 
   // UC-071: Interview Scheduling State
   const [interviews, setInterviews] = useState([]);
@@ -974,10 +981,12 @@ const companyDropdownRef = useRef(null);
         saved = await jobsAPI.updateJob(editingId, payload);
         setItems((prev) => prev.map((i) => (i.id === editingId ? saved : i)));
         setSuccess('Job updated.');
+        setMapReloadNonce((n) => n + 1);
       } else {
         saved = await jobsAPI.addJob(payload);
         setItems((prev) => [saved, ...prev]);
         setSuccess('Job saved.');
+        setMapReloadNonce((n) => n + 1);
       }
       resetForm();
       setTimeout(() => setSuccess(''), 2000);
@@ -1084,6 +1093,34 @@ const companyDropdownRef = useRef(null);
             <Icon name="trending-up" size="sm" />
             {loadingMatchScores ? 'Loading...' : (showMatchRanking ? 'Hide Rankings' : 'Match Rankings')}
           </button>
+          {/* Commute Ranking button */}
+          <button
+            className="btn-secondary"
+            onClick={async () => {
+              setShowCommuteRanking(!showCommuteRanking);
+              setMapReloadNonce((n) => n + 1); // ensure map reflows after layout change
+              if (!showCommuteRanking && commuteRanking.length === 0) {
+                setLoadingCommuteRanking(true);
+                try {
+                  const resp = await jobsAPI.getCommuteRanking();
+                  const list = Array.isArray(resp?.results) ? resp.results : [];
+                  setCommuteRanking(list);
+                } catch (e) {
+                  setError('Failed to load commute ranking');
+                } finally {
+                  setLoadingCommuteRanking(false);
+                }
+              }
+            }}
+            onMouseEnter={(e) => { e.currentTarget.dataset.origColor = e.currentTarget.style.color || window.getComputedStyle(e.currentTarget).color; e.currentTarget.style.color = '#0f172a'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = e.currentTarget.dataset.origColor || ''; }}
+            style={{ ...responsiveActionButtonStyle, backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}
+            title="View jobs ranked by commute time"
+            disabled={loadingCommuteRanking}
+          >
+            <Icon name="car" size="sm" />
+            {loadingCommuteRanking ? 'Loading...' : (showCommuteRanking ? 'Hide Commute' : 'Commute Ranking')}
+          </button>
           {/* UC-045: Archive view toggle */}
           <button
             className="btn-secondary"
@@ -1166,6 +1203,18 @@ const companyDropdownRef = useRef(null);
 
       {error && <div className="error-banner">{error}</div>}
       {success && <div className="success-banner">{success}</div>}
+
+      {/* UC-116: Overall Jobs Map */}
+      <div className="education-form-card" style={{ marginBottom: '20px' }}>
+        <div style={{ padding: '12px 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Icon name="map" size="md" />
+          <h3 style={{ margin: 0 }}>Jobs Map</h3>
+          <span style={{ marginLeft: 'auto', fontSize: '12px', color: '#64748b' }}>Filtered view</span>
+        </div>
+        <div style={{ padding: '12px' }}>
+          <JobsMap filters={{ ...filters, __nonce: mapReloadNonce }} />
+        </div>
+      </div>
 
       {/* UC-045: Undo Notification */}
       {undoNotification && (
@@ -1401,6 +1450,77 @@ const companyDropdownRef = useRef(null);
                     Showing top 10 matches • {jobMatchScores.length} total jobs ranked
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Commute Rankings Section */}
+      {showCommuteRanking && (
+        <div className="education-form-card" style={{ marginBottom: '20px' }}>
+          <div style={{ padding: '20px' }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px',
+              borderBottom: '2px solid #f1f5f9', paddingBottom: '12px'
+            }}>
+              <Icon name="car" size="md" style={{ color: '#16a34a' }} />
+              <h3 style={{ margin: 0, color: '#1e293b', fontSize: '18px', fontWeight: '600' }}>
+                Jobs Ranked by Commute Time
+              </h3>
+              <button
+                onClick={async () => {
+                  setLoadingCommuteRanking(true);
+                  try {
+                    const resp = await jobsAPI.getCommuteRanking();
+                    const list = Array.isArray(resp?.results) ? resp.results : [];
+                    setCommuteRanking(list);
+                  } catch (e) {
+                    setError('Failed to load commute ranking');
+                  } finally {
+                    setLoadingCommuteRanking(false);
+                  }
+                }}
+                style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', fontSize: '13px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}
+                disabled={loadingCommuteRanking}
+              >
+                <Icon name="refresh-cw" size="sm" />
+                {loadingCommuteRanking ? 'Loading...' : 'Refresh'}
+              </button>
+            </div>
+
+            {loadingCommuteRanking ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '14px', justifyContent: 'center', padding: '20px' }}>
+                <Icon name="loader" size="sm" /> Loading commute ranking...
+              </div>
+            ) : !Array.isArray(commuteRanking) || commuteRanking.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#64748b', padding: '20px', fontSize: '14px' }}>
+                No commute data yet. Add office locations and refresh drive times.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {commuteRanking.slice(0, 15).map((row, idx) => {
+                  const eta = Math.round(row.min_commute_eta_min || 0);
+                  const miles = typeof row.min_commute_distance_km === 'number' ? (row.min_commute_distance_km * 0.621371) : null;
+                  const milesStr = miles != null ? `${miles.toFixed(1)} mi` : '';
+                  return (
+                    <div key={row.job_id}
+                      style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', background: idx < 3 ? 'linear-gradient(135deg, rgba(22, 163, 74, 0.05) 0%, rgba(34, 197, 94, 0.05) 100%)' : '#f8fafc', borderRadius: '8px', border: `1px solid ${idx < 3 ? '#16a34a' : '#e2e8f0'}`, cursor: 'pointer' }}
+                      onClick={() => navigate(`/jobs/${row.job_id}`)}
+                    >
+                      <div style={{ fontSize: '16px', fontWeight: '600', color: idx < 3 ? '#16a34a' : '#64748b', minWidth: '24px', textAlign: 'center', marginRight: '16px' }}>#{idx + 1}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '2px', fontSize: '15px' }}>{row.title}</div>
+                        <div style={{ fontSize: '13px', color: '#64748b' }}>{row.company_name}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ background: '#16a34a', color: 'white', padding: '4px 8px', borderRadius: '6px', fontSize: '13px', fontWeight: '600', minWidth: '50px', textAlign: 'center' }}>{eta} min</div>
+                        <div style={{ fontSize: '13px', color: '#64748b' }}>{milesStr}</div>
+                        <Icon name="chevron-right" size="sm" style={{ color: '#94a3b8' }} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
