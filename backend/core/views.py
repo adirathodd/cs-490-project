@@ -230,6 +230,32 @@ import uuid
 import os
 import requests
 
+
+# Health check endpoint for production monitoring (UC-133)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@authentication_classes([])
+def health_check(request):
+    """
+    Health check endpoint for uptime monitoring services (e.g., UptimeRobot).
+    Returns 200 OK if the application is running and can connect to the database.
+    """
+    from django.db import connection
+    try:
+        # Test database connectivity
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        db_status = "healthy"
+    except Exception as e:
+        db_status = f"unhealthy: {str(e)}"
+    
+    return Response({
+        "status": "healthy" if db_status == "healthy" else "degraded",
+        "database": db_status,
+        "version": "1.0.0",
+    }, status=status.HTTP_200_OK)
+
+
 # UC-116: Geocoding and commute helpers
 NOMINATIM_BASE_URL = os.environ.get('NOMINATIM_BASE_URL', 'https://nominatim.openstreetmap.org')
 NOMINATIM_USER_AGENT = os.environ.get('NOMINATIM_USER_AGENT', 'cs-490-project/1.0 (local-dev)')

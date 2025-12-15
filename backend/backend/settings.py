@@ -10,8 +10,10 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import json
 import os
 import socket
+import tempfile
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -41,6 +43,18 @@ def _load_local_env_file():
 
 _load_local_env_file()
 
+# Production Firebase credentials from environment variable (for Render.com)
+firebase_creds_json = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON', '')
+if firebase_creds_json and not os.environ.get('FIREBASE_CREDENTIALS'):
+    try:
+        creds_data = json.loads(firebase_creds_json)
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(creds_data, f)
+            os.environ['FIREBASE_CREDENTIALS'] = f.name
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = f.name
+    except json.JSONDecodeError:
+        pass
+
 # Read secret key and debug flag from environment with sensible defaults
 # ⚠️  UC-117: All external API calls must use core.api_monitoring.track_api_call()
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'replace-me-in-production')
@@ -67,6 +81,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Serve static files in production
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -192,10 +207,29 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:3000',
     'http://localhost:3001',  # add whichever port you’re using
 ]
+# Add production CORS origins from environment variable
+_env_cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', '').split()
+CORS_ALLOWED_ORIGINS.extend([o for o in _env_cors_origins if o and o not in CORS_ALLOWED_ORIGINS])
+
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3000',
     'http://localhost:3001',
 ]
+# Add production CSRF origins from environment variable
+_env_csrf_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', '').split()
+CSRF_TRUSTED_ORIGINS.extend([o for o in _env_csrf_origins if o and o not in CSRF_TRUSTED_ORIGINS])
+
+
+# Production security settings
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
 
 
 # Relax cookie and CORS credentials in development to allow OAuth redirects across localhost ports
@@ -343,3 +377,20 @@ CACHES = {
         }
     }
 }
+
+# Sentry error tracking for production (UC-133)
+SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
+if SENTRY_DSN and not DEBUG:
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            traces_sample_rate=0.1,
+            profiles_sample_rate=0.1,
+            send_default_pii=False,
+        )
+    except ImportError:
+        pass
+
+# WhiteNoise static file compression
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'

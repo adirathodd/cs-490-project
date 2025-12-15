@@ -535,4 +535,7 @@ urlpatterns = [
     path('material-versions/comparison/', views.material_version_comparison, name='material-version-comparison'),
     path('material-versions/analytics/', views.material_version_analytics, name='material-version-analytics'),
 
+    # Health check endpoint for uptime monitoring (UC-133)
+    path('health/', views.health_check, name='health-check'),
+
 ]
