@@ -104,45 +104,6 @@ const Dashboard = () => {
       
 
       <div className="dashboard-content">
-        {/* Account Information Banner */}
-        <div className="account-banner">
-          <div className="account-banner-content">
-            <div className="account-profile-section">
-              <div className="account-avatar">
-                {profilePictureUrl ? (
-                  <img src={profilePictureUrl} alt="Profile" className="account-avatar-img" />
-                ) : (
-                  <div className="account-avatar-placeholder">
-                    {userProfile?.first_name?.[0]?.toUpperCase() || currentUser?.email?.[0]?.toUpperCase() || '?'}
-                  </div>
-                )}
-              </div>
-              <div className="account-details">
-                <h2 className="account-name">
-                  {displayNameToShow || 'Welcome'}
-                </h2>
-                <p className="account-email">{currentUser?.email}</p>
-                {userProfile && (
-                  <div className="account-info-row">
-                        {userProfile.phone && (
-                          <span className="account-info-item"><Icon name="camera" size="sm" /> {userProfile.phone}</span>
-                        )}
-                        {userProfile.location && (
-                          <span className="account-info-item"><Icon name="location" size="sm" /> {userProfile.location}</span>
-                        )}
-                        {userProfile.city && userProfile.state && (
-                          <span className="account-info-item"><Icon name="home" size="sm" /> {userProfile.city}, {userProfile.state}</span>
-                        )}
-                  </div>
-                )}
-              </div>
-            </div>
-            <button className="edit-profile-button" onClick={handleUpdateProfile}>
-              <Icon name="edit" size="sm" /> Edit Profile
-            </button>
-          </div>
-        </div>
-
         <div className="welcome-section">
           <h2>Your Dashboard</h2>
           <p>Manage your professional profile and showcase your experience.</p>
@@ -258,6 +219,43 @@ const Dashboard = () => {
           </div>
 
           <aside className="dashboard-layout__sidebar">
+            <div className="account-banner account-banner--compact">
+              <div className="account-banner-content">
+                <div className="account-profile-section">
+                  <div className="account-avatar">
+                    {profilePictureUrl ? (
+                      <img src={profilePictureUrl} alt="Profile" className="account-avatar-img" />
+                    ) : (
+                      <div className="account-avatar-placeholder">
+                        {userProfile?.first_name?.[0]?.toUpperCase() || currentUser?.email?.[0]?.toUpperCase() || '?'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="account-details">
+                    <h2 className="account-name">
+                      {displayNameToShow || 'Welcome'}
+                    </h2>
+                    <p className="account-email">{currentUser?.email}</p>
+                    {userProfile && (
+                      <div className="account-info-row">
+                            {userProfile.phone && (
+                              <span className="account-info-item"><Icon name="camera" size="sm" /> {userProfile.phone}</span>
+                            )}
+                            {userProfile.location && (
+                              <span className="account-info-item"><Icon name="location" size="sm" /> {userProfile.location}</span>
+                            )}
+                            {userProfile.city && userProfile.state && (
+                              <span className="account-info-item"><Icon name="home" size="sm" /> {userProfile.city}, {userProfile.state}</span>
+                            )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <button className="edit-profile-button" onClick={handleUpdateProfile}>
+                  <Icon name="edit" size="sm" /> Edit Profile
+                </button>
+              </div>
+            </div>
             <div className="dashboard-card dashboard-card--sidebar">
               <DeadlinesWidget />
             </div>

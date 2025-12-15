@@ -165,35 +165,48 @@
 }
 
 /* Account Banner */
+
 .account-banner {
   background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
-  border-radius: 16px;
-  padding: 32px;
-  margin-bottom: 32px;
-  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.3);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 24px;
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.22);
   color: var(--on-primary);
 }
 
 .account-banner-content {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 24px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+}
+
+.account-banner--compact {
+  width: 100%;
+}
+
+.account-banner--compact .account-banner-content {
+  gap: 12px;
 }
 
 .account-profile-section {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 14px;
   flex: 1;
 }
 
+.account-banner--compact .account-profile-section {
+  gap: 12px;
+}
+
 .account-avatar {
-  width: 96px;
-  height: 96px;
+  width: 76px;
+  height: 76px;
   border-radius: 50%;
   overflow: hidden;
-  border: 4px solid rgba(255, 255, 255, 0.3);
+  border: 3px solid rgba(255, 255, 255, 0.35);
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.1);
 }
@@ -210,7 +223,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 36px;
+  font-size: 32px;
   font-weight: 600;
   color: var(--on-primary);
   background: rgba(255, 255, 255, 0.2);
@@ -222,48 +235,54 @@
 
 .account-name {
   margin: 0 0 4px 0;
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 600;
   color: var(--on-primary);
 }
 
 .account-email {
   margin: 0 0 12px 0;
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(255, 255, 255, 0.8);
 }
 
 .account-info-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 8px;
+  gap: 10px;
+  margin-top: 6px;
 }
 
 .account-info-item {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(255, 255, 255, 0.95);
   background: rgba(255, 255, 255, 0.15);
-  padding: 6px 12px;
-  border-radius: 20px;
+  padding: 6px 10px;
+  border-radius: 16px;
   backdrop-filter: blur(10px);
 }
 
 .edit-profile-button {
-  padding: 12px 24px;
+  padding: 9px 12px;
   background: var(--white);
   color: var(--primary-color);
   border: none;
   border-radius: 8px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
   white-space: nowrap;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  min-width: 0;
 }
 
 .edit-profile-button:hover {
@@ -868,12 +887,12 @@
 
   /* Account Banner Responsive */
   .account-banner {
-    padding: 24px 20px;
+    padding: 16px;
   }
 
   .account-banner-content {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
   }
 
   .account-profile-section {
@@ -881,15 +900,16 @@
     align-items: center;
     text-align: center;
     width: 100%;
+    gap: 10px;
   }
 
   .account-avatar {
-    width: 80px;
-    height: 80px;
+    width: 72px;
+    height: 72px;
   }
 
   .account-name {
-    font-size: 24px;
+    font-size: 20px;
   }
 
   .account-info-row {
@@ -897,7 +917,8 @@
   }
 
   .edit-profile-button {
-    width: 100%;
+    width: auto;
+    align-self: center;
   }
 
   .welcome-section h2 {
