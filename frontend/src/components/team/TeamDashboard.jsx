@@ -439,7 +439,7 @@ export default function TeamDashboard() {
     <div className="team-page">
       <header className="team-hero">
         <div>
-          <p className="eyebrow">Team Collaboration</p>
+          <p className="eyebrow">Team collaboration</p>
           <h1>Coach multiple candidates with one workspace</h1>
           <p className="subtitle">
             Create team accounts, manage permissions, and keep mentors, admins, and candidates aligned with live progress.

@@ -68,15 +68,16 @@
 }
 
 .nav-link.nav-cta {
-  background: linear-gradient(135deg, #fbbf24, #f59e0b);
-  color: #0f172a;
-  border-color: rgba(245, 158, 11, 0.4);
-  font-weight: 700;
+  background: var(--primary-color);
+  color: var(--on-primary);
+  border-color: var(--primary-color);
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.18);
 }
 
 .nav-link.nav-cta:hover {
-  background: #f59e0b;
-  color: #0f172a;
+  background: var(--primary-dark);
+  color: var(--on-primary);
 }
 
 .nav-link.active {
