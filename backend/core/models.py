@@ -6387,3 +6387,166 @@ class JobOffer(models.Model):
 
     def __str__(self):
         return f"{self.role_title} @ {self.company_name} ({self.status})"
+
+# =============================================================================
+# Resume/Cover Letter Version Performance Comparison (A/B Testing)
+# =============================================================================
+
+
+class MaterialVersion(models.Model):
+    """
+    Tracks versioned resume and cover letter materials for A/B performance comparison.
+    Allows users to create labeled versions (A, B, C, etc.) and track outcomes.
+    """
+    MATERIAL_TYPES = [
+        ('resume', 'Resume'),
+        ('cover_letter', 'Cover Letter'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    candidate = models.ForeignKey(
+        CandidateProfile,
+        on_delete=models.CASCADE,
+        related_name='material_versions'
+    )
+    
+    # Version identification
+    material_type = models.CharField(max_length=20, choices=MATERIAL_TYPES)
+    version_label = models.CharField(
+        max_length=50,
+        help_text="Version label (e.g., 'Version A', 'Version B', 'Technical Focus')"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Description of what makes this version unique"
+    )
+    
+    # Optional link to actual document
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tracked_versions',
+        help_text="Link to the actual document if uploaded"
+    )
+    
+    # Version status
+    is_archived = models.BooleanField(
+        default=False,
+        help_text="Archived versions are hidden from active selection"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this version is currently in use"
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['material_type', 'version_label']
+        indexes = [
+            models.Index(fields=['candidate', 'material_type']),
+            models.Index(fields=['candidate', 'is_archived']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['candidate', 'material_type', 'version_label'],
+                name='unique_material_version_label'
+            )
+        ]
+    
+    def __str__(self):
+        archived = " [ARCHIVED]" if self.is_archived else ""
+        return f"{self.get_material_type_display()} - {self.version_label}{archived}"
+    
+    def archive(self):
+        """Archive this version."""
+        self.is_archived = True
+        self.is_active = False
+        self.archived_at = timezone.now()
+        self.save(update_fields=['is_archived', 'is_active', 'archived_at', 'updated_at'])
+    
+    def restore(self):
+        """Restore an archived version."""
+        self.is_archived = False
+        self.is_active = True
+        self.archived_at = None
+        self.save(update_fields=['is_archived', 'is_active', 'archived_at', 'updated_at'])
+
+
+class MaterialVersionApplication(models.Model):
+    """
+    Tracks which material version was used for each job application and its outcome.
+    """
+    OUTCOME_CHOICES = [
+        ('pending', 'Pending / No Response Yet'),
+        ('no_response', 'No Response'),
+        ('response_received', 'Response Received'),
+        ('interview', 'Interview Scheduled'),
+        ('offer', 'Offer Received'),
+        ('rejection', 'Rejection'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Link to material version used
+    material_version = models.ForeignKey(
+        MaterialVersion,
+        on_delete=models.CASCADE,
+        related_name='applications'
+    )
+    
+    # Link to job/application (optional - can track without formal application record)
+    job = models.ForeignKey(
+        JobEntry,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='material_version_tracking'
+    )
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='material_version_tracking'
+    )
+    
+    # Application details
+    company_name = models.CharField(max_length=220, blank=True)
+    job_title = models.CharField(max_length=220, blank=True)
+    applied_date = models.DateField(default=timezone.now)
+    
+    # Outcome tracking
+    outcome = models.CharField(
+        max_length=20,
+        choices=OUTCOME_CHOICES,
+        default='pending'
+    )
+    outcome_date = models.DateField(null=True, blank=True)
+    outcome_notes = models.TextField(blank=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-applied_date']
+        indexes = [
+            models.Index(fields=['material_version', 'outcome']),
+            models.Index(fields=['material_version', '-applied_date']),
+        ]
+    
+    def __str__(self):
+        return f"{self.material_version.version_label} - {self.company_name or 'Unknown'} ({self.outcome})"
+    
+    @property
+    def days_to_response(self):
+        """Calculate days between application and outcome."""
+        if self.outcome_date and self.applied_date:
+            return (self.outcome_date - self.applied_date).days
+        return None

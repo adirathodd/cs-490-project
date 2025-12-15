@@ -20803,6 +20803,524 @@ def get_career_progression_data(request):
     }, status=status.HTTP_200_OK)
 
 
+# =============================================================================
+# Material Version Performance Comparison Views
+# =============================================================================
+
+from core.models import MaterialVersion, MaterialVersionApplication
+from core.serializers import (
+    MaterialVersionSerializer,
+    MaterialVersionCreateSerializer,
+    MaterialVersionApplicationSerializer,
+    MaterialVersionApplicationCreateSerializer,
+    MaterialVersionOutcomeUpdateSerializer,
+    MaterialVersionComparisonSerializer,
+)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def material_versions_list_create(request):
+    """
+    GET: List all material versions for the current user.
+    POST: Create a new material version.
+    
+    Query params:
+    - material_type: 'resume' or 'cover_letter' to filter
+    - include_archived: 'true' to include archived versions
+    """
+    candidate = request.user.profile
+    
+    if request.method == 'GET':
+        queryset = MaterialVersion.objects.filter(candidate=candidate)
+        
+        # Filter by material type
+        material_type = request.query_params.get('material_type')
+        if material_type in ['resume', 'cover_letter']:
+            queryset = queryset.filter(material_type=material_type)
+        
+        # Filter archived
+        include_archived = request.query_params.get('include_archived', 'false').lower() == 'true'
+        if not include_archived:
+            queryset = queryset.filter(is_archived=False)
+        
+        serializer = MaterialVersionSerializer(queryset, many=True)
+        return Response({
+            'versions': serializer.data,
+            'total': queryset.count()
+        })
+    
+    elif request.method == 'POST':
+        serializer = MaterialVersionCreateSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+        if serializer.is_valid():
+            version = serializer.save()
+            response_data = MaterialVersionSerializer(version).data
+            # Include count of auto-imported applications
+            auto_imported = version.applications.count()
+            if auto_imported > 0:
+                response_data['auto_imported_count'] = auto_imported
+                response_data['message'] = f'Version created with {auto_imported} existing job applications auto-imported.'
+            return Response(
+                response_data,
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def material_version_detail(request, version_id):
+    """
+    GET: Get details of a specific material version.
+    PATCH: Update a material version.
+    DELETE: Delete a material version.
+    """
+    candidate = request.user.profile
+    
+    try:
+        version = MaterialVersion.objects.get(id=version_id, candidate=candidate)
+    except MaterialVersion.DoesNotExist:
+        return Response({'error': 'Version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        serializer = MaterialVersionSerializer(version)
+        return Response(serializer.data)
+    
+    elif request.method == 'PATCH':
+        serializer = MaterialVersionSerializer(version, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        # Check if version has applications
+        if version.applications.exists():
+            return Response(
+                {'error': 'Cannot delete version with tracked applications. Archive it instead.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        version.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def material_version_archive(request, version_id):
+    """Archive a material version."""
+    candidate = request.user.profile
+    
+    try:
+        version = MaterialVersion.objects.get(id=version_id, candidate=candidate)
+    except MaterialVersion.DoesNotExist:
+        return Response({'error': 'Version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    version.archive()
+    return Response({
+        'message': 'Version archived successfully',
+        'version': MaterialVersionSerializer(version).data
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def material_version_restore(request, version_id):
+    """Restore an archived material version."""
+    candidate = request.user.profile
+    
+    try:
+        version = MaterialVersion.objects.get(id=version_id, candidate=candidate)
+    except MaterialVersion.DoesNotExist:
+        return Response({'error': 'Version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    version.restore()
+    return Response({
+        'message': 'Version restored successfully',
+        'version': MaterialVersionSerializer(version).data
+    })
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def material_version_applications(request, version_id):
+    """
+    GET: List all applications tracked for a material version.
+    POST: Track a new application with this material version.
+    """
+    candidate = request.user.profile
+    
+    try:
+        version = MaterialVersion.objects.get(id=version_id, candidate=candidate)
+    except MaterialVersion.DoesNotExist:
+        return Response({'error': 'Version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        applications = version.applications.all()
+        serializer = MaterialVersionApplicationSerializer(applications, many=True)
+        return Response({
+            'applications': serializer.data,
+            'total': applications.count()
+        })
+    
+    elif request.method == 'POST':
+        data = request.data.copy()
+        data['material_version'] = version_id
+        serializer = MaterialVersionApplicationCreateSerializer(
+            data=data,
+            context={'request': request}
+        )
+        if serializer.is_valid():
+            app = serializer.save()
+            return Response(
+                MaterialVersionApplicationSerializer(app).data,
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def material_version_application_detail(request, application_id):
+    """
+    GET: Get details of a tracked application.
+    PATCH: Update application (typically to record outcome).
+    DELETE: Remove tracking for this application.
+    """
+    candidate = request.user.profile
+    
+    try:
+        app = MaterialVersionApplication.objects.get(
+            id=application_id,
+            material_version__candidate=candidate
+        )
+    except MaterialVersionApplication.DoesNotExist:
+        return Response({'error': 'Application not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        serializer = MaterialVersionApplicationSerializer(app)
+        return Response(serializer.data)
+    
+    elif request.method == 'PATCH':
+        serializer = MaterialVersionApplicationSerializer(app, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        app.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def material_version_application_outcome(request, application_id):
+    """Update the outcome for a tracked application."""
+    candidate = request.user.profile
+    
+    try:
+        app = MaterialVersionApplication.objects.get(
+            id=application_id,
+            material_version__candidate=candidate
+        )
+    except MaterialVersionApplication.DoesNotExist:
+        return Response({'error': 'Application not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    serializer = MaterialVersionOutcomeUpdateSerializer(data=request.data)
+    if serializer.is_valid():
+        app.outcome = serializer.validated_data['outcome']
+        app.outcome_date = serializer.validated_data.get('outcome_date')
+        app.outcome_notes = serializer.validated_data.get('outcome_notes', '')
+        app.save()
+        return Response(MaterialVersionApplicationSerializer(app).data)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def material_version_comparison(request):
+    """
+    Get comparison metrics for all material versions.
+    
+    Query params:
+    - material_type: 'resume' or 'cover_letter' to filter
+    - include_archived: 'true' to include archived versions
+    """
+    from django.db.models import Count, Q, Avg, F
+    from django.db.models.functions import Coalesce
+    
+    candidate = request.user.profile
+    
+    queryset = MaterialVersion.objects.filter(candidate=candidate)
+    
+    # Filter by material type
+    material_type = request.query_params.get('material_type')
+    if material_type in ['resume', 'cover_letter']:
+        queryset = queryset.filter(material_type=material_type)
+    
+    # Filter archived
+    include_archived = request.query_params.get('include_archived', 'false').lower() == 'true'
+    if not include_archived:
+        queryset = queryset.filter(is_archived=False)
+    
+    comparison_data = []
+    
+    for version in queryset:
+        apps = version.applications.all()
+        total = apps.count()
+        
+        # Count by outcome
+        pending = apps.filter(outcome='pending').count()
+        no_response = apps.filter(outcome='no_response').count()
+        response_received = apps.filter(outcome='response_received').count()
+        interview = apps.filter(outcome='interview').count()
+        offer = apps.filter(outcome='offer').count()
+        rejection = apps.filter(outcome='rejection').count()
+        
+        # Calculate rates (only from completed applications - excluding pending)
+        completed = total - pending
+        
+        # Response rate = any response (response_received + interview + offer + rejection) / completed
+        responses = response_received + interview + offer + rejection
+        response_rate = (responses / completed * 100) if completed > 0 else 0.0
+        
+        # Interview rate = (interview + offer) / completed
+        interview_rate = ((interview + offer) / completed * 100) if completed > 0 else 0.0
+        
+        # Offer rate = offer / completed
+        offer_rate = (offer / completed * 100) if completed > 0 else 0.0
+        
+        # Average days to response
+        apps_with_response = apps.exclude(outcome='pending').exclude(outcome_date__isnull=True)
+        avg_days = None
+        if apps_with_response.exists():
+            total_days = 0
+            count = 0
+            for app in apps_with_response:
+                if app.days_to_response is not None:
+                    total_days += app.days_to_response
+                    count += 1
+            if count > 0:
+                avg_days = total_days / count
+        
+        comparison_data.append({
+            'version_id': str(version.id),
+            'version_label': version.version_label,
+            'material_type': version.material_type,
+            'description': version.description,
+            'is_archived': version.is_archived,
+            'total_applications': total,
+            'pending_count': pending,
+            'no_response_count': no_response,
+            'response_received_count': response_received,
+            'interview_count': interview,
+            'offer_count': offer,
+            'rejection_count': rejection,
+            'response_rate': round(response_rate, 1),
+            'interview_rate': round(interview_rate, 1),
+            'offer_rate': round(offer_rate, 1),
+            'avg_days_to_response': round(avg_days, 1) if avg_days is not None else None,
+            'has_sufficient_data': total >= 10,
+        })
+    
+    # Sort by total applications descending
+    comparison_data.sort(key=lambda x: x['total_applications'], reverse=True)
+    
+    return Response({
+        'versions': comparison_data,
+        'total_versions': len(comparison_data),
+        'note': 'Meaningful comparisons require 10+ applications per version.',
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def material_version_analytics(request):
+    """
+    Get overall analytics across all material versions.
+    """
+    candidate = request.user.profile
+    
+    versions = MaterialVersion.objects.filter(candidate=candidate, is_archived=False)
+    
+    resume_versions = versions.filter(material_type='resume').count()
+    cover_letter_versions = versions.filter(material_type='cover_letter').count()
+    
+    all_apps = MaterialVersionApplication.objects.filter(
+        material_version__candidate=candidate
+    )
+    
+    total_tracked = all_apps.count()
+    
+    # Outcome breakdown
+    outcome_breakdown = {
+        'pending': all_apps.filter(outcome='pending').count(),
+        'no_response': all_apps.filter(outcome='no_response').count(),
+        'response_received': all_apps.filter(outcome='response_received').count(),
+        'interview': all_apps.filter(outcome='interview').count(),
+        'offer': all_apps.filter(outcome='offer').count(),
+        'rejection': all_apps.filter(outcome='rejection').count(),
+    }
+    
+    # Find best performing version for each type
+    def get_best_version(mat_type, metric='interview_rate'):
+        versions_of_type = versions.filter(material_type=mat_type)
+        best = None
+        best_score = -1
+        
+        for v in versions_of_type:
+            apps = v.applications.all()
+            total = apps.count()
+            if total < 3:  # Need at least 3 applications
+                continue
+            
+            completed = total - apps.filter(outcome='pending').count()
+            if completed == 0:
+                continue
+            
+            if metric == 'interview_rate':
+                interview = apps.filter(outcome='interview').count()
+                offer = apps.filter(outcome='offer').count()
+                score = (interview + offer) / completed * 100
+            elif metric == 'response_rate':
+                responses = apps.exclude(outcome='pending').exclude(outcome='no_response').count()
+                score = responses / completed * 100
+            else:
+                score = 0
+            
+            if score > best_score:
+                best_score = score
+                best = v
+        
+        if best:
+            return {
+                'version_label': best.version_label,
+                'score': round(best_score, 1),
+            }
+        return None
+    
+    return Response({
+        'summary': {
+            'resume_versions': resume_versions,
+            'cover_letter_versions': cover_letter_versions,
+            'total_tracked_applications': total_tracked,
+        },
+        'outcome_breakdown': outcome_breakdown,
+        'best_performing': {
+            'resume': get_best_version('resume'),
+            'cover_letter': get_best_version('cover_letter'),
+        },
+        'recommendations': [
+            'Track at least 10 applications per version for meaningful comparisons.',
+            'Update outcomes promptly to keep metrics accurate.',
+            'Consider archiving underperforming versions.',
+        ]
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def material_version_bulk_import(request, version_id):
+    """
+    Bulk import existing job applications for a material version.
+    
+    This allows users to import multiple job entries at once, 
+    automatically creating MaterialVersionApplication records.
+    
+    POST body:
+        job_ids: List of JobEntry IDs to import as tracked applications
+        
+    For each job, it will:
+    - Extract company_name and job_title from the JobEntry
+    - Use application_submitted_at or created_at as applied_date
+    - Map status to appropriate outcome
+    """
+    candidate = request.user.profile
+    
+    try:
+        version = MaterialVersion.objects.get(id=version_id, candidate=candidate)
+    except MaterialVersion.DoesNotExist:
+        return Response({'error': 'Version not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    job_ids = request.data.get('job_ids', [])
+    if not job_ids:
+        return Response({'error': 'job_ids list is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Fetch all jobs
+    jobs = JobEntry.objects.filter(id__in=job_ids, candidate=candidate)
+    
+    if not jobs.exists():
+        return Response({'error': 'No jobs found with provided IDs'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Map job status to outcome
+    status_to_outcome = {
+        'interested': 'pending',
+        'applied': 'pending',
+        'phone_screen': 'interview',
+        'interview': 'interview',
+        'offer': 'offer',
+        'rejected': 'rejection',
+        'withdrawn': 'rejection',
+    }
+    
+    imported = []
+    skipped = []
+    
+    for job in jobs:
+        # Check if this job is already tracked for this version
+        existing = MaterialVersionApplication.objects.filter(
+            material_version=version,
+            job=job
+        ).exists()
+        
+        if existing:
+            skipped.append({
+                'job_id': job.id,
+                'reason': 'Already tracked'
+            })
+            continue
+        
+        # Determine applied_date
+        if job.application_submitted_at:
+            applied_date = job.application_submitted_at.date()
+        else:
+            applied_date = job.created_at.date()
+        
+        # Map status to outcome
+        job_status = getattr(job, 'status', 'interested')
+        outcome = status_to_outcome.get(job_status, 'pending')
+        
+        # Determine outcome_date if there was a response
+        outcome_date = None
+        if job.first_response_at:
+            outcome_date = job.first_response_at.date()
+        
+        # Create the application record
+        app = MaterialVersionApplication.objects.create(
+            material_version=version,
+            job=job,
+            company_name=job.company_name,
+            job_title=job.title,
+            applied_date=applied_date,
+            outcome=outcome,
+            outcome_date=outcome_date,
+        )
+        
+        imported.append(MaterialVersionApplicationSerializer(app).data)
+    
+    return Response({
+        'imported': imported,
+        'imported_count': len(imported),
+        'skipped': skipped,
+        'skipped_count': len(skipped),
+        'message': f'Successfully imported {len(imported)} applications'
+    }, status=status.HTTP_201_CREATED)
+
+
 # 
 # 
 # =
