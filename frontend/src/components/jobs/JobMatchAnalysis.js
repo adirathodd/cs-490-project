@@ -198,6 +198,56 @@ const JobMatchAnalysis = ({ job, onError }) => {
         </div>
       </div>
 
+      {/* Experience Level Match */}
+      {matchData.breakdown?.level_match && (
+        <div className="education-form-card" style={{ marginBottom: '24px' }}>
+          <div className="form-header">
+            <h3><Icon name="user-check" size="sm" /> Experience Level Match</h3>
+          </div>
+          <div style={{ padding: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', alignItems: 'center' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '14px', color: '#6b7280' }}>Candidate</div>
+                <div style={{ fontSize: '18px', fontWeight: 600 }}>
+                  {(matchData.breakdown.level_match.candidate_level || '').replace(/\b\w/g, (c) => c.toUpperCase())}
+                </div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '14px', color: '#6b7280' }}>Role</div>
+                <div style={{ fontSize: '18px', fontWeight: 600 }}>
+                  {(matchData.breakdown.level_match.job_level || '').replace(/\b\w/g, (c) => c.toUpperCase())}
+                </div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ 
+                  fontSize: '20px', 
+                  fontWeight: '600', 
+                  color: getScoreColor(matchData.breakdown.level_match.score)
+                }}>
+                  {matchData.breakdown.level_match.alignment}
+                </div>
+              </div>
+            </div>
+
+            {/* Matching past experience skills */}
+            {Array.isArray(matchData.breakdown.experience_skill_matches) && matchData.breakdown.experience_skill_matches.length > 0 && (
+              <div style={{ marginTop: '16px' }}>
+                <div style={{ fontWeight: 600, marginBottom: '8px' }}>
+                  <Icon name="briefcase" size="sm" /> Relevant Past Experience
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', rowGap: '6px' }}>
+                  {matchData.breakdown.experience_skill_matches.map((m, idx) => (
+                    <div key={idx} style={{ color: '#374151', fontSize: '14px' }}>
+                      <span style={{ fontWeight: 500 }}>{m.job_title}</span> at <span style={{ fontWeight: 500 }}>{m.company_name}</span> — <span style={{ color: '#2563eb' }}>{m.skill}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Custom Weight Configuration - HIDDEN */}
       {/* Commented out to hide weight adjustment from users
       <div className="education-form-card" style={{ marginBottom: '24px' }}>

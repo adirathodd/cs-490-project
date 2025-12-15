@@ -65,7 +65,8 @@ class JobMatchingEngine:
             'experience_score': float(experience_score),
             'education_score': float(education_score),
             'breakdown': breakdown,
-            'generated_at': datetime.now().isoformat()
+            'generated_at': datetime.now().isoformat(),
+            'weights_used': {k: float(v) for k, v in weights.items()},
         }
     
     @classmethod
@@ -327,6 +328,42 @@ class JobMatchingEngine:
             # Get skills gap analysis for detailed breakdown
             skills_analysis = SkillsGapAnalyzer.analyze_job(job, candidate_profile)
             
+            # Build set of required skills from this job
+            required_skill_ids = set()
+            required_skill_names = set()
+            for s in skills_analysis.get('skills', []):
+                sid = s.get('skill_id')
+                if sid is not None:
+                    required_skill_ids.add(sid)
+                name = (s.get('name') or '').strip()
+                if name:
+                    required_skill_names.add(name.lower())
+            
+            # Experience level alignment (entry/mid/senior) for verification UI
+            candidate_level = candidate_profile.experience_level or 'entry'
+            job_title_lower = job.title.lower()
+            if any(word in job_title_lower for word in ['senior', 'lead', 'principal', 'staff']):
+                job_level = 'senior'
+            elif any(word in job_title_lower for word in ['mid', 'intermediate']):
+                job_level = 'mid'
+            elif any(word in job_title_lower for word in ['junior', 'entry', 'associate', 'intern', 'internship', 'new grad']):
+                job_level = 'entry'
+            else:
+                job_level = 'mid'
+            # Alignment labels: Match | More experience needed | Overqualified
+            level_mapping = {'entry': 1, 'mid': 2, 'senior': 3, 'executive': 4}
+            cand_score = level_mapping.get(candidate_level, 2)
+            role_score = level_mapping.get(job_level, 2)
+            if cand_score == role_score:
+                alignment = 'Match'
+                alignment_score = 90
+            elif cand_score < role_score:
+                alignment = 'More experience needed'
+                alignment_score = 65
+            else:
+                alignment = 'Overqualified'
+                alignment_score = 75
+            
             # Identify strengths (skills with low gap severity)
             strengths = [
                 skill['name'] for skill in skills_analysis.get('skills', [])
@@ -345,6 +382,28 @@ class JobMatchingEngine:
                 if skill.get('gap_severity', 100) > 60
             ][:3]
             
+            # Cross-reference candidate employment for overlapping skills
+            experience_skill_matches = []
+            try:
+                from core.models import WorkExperience
+                experiences = WorkExperience.objects.filter(candidate=candidate_profile).prefetch_related('skills_used')
+                for exp in experiences:
+                    for sk in exp.skills_used.all():
+                        if (sk.id in required_skill_ids) or ((sk.name or '').lower() in required_skill_names):
+                            experience_skill_matches.append({
+                                'job_title': exp.job_title,
+                                'company_name': exp.company_name,
+                                'skill': sk.name,
+                            })
+                            # Limit to avoid very long payloads
+                            if len(experience_skill_matches) >= 12:
+                                break
+                    if len(experience_skill_matches) >= 12:
+                        break
+            except Exception:
+                # Non-fatal if employment or skills missing
+                pass
+
             # Generate recommendations
             recommendations = cls._generate_recommendations(job, candidate_profile, top_gaps)
             
@@ -356,7 +415,14 @@ class JobMatchingEngine:
                     'total_skills': len(skills_analysis.get('skills', [])),
                     'matched_skills': skills_analysis.get('summary', {}).get('matched_skills', 0),
                     'missing_skills': skills_analysis.get('summary', {}).get('missing_skills', 0)
-                }
+                },
+                'level_match': {
+                    'candidate_level': candidate_level,
+                    'job_level': job_level,
+                    'alignment': alignment,
+                    'score': alignment_score,
+                },
+                'experience_skill_matches': experience_skill_matches,
             }
             
         except Exception as e:
@@ -520,7 +586,7 @@ class JobMatchingEngine:
             job_level = 'senior'
         elif any(word in job_title_lower for word in ['mid', 'intermediate']):
             job_level = 'mid'
-        elif any(word in job_title_lower for word in ['junior', 'entry', 'associate']):
+        elif any(word in job_title_lower for word in ['junior', 'entry', 'associate', 'intern', 'internship', 'new grad']):
             job_level = 'entry'
         else:
             job_level = 'mid'  # Default
@@ -653,13 +719,14 @@ class JobMatchingEngine:
         """Generate improvement recommendations."""
         recommendations = []
         
-        # Skills-based recommendations
+        # Skills-based recommendations with target levels
         if top_gaps:
-            # Take first 3 skills and make the message match the actual count
             displayed_skills = top_gaps[:3]
-            skills_rec = f"Focus on developing {len(displayed_skills)} key skills: " + \
-                        ", ".join([gap['skill'] for gap in displayed_skills])
-            recommendations.append(skills_rec)
+            for gap in displayed_skills:
+                skill_name = gap.get('skill')
+                required_level = (gap.get('required_level') or 'intermediate')
+                level_label = str(required_level).capitalize()
+                recommendations.append(f"Raise {skill_name} to {level_label} level")
         
         # Experience recommendations
         from core.models import WorkExperience
