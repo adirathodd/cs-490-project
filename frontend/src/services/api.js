@@ -3789,4 +3789,177 @@ export const careerGrowthAPI = {
     }),
 };
 
+// Material Version Performance Comparison API
+export const materialVersionAPI = {
+  // List all versions (optionally filtered by type)
+  listVersions: async (params = {}) => {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params.material_type) queryParams.append('material_type', params.material_type);
+      if (params.include_archived) queryParams.append('include_archived', 'true');
+      const queryString = queryParams.toString();
+      const url = queryString ? `/material-versions/?${queryString}` : '/material-versions/';
+      const response = await api.get(url);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch versions' };
+    }
+  },
+
+  // Create a new version
+  createVersion: async (data) => {
+    try {
+      const response = await api.post('/material-versions/', data);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to create version' };
+    }
+  },
+
+  // Get version details
+  getVersion: async (versionId) => {
+    try {
+      const response = await api.get(`/material-versions/${versionId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch version' };
+    }
+  },
+
+  // Update a version
+  updateVersion: async (versionId, data) => {
+    try {
+      const response = await api.patch(`/material-versions/${versionId}/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update version' };
+    }
+  },
+
+  // Delete a version
+  deleteVersion: async (versionId) => {
+    try {
+      const response = await api.delete(`/material-versions/${versionId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete version' };
+    }
+  },
+
+  // Archive a version
+  archiveVersion: async (versionId) => {
+    try {
+      const response = await api.post(`/material-versions/${versionId}/archive/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to archive version' };
+    }
+  },
+
+  // Restore an archived version
+  restoreVersion: async (versionId) => {
+    try {
+      const response = await api.post(`/material-versions/${versionId}/restore/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to restore version' };
+    }
+  },
+
+  // List applications tracked for a version
+  listApplications: async (versionId) => {
+    try {
+      const response = await api.get(`/material-versions/${versionId}/applications/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch applications' };
+    }
+  },
+
+  // Track a new application with a version
+  trackApplication: async (versionId, data) => {
+    try {
+      const response = await api.post(`/material-versions/${versionId}/applications/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to track application' };
+    }
+  },
+
+  // Get application details
+  getApplication: async (applicationId) => {
+    try {
+      const response = await api.get(`/material-version-applications/${applicationId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch application' };
+    }
+  },
+
+  // Update application (including outcome)
+  updateApplication: async (applicationId, data) => {
+    try {
+      const response = await api.patch(`/material-version-applications/${applicationId}/`, data);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update application' };
+    }
+  },
+
+  // Update application outcome specifically
+  updateOutcome: async (applicationId, outcomeData) => {
+    try {
+      const response = await api.post(`/material-version-applications/${applicationId}/outcome/`, outcomeData);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to update outcome' };
+    }
+  },
+
+  // Delete tracked application
+  deleteApplication: async (applicationId) => {
+    try {
+      const response = await api.delete(`/material-version-applications/${applicationId}/`);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to delete application' };
+    }
+  },
+
+  // Bulk import existing job applications for a version
+  bulkImportJobs: async (versionId, jobIds) => {
+    try {
+      const response = await api.post(`/material-versions/${versionId}/bulk-import/`, { job_ids: jobIds });
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to import applications' };
+    }
+  },
+
+  // Get comparison metrics for all versions
+  getComparison: async (params = {}) => {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params.material_type) queryParams.append('material_type', params.material_type);
+      if (params.include_archived) queryParams.append('include_archived', 'true');
+      const queryString = queryParams.toString();
+      const url = queryString ? `/material-versions/comparison/?${queryString}` : '/material-versions/comparison/';
+      const response = await api.get(url);
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch comparison' };
+    }
+  },
+
+  // Get overall analytics
+  getAnalytics: async () => {
+    try {
+      const response = await api.get('/material-versions/analytics/');
+      return response.data;
+    } catch (error) {
+      throw error.error || error.response?.data?.error || { message: 'Failed to fetch analytics' };
+    }
+  },
+};
+
 // ESM-only: no CommonJS interop here to avoid init-order issues

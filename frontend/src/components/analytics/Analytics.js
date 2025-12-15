@@ -8,6 +8,7 @@ import ApplicationSuccessAnalysis from './ApplicationSuccessAnalysis';
 import CompetitiveAnalysisPanel from './CompetitiveAnalysisPanel';
 import ProductivityAnalytics from './ProductivityAnalytics';
 import OptimizationDashboard from './OptimizationDashboard';
+import MaterialVersionComparison from './MaterialVersionComparison';
 
 const card = { padding: 16, borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb', marginBottom: 16 };
 const sectionTitle = { fontSize: 18, fontWeight: 700, marginBottom: 12, color: '#1f2937' };
@@ -31,6 +32,7 @@ const tabsConfig = [
   { id: 'competitive', label: 'Competitive', icon: 'users', description: 'Market comparison' },
   { id: 'productivity', label: 'Productivity', icon: 'activity', description: 'Efficiency metrics' },
   { id: 'optimization', label: 'Optimization', icon: 'target', description: 'AI recommendations' },
+  { id: 'materials', label: 'Materials A/B', icon: 'layers', description: 'Version comparison' },
 ];
 
 const tabContainerStyle = {
@@ -156,6 +158,7 @@ export default function Analytics() {
         {activeTab === 'competitive' && <CompetitiveAnalysisPanel />}
         {activeTab === 'productivity' && <ProductivityAnalytics />}
         {activeTab === 'optimization' && <OptimizationDashboard />}
+        {activeTab === 'materials' && <MaterialVersionComparison />}
       </div>
     </div>
   );
