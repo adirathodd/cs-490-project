@@ -6413,8 +6413,6 @@ class JobOffer(models.Model):
 
     def __str__(self):
         return f"{self.role_title} @ {self.company_name} ({self.status})"
-<<<<<<< HEAD
-=======
 
 # =============================================================================
 # Resume/Cover Letter Version Performance Comparison (A/B Testing)
@@ -6578,4 +6576,3 @@ class MaterialVersionApplication(models.Model):
         if self.outcome_date and self.applied_date:
             return (self.outcome_date - self.applied_date).days
         return None
->>>>>>> origin
