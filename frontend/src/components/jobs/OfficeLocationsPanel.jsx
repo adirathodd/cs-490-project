@@ -11,6 +11,7 @@ const OfficeLocationsPanel = ({ jobId, onChanged }) => {
   const [address, setAddress] = useState('');
   const [commutes, setCommutes] = useState({ offices: [], best_office_id: null });
   const [loadingCommute, setLoadingCommute] = useState(false);
+  const [commuteError, setCommuteError] = useState(null);
 
   const load = async () => {
     setLoading(true); setError('');
@@ -28,6 +29,7 @@ const OfficeLocationsPanel = ({ jobId, onChanged }) => {
 
   const loadCommute = async () => {
     setLoadingCommute(true);
+    setCommuteError(null);
     try {
       const data = await jobsAPI.getJobCommute(jobId, { mode: 'drive' });
       const items = Array.isArray(data?.commute) ? data.commute : [];
@@ -41,7 +43,9 @@ const OfficeLocationsPanel = ({ jobId, onChanged }) => {
         best_office_id: null,
       });
     } catch (e) {
-      // Silent fail; show hint in UI
+      // Extract error code from backend response
+      const errorCode = e?.code || e?.response?.data?.error?.code || null;
+      setCommuteError(errorCode);
     } finally {
       setLoadingCommute(false);
     }
@@ -123,7 +127,17 @@ const OfficeLocationsPanel = ({ jobId, onChanged }) => {
                         {(() => {
                           const m = (commutes.offices || []).find(o => o.office_id === it.id);
                           if (loadingCommute) return 'Calculating drive time…';
-                          if (!m) return 'Drive time unavailable • Set your home address in Profile';
+                          if (!m) {
+                            // Show specific message based on error code
+                            if (commuteError === 'missing_home') {
+                              return 'Set your home address in Profile to see drive times';
+                            } else if (commuteError === 'unable_to_geocode_home' || commuteError === 'home_geocode_failed') {
+                              return 'Could not locate your home address • Update it in Profile';
+                            } else if (commuteError === 'no_offices') {
+                              return 'No office coordinates available';
+                            }
+                            return 'Drive time unavailable • Click "Refresh Drive Times"';
+                          }
                           const mins = Math.round((m.duration_sec || 0) / 60);
                           const miles = Math.round(((m.distance_m || 0) / 1609.34) * 10) / 10;
                           return `Drive: ${mins} min • ${miles} mi`;
