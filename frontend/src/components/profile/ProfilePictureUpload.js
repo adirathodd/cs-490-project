@@ -23,6 +23,12 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [originalImageSrc, setOriginalImageSrc] = useState(null);
 
+  const withCacheBust = (url) => {
+    if (!url) return url;
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}t=${Date.now()}`;
+  };
+
   const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
   const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
 
@@ -34,14 +40,12 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
     try {
       setLoading(true);
       const response = await authAPI.getProfilePicture();
-      // Check has_profile_picture flag - if false, no valid picture exists
       if (response?.has_profile_picture && response?.profile_picture_url) {
-        // Build full URL - the backend may return relative path like /media/profile_pictures/...
         const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-        const fullUrl = response.profile_picture_url.startsWith('http') 
-          ? response.profile_picture_url 
+        const fullUrl = response.profile_picture_url.startsWith('http')
+          ? response.profile_picture_url
           : `${apiBaseUrl}${response.profile_picture_url}`;
-        setProfilePicture(fullUrl);
+        setProfilePicture(withCacheBust(fullUrl));
       } else {
         setProfilePicture(null);
       }
@@ -94,6 +98,7 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
   };
 
   const onCropComplete = useCallback((croppedArea, croppedAreaPixels) => {
+    // Keep the latest crop pixels so we can generate the cropped file on confirm
     setCroppedAreaPixels(croppedAreaPixels);
   }, []);
 
@@ -110,35 +115,33 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
 
-        // Ensure valid dimensions
-        const width = Math.max(1, Math.floor(croppedAreaPixels.width));
-        const height = Math.max(1, Math.floor(croppedAreaPixels.height));
+        // Clamp crop area to the actual image bounds to avoid empty canvas edge cases
+        const safeWidth = Math.max(1, Math.min(croppedAreaPixels.width, image.width));
+        const safeHeight = Math.max(1, Math.min(croppedAreaPixels.height, image.height));
+        const safeX = Math.max(0, Math.min(croppedAreaPixels.x, image.width - safeWidth));
+        const safeY = Math.max(0, Math.min(croppedAreaPixels.y, image.height - safeHeight));
 
-        // Set canvas size to cropped area
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = safeWidth;
+        canvas.height = safeHeight;
 
-        // Draw the cropped image
         ctx.drawImage(
           image,
-          Math.floor(croppedAreaPixels.x),
-          Math.floor(croppedAreaPixels.y),
-          Math.floor(croppedAreaPixels.width),
-          Math.floor(croppedAreaPixels.height),
+          safeX,
+          safeY,
+          safeWidth,
+          safeHeight,
           0,
           0,
-          width,
-          height
+          safeWidth,
+          safeHeight
         );
 
-        // Convert canvas to blob
         canvas.toBlob((blob) => {
           if (!blob) {
             reject(new Error('Canvas is empty'));
             return;
           }
           
-          // Create a new File object from the blob
           const croppedFile = new File([blob], selectedFile.name, {
             type: selectedFile.type || 'image/jpeg',
             lastModified: Date.now(),
@@ -178,14 +181,12 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
       }
 
       const response = await authAPI.uploadProfilePicture(fileToUpload);
-      // Build full URL for the new profile picture
-      if (response.profile_picture_url) {
-        const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-        const fullUrl = response.profile_picture_url.startsWith('http') 
-          ? response.profile_picture_url 
-          : `${apiBaseUrl}${response.profile_picture_url}`;
-        setProfilePicture(fullUrl);
-      }
+      const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+      const fullUrl = response.profile_picture_url?.startsWith('http')
+        ? response.profile_picture_url
+        : `${apiBaseUrl}${response.profile_picture_url}`;
+      const updatedUrl = withCacheBust(fullUrl);
+      setProfilePicture(updatedUrl);
       setSuccessMessage('Profile picture uploaded successfully!');
       setShowPreview(false);
       setSelectedFile(null);
@@ -200,7 +201,7 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
 
       // Call callback if provided
       if (onUploadSuccess) {
-        onUploadSuccess(response.profile_picture_url);
+        onUploadSuccess(updatedUrl);
       }
 
       // Clear success message after 5 seconds
@@ -335,12 +336,18 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
             {/* Cropper Container */}
             <div className="cropper-container">
               <Cropper
+                key={originalImageSrc || 'cropper'}
                 image={originalImageSrc}
                 crop={crop}
                 zoom={zoom}
+                minZoom={1}
+                maxZoom={10}
                 aspect={1}
                 cropShape="round"
+                cropSize={{ width: 300, height: 300 }}
                 showGrid={false}
+                objectFit="cover"
+                restrictPosition={false}
                 onCropChange={setCrop}
                 onZoomChange={setZoom}
                 onCropComplete={onCropComplete}
@@ -356,7 +363,7 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
                 id="zoom-slider"
                 type="range"
                 min={1}
-                max={3}
+                max={10}
                 step={0.1}
                 value={zoom}
                 onChange={(e) => setZoom(parseFloat(e.target.value))}
