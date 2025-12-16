@@ -3,6 +3,24 @@
 from django.db import migrations, models
 
 
+def safe_remove_fields(apps, schema_editor):
+    """Safely remove fields only if they exist (for fresh databases they won't)."""
+    from django.db import connection
+    with connection.cursor() as cursor:
+        # Check if columns exist before trying to remove them
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'core_gmailintegration'
+            AND column_name IN ('auto_update_status', 'scan_frequency')
+        """)
+        existing_cols = [row[0] for row in cursor.fetchall()]
+        
+        if 'auto_update_status' in existing_cols:
+            cursor.execute('ALTER TABLE core_gmailintegration DROP COLUMN auto_update_status')
+        if 'scan_frequency' in existing_cols:
+            cursor.execute('ALTER TABLE core_gmailintegration DROP COLUMN scan_frequency')
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,15 +28,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Only add new fields, skip index renames to avoid issues with fresh databases
-        migrations.RemoveField(
-            model_name='gmailintegration',
-            name='auto_update_status',
-        ),
-        migrations.RemoveField(
-            model_name='gmailintegration',
-            name='scan_frequency',
-        ),
+        # Safely remove old fields only if they exist
+        migrations.RunPython(safe_remove_fields, migrations.RunPython.noop),
         migrations.AddField(
             model_name='gmailintegration',
             name='rate_limit_reset_at',
