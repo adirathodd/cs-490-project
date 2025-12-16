@@ -485,7 +485,7 @@ Job:
 def call_gemini_api(prompt: str, api_key: str, *, model: str | None = None, timeout: int = 40) -> str:
     if not api_key:
         raise ResumeAIError('Gemini API key is not configured.')
-    model_name = model or getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash-latest')
+    model_name = model or getattr(settings, 'GEMINI_MODEL', 'gemini-2.5-flash')
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
     # Prepare payload
     payload = {
@@ -504,9 +504,9 @@ def call_gemini_api(prompt: str, api_key: str, *, model: str | None = None, time
     }
 
     # Retry/backoff parameters for transient errors
-    max_retries = 3
-    base_backoff = 1.0
-    rate_limit_backoff = 5.0  # Longer backoff for rate limit errors (429)
+    max_retries = 5
+    base_backoff = 2.0
+    rate_limit_backoff = 15.0  # Longer backoff for rate limit errors (429) - Gemini free tier has strict limits
 
     # Get or create Gemini service for monitoring
     service = get_or_create_service(SERVICE_GEMINI, 'gemini')

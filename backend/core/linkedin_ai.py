@@ -20,7 +20,7 @@ class LinkedInAI:
     def __init__(self):
         """Initialize the AI service with Gemini configuration"""
         self.api_key = getattr(settings, 'GEMINI_API_KEY', None)
-        self.model = getattr(settings, 'GEMINI_MODEL', 'gemini-2.0-flash-exp')
+        self.model = getattr(settings, 'GEMINI_MODEL', 'gemini-2.5-flash')
         
         logger.info(f"LinkedInAI initializing - API key present: {bool(self.api_key)}, Model: {self.model}, genai available: {bool(genai)}")
         

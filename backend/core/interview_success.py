@@ -416,7 +416,7 @@ class InterviewSuccessForecastService:
         self.candidate = candidate
         self.scorer = InterviewSuccessScorer(candidate)
         self._gemini_api_key = getattr(settings, 'GEMINI_API_KEY', '')
-        self._gemini_model = getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash-latest')
+        self._gemini_model = getattr(settings, 'GEMINI_MODEL', 'gemini-2.5-flash')
 
     def generate(
         self,

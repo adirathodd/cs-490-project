@@ -11237,7 +11237,7 @@ def job_interview_insights(request, job_id):
         
         # Get Gemini API credentials
         api_key = getattr(settings, 'GEMINI_API_KEY', '')
-        model = getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash-latest')
+        model = getattr(settings, 'GEMINI_MODEL', 'gemini-2.5-flash')
         
         # Generate insights based on job title and company
         # Will use AI if api_key is available, otherwise falls back to templates
@@ -19802,7 +19802,7 @@ def _build_supporter_ai_recommendations(candidate, achievements, practice_stats)
     fallback_recs.append("Offer practical help: review resumes/cover letters only if they ask, respect boundaries, and avoid pressuring them about companies.")
 
     api_key = getattr(settings, "GEMINI_API_KEY", "")
-    model = getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash-latest")
+    model = getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash")
     if not api_key:
         return fallback_recs[:3]
 

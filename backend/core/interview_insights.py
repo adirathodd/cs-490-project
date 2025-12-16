@@ -322,7 +322,7 @@ class InterviewInsightsGenerator:
             job_title: The title of the position
             company_name: The name of the company
             api_key: Gemini API key
-            model: Optional model name (defaults to gemini-1.5-flash-latest)
+            model: Optional model name (defaults to gemini-2.5-flash)
             
         Returns:
             Dictionary containing AI-generated interview insights
@@ -333,7 +333,7 @@ class InterviewInsightsGenerator:
         if not api_key:
             raise ValueError("Gemini API key is required for AI generation")
         
-        model = model or 'gemini-1.5-flash-latest'
+        model = model or 'gemini-2.5-flash'
         
         # Build a detailed prompt for Gemini
         prompt = cls._build_ai_prompt(job_title, company_name)
@@ -358,7 +358,7 @@ class InterviewInsightsGenerator:
         
         try:
             service = get_or_create_service(SERVICE_GEMINI, 'Google Gemini AI')
-            with track_api_call(service, endpoint='/models/gemini-1.5-flash:generateContent', method='POST'):
+            with track_api_call(service, endpoint=f'/models/{model}:generateContent', method='POST'):
                 response = requests.post(url, json=payload, timeout=30)
                 response.raise_for_status()
             

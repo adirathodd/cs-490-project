@@ -139,7 +139,7 @@ class QuestionBankBuilder:
         if not api_key:
             return None
 
-        model = getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash-latest")
+        model = getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash")
         try:
             insights = InterviewInsightsGenerator.generate_for_job(
                 job_title=self.job.title or "",
