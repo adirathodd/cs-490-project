@@ -5431,7 +5431,8 @@ def update_basic_profile(request):
         serializer.save()
         logger.info(f"Profile updated for user: {user.email}")
 
-        # Optional: Home address geocoding for commute
+        # Optional: Home address geocoding for commute (non-blocking - don't fail if geocoding fails)
+        geocode_warning = None
         try:
             home_address = (request.data.get('home_address') or '').strip()
         except Exception:
@@ -5448,33 +5449,26 @@ def update_basic_profile(request):
                 resp.raise_for_status()
                 dd = resp.json() or []
                 if not dd:
-                    return Response({
-                        'error': {
-                            'code': 'unable_to_geocode_home',
-                            'message': 'Could not geocode the provided home address.',
-                            'details': {'home_address': ['Address could not be resolved']}
-                        }
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                # Persist the address string in legacy location for now
-                try:
-                    profile.location = home_address
-                    profile.save(update_fields=['location'])
-                except Exception:
-                    # Non-fatal: if persistence fails, proceed
-                    pass
+                    geocode_warning = 'Could not geocode the provided home address.'
+                else:
+                    # Persist the address string in legacy location for now
+                    try:
+                        profile.location = home_address
+                        profile.save(update_fields=['location'])
+                    except Exception:
+                        # Non-fatal: if persistence fails, proceed
+                        pass
             except Exception:
-                return Response({
-                    'error': {
-                        'code': 'unable_to_geocode_home',
-                        'message': 'Failed to geocode home address.',
-                        'details': {'home_address': ['Geocoding service error']}
-                    }
-                }, status=status.HTTP_400_BAD_REQUEST)
+                geocode_warning = 'Failed to geocode home address.'
 
-        return Response({
+        response_data = {
             'profile': serializer.data,
             'message': 'Profile updated successfully.'
-        }, status=status.HTTP_200_OK)
+        }
+        if geocode_warning:
+            response_data['warning'] = geocode_warning
+        
+        return Response(response_data, status=status.HTTP_200_OK)
 
     except Exception as e:
         ident = request.user.email if getattr(request.user, "is_authenticated", False) else 'anonymous'
