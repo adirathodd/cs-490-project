@@ -3,6 +3,66 @@
 from django.db import migrations, models
 
 
+def _index_exists(cursor, index_name, vendor):
+    """Check if an index exists."""
+    if vendor == 'postgresql':
+        cursor.execute("SELECT 1 FROM pg_class WHERE relname = %s", [index_name])
+        return cursor.fetchone() is not None
+    else:
+        # SQLite: check sqlite_master
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name=?", [index_name])
+        return cursor.fetchone() is not None
+
+
+def rename_indexes_forward(apps, schema_editor):
+    """Rename indexes (PostgreSQL only - SQLite doesn't support ALTER INDEX)."""
+    connection = schema_editor.connection
+    vendor = connection.vendor
+    
+    if vendor != 'postgresql':
+        # SQLite doesn't support ALTER INDEX; skip these operations
+        return
+    
+    renames = [
+        ('core_applic_candidat_39cc77_idx', 'core_applic_candida_3c42f0_idx'),
+        ('core_applic_job_id_a5a6ba_idx', 'core_applic_job_id_1e5f25_idx'),
+        ('core_applic_candidat_ba38a1_idx', 'core_applic_candida_e1666c_idx'),
+        ('core_follow_job_id_stg_idx', 'core_follow_job_id_c3206f_idx'),
+        ('core_joboff_candidat_4fbb41_idx', 'core_joboff_candida_135e4a_idx'),
+        ('core_joboff_candidat_6055e4_idx', 'core_joboff_candida_a61f93_idx'),
+        ('core_joboff_status_5450a9_idx', 'core_joboff_status_3beac8_idx'),
+    ]
+    
+    with connection.cursor() as cursor:
+        for old_name, new_name in renames:
+            if _index_exists(cursor, old_name, vendor):
+                cursor.execute(f'ALTER INDEX "{old_name}" RENAME TO "{new_name}"')
+
+
+def rename_indexes_reverse(apps, schema_editor):
+    """Reverse rename indexes (PostgreSQL only)."""
+    connection = schema_editor.connection
+    vendor = connection.vendor
+    
+    if vendor != 'postgresql':
+        return
+    
+    renames = [
+        ('core_applic_candida_3c42f0_idx', 'core_applic_candidat_39cc77_idx'),
+        ('core_applic_job_id_1e5f25_idx', 'core_applic_job_id_a5a6ba_idx'),
+        ('core_applic_candida_e1666c_idx', 'core_applic_candidat_ba38a1_idx'),
+        ('core_follow_job_id_c3206f_idx', 'core_follow_job_id_stg_idx'),
+        ('core_joboff_candida_135e4a_idx', 'core_joboff_candidat_4fbb41_idx'),
+        ('core_joboff_candida_a61f93_idx', 'core_joboff_candidat_6055e4_idx'),
+        ('core_joboff_status_3beac8_idx', 'core_joboff_status_5450a9_idx'),
+    ]
+    
+    with connection.cursor() as cursor:
+        for old_name, new_name in renames:
+            if _index_exists(cursor, old_name, vendor):
+                cursor.execute(f'ALTER INDEX "{old_name}" RENAME TO "{new_name}"')
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,62 +70,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
-            sql=(
-                "ALTER INDEX IF EXISTS core_applic_candidat_39cc77_idx RENAME TO core_applic_candida_3c42f0_idx;"
-            ),
-            reverse_sql=(
-                "ALTER INDEX IF EXISTS core_applic_candida_3c42f0_idx RENAME TO core_applic_candidat_39cc77_idx;"
-            ),
-        ),
-        migrations.RunSQL(
-            sql=(
-                "ALTER INDEX IF EXISTS core_applic_job_id_a5a6ba_idx RENAME TO core_applic_job_id_1e5f25_idx;"
-            ),
-            reverse_sql=(
-                "ALTER INDEX IF EXISTS core_applic_job_id_1e5f25_idx RENAME TO core_applic_job_id_a5a6ba_idx;"
-            ),
-        ),
-        migrations.RunSQL(
-            sql=(
-                "ALTER INDEX IF EXISTS core_applic_candidat_ba38a1_idx RENAME TO core_applic_candida_e1666c_idx;"
-            ),
-            reverse_sql=(
-                "ALTER INDEX IF EXISTS core_applic_candida_e1666c_idx RENAME TO core_applic_candidat_ba38a1_idx;"
-            ),
-        ),
-        migrations.RunSQL(
-            sql=(
-                "ALTER INDEX IF EXISTS core_follow_job_id_stg_idx RENAME TO core_follow_job_id_c3206f_idx;"
-            ),
-            reverse_sql=(
-                "ALTER INDEX IF EXISTS core_follow_job_id_c3206f_idx RENAME TO core_follow_job_id_stg_idx;"
-            ),
-        ),
-        migrations.RunSQL(
-            sql=(
-                "ALTER INDEX IF EXISTS core_joboff_candidat_4fbb41_idx RENAME TO core_joboff_candida_135e4a_idx;"
-            ),
-            reverse_sql=(
-                "ALTER INDEX IF EXISTS core_joboff_candida_135e4a_idx RENAME TO core_joboff_candidat_4fbb41_idx;"
-            ),
-        ),
-        migrations.RunSQL(
-            sql=(
-                "ALTER INDEX IF EXISTS core_joboff_candidat_6055e4_idx RENAME TO core_joboff_candida_a61f93_idx;"
-            ),
-            reverse_sql=(
-                "ALTER INDEX IF EXISTS core_joboff_candida_a61f93_idx RENAME TO core_joboff_candidat_6055e4_idx;"
-            ),
-        ),
-        migrations.RunSQL(
-            sql=(
-                "ALTER INDEX IF EXISTS core_joboff_status_5450a9_idx RENAME TO core_joboff_status_3beac8_idx;"
-            ),
-            reverse_sql=(
-                "ALTER INDEX IF EXISTS core_joboff_status_3beac8_idx RENAME TO core_joboff_status_5450a9_idx;"
-            ),
-        ),
+        # Database-agnostic index renames (PostgreSQL only, no-op for SQLite)
+        migrations.RunPython(rename_indexes_forward, rename_indexes_reverse),
         # Removed RemoveField operations for auto_update_status and scan_frequency
         # as these columns don't exist in the database
         # Removed AddField for rate_limit_reset_at as it already exists in the database
