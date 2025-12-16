@@ -50,10 +50,13 @@ const OfficeLocationsPanel = ({ jobId, onChanged }) => {
   const add = async (e) => {
     e.preventDefault();
     setError('');
+    if (!address.trim()) {
+      setError('Address is required to add an office location');
+      return;
+    }
     try {
-      const payload = {};
-      if (label) payload.label = label;
-      if (address) payload.address = address;
+      const payload = { address: address.trim() };
+      if (label.trim()) payload.label = label.trim();
       const resp = await geoAPI.addOfficeLocation(jobId, payload);
       setLabel(''); setAddress('');
       await load();

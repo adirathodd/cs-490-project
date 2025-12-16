@@ -737,6 +737,10 @@ def job_office_locations(request, job_id: int):
     lat = data.get('lat')
     lon = data.get('lon')
 
+    # Require address if lat/lon are not provided
+    if (lat is None or lon is None) and not address:
+        return JsonResponse({'error': 'address_required'}, status=400)
+
     if (lat is None or lon is None) and address:
         headers = {'User-Agent': NOMINATIM_USER_AGENT}
         def _try_geocode(q: str):
