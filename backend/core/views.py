@@ -1553,8 +1553,10 @@ def github_callback(request):
     client_id = os.environ.get('GITHUB_CLIENT_ID')
     client_secret = os.environ.get('GITHUB_CLIENT_SECRET')
     redirect_uri = os.environ.get('GITHUB_OAUTH_REDIRECT_URI') or request.build_absolute_uri(reverse('core:github-callback'))
+    frontend_base = os.environ.get('FRONTEND_BASE_URL', os.environ.get('FRONTEND_URL', 'http://localhost:3000')).rstrip('/')
+    
     if not client_id or not client_secret:
-        return Response({'error': 'GitHub OAuth not configured.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return redirect(f"{frontend_base}/projects?error=oauth_not_configured")
 
     token_resp = requests.post(
         'https://github.com/login/oauth/access_token',
@@ -1563,25 +1565,44 @@ def github_callback(request):
         timeout=20,
     )
     if token_resp.status_code != 200:
-        return Response({'error': 'Token exchange failed.'}, status=status.HTTP_400_BAD_REQUEST)
+        logger.error(f"GitHub token exchange failed: {token_resp.status_code} - {token_resp.text[:200]}")
+        return redirect(f"{frontend_base}/projects?error=token_exchange_failed")
     token_payload = token_resp.json() or {}
     access_token = token_payload.get('access_token')
     token_type = token_payload.get('token_type') or ''
     scope = token_payload.get('scope') or ''
     if not access_token:
-        return Response({'error': 'No access token returned.'}, status=status.HTTP_400_BAD_REQUEST)
+        logger.error(f"GitHub no access token: {token_payload}")
+        return redirect(f"{frontend_base}/projects?error=no_access_token")
 
     user_resp = requests.get('https://api.github.com/user', headers=_github_headers(access_token), timeout=20)
     if user_resp.status_code != 200:
-        return Response({'error': 'Failed to fetch GitHub user.'}, status=status.HTTP_400_BAD_REQUEST)
+        frontend_base = os.environ.get('FRONTEND_BASE_URL', os.environ.get('FRONTEND_URL', 'http://localhost:3000')).rstrip('/')
+        return redirect(f"{frontend_base}/projects?error=github_user_fetch_failed")
     gh_user = user_resp.json() or {}
     gh_id = gh_user.get('id')
     login = gh_user.get('login') or ''
     avatar_url = gh_user.get('avatar_url') or ''
 
-    profile = CandidateProfile.objects.filter(user__id=user_id).first()
+    # Look up profile - user_id might be string or int
+    profile = None
+    if user_id:
+        # Try exact match first
+        profile = CandidateProfile.objects.filter(user__id=user_id).first()
+        # If user_id looks like a UUID string, also try UserAccount lookup
+        if not profile and len(str(user_id)) > 10:
+            try:
+                from .models import UserAccount
+                ua = UserAccount.objects.filter(id=user_id).first()
+                if ua:
+                    profile = CandidateProfile.objects.filter(user=ua.user).first()
+            except Exception:
+                pass
+    
     if not profile:
-        return Response({'error': 'User profile not found for session.'}, status=status.HTTP_404_NOT_FOUND)
+        logger.error(f"GitHub callback: profile not found for user_id={user_id}")
+        frontend_base = os.environ.get('FRONTEND_BASE_URL', os.environ.get('FRONTEND_URL', 'http://localhost:3000')).rstrip('/')
+        return redirect(f"{frontend_base}/projects?error=profile_not_found")
 
     # Handle unique github_user_id across accounts: transfer to current candidate if already linked
     existing = GitHubAccount.objects.filter(github_user_id=gh_id).first()
