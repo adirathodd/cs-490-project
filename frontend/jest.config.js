@@ -32,7 +32,7 @@ module.exports = {
   },
   transformIgnorePatterns: [
     // Allow transforming these ESM packages which ship modern syntax
-    'node_modules/(?!(react-icons|@dnd-kit|react-markdown|rehype-sanitize|remark-gfm|devlop)/)'
+    'node_modules/(?!(react-icons|@dnd-kit|react-markdown|rehype-sanitize|remark-gfm|devlop|axios)/)'
   ],
   moduleFileExtensions: ['js', 'jsx', 'json', 'node'],
   testMatch: [
