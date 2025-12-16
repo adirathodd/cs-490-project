@@ -503,9 +503,10 @@ def call_gemini_api(prompt: str, api_key: str, *, model: str | None = None, time
         },
     }
 
-    # Retry/backoff parameters for transient 5xx errors
+    # Retry/backoff parameters for transient errors
     max_retries = 3
     base_backoff = 1.0
+    rate_limit_backoff = 5.0  # Longer backoff for rate limit errors (429)
 
     # Get or create Gemini service for monitoring
     service = get_or_create_service(SERVICE_GEMINI, 'gemini')
@@ -517,6 +518,21 @@ def call_gemini_api(prompt: str, api_key: str, *, model: str | None = None, time
             safe_endpoint = endpoint
             with track_api_call(service, endpoint=f'/v1beta/models/{model_name}:generateContent', method='POST'):
                 response = requests.post(endpoint, params={'key': api_key}, json=payload, timeout=timeout)
+            
+            # Handle rate limiting (429) with longer backoff
+            if response.status_code == 429:
+                logger.warning('Gemini API rate limit hit (429) on attempt %s/%s', attempt, max_retries)
+                last_exc = requests.HTTPError(f'Rate limit exceeded: {response.status_code}')
+                if attempt < max_retries:
+                    # Use more aggressive exponential backoff for rate limits
+                    sleep_for = rate_limit_backoff * (2 ** (attempt - 1)) * (0.5 + random.random() * 0.5)
+                    logger.info('Backing off for %.2f seconds before retry...', sleep_for)
+                    time.sleep(sleep_for)
+                    continue
+                else:
+                    logger.error('Gemini API rate limit exceeded after %s attempts', max_retries)
+                    raise ResumeAIError('Gemini API rate limit exceeded. Please wait a moment and try again.') from last_exc
+            
             # If we get a server error, treat as transient and retry
             if 500 <= response.status_code < 600:
                 logger.warning('Gemini API server error (status=%s) on attempt %s/%s', response.status_code, attempt, max_retries)
@@ -532,7 +548,7 @@ def call_gemini_api(prompt: str, api_key: str, *, model: str | None = None, time
             response.raise_for_status()
             break
         except requests.RequestException as exc:
-            # Treat DNS/network/timeouts or server errors as transient
+            # Treat DNS/network/timeouts as transient
             logger.warning('Gemini API request exception on attempt %s/%s: %s', attempt, max_retries, str(exc))
             last_exc = exc
             if attempt < max_retries:
