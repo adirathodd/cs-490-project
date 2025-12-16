@@ -783,39 +783,25 @@ class ProfilePictureSerializer(serializers.ModelSerializer):
     def get_profile_picture_url(self, obj):
         """Get the full URL for the profile picture."""
         if obj.profile_picture:
-            # Verify the file actually exists before returning URL
             try:
-                from core.storage_utils import file_exists
-                if obj.profile_picture.name and file_exists(obj.profile_picture):
+                # For Cloudinary, the URL is always available if the field is set
+                # Don't check existence as it may fail immediately after upload
+                url = obj.profile_picture.url
+                if url:
                     request = self.context.get('request')
                     if request:
-                        return request.build_absolute_uri(obj.profile_picture.url)
-                    return obj.profile_picture.url
-                else:
-                    # File doesn't exist - clear the stale reference
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.warning(f"Profile picture file not found: {obj.profile_picture.name}, clearing reference")
-                    obj.profile_picture = None
-                    obj.profile_picture_uploaded_at = None
-                    obj.save(update_fields=['profile_picture', 'profile_picture_uploaded_at'])
-                    return None
+                        return request.build_absolute_uri(url)
+                    return url
             except Exception as e:
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.error(f"Error checking profile picture existence: {e}")
+                logger.error(f"Error getting profile picture URL: {e}")
                 return None
         return None
     
     def get_has_profile_picture(self, obj):
         """Check if user has uploaded a profile picture."""
-        if obj.profile_picture:
-            try:
-                from core.storage_utils import file_exists
-                return obj.profile_picture.name and file_exists(obj.profile_picture)
-            except Exception:
-                return False
-        return False
+        return bool(obj.profile_picture and obj.profile_picture.name)
 
 
 # ======================
