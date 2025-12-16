@@ -31,6 +31,14 @@ class FirebaseAuthentication(authentication.BaseAuthentication):
         Authorization: Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6...
     """
     
+    def authenticate_header(self, request):
+        """
+        Return a string to be used as the value of the `WWW-Authenticate`
+        header in a 401 Unauthorized response, or `None` if the
+        authentication scheme should return 403 Forbidden responses.
+        """
+        return 'Bearer realm="api"'
+
     def authenticate(self, request):
         """
         Authenticate the request and return a two-tuple of (user, token).

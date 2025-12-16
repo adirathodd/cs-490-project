@@ -3,7 +3,7 @@ Custom exception handlers for consistent API error responses.
 """
 from rest_framework.views import exception_handler
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, exceptions as drf_exceptions
 import logging
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,10 @@ def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
     
     if response is not None:
+        # Ensure auth failures consistently return 401 so clients can re-auth.
+        if isinstance(exc, (drf_exceptions.NotAuthenticated, drf_exceptions.AuthenticationFailed)):
+            response.status_code = status.HTTP_401_UNAUTHORIZED
+
         # Customize the response format
         messages = _collect_messages_from_response_data(response.data)
         custom_response_data = {

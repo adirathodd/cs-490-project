@@ -16,6 +16,8 @@ import hashlib
 import logging
 import math
 
+logger = logging.getLogger(__name__)
+
 from rest_framework import status, serializers
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes, parser_classes, authentication_classes
@@ -231,25 +233,216 @@ import os
 import requests
 
 
-# Health check endpoint for production monitoring (UC-133)
+# Simple ping endpoint for uptime monitoring (public)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @authentication_classes([])
-def health_check(request):
+def health_ping(request):
     """
-    Health check endpoint for uptime monitoring services (e.g., UptimeRobot).
-    Returns 200 OK if the application is running and can connect to the database.
+    Simple public health ping for uptime monitoring services (e.g., UptimeRobot).
+    Returns 200 OK if the application is running.
     """
     from django.db import connection
-    from django.conf import settings
-    
     try:
-        # Test database connectivity
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
-        db_status = "healthy"
+        return Response({"status": "ok"}, status=status.HTTP_200_OK)
+    except Exception:
+        return Response({"status": "error"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+# Health check endpoint for production monitoring (UC-133)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    """
+    Health check endpoint for admin users only.
+    Returns 200 OK if the application is running and can connect to the database.
+    Includes comprehensive metrics about API health, external services, and features.
+    
+    Access via:
+    - Django admin session: Login at /admin/ then visit /api/health/
+    - API key: /api/health/?key=YOUR_HEALTH_CHECK_KEY
+    - Firebase token (for admin users)
+    """
+    from django.conf import settings
+    
+    # Check for API key authentication
+    health_key = os.environ.get('HEALTH_CHECK_KEY', '')
+    provided_key = request.GET.get('key', '') or request.headers.get('X-Health-Key', '')
+    
+    if health_key and provided_key == health_key:
+        # Valid API key - allow access
+        pass
+    elif request.user.is_authenticated and request.user.is_staff:
+        # Django session auth (from /admin/ login) - allow access
+        pass
+    else:
+        # Try Firebase authentication as fallback
+        from core.authentication import FirebaseAuthentication
+        auth = FirebaseAuthentication()
+        try:
+            user_auth = auth.authenticate(request)
+            if user_auth:
+                user = user_auth[0]
+                if not user.is_staff:
+                    return Response({'error': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+            else:
+                return Response({
+                    'error': 'Authentication required.',
+                    'options': [
+                        'Login at /admin/ and return here',
+                        'Use ?key=YOUR_HEALTH_CHECK_KEY',
+                    ]
+                }, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception:
+            return Response({
+                'error': 'Authentication required.',
+                'options': [
+                    'Login at /admin/ and return here',
+                    'Use ?key=YOUR_HEALTH_CHECK_KEY',
+                ]
+            }, status=status.HTTP_401_UNAUTHORIZED)
+    
+    import time
+    from django.db import connection
+    from django.conf import settings
+    from django.core.cache import cache
+    from datetime import datetime, timedelta
+    
+    start_time = time.time()
+    services = {}
+    external_apis = {}
+    features = {}
+    overall_healthy = True
+    
+    # ===================
+    # CORE SERVICES
+    # ===================
+    
+    # Test database connectivity
+    try:
+        db_start = time.time()
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        db_latency = round((time.time() - db_start) * 1000, 2)
+        services['database'] = {
+            'status': 'healthy',
+            'latency_ms': db_latency,
+            'type': 'PostgreSQL',
+        }
     except Exception as e:
-        db_status = f"unhealthy: {str(e)}"
+        services['database'] = {
+            'status': 'unhealthy',
+            'error': str(e),
+        }
+        overall_healthy = False
+    
+    # Test Redis connectivity
+    try:
+        redis_start = time.time()
+        cache.set('health_check_test', 'ok', timeout=10)
+        cache_result = cache.get('health_check_test')
+        redis_latency = round((time.time() - redis_start) * 1000, 2)
+        if cache_result == 'ok':
+            services['redis'] = {
+                'status': 'healthy',
+                'latency_ms': redis_latency,
+            }
+        else:
+            services['redis'] = {
+                'status': 'degraded',
+                'error': 'Cache read/write mismatch',
+            }
+    except Exception as e:
+        services['redis'] = {
+            'status': 'unhealthy',
+            'error': str(e),
+        }
+    
+    # ===================
+    # EXTERNAL APIS
+    # ===================
+    
+    # Check Sentry configuration
+    sentry_dsn = getattr(settings, 'SENTRY_DSN', '') or os.environ.get('SENTRY_DSN', '')
+    if sentry_dsn:
+        external_apis['sentry'] = {
+            'status': 'configured',
+            'enabled': not settings.DEBUG,
+        }
+    else:
+        external_apis['sentry'] = {
+            'status': 'not_configured',
+        }
+    
+    # Check Firebase configuration
+    firebase_project = os.environ.get('FIREBASE_PROJECT_ID', '')
+    firebase_creds = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON', '')
+    if firebase_project and firebase_creds:
+        external_apis['firebase'] = {
+            'status': 'configured',
+            'project_id': firebase_project,
+        }
+    elif firebase_project or firebase_creds:
+        external_apis['firebase'] = {
+            'status': 'partial_config',
+        }
+    else:
+        external_apis['firebase'] = {
+            'status': 'not_configured',
+        }
+    
+    # Check Gemini AI configuration
+    gemini_key = os.environ.get('GEMINI_API_KEY', '')
+    if gemini_key:
+        external_apis['gemini_ai'] = {
+            'status': 'configured',
+        }
+    else:
+        external_apis['gemini_ai'] = {
+            'status': 'not_configured',
+        }
+    
+    # Check GitHub OAuth configuration
+    github_client_id = os.environ.get('GITHUB_CLIENT_ID', '')
+    github_client_secret = os.environ.get('GITHUB_CLIENT_SECRET', '')
+    if github_client_id and github_client_secret:
+        external_apis['github_oauth'] = {
+            'status': 'configured',
+        }
+    elif github_client_id or github_client_secret:
+        external_apis['github_oauth'] = {
+            'status': 'partial_config',
+        }
+    else:
+        external_apis['github_oauth'] = {
+            'status': 'not_configured',
+        }
+    
+    # Check Google OAuth configuration (for contacts import)
+    google_client_id = os.environ.get('GOOGLE_CLIENT_ID', '')
+    google_client_secret = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+    if google_client_id and google_client_secret and google_client_id != 'dummy-google-client-id':
+        external_apis['google_oauth'] = {
+            'status': 'configured',
+        }
+    else:
+        external_apis['google_oauth'] = {
+            'status': 'not_configured',
+        }
+    
+    # Check LinkedIn OAuth configuration
+    linkedin_client_id = os.environ.get('LINKEDIN_CLIENT_ID', '')
+    linkedin_client_secret = os.environ.get('LINKEDIN_CLIENT_SECRET', '')
+    if linkedin_client_id and linkedin_client_secret:
+        external_apis['linkedin_oauth'] = {
+            'status': 'configured',
+        }
+    else:
+        external_apis['linkedin_oauth'] = {
+            'status': 'not_configured',
+        }
     
     # Check Cloudinary configuration
     cloudinary_status = "not_configured"
@@ -262,25 +455,185 @@ def health_check(request):
         if cloud_name and api_key and api_secret:
             cloudinary_status = "configured"
             cloudinary_cloud_name = cloud_name
-            # Check if actually being used
             storage_backend = getattr(settings, 'DEFAULT_FILE_STORAGE', 'django.core.files.storage.FileSystemStorage')
             if 'cloudinary' in storage_backend.lower():
                 cloudinary_status = "active"
         elif cloud_name or api_key or api_secret:
             cloudinary_status = "partial_config"
     except Exception as e:
-        cloudinary_status = f"error: {str(e)}"
+        cloudinary_status = f"error"
+    
+    external_apis['cloudinary'] = {
+        'status': cloudinary_status,
+        'cloud_name': cloudinary_cloud_name,
+    }
+    
+    # Check Email configuration
+    email_host = os.environ.get('EMAIL_HOST', '')
+    email_user = os.environ.get('EMAIL_HOST_USER', '')
+    if email_host and email_user:
+        external_apis['email_smtp'] = {
+            'status': 'configured',
+            'host': email_host,
+        }
+    else:
+        external_apis['email_smtp'] = {
+            'status': 'not_configured',
+        }
+    
+    # ===================
+    # FEATURE STATUS
+    # ===================
+    
+    # Check which features are available based on configuration
+    features['authentication'] = {
+        'status': 'up' if external_apis.get('firebase', {}).get('status') == 'configured' else 'degraded',
+        'provider': 'Firebase',
+    }
+    
+    features['ai_resume_analysis'] = {
+        'status': 'up' if external_apis.get('gemini_ai', {}).get('status') == 'configured' else 'down',
+        'provider': 'Gemini AI',
+    }
+    
+    features['ai_cover_letter'] = {
+        'status': 'up' if external_apis.get('gemini_ai', {}).get('status') == 'configured' else 'down',
+        'provider': 'Gemini AI',
+    }
+    
+    features['ai_interview_prep'] = {
+        'status': 'up' if external_apis.get('gemini_ai', {}).get('status') == 'configured' else 'down',
+        'provider': 'Gemini AI',
+    }
+    
+    features['github_integration'] = {
+        'status': 'up' if external_apis.get('github_oauth', {}).get('status') == 'configured' else 'down',
+        'description': 'Import repositories from GitHub',
+    }
+    
+    features['google_contacts_import'] = {
+        'status': 'up' if external_apis.get('google_oauth', {}).get('status') == 'configured' else 'down',
+        'description': 'Import contacts from Google',
+    }
+    
+    features['linkedin_integration'] = {
+        'status': 'up' if external_apis.get('linkedin_oauth', {}).get('status') == 'configured' else 'down',
+        'description': 'LinkedIn profile integration',
+    }
+    
+    features['file_uploads'] = {
+        'status': 'up' if cloudinary_status in ['configured', 'active'] else 'local_only',
+        'provider': 'Cloudinary' if cloudinary_status in ['configured', 'active'] else 'Local Storage',
+    }
+    
+    features['email_notifications'] = {
+        'status': 'up' if external_apis.get('email_smtp', {}).get('status') == 'configured' else 'down',
+    }
+    
+    features['error_tracking'] = {
+        'status': 'up' if external_apis.get('sentry', {}).get('status') == 'configured' and not settings.DEBUG else 'down',
+        'provider': 'Sentry',
+    }
+    
+    features['caching'] = {
+        'status': 'up' if services.get('redis', {}).get('status') == 'healthy' else 'down',
+        'provider': 'Redis',
+    }
+    
+    # Core features (always available if DB is up)
+    db_healthy = services.get('database', {}).get('status') == 'healthy'
+    features['job_tracking'] = {'status': 'up' if db_healthy else 'down'}
+    features['application_management'] = {'status': 'up' if db_healthy else 'down'}
+    features['contacts_networking'] = {'status': 'up' if db_healthy else 'down'}
+    features['resume_management'] = {'status': 'up' if db_healthy else 'down'}
+    features['interview_scheduling'] = {'status': 'up' if db_healthy else 'down'}
+    
+    # ===================
+    # API METRICS
+    # ===================
+    
+    metrics = {}
+    try:
+        from core.models import APIUsageLog, CandidateProfile, JobEntry, Contact, Interview
+        from django.db.models import Count, Avg
+        
+        now = timezone.now()
+        last_24h = now - timedelta(hours=24)
+        last_7d = now - timedelta(days=7)
+        
+        # API call stats (last 24 hours)
+        api_calls_24h = APIUsageLog.objects.filter(request_at__gte=last_24h)
+        total_calls_24h = api_calls_24h.count()
+        success_calls_24h = api_calls_24h.filter(success=True).count()
+        avg_latency_24h = api_calls_24h.aggregate(avg=Avg('response_time_ms'))['avg']
+        
+        # Calls by service (last 24h)
+        calls_by_service = dict(
+            api_calls_24h.values('service__name').annotate(count=Count('id')).values_list('service__name', 'count')
+        )
+        
+        # Error rate
+        error_rate_24h = round((1 - success_calls_24h / total_calls_24h) * 100, 2) if total_calls_24h > 0 else 0
+        
+        metrics['api_calls'] = {
+            'last_24h': {
+                'total': total_calls_24h,
+                'successful': success_calls_24h,
+                'error_rate_percent': error_rate_24h,
+                'avg_latency_ms': round(avg_latency_24h, 2) if avg_latency_24h else None,
+                'by_service': calls_by_service,
+            }
+        }
+        
+        # User/data metrics
+        metrics['data'] = {
+            'total_users': CandidateProfile.objects.count(),
+            'total_jobs': JobEntry.objects.count(),
+            'total_contacts': Contact.objects.count(),
+            'total_interviews': Interview.objects.count(),
+            'active_users_7d': CandidateProfile.objects.filter(user__last_login__gte=last_7d).count(),
+            'new_users_7d': CandidateProfile.objects.filter(user__date_joined__gte=last_7d).count(),
+            'jobs_added_7d': JobEntry.objects.filter(created_at__gte=last_7d).count(),
+        }
+    except Exception as e:
+        metrics['error'] = f"Failed to collect metrics: {str(e)}"
+    
+    # ===================
+    # FEATURE SUMMARY
+    # ===================
+    
+    features_up = sum(1 for f in features.values() if f.get('status') == 'up')
+    features_down = sum(1 for f in features.values() if f.get('status') == 'down')
+    features_degraded = sum(1 for f in features.values() if f.get('status') in ['degraded', 'local_only'])
+    
+    # Determine overall status
+    if not db_healthy:
+        overall_status = 'unhealthy'
+    elif features_down > 3 or services.get('redis', {}).get('status') == 'unhealthy':
+        overall_status = 'degraded'
+    else:
+        overall_status = 'healthy'
+    
+    # System info
+    response_time = round((time.time() - start_time) * 1000, 2)
     
     return Response({
-        "status": "healthy" if db_status == "healthy" else "degraded",
-        "database": db_status,
-        "debug_mode": settings.DEBUG,
-        "cloudinary": {
-            "status": cloudinary_status,
-            "cloud_name": cloudinary_cloud_name,
-            "storage_backend": getattr(settings, 'DEFAULT_FILE_STORAGE', 'default'),
-        },
+        "status": overall_status,
+        "timestamp": timezone.now().isoformat(),
+        "response_time_ms": response_time,
         "version": "1.0.0",
+        "environment": getattr(settings, 'ENVIRONMENT', 'development'),
+        "debug_mode": settings.DEBUG,
+        "services": services,
+        "external_apis": external_apis,
+        "features": features,
+        "features_summary": {
+            "up": features_up,
+            "down": features_down,
+            "degraded": features_degraded,
+            "total": len(features),
+        },
+        "metrics": metrics,
     }, status=status.HTTP_200_OK)
 
 
@@ -1111,7 +1464,7 @@ def github_connect(request):
         scope += ' repo'
 
     state = uuid.uuid4().hex
-    # Persist OAuth state in both session and cache to avoid cookie issues in dev
+    # Persist OAuth state in cache (required for cross-domain OAuth flow)
     session_payload = {
         'state': state,
         'include_private': include_private,
@@ -1120,10 +1473,12 @@ def github_connect(request):
         'ts': timezone.now().isoformat(),
     }
     request.session['github_oauth'] = session_payload
+
+    # Store in cache - this is critical for production where session cookies may not work cross-domain
+    from django.core.cache import cache
     cache_key = f'gh_oauth:{state}'
     cache_stored = False
     try:
-        from django.core.cache import cache
         cache.set(cache_key, session_payload, timeout=600)
         # Verify the cache write worked
         verify = cache.get(cache_key)
@@ -1156,19 +1511,21 @@ def github_connect(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def github_callback(request):
-    # Retrieve state from cache first (more reliable across ports), then session
+    # Retrieve state from cache first (more reliable across domains), then session
     state_param = request.GET.get('state', '')
     logger.info(f"GitHub callback received. State param: {state_param[:8] if state_param else 'None'}...")
-    
-    cached = {}
+
+    from django.core.cache import cache
+    cache_key = f"gh_oauth:{state_param}"
+    cached = None
     try:
         from django.core.cache import cache
         cache_key = f"gh_oauth:{state_param}"
         cached = cache.get(cache_key) or {}
         logger.info(f"Cache lookup for key '{cache_key[:20]}...': {'found' if cached else 'not found'}")
     except Exception as e:
-        logger.warning(f"Cache lookup failed: {e}")
-        cached = {}
+        logger.error(f"GitHub OAuth callback: Cache read failed: {e}")
+        cached = None
     
     data = cached or (request.session.get('github_oauth') or {})
     
