@@ -241,6 +241,8 @@ def health_check(request):
     Returns 200 OK if the application is running and can connect to the database.
     """
     from django.db import connection
+    from django.conf import settings
+    
     try:
         # Test database connectivity
         with connection.cursor() as cursor:
@@ -249,9 +251,35 @@ def health_check(request):
     except Exception as e:
         db_status = f"unhealthy: {str(e)}"
     
+    # Check Cloudinary configuration
+    cloudinary_status = "not_configured"
+    cloudinary_cloud_name = None
+    try:
+        cloud_name = settings.CLOUDINARY_STORAGE.get('CLOUD_NAME')
+        api_key = settings.CLOUDINARY_STORAGE.get('API_KEY')
+        api_secret = settings.CLOUDINARY_STORAGE.get('API_SECRET')
+        
+        if cloud_name and api_key and api_secret:
+            cloudinary_status = "configured"
+            cloudinary_cloud_name = cloud_name
+            # Check if actually being used
+            storage_backend = getattr(settings, 'DEFAULT_FILE_STORAGE', 'django.core.files.storage.FileSystemStorage')
+            if 'cloudinary' in storage_backend.lower():
+                cloudinary_status = "active"
+        elif cloud_name or api_key or api_secret:
+            cloudinary_status = "partial_config"
+    except Exception as e:
+        cloudinary_status = f"error: {str(e)}"
+    
     return Response({
         "status": "healthy" if db_status == "healthy" else "degraded",
         "database": db_status,
+        "debug_mode": settings.DEBUG,
+        "cloudinary": {
+            "status": cloudinary_status,
+            "cloud_name": cloudinary_cloud_name,
+            "storage_backend": getattr(settings, 'DEFAULT_FILE_STORAGE', 'default'),
+        },
         "version": "1.0.0",
     }, status=status.HTTP_200_OK)
 

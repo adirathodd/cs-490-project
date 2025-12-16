@@ -241,7 +241,7 @@ Fill in the configuration:
 | Setting | Value |
 |---------|-------|
 | **Name** | `ats-backend` |
-| **Region** | `Ohio (US East)` |
+| **Region** | `Virginia (US East)` |
 | **Branch** | `main` |
 | **Root Directory** | `backend` |
 | **Runtime** | `Python 3` |
