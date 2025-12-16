@@ -18,6 +18,8 @@ import math
 
 logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
+
 from rest_framework import status, serializers
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes, parser_classes, authentication_classes
