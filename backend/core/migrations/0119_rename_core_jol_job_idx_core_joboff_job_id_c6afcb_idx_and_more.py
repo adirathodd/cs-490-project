@@ -3,6 +3,82 @@
 from django.db import migrations, models
 
 
+def _get_table_columns(cursor, table_name, vendor):
+    """Get column names for a table, handling both PostgreSQL and SQLite."""
+    if vendor == 'postgresql':
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = %s
+        """, [table_name])
+        return {row[0] for row in cursor.fetchall()}
+    else:
+        # SQLite: use PRAGMA table_info
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        return {row[1] for row in cursor.fetchall()}
+
+
+def _index_exists(cursor, index_name, vendor):
+    """Check if an index exists."""
+    if vendor == 'postgresql':
+        cursor.execute("SELECT 1 FROM pg_class WHERE relname = %s", [index_name])
+        return cursor.fetchone() is not None
+    else:
+        # SQLite: check sqlite_master
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name=?", [index_name])
+        return cursor.fetchone() is not None
+
+
+def safe_schema_changes(apps, schema_editor):
+    """Apply schema changes in a database-agnostic way."""
+    connection = schema_editor.connection
+    vendor = connection.vendor
+    
+    with connection.cursor() as cursor:
+        # Rename indexes (PostgreSQL only - SQLite doesn't support ALTER INDEX)
+        if vendor == 'postgresql':
+            if _index_exists(cursor, 'core_jol_job_idx', vendor):
+                cursor.execute("ALTER INDEX core_jol_job_idx RENAME TO core_joboff_job_id_c6afcb_idx")
+            if _index_exists(cursor, 'core_jol_job_created_idx', vendor):
+                cursor.execute("ALTER INDEX core_jol_job_created_idx RENAME TO core_joboff_job_id_30477c_idx")
+        
+        # Get existing columns
+        gmail_cols = _get_table_columns(cursor, 'core_gmailintegration', vendor)
+        job_cols = _get_table_columns(cursor, 'core_jobentry', vendor)
+        
+        # Drop columns from gmailintegration (PostgreSQL only - SQLite doesn't support DROP COLUMN well)
+        if vendor == 'postgresql':
+            if 'auto_update_status' in gmail_cols:
+                cursor.execute('ALTER TABLE core_gmailintegration DROP COLUMN auto_update_status')
+            if 'scan_frequency' in gmail_cols:
+                cursor.execute('ALTER TABLE core_gmailintegration DROP COLUMN scan_frequency')
+        
+        # Add rate_limit_reset_at to gmailintegration if not exists
+        if 'rate_limit_reset_at' not in gmail_cols:
+            if vendor == 'postgresql':
+                cursor.execute("ALTER TABLE core_gmailintegration ADD COLUMN rate_limit_reset_at timestamp with time zone")
+            else:
+                cursor.execute("ALTER TABLE core_gmailintegration ADD COLUMN rate_limit_reset_at DATETIME")
+        
+        # Add location fields to jobentry if not exist
+        if 'location_geo_precision' not in job_cols:
+            cursor.execute("ALTER TABLE core_jobentry ADD COLUMN location_geo_precision varchar(20)")
+        if 'location_geo_updated_at' not in job_cols:
+            if vendor == 'postgresql':
+                cursor.execute("ALTER TABLE core_jobentry ADD COLUMN location_geo_updated_at timestamp with time zone")
+            else:
+                cursor.execute("ALTER TABLE core_jobentry ADD COLUMN location_geo_updated_at DATETIME")
+        if 'location_lat' not in job_cols:
+            if vendor == 'postgresql':
+                cursor.execute("ALTER TABLE core_jobentry ADD COLUMN location_lat double precision")
+            else:
+                cursor.execute("ALTER TABLE core_jobentry ADD COLUMN location_lat REAL")
+        if 'location_lon' not in job_cols:
+            if vendor == 'postgresql':
+                cursor.execute("ALTER TABLE core_jobentry ADD COLUMN location_lon double precision")
+            else:
+                cursor.execute("ALTER TABLE core_jobentry ADD COLUMN location_lon REAL")
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,43 +86,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Guard rename operations: some environments no longer have these indexes.
-        migrations.RunSQL(
-            sql="DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'core_jol_job_idx') THEN ALTER INDEX core_jol_job_idx RENAME TO core_joboff_job_id_c6afcb_idx; END IF; END $$;",
-            reverse_sql="-- no reverse"
-        ),
-        migrations.RunSQL(
-            sql="DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'core_jol_job_created_idx') THEN ALTER INDEX core_jol_job_created_idx RENAME TO core_joboff_job_id_30477c_idx; END IF; END $$;",
-            reverse_sql="-- no reverse"
-        ),
-        migrations.RunSQL(
-            sql='ALTER TABLE core_gmailintegration DROP COLUMN IF EXISTS auto_update_status',
-            reverse_sql='-- no reverse'
-        ),
-        migrations.RunSQL(
-            sql='ALTER TABLE core_gmailintegration DROP COLUMN IF EXISTS scan_frequency',
-            reverse_sql='-- no reverse'
-        ),
-        migrations.RunSQL(
-            sql="ALTER TABLE core_gmailintegration ADD COLUMN IF NOT EXISTS rate_limit_reset_at timestamp with time zone",
-            reverse_sql="ALTER TABLE core_gmailintegration DROP COLUMN IF EXISTS rate_limit_reset_at",
-        ),
-        migrations.RunSQL(
-            sql="ALTER TABLE core_jobentry ADD COLUMN IF NOT EXISTS location_geo_precision varchar(20)",
-            reverse_sql="ALTER TABLE core_jobentry DROP COLUMN IF EXISTS location_geo_precision",
-        ),
-        migrations.RunSQL(
-            sql="ALTER TABLE core_jobentry ADD COLUMN IF NOT EXISTS location_geo_updated_at timestamp with time zone",
-            reverse_sql="ALTER TABLE core_jobentry DROP COLUMN IF EXISTS location_geo_updated_at",
-        ),
-        migrations.RunSQL(
-            sql="ALTER TABLE core_jobentry ADD COLUMN IF NOT EXISTS location_lat double precision",
-            reverse_sql="ALTER TABLE core_jobentry DROP COLUMN IF EXISTS location_lat",
-        ),
-        migrations.RunSQL(
-            sql="ALTER TABLE core_jobentry ADD COLUMN IF NOT EXISTS location_lon double precision",
-            reverse_sql="ALTER TABLE core_jobentry DROP COLUMN IF EXISTS location_lon",
-        ),
+        # Database-agnostic schema changes
+        migrations.RunPython(safe_schema_changes, migrations.RunPython.noop),
         migrations.AlterField(
             model_name='jobofficelocation',
             name='address',

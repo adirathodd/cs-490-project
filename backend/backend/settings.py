@@ -146,16 +146,16 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 # Database configuration: use PostgreSQL with values from env vars
 def _should_use_sqlite() -> bool:
+    """Only use SQLite for explicit test scenarios, never as a fallback in production."""
     if os.environ.get('USE_SQLITE_FOR_TESTS') in {'1', 'true', 'True'}:
         return True
     if os.environ.get('PYTEST_CURRENT_TEST') or os.environ.get('DJANGO_TEST') == '1':
         return True
-
-    host = os.environ.get('POSTGRES_HOST', 'db')
-    port = int(os.environ.get('POSTGRES_PORT', '5432') or 5432)
-    try:
-        socket.getaddrinfo(host, port)
-    except OSError:
+    # In production (DEBUG=False), always use PostgreSQL
+    if os.environ.get('DJANGO_DEBUG', 'True') == 'False':
+        return False
+    # For local development without explicit POSTGRES_HOST, use SQLite
+    if not os.environ.get('POSTGRES_HOST'):
         return True
     return False
 
@@ -446,6 +446,7 @@ JOB_LIST_CACHE_TIMEOUT = int(os.environ.get('JOB_LIST_CACHE_TIMEOUT', '60'))
 JOB_STATS_CACHE_TIMEOUT = int(os.environ.get('JOB_STATS_CACHE_TIMEOUT', '300'))
 
 # Django Cache - use Redis for caching (including OAuth state tokens)
+# Note: Upstash Redis doesn't support db selection, so we use the default db
 REDIS_URL = os.environ.get('REDIS_URL', 'redis://redis:6379/1')
 REDIS_MAX_CONNECTIONS = int(os.environ.get('REDIS_MAX_CONNECTIONS', '40'))
 REDIS_HEALTH_CHECK_INTERVAL = int(os.environ.get('REDIS_HEALTH_CHECK_INTERVAL', '30'))
@@ -454,8 +455,9 @@ CACHE_KEY_PREFIX = os.environ.get('CACHE_KEY_PREFIX', 'ats')
 
 CACHES = {
     'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': os.environ.get('REDIS_URL', 'redis://redis:6379/0'),
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': REDIS_URL,
         'TIMEOUT': int(os.environ.get('CACHE_DEFAULT_TIMEOUT', '300')),
         'KEY_PREFIX': CACHE_KEY_PREFIX,
         'OPTIONS': {

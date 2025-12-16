@@ -3,46 +3,67 @@
 from django.db import migrations, models
 
 
+def _get_table_columns(cursor, table_name, vendor):
+    """Get column names for a table, handling both PostgreSQL and SQLite."""
+    if vendor == 'postgresql':
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = %s
+        """, [table_name])
+        return {row[0] for row in cursor.fetchall()}
+    else:
+        # SQLite: use PRAGMA table_info
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        return {row[1] for row in cursor.fetchall()}
+
+
 def safe_schema_changes(apps, schema_editor):
     """
     Idempotent migration: safely add/remove columns only if needed.
     Handles both fresh databases and partially migrated ones.
     """
     from django.db import connection
+    vendor = connection.vendor  # 'postgresql', 'sqlite', etc.
+    
     with connection.cursor() as cursor:
         # Get existing columns for gmailintegration
-        cursor.execute("""
-            SELECT column_name FROM information_schema.columns
-            WHERE table_name = 'core_gmailintegration'
-        """)
-        gmail_cols = {row[0] for row in cursor.fetchall()}
+        gmail_cols = _get_table_columns(cursor, 'core_gmailintegration', vendor)
         
         # Get existing columns for jobentry
-        cursor.execute("""
-            SELECT column_name FROM information_schema.columns
-            WHERE table_name = 'core_jobentry'
-        """)
-        job_cols = {row[0] for row in cursor.fetchall()}
+        job_cols = _get_table_columns(cursor, 'core_jobentry', vendor)
         
-        # Remove old gmail fields if they exist
-        if 'auto_update_status' in gmail_cols:
-            cursor.execute('ALTER TABLE core_gmailintegration DROP COLUMN auto_update_status')
-        if 'scan_frequency' in gmail_cols:
-            cursor.execute('ALTER TABLE core_gmailintegration DROP COLUMN scan_frequency')
+        # Remove old gmail fields if they exist (PostgreSQL only - SQLite doesn't support DROP COLUMN well)
+        if vendor == 'postgresql':
+            if 'auto_update_status' in gmail_cols:
+                cursor.execute('ALTER TABLE core_gmailintegration DROP COLUMN auto_update_status')
+            if 'scan_frequency' in gmail_cols:
+                cursor.execute('ALTER TABLE core_gmailintegration DROP COLUMN scan_frequency')
         
         # Add new gmail fields if they don't exist
         if 'rate_limit_reset_at' not in gmail_cols:
-            cursor.execute('ALTER TABLE core_gmailintegration ADD COLUMN rate_limit_reset_at TIMESTAMP NULL')
+            if vendor == 'postgresql':
+                cursor.execute('ALTER TABLE core_gmailintegration ADD COLUMN rate_limit_reset_at TIMESTAMP NULL')
+            else:
+                cursor.execute('ALTER TABLE core_gmailintegration ADD COLUMN rate_limit_reset_at DATETIME NULL')
         
         # Add jobentry location fields if they don't exist
         if 'location_lat' not in job_cols:
-            cursor.execute('ALTER TABLE core_jobentry ADD COLUMN location_lat DOUBLE PRECISION NULL')
+            if vendor == 'postgresql':
+                cursor.execute('ALTER TABLE core_jobentry ADD COLUMN location_lat DOUBLE PRECISION NULL')
+            else:
+                cursor.execute('ALTER TABLE core_jobentry ADD COLUMN location_lat REAL NULL')
         if 'location_lon' not in job_cols:
-            cursor.execute('ALTER TABLE core_jobentry ADD COLUMN location_lon DOUBLE PRECISION NULL')
+            if vendor == 'postgresql':
+                cursor.execute('ALTER TABLE core_jobentry ADD COLUMN location_lon DOUBLE PRECISION NULL')
+            else:
+                cursor.execute('ALTER TABLE core_jobentry ADD COLUMN location_lon REAL NULL')
         if 'location_geo_precision' not in job_cols:
             cursor.execute('ALTER TABLE core_jobentry ADD COLUMN location_geo_precision VARCHAR(20) NULL')
         if 'location_geo_updated_at' not in job_cols:
-            cursor.execute('ALTER TABLE core_jobentry ADD COLUMN location_geo_updated_at TIMESTAMP NULL')
+            if vendor == 'postgresql':
+                cursor.execute('ALTER TABLE core_jobentry ADD COLUMN location_geo_updated_at TIMESTAMP NULL')
+            else:
+                cursor.execute('ALTER TABLE core_jobentry ADD COLUMN location_geo_updated_at DATETIME NULL')
 
 
 class Migration(migrations.Migration):

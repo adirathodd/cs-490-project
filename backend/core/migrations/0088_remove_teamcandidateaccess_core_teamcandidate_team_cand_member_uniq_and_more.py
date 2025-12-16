@@ -7,6 +7,10 @@ def safe_remove_constraints_and_rename_indexes(apps, schema_editor):
     """Safely remove constraints and rename indexes that may or may not exist."""
     connection = schema_editor.connection
     
+    # Skip for SQLite - these operations are PostgreSQL-specific
+    if connection.vendor == 'sqlite':
+        return
+    
     # Constraints to remove
     constraints_to_remove = [
         ('core_teamcandidateaccess', 'core_teamcandidate_team_cand_member_uniq'),

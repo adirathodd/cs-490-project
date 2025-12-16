@@ -1181,11 +1181,13 @@ def github_connect(request):
         'ts': timezone.now().isoformat(),
     }
     request.session['github_oauth'] = session_payload
+    cache_key = f'gh_oauth:{state}'
     try:
         from django.core.cache import cache
-        cache.set(f'gh_oauth:{state}', session_payload, timeout=600)
-    except Exception:
-        pass
+        cache.set(cache_key, session_payload, timeout=600)
+        logger.info(f"GitHub OAuth: stored state in cache, user_id={session_payload['user_id']}")
+    except Exception as e:
+        logger.error(f"GitHub OAuth: failed to store state in cache: {e}")
 
     params = {
         'client_id': client_id,
@@ -1206,17 +1208,28 @@ def github_connect(request):
 @permission_classes([AllowAny])
 def github_callback(request):
     # Retrieve state from cache first (more reliable across ports), then session
+    state_param = request.GET.get('state', '')
+    logger.info(f"GitHub callback received. State param: {state_param[:8] if state_param else 'None'}...")
+    
+    cached = {}
     try:
         from django.core.cache import cache
-        cached = cache.get(f"gh_oauth:{request.GET.get('state','')}") or {}
-    except Exception:
+        cache_key = f"gh_oauth:{state_param}"
+        cached = cache.get(cache_key) or {}
+        logger.info(f"Cache lookup for key: {'found' if cached else 'not found'}")
+    except Exception as e:
+        logger.warning(f"Cache lookup failed: {e}")
         cached = {}
+    
     data = cached or (request.session.get('github_oauth') or {})
     state_expected = data.get('state')
     include_private = bool(data.get('include_private'))
     user_id = data.get('user_id')
+    
+    logger.info(f"OAuth data - state_expected: {bool(state_expected)}, user_id: {user_id}")
 
     if not state_expected:
+        logger.warning(f"OAuth session not found for state param")
         return Response({'error': 'OAuth session not found.'}, status=status.HTTP_400_BAD_REQUEST)
 
     code = request.GET.get('code')
@@ -5114,53 +5127,53 @@ def update_basic_profile(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Get the old home_address before saving to check if it changed
+        old_home_address = getattr(profile, 'home_address', '') or ''
+        
         serializer.save()
         logger.info(f"Profile updated for user: {user.email}")
 
         # Optional: Home address geocoding for commute
+        # Only geocode if the address actually changed (avoid slow API call on every profile update)
+        geocode_warning = None
         try:
-            home_address = (request.data.get('home_address') or '').strip()
+            new_home_address = (request.data.get('home_address') or '').strip()
         except Exception:
-            home_address = ''
-        if home_address:
+            new_home_address = ''
+        
+        # Only geocode if address is present AND has changed
+        if new_home_address and new_home_address != old_home_address:
             headers = {'User-Agent': NOMINATIM_USER_AGENT}
             try:
                 resp = requests.get(
                     f"{NOMINATIM_BASE_URL}/search",
-                    params={'q': home_address, 'format': 'json', 'limit': '1'},
+                    params={'q': new_home_address, 'format': 'json', 'limit': '1'},
                     headers=headers,
                     timeout=8,
                 )
                 resp.raise_for_status()
                 dd = resp.json() or []
                 if not dd:
-                    return Response({
-                        'error': {
-                            'code': 'unable_to_geocode_home',
-                            'message': 'Could not geocode the provided home address.',
-                            'details': {'home_address': ['Address could not be resolved']}
-                        }
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                # Persist the address string in legacy location for now
-                try:
-                    profile.location = home_address
-                    profile.save(update_fields=['location'])
-                except Exception:
-                    # Non-fatal: if persistence fails, proceed
-                    pass
+                    geocode_warning = 'Could not geocode the provided home address.'
+                else:
+                    # Persist the address string in legacy location for now
+                    try:
+                        profile.location = new_home_address
+                        profile.save(update_fields=['location'])
+                    except Exception:
+                        # Non-fatal: if persistence fails, proceed
+                        pass
             except Exception:
-                return Response({
-                    'error': {
-                        'code': 'unable_to_geocode_home',
-                        'message': 'Failed to geocode home address.',
-                        'details': {'home_address': ['Geocoding service error']}
-                    }
-                }, status=status.HTTP_400_BAD_REQUEST)
+                geocode_warning = 'Failed to geocode home address.'
 
-        return Response({
+        response_data = {
             'profile': serializer.data,
             'message': 'Profile updated successfully.'
-        }, status=status.HTTP_200_OK)
+        }
+        if geocode_warning:
+            response_data['warning'] = geocode_warning
+        
+        return Response(response_data, status=status.HTTP_200_OK)
 
     except Exception as e:
         ident = request.user.email if getattr(request.user, "is_authenticated", False) else 'anonymous'

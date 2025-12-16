@@ -82,6 +82,7 @@ const [companySearchStatus, setCompanySearchStatus] = useState('');
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   // UC-116: Trigger map refresh after job edits
   const [mapReloadNonce, setMapReloadNonce] = useState(0);
+  const formAnchorRef = useRef(null);
 
   // UC-039: Search and Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -279,6 +280,12 @@ const companyDropdownRef = useRef(null);
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (showForm && formAnchorRef.current && typeof formAnchorRef.current.scrollIntoView === 'function') {
+      formAnchorRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [showForm]);
 
   // Helper: days difference (deadline - today), and urgency color
   const daysUntil = (dateStr) => {
@@ -1685,7 +1692,7 @@ const companyDropdownRef = useRef(null);
 
       {/* 3. Edit/add form if user prompts */}
       {showForm && (
-        <div className="education-form-card" style={{ overflow: 'visible' }}>
+        <div className="education-form-card" style={{ overflow: 'visible' }} ref={formAnchorRef}>
           <div className="form-header">
             <h3>{editingId ? 'Edit Job' : 'Add Job'}</h3>
             <button className="close-button" onClick={resetForm}><Icon name="trash" size="sm" ariaLabel="Close" /></button>
@@ -1727,7 +1734,7 @@ const companyDropdownRef = useRef(null);
                     lineHeight: '1.5'
                   }}
                 >
-                  Paste a job posting URL from <strong>LinkedIn</strong>, <strong>Indeed</strong>, or <strong>Glassdoor</strong> to automatically fill in details
+                  Paste a job posting URL from <strong>LinkedIn</strong> to automatically fill in details
                 </p>
 
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap' }}>

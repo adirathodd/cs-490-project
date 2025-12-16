@@ -6,6 +6,7 @@ from django.db import migrations
 def remove_fields_if_exist(apps, schema_editor):
     """Safely remove fields that may or may not exist."""
     connection = schema_editor.connection
+    vendor = connection.vendor  # 'postgresql', 'sqlite', etc.
     
     fields_to_remove = [
         ('core_gmailintegration', 'auto_update_status'),
@@ -14,12 +15,24 @@ def remove_fields_if_exist(apps, schema_editor):
     
     for table_name, column_name in fields_to_remove:
         with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = %s AND column_name = %s
-            """, [table_name, column_name])
-            if cursor.fetchone():
-                cursor.execute(f'ALTER TABLE "{table_name}" DROP COLUMN "{column_name}"')
+            # Check if column exists using database-specific query
+            if vendor == 'postgresql':
+                cursor.execute("""
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = %s AND column_name = %s
+                """, [table_name, column_name])
+                column_exists = cursor.fetchone() is not None
+            else:
+                # SQLite: use PRAGMA table_info
+                cursor.execute(f"PRAGMA table_info({table_name})")
+                columns = [row[1] for row in cursor.fetchall()]
+                column_exists = column_name in columns
+            
+            if column_exists:
+                if vendor == 'postgresql':
+                    cursor.execute(f'ALTER TABLE "{table_name}" DROP COLUMN "{column_name}"')
+                # SQLite does not support DROP COLUMN in older versions; skip for SQLite
+                # as the column will just be unused
 
 
 def noop(apps, schema_editor):
