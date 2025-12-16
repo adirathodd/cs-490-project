@@ -257,6 +257,8 @@ CORS_ALLOWED_ORIGINS.extend([o for o in _env_cors_origins if o and o not in CORS
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3000',
     'http://localhost:3001',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
 ]
 # Add production CSRF origins from environment variable
 _env_csrf_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', '').split()
@@ -275,16 +277,17 @@ if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF = True
 
 
-# Relax cookie and CORS credentials in development to allow OAuth redirects across localhost ports
+# Relax cookie settings in development for Django admin and OAuth
 if DEBUG:
-    SESSION_COOKIE_SAMESITE = 'None'
+    SESSION_COOKIE_SAMESITE = 'Lax'
     SESSION_COOKIE_SECURE = False
-    CSRF_COOKIE_SAMESITE = 'None'
+    CSRF_COOKIE_SAMESITE = 'Lax'
     CSRF_COOKIE_SECURE = False
 
 # REST Framework settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',  # For Django admin session
         'core.authentication.FirebaseAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
@@ -414,10 +417,7 @@ CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', CELERY_BROKER_UR
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': os.environ.get('REDIS_URL', 'redis://redis:6379/1'),  # Use DB 1 for cache
-        'OPTIONS': {
-            'db': '1',
-        }
+        'LOCATION': os.environ.get('REDIS_URL', 'redis://redis:6379/1'),
     }
 }
 

@@ -536,8 +536,9 @@ urlpatterns = [
     path('material-versions/comparison/', views.material_version_comparison, name='material-version-comparison'),
     path('material-versions/analytics/', views.material_version_analytics, name='material-version-analytics'),
 
-    # Health check endpoint for uptime monitoring (UC-133)
-    path('health/', views.health_check, name='health-check'),
+    # Health check endpoints (UC-133)
+    path('ping/', views.health_ping, name='health-ping'),  # Public simple ping for uptime monitoring
+    path('health/', views.health_check, name='health-check'),  # Admin-only detailed health & metrics
 
     # Deployment tracking endpoints (UC-099)
     path('deployments/', deployment_views.DeploymentViewSet.as_view({
