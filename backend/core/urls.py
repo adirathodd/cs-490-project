@@ -7,6 +7,7 @@ from core import analytics_views
 from core import market_views
 from core import team_views
 from core import api_monitoring_views
+from core import deployment_views
 
 # app_name = 'core'  # Removed to avoid namespace issues with reverse() in tests
 
@@ -537,5 +538,36 @@ urlpatterns = [
 
     # Health check endpoint for uptime monitoring (UC-133)
     path('health/', views.health_check, name='health-check'),
+
+    # Deployment tracking endpoints (UC-099)
+    path('deployments/', deployment_views.DeploymentViewSet.as_view({
+        'get': 'list',
+        'post': 'create'
+    }), name='deployments-list'),
+    path('deployments/stats/', deployment_views.DeploymentViewSet.as_view({
+        'get': 'stats'
+    }), name='deployments-stats'),
+    path('deployments/metrics/', deployment_views.DeploymentViewSet.as_view({
+        'get': 'metrics'
+    }), name='deployments-metrics'),
+    path('deployments/recent/', deployment_views.DeploymentViewSet.as_view({
+        'get': 'recent'
+    }), name='deployments-recent'),
+    path('deployments/summary/', deployment_views.deployment_summary, name='deployments-summary'),
+    path('deployments/<uuid:pk>/', deployment_views.DeploymentViewSet.as_view({
+        'get': 'retrieve',
+        'put': 'update',
+        'patch': 'partial_update',
+        'delete': 'destroy'
+    }), name='deployment-detail'),
+    path('deployments/<uuid:pk>/logs/', deployment_views.DeploymentViewSet.as_view({
+        'post': 'add_log'
+    }), name='deployment-logs'),
+    path('deployments/<uuid:pk>/complete/', deployment_views.DeploymentViewSet.as_view({
+        'post': 'mark_complete'
+    }), name='deployment-complete'),
+    path('deployments/<uuid:pk>/rollback/', deployment_views.DeploymentViewSet.as_view({
+        'post': 'rollback'
+    }), name='deployment-rollback'),
 
 ]

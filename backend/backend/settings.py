@@ -437,3 +437,9 @@ if SENTRY_DSN and not DEBUG:
 
 # WhiteNoise static file compression
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# Deployment API Key for CI/CD pipeline authentication (UC-099)
+DEPLOYMENT_API_KEY = os.environ.get('DEPLOYMENT_API_KEY', '')
+
+# Environment identifier for deployment tracking
+ENVIRONMENT = os.environ.get('ENVIRONMENT', 'development')
