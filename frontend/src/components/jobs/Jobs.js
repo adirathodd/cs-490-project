@@ -282,7 +282,7 @@ const companyDropdownRef = useRef(null);
   }, []);
 
   useEffect(() => {
-    if (showForm && formAnchorRef.current) {
+    if (showForm && formAnchorRef.current && typeof formAnchorRef.current.scrollIntoView === 'function') {
       formAnchorRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [showForm]);
