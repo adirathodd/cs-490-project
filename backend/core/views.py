@@ -5065,21 +5065,27 @@ def update_basic_profile(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Get the old home_address before saving to check if it changed
+        old_home_address = getattr(profile, 'home_address', '') or ''
+        
         serializer.save()
         logger.info(f"Profile updated for user: {user.email}")
 
-        # Optional: Home address geocoding for commute (non-blocking - don't fail if geocoding fails)
+        # Optional: Home address geocoding for commute
+        # Only geocode if the address actually changed (avoid slow API call on every profile update)
         geocode_warning = None
         try:
-            home_address = (request.data.get('home_address') or '').strip()
+            new_home_address = (request.data.get('home_address') or '').strip()
         except Exception:
-            home_address = ''
-        if home_address:
+            new_home_address = ''
+        
+        # Only geocode if address is present AND has changed
+        if new_home_address and new_home_address != old_home_address:
             headers = {'User-Agent': NOMINATIM_USER_AGENT}
             try:
                 resp = requests.get(
                     f"{NOMINATIM_BASE_URL}/search",
-                    params={'q': home_address, 'format': 'json', 'limit': '1'},
+                    params={'q': new_home_address, 'format': 'json', 'limit': '1'},
                     headers=headers,
                     timeout=8,
                 )
@@ -5090,7 +5096,7 @@ def update_basic_profile(request):
                 else:
                     # Persist the address string in legacy location for now
                     try:
-                        profile.location = home_address
+                        profile.location = new_home_address
                         profile.save(update_fields=['location'])
                     except Exception:
                         # Non-fatal: if persistence fails, proceed
