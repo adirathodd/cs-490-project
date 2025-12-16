@@ -145,16 +145,16 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 # Database configuration: use PostgreSQL with values from env vars
 def _should_use_sqlite() -> bool:
+    """Only use SQLite for explicit test scenarios, never as a fallback in production."""
     if os.environ.get('USE_SQLITE_FOR_TESTS') in {'1', 'true', 'True'}:
         return True
     if os.environ.get('PYTEST_CURRENT_TEST') or os.environ.get('DJANGO_TEST') == '1':
         return True
-
-    host = os.environ.get('POSTGRES_HOST', 'db')
-    port = int(os.environ.get('POSTGRES_PORT', '5432') or 5432)
-    try:
-        socket.getaddrinfo(host, port)
-    except OSError:
+    # In production (DEBUG=False), always use PostgreSQL
+    if os.environ.get('DJANGO_DEBUG', 'True') == 'False':
+        return False
+    # For local development without explicit POSTGRES_HOST, use SQLite
+    if not os.environ.get('POSTGRES_HOST'):
         return True
     return False
 
