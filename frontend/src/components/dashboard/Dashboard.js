@@ -37,7 +37,8 @@ const Dashboard = () => {
           console.log('Profile picture response:', response);
 
           // The response from authAPI.getProfilePicture is already response.data
-          if (response.profile_picture_url) {
+          // Check has_profile_picture flag first - if false, no valid picture exists
+          if (response.has_profile_picture && response.profile_picture_url) {
             // Build full URL - the backend returns relative path like /media/profile_pictures/...
             const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
             const fullUrl = response.profile_picture_url.startsWith('http') 
@@ -224,7 +225,16 @@ const Dashboard = () => {
                 <div className="account-profile-section">
                   <div className="account-avatar">
                     {profilePictureUrl ? (
-                      <img src={profilePictureUrl} alt="Profile" className="account-avatar-img" />
+                      <img 
+                        src={profilePictureUrl} 
+                        alt="Profile" 
+                        className="account-avatar-img"
+                        onError={(e) => {
+                          console.log('Profile picture failed to load, clearing URL');
+                          e.target.style.display = 'none';
+                          setProfilePictureUrl(null);
+                        }}
+                      />
                     ) : (
                       <div className="account-avatar-placeholder">
                         {userProfile?.first_name?.[0]?.toUpperCase() || currentUser?.email?.[0]?.toUpperCase() || '?'}

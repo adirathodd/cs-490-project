@@ -34,8 +34,16 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
     try {
       setLoading(true);
       const response = await authAPI.getProfilePicture();
-      if (response?.profile_picture_url) {
-        setProfilePicture(response.profile_picture_url);
+      // Check has_profile_picture flag - if false, no valid picture exists
+      if (response?.has_profile_picture && response?.profile_picture_url) {
+        // Build full URL - the backend may return relative path like /media/profile_pictures/...
+        const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+        const fullUrl = response.profile_picture_url.startsWith('http') 
+          ? response.profile_picture_url 
+          : `${apiBaseUrl}${response.profile_picture_url}`;
+        setProfilePicture(fullUrl);
+      } else {
+        setProfilePicture(null);
       }
     } catch (err) {
       console.error('Error fetching profile picture:', err);
@@ -44,6 +52,7 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
       if (err.response && err.response.status !== 404 && err.response.status !== 400) {
         console.error('System error loading profile picture:', err);
       }
+      setProfilePicture(null);
     } finally {
       setLoading(false);
     }
@@ -169,7 +178,14 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
       }
 
       const response = await authAPI.uploadProfilePicture(fileToUpload);
-      setProfilePicture(response.profile_picture_url);
+      // Build full URL for the new profile picture
+      if (response.profile_picture_url) {
+        const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+        const fullUrl = response.profile_picture_url.startsWith('http') 
+          ? response.profile_picture_url 
+          : `${apiBaseUrl}${response.profile_picture_url}`;
+        setProfilePicture(fullUrl);
+      }
       setSuccessMessage('Profile picture uploaded successfully!');
       setShowPreview(false);
       setSelectedFile(null);
@@ -387,6 +403,11 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
               src={profilePicture}
               alt="Profile"
               className="profile-picture-img"
+              onError={(e) => {
+                console.log('Profile picture failed to load, clearing URL');
+                e.target.style.display = 'none';
+                setProfilePicture(null);
+              }}
             />
           ) : (
             <div className="profile-picture-placeholder">
