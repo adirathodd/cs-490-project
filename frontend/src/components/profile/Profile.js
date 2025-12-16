@@ -14,6 +14,12 @@ const Profile = () => {
   const navigate = useNavigate();
   const { userId } = useParams();
 
+  const withCacheBust = (url) => {
+    if (!url) return url;
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}t=${Date.now()}`;
+  };
+
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -68,7 +74,7 @@ const Profile = () => {
             const fullUrl = response.profile_picture_url.startsWith('http') 
               ? response.profile_picture_url 
               : `${apiBaseUrl}${response.profile_picture_url}`;
-            setProfilePictureUrl(fullUrl);
+            setProfilePictureUrl(withCacheBust(fullUrl));
           }
         } catch (error) {
           console.log('Profile picture fetch error:', error);

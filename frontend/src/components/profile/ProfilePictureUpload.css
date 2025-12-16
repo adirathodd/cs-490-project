@@ -211,10 +211,33 @@
   position: relative;
   width: 100%;
   height: 400px;
+  min-height: 300px;
   background-color: #000;
   border-radius: 8px;
   overflow: hidden;
   margin-bottom: 1rem;
+}
+
+/* Ensure react-easy-crop fills container properly */
+.cropper-container .reactEasyCrop_Container {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Fix crop area circle visibility */
+.cropper-container .reactEasyCrop_CropArea {
+  border: 2px solid #fff !important;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6) !important;
+  color: rgba(0, 0, 0, 0.6) !important;
+}
+
+.cropper-container .reactEasyCrop_CropAreaRound {
+  border-radius: 50% !important;
 }
 
 /* Zoom Control */

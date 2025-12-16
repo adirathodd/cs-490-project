@@ -251,6 +251,8 @@ def health_check(request):
     Returns 200 OK if the application is running and can connect to the database.
     """
     from django.db import connection
+    from django.conf import settings
+    
     try:
         # Test database connectivity
         with connection.cursor() as cursor:
@@ -259,9 +261,35 @@ def health_check(request):
     except Exception as e:
         db_status = f"unhealthy: {str(e)}"
     
+    # Check Cloudinary configuration
+    cloudinary_status = "not_configured"
+    cloudinary_cloud_name = None
+    try:
+        cloud_name = settings.CLOUDINARY_STORAGE.get('CLOUD_NAME')
+        api_key = settings.CLOUDINARY_STORAGE.get('API_KEY')
+        api_secret = settings.CLOUDINARY_STORAGE.get('API_SECRET')
+        
+        if cloud_name and api_key and api_secret:
+            cloudinary_status = "configured"
+            cloudinary_cloud_name = cloud_name
+            # Check if actually being used
+            storage_backend = getattr(settings, 'DEFAULT_FILE_STORAGE', 'django.core.files.storage.FileSystemStorage')
+            if 'cloudinary' in storage_backend.lower():
+                cloudinary_status = "active"
+        elif cloud_name or api_key or api_secret:
+            cloudinary_status = "partial_config"
+    except Exception as e:
+        cloudinary_status = f"error: {str(e)}"
+    
     return Response({
         "status": "healthy" if db_status == "healthy" else "degraded",
         "database": db_status,
+        "debug_mode": settings.DEBUG,
+        "cloudinary": {
+            "status": cloudinary_status,
+            "cloud_name": cloudinary_cloud_name,
+            "storage_backend": getattr(settings, 'DEFAULT_FILE_STORAGE', 'default'),
+        },
         "version": "1.0.0",
     }, status=status.HTTP_200_OK)
 
@@ -750,6 +778,10 @@ def job_office_locations(request, job_id: int):
     address = (data.get('address') or '').strip()
     lat = data.get('lat')
     lon = data.get('lon')
+
+    # Require address if lat/lon are not provided
+    if (lat is None or lon is None) and not address:
+        return JsonResponse({'error': 'address_required'}, status=400)
 
     if (lat is None or lon is None) and address:
         headers = {'User-Agent': NOMINATIM_USER_AGENT}
@@ -2713,7 +2745,7 @@ from core.firebase_utils import create_firebase_user, initialize_firebase
 from core.permissions import IsOwnerOrAdmin
 from core.storage_utils import (
     process_profile_picture,
-    delete_old_picture,
+    delete_file,
 )
 from django.core.files.base import ContentFile
 from django.template.loader import render_to_string
@@ -2784,7 +2816,7 @@ def _delete_user_and_data(user):
         # Delete profile picture file if present
         if profile.profile_picture:
             try:
-                delete_old_picture(profile.profile_picture.name)
+                delete_file(profile.profile_picture)
             except Exception as e:
                 logger.warning(f"Failed to delete profile picture file for {email}: {e}")
         # Delete related CandidateSkill entries
@@ -5168,7 +5200,7 @@ def upload_profile_picture(request):
         # Delete old profile picture if exists
         if profile.profile_picture:
             logger.info(f"Deleting old profile picture: {profile.profile_picture.name}")
-            delete_old_picture(profile.profile_picture.name)
+            delete_file(profile.profile_picture)
 
         # Save new profile picture
         profile.profile_picture = processed_file
@@ -5219,7 +5251,7 @@ def delete_profile_picture(request):
 
         # Delete file from storage
         logger.info(f"Deleting profile picture for user: {user.email}")
-        delete_old_picture(profile.profile_picture.name)
+        delete_file(profile.profile_picture)
 
         # Clear profile picture field and clear any linked external portfolio_url
         profile.profile_picture = None
@@ -7118,8 +7150,7 @@ def document_delete(request, doc_id: int):
 @permission_classes([IsAuthenticated])
 def document_download(request, doc_id: int):
     """Download a specific document file."""
-    from django.http import FileResponse, HttpResponse
-    import os
+    from core.storage_utils import download_file_response, file_exists
     
     try:
         profile = CandidateProfile.objects.get(user=request.user)
@@ -7128,27 +7159,15 @@ def document_download(request, doc_id: int):
         if not doc.file_upload:
             return Response({'error': {'code': 'no_file', 'message': 'Document has no file attached'}}, status=status.HTTP_404_NOT_FOUND)
         
-        # Open the file and prepare for download
-        file_path = doc.file_upload.path
-        if not os.path.exists(file_path):
+        # Check if file exists (works for both local and Cloudinary storage)
+        if not file_exists(doc.file_upload):
             return Response({'error': {'code': 'file_not_found', 'message': 'File not found on server'}}, status=status.HTTP_404_NOT_FOUND)
         
-        # Determine content type
-        content_type = 'application/octet-stream'
-        if file_path.lower().endswith('.pdf'):
-            content_type = 'application/pdf'
-        elif file_path.lower().endswith('.docx'):
-            content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        elif file_path.lower().endswith('.doc'):
-            content_type = 'application/msword'
+        # Get the filename
+        filename = doc.document_name or doc.name or os.path.basename(doc.file_upload.name)
         
-        # Get original filename
-        filename = doc.document_name or os.path.basename(file_path)
-        
-        # Open and return the file
-        response = FileResponse(open(file_path, 'rb'), content_type=content_type)
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        return response
+        # Use storage-agnostic download helper
+        return download_file_response(doc.file_upload, filename=filename, as_attachment=True)
         
     except Document.DoesNotExist:
         return Response({'error': {'code': 'not_found', 'message': 'Document not found'}}, status=status.HTTP_404_NOT_FOUND)
@@ -15118,7 +15137,7 @@ def shared_resume_pdf(request, share_token):
             )
 
     if share.cover_letter_document:
-        from django.http import FileResponse
+        from core.storage_utils import download_file_response, file_exists
         import os
 
         doc = share.cover_letter_document
@@ -15128,17 +15147,18 @@ def shared_resume_pdf(request, share_token):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        file_path = doc.file_upload.path
-        if not os.path.exists(file_path):
+        # Check if file exists (works for both local and Cloudinary storage)
+        if not file_exists(doc.file_upload):
             return Response(
                 {'error': 'Document file missing'},
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        content_type = 'application/pdf' if file_path.lower().endswith('.pdf') else 'application/octet-stream'
-        filename = doc.document_name or os.path.basename(file_path)
-        response = FileResponse(open(file_path, 'rb'), content_type=content_type)
-        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        # Get filename
+        filename = doc.document_name or os.path.basename(doc.file_upload.name)
+        
+        # Use storage-agnostic download helper (inline for viewing)
+        response = download_file_response(doc.file_upload, filename=filename, as_attachment=False)
         response['X-Frame-Options'] = 'ALLOWALL'
         return response
 
