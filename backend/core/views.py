@@ -1119,11 +1119,13 @@ def github_connect(request):
         'ts': timezone.now().isoformat(),
     }
     request.session['github_oauth'] = session_payload
+    cache_key = f'gh_oauth:{state}'
     try:
         from django.core.cache import cache
-        cache.set(f'gh_oauth:{state}', session_payload, timeout=600)
-    except Exception:
-        pass
+        cache.set(cache_key, session_payload, timeout=600)
+        logger.info(f"GitHub OAuth: stored state in cache, user_id={session_payload['user_id']}")
+    except Exception as e:
+        logger.error(f"GitHub OAuth: failed to store state in cache: {e}")
 
     params = {
         'client_id': client_id,
@@ -1144,17 +1146,28 @@ def github_connect(request):
 @permission_classes([AllowAny])
 def github_callback(request):
     # Retrieve state from cache first (more reliable across ports), then session
+    state_param = request.GET.get('state', '')
+    logger.info(f"GitHub callback received. State param: {state_param[:8] if state_param else 'None'}...")
+    
+    cached = {}
     try:
         from django.core.cache import cache
-        cached = cache.get(f"gh_oauth:{request.GET.get('state','')}") or {}
-    except Exception:
+        cache_key = f"gh_oauth:{state_param}"
+        cached = cache.get(cache_key) or {}
+        logger.info(f"Cache lookup for key: {'found' if cached else 'not found'}")
+    except Exception as e:
+        logger.warning(f"Cache lookup failed: {e}")
         cached = {}
+    
     data = cached or (request.session.get('github_oauth') or {})
     state_expected = data.get('state')
     include_private = bool(data.get('include_private'))
     user_id = data.get('user_id')
+    
+    logger.info(f"OAuth data - state_expected: {bool(state_expected)}, user_id: {user_id}")
 
     if not state_expected:
+        logger.warning(f"OAuth session not found for state param")
         return Response({'error': 'OAuth session not found.'}, status=status.HTTP_400_BAD_REQUEST)
 
     code = request.GET.get('code')
