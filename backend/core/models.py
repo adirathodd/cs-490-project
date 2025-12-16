@@ -740,6 +740,62 @@ class Interview(models.Model):
 # =
 # EXTENDED PROFILE MODELS
 
+# OAuth State Token for production reliability (database-backed instead of cache)
+class OAuthStateToken(models.Model):
+    """Database-backed OAuth state storage for production environments.
+    
+    This ensures OAuth state persists reliably in production where Redis
+    may not be available or may not persist between workers/requests.
+    """
+    state = models.CharField(max_length=64, unique=True, db_index=True)
+    provider = models.CharField(max_length=32, default='github')  # github, linkedin, etc.
+    user_id = models.CharField(max_length=255, blank=True)
+    profile_id = models.CharField(max_length=255, blank=True)
+    include_private = models.BooleanField(default=False)
+    extra_data = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['state']),
+            models.Index(fields=['expires_at']),
+        ]
+
+    @classmethod
+    def create_token(cls, state, provider='github', user_id='', profile_id='', 
+                     include_private=False, extra_data=None, timeout_minutes=10):
+        """Create a new OAuth state token with expiration."""
+        expires_at = timezone.now() + timedelta(minutes=timeout_minutes)
+        return cls.objects.create(
+            state=state,
+            provider=provider,
+            user_id=str(user_id) if user_id else '',
+            profile_id=str(profile_id) if profile_id else '',
+            include_private=include_private,
+            extra_data=extra_data or {},
+            expires_at=expires_at,
+        )
+
+    @classmethod
+    def get_valid_token(cls, state, provider='github'):
+        """Retrieve a valid (non-expired) token by state."""
+        try:
+            token = cls.objects.get(state=state, provider=provider)
+            if token.expires_at > timezone.now():
+                return token
+            # Token expired, delete it
+            token.delete()
+        except cls.DoesNotExist:
+            pass
+        return None
+
+    @classmethod
+    def cleanup_expired(cls):
+        """Remove all expired tokens."""
+        return cls.objects.filter(expires_at__lt=timezone.now()).delete()
+
+
 # UC-114: GitHub Repository Showcase Integration
 class GitHubAccount(models.Model):
     candidate = models.OneToOneField(CandidateProfile, on_delete=models.CASCADE, related_name='github_account')

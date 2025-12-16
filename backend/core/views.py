@@ -1464,7 +1464,28 @@ def github_connect(request):
         scope += ' repo'
 
     state = uuid.uuid4().hex
-    # Persist OAuth state in cache (required for cross-domain OAuth flow)
+    
+    # Store OAuth state in database (most reliable for production)
+    # This ensures state persists even without Redis
+    from .models import OAuthStateToken
+    try:
+        # Clean up expired tokens occasionally
+        OAuthStateToken.cleanup_expired()
+        # Create new token
+        OAuthStateToken.create_token(
+            state=state,
+            provider='github',
+            user_id=str(getattr(request.user, 'id', '')),
+            profile_id=str(profile.id),
+            include_private=include_private,
+            timeout_minutes=10
+        )
+        logger.info(f"GitHub OAuth: stored state in database, user_id={getattr(request.user, 'id', '')}")
+    except Exception as e:
+        logger.error(f"GitHub OAuth: failed to store state in database: {e}")
+        return Response({'error': 'Failed to initiate OAuth flow. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # Also store in session as backup
     session_payload = {
         'state': state,
         'include_private': include_private,
@@ -1473,25 +1494,6 @@ def github_connect(request):
         'ts': timezone.now().isoformat(),
     }
     request.session['github_oauth'] = session_payload
-
-    # Store in cache - this is critical for production where session cookies may not work cross-domain
-    from django.core.cache import cache
-    cache_key = f'gh_oauth:{state}'
-    cache_stored = False
-    try:
-        cache.set(cache_key, session_payload, timeout=600)
-        # Verify the cache write worked
-        verify = cache.get(cache_key)
-        if verify:
-            cache_stored = True
-            logger.info(f"GitHub OAuth: stored state in cache (verified), user_id={session_payload['user_id']}")
-        else:
-            logger.warning(f"GitHub OAuth: cache.set succeeded but verification failed - Redis may not be working")
-    except Exception as e:
-        logger.error(f"GitHub OAuth: failed to store state in cache: {e}")
-    
-    if not cache_stored:
-        logger.warning("GitHub OAuth: proceeding without verified cache storage - OAuth callback may fail")
 
     params = {
         'client_id': client_id,
@@ -1511,23 +1513,33 @@ def github_connect(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def github_callback(request):
-    # Retrieve state from cache first (more reliable across domains), then session
+    # Retrieve state from database first (most reliable), then session as fallback
     state_param = request.GET.get('state', '')
     logger.info(f"GitHub callback received. State param: {state_param[:8] if state_param else 'None'}...")
 
-    from django.core.cache import cache
-    cache_key = f"gh_oauth:{state_param}"
-    cached = None
+    # Try database lookup first (most reliable for production)
+    from .models import OAuthStateToken
+    db_token = None
     try:
-        from django.core.cache import cache
-        cache_key = f"gh_oauth:{state_param}"
-        cached = cache.get(cache_key) or {}
-        logger.info(f"Cache lookup for key '{cache_key[:20]}...': {'found' if cached else 'not found'}")
+        db_token = OAuthStateToken.get_valid_token(state_param, provider='github')
+        if db_token:
+            logger.info(f"Database lookup for state '{state_param[:16]}...': found, user_id={db_token.user_id}")
+        else:
+            logger.info(f"Database lookup for state '{state_param[:16]}...': not found or expired")
     except Exception as e:
-        logger.error(f"GitHub OAuth callback: Cache read failed: {e}")
-        cached = None
+        logger.error(f"GitHub OAuth callback: Database read failed: {e}")
+        db_token = None
     
-    data = cached or (request.session.get('github_oauth') or {})
+    # Build data from database token or fall back to session
+    if db_token:
+        data = {
+            'state': db_token.state,
+            'include_private': db_token.include_private,
+            'user_id': db_token.user_id,
+            'profile_id': db_token.profile_id,
+        }
+    else:
+        data = request.session.get('github_oauth') or {}
     
     state_expected = data.get('state')
     include_private = bool(data.get('include_private'))
@@ -1635,10 +1647,10 @@ def github_callback(request):
     except Exception as e:
         logger.warning('GitHub sync failed: %s', e)
 
-    # Clean up cached state
+    # Clean up OAuth state token from database
     try:
-        from django.core.cache import cache
-        cache.delete(f'gh_oauth:{state}')
+        if db_token:
+            db_token.delete()
     except Exception:
         pass
 

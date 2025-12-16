@@ -172,6 +172,13 @@ DATABASES = {
     }
 }
 
+# Add SSL for Neon and other cloud PostgreSQL providers
+_pg_host = os.environ.get('POSTGRES_HOST', '')
+if not _USE_SQLITE and ('neon.tech' in _pg_host or 'amazonaws.com' in _pg_host or os.environ.get('POSTGRES_SSLMODE')):
+    DATABASES['default']['OPTIONS'] = {
+        'sslmode': os.environ.get('POSTGRES_SSLMODE', 'require'),
+    }
+
 if _USE_SQLITE:
     DATABASES['default'].pop('USER')
     DATABASES['default'].pop('PASSWORD')
