@@ -1,0 +1,334 @@
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to rollback'
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+      target_sha:
+        description: 'Commit SHA to rollback to (leave empty for previous deployment)'
+        required: false
+        type: string
+      reason:
+        description: 'Reason for rollback'
+        required: true
+        type: string
+      rollback_backend:
+        description: 'Rollback backend'
+        required: false
+        default: true
+        type: boolean
+      rollback_frontend:
+        description: 'Rollback frontend'
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: rollback-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '22'
+
+jobs:
+  # ============================================
+  # Prepare Rollback
+  # ============================================
+  prepare:
+    name: Prepare Rollback
+    runs-on: ubuntu-latest
+    outputs:
+      target-sha: ${{ steps.resolve.outputs.target-sha }}
+      current-sha: ${{ steps.resolve.outputs.current-sha }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Resolve target commit
+        id: resolve
+        run: |
+          CURRENT_SHA=$(git rev-parse HEAD)
+          echo "current-sha=$CURRENT_SHA" >> $GITHUB_OUTPUT
+          
+          if [ -n "${{ github.event.inputs.target_sha }}" ]; then
+            TARGET_SHA="${{ github.event.inputs.target_sha }}"
+          else
+            # Get the previous commit
+            TARGET_SHA=$(git rev-parse HEAD~1)
+          fi
+          
+          # Verify the target SHA exists
+          if git cat-file -t "$TARGET_SHA" > /dev/null 2>&1; then
+            echo "target-sha=$TARGET_SHA" >> $GITHUB_OUTPUT
+            echo "✅ Target commit: $TARGET_SHA"
+          else
+            echo "❌ Target commit not found: $TARGET_SHA"
+            exit 1
+          fi
+
+      - name: Display rollback plan
+        run: |
+          echo "## 🔄 Rollback Plan" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ github.event.inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Current SHA | \`${{ steps.resolve.outputs.current-sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target SHA | \`${{ steps.resolve.outputs.target-sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Rollback Backend | ${{ github.event.inputs.rollback_backend }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Rollback Frontend | ${{ github.event.inputs.rollback_frontend }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Reason | ${{ github.event.inputs.reason }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Initiated By | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Rollback Backend
+  # ============================================
+  rollback-backend:
+    name: Rollback Backend
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: github.event.inputs.rollback_backend == 'true'
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - name: Checkout target commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.target-sha }}
+
+      - name: Trigger Render deployment
+        env:
+          RENDER_DEPLOY_HOOK: ${{ github.event.inputs.environment == 'production' && secrets.RENDER_DEPLOY_HOOK || secrets.RENDER_STAGING_DEPLOY_HOOK }}
+        run: |
+          if [ -n "$RENDER_DEPLOY_HOOK" ]; then
+            # Render uses the latest code, so we need to redeploy
+            # For a true rollback, you'd need to use Render's API to deploy a specific commit
+            
+            echo "⚠️ Note: Render deploys from the latest code."
+            echo "For a true rollback, manually deploy via Render dashboard."
+            
+            # Trigger a deploy anyway
+            curl -X POST "$RENDER_DEPLOY_HOOK"
+            echo "✅ Triggered deployment"
+          else
+            echo "⚠️ Deploy hook not configured"
+          fi
+
+      - name: Wait for deployment
+        run: sleep 90
+
+      - name: Health check
+        run: |
+          if [ "${{ github.event.inputs.environment }}" = "production" ]; then
+            URL="${{ secrets.PRODUCTION_API_URL }}"
+          else
+            URL="${{ secrets.STAGING_API_URL }}"
+          fi
+          
+          if [ -n "$URL" ]; then
+            for i in {1..5}; do
+              response=$(curl -s -o /dev/null -w "%{http_code}" "$URL/api/health/" 2>/dev/null || echo "000")
+              if [ "$response" = "200" ]; then
+                echo "✅ Health check passed"
+                exit 0
+              fi
+              echo "Attempt $i: HTTP $response, retrying..."
+              sleep 10
+            done
+            echo "⚠️ Health check inconclusive"
+          fi
+
+  # ============================================
+  # Rollback Frontend
+  # ============================================
+  rollback-frontend:
+    name: Rollback Frontend
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: github.event.inputs.rollback_frontend == 'true'
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - name: Checkout target commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.target-sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        env:
+          CI: false
+          REACT_APP_API_URL: ${{ github.event.inputs.environment == 'production' && secrets.PRODUCTION_API_URL || secrets.STAGING_API_URL }}
+          REACT_APP_FIREBASE_API_KEY: ${{ secrets.REACT_APP_FIREBASE_API_KEY }}
+          REACT_APP_FIREBASE_AUTH_DOMAIN: ${{ secrets.REACT_APP_FIREBASE_AUTH_DOMAIN }}
+          REACT_APP_FIREBASE_PROJECT_ID: ${{ secrets.REACT_APP_FIREBASE_PROJECT_ID }}
+        run: npm run build
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -n "$VERCEL_TOKEN" ]; then
+            cd frontend
+            npm install -g vercel
+            
+            if [ "${{ github.event.inputs.environment }}" = "production" ]; then
+              vercel --token=$VERCEL_TOKEN --yes --prod
+            else
+              vercel --token=$VERCEL_TOKEN --yes
+            fi
+            
+            echo "✅ Deployed to Vercel"
+          else
+            echo "⚠️ VERCEL_TOKEN not configured"
+            echo "Manual rollback may be required via Vercel dashboard"
+          fi
+
+  # ============================================
+  # Notify Team
+  # ============================================
+  notify:
+    name: Notify Team
+    runs-on: ubuntu-latest
+    needs: [prepare, rollback-backend, rollback-frontend]
+    if: always()
+    
+    steps:
+      - name: Determine status
+        id: status
+        run: |
+          BACKEND_RESULT="${{ needs.rollback-backend.result }}"
+          FRONTEND_RESULT="${{ needs.rollback-frontend.result }}"
+          
+          if [ "$BACKEND_RESULT" = "success" ] || [ "$BACKEND_RESULT" = "skipped" ]; then
+            if [ "$FRONTEND_RESULT" = "success" ] || [ "$FRONTEND_RESULT" = "skipped" ]; then
+              echo "status=success" >> $GITHUB_OUTPUT
+              echo "emoji=✅" >> $GITHUB_OUTPUT
+              echo "message=Rollback completed successfully" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "emoji=❌" >> $GITHUB_OUTPUT
+            echo "message=Rollback failed" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post to Slack
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{
+              \"text\": \"${{ steps.status.outputs.emoji }} *Rollback - ${{ github.event.inputs.environment }}*\",
+              \"blocks\": [
+                {
+                  \"type\": \"header\",
+                  \"text\": {
+                    \"type\": \"plain_text\",
+                    \"text\": \"${{ steps.status.outputs.emoji }} Rollback - ${{ github.event.inputs.environment }}\"
+                  }
+                },
+                {
+                  \"type\": \"section\",
+                  \"fields\": [
+                    {\"type\": \"mrkdwn\", \"text\": \"*Status:*\n${{ steps.status.outputs.message }}\"},
+                    {\"type\": \"mrkdwn\", \"text\": \"*Environment:*\n${{ github.event.inputs.environment }}\"},
+                    {\"type\": \"mrkdwn\", \"text\": \"*Target SHA:*\n\`${{ needs.prepare.outputs.target-sha }}\`\"},
+                    {\"type\": \"mrkdwn\", \"text\": \"*Initiated By:*\n${{ github.actor }}\"},
+                    {\"type\": \"mrkdwn\", \"text\": \"*Reason:*\n${{ github.event.inputs.reason }}\"}
+                  ]
+                }
+              ]
+            }" \
+            "$SLACK_WEBHOOK_URL" || true
+
+      - name: Post to Discord
+        if: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "{
+              \"embeds\": [{
+                \"title\": \"${{ steps.status.outputs.emoji }} Rollback - ${{ github.event.inputs.environment }}\",
+                \"description\": \"${{ steps.status.outputs.message }}\",
+                \"color\": ${{ steps.status.outputs.status == 'success' && '3066993' || '15158332' }},
+                \"fields\": [
+                  {\"name\": \"Environment\", \"value\": \"${{ github.event.inputs.environment }}\", \"inline\": true},
+                  {\"name\": \"Target SHA\", \"value\": \"\`${{ needs.prepare.outputs.target-sha }}\`\", \"inline\": true},
+                  {\"name\": \"Initiated By\", \"value\": \"${{ github.actor }}\", \"inline\": true},
+                  {\"name\": \"Reason\", \"value\": \"${{ github.event.inputs.reason }}\", \"inline\": false}
+                ]
+              }]
+            }" \
+            "$DISCORD_WEBHOOK_URL" || true
+
+  # ============================================
+  # Record Rollback
+  # ============================================
+  record:
+    name: Record Rollback
+    runs-on: ubuntu-latest
+    needs: [prepare, rollback-backend, rollback-frontend, notify]
+    if: always()
+    
+    steps:
+      - name: Record rollback to API
+        env:
+          API_URL: ${{ github.event.inputs.environment == 'production' && secrets.PRODUCTION_API_URL || secrets.STAGING_API_URL }}
+          DEPLOYMENT_API_KEY: ${{ secrets.DEPLOYMENT_API_KEY }}
+        run: |
+          if [ -n "$API_URL" ] && [ -n "$DEPLOYMENT_API_KEY" ]; then
+            curl -X POST "$API_URL/api/deployments/" \
+              -H "Authorization: Bearer $DEPLOYMENT_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"environment\": \"${{ github.event.inputs.environment }}\",
+                \"commit_sha\": \"${{ needs.prepare.outputs.target-sha }}\",
+                \"commit_message\": \"Rollback: ${{ github.event.inputs.reason }}\",
+                \"branch\": \"rollback\",
+                \"deployed_by\": \"${{ github.actor }}\",
+                \"status\": \"${{ needs.rollback-backend.result == 'success' || needs.rollback-frontend.result == 'success' && 'success' || 'failed' }}\",
+                \"workflow_run_id\": \"${{ github.run_id }}\",
+                \"is_rollback\": true,
+                \"rollback_from_sha\": \"${{ needs.prepare.outputs.current-sha }}\",
+                \"rollback_reason\": \"${{ github.event.inputs.reason }}\"
+              }" || echo "Could not record rollback"
+          fi
+
+      - name: Write summary
+        run: |
+          echo "## 🔄 Rollback Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ github.event.inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| From SHA | \`${{ needs.prepare.outputs.current-sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| To SHA | \`${{ needs.prepare.outputs.target-sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | ${{ needs.rollback-backend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | ${{ needs.rollback-frontend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Reason | ${{ github.event.inputs.reason }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Initiated By | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY

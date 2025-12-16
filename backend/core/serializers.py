@@ -5177,3 +5177,113 @@ class MaterialVersionComparisonSerializer(serializers.Serializer):
     
     # Confidence indicator
     has_sufficient_data = serializers.BooleanField()
+
+
+# ============================================
+# Deployment Tracking Serializers (UC-099)
+# ============================================
+
+from core.models import Deployment, DeploymentLog
+
+
+class DeploymentLogSerializer(serializers.ModelSerializer):
+    """Serializer for deployment log entries."""
+    
+    class Meta:
+        model = DeploymentLog
+        fields = ['id', 'level', 'message', 'step', 'timestamp']
+        read_only_fields = ['id', 'timestamp']
+
+
+class DeploymentSerializer(serializers.ModelSerializer):
+    """Serializer for deployment records."""
+    duration_display = serializers.CharField(read_only=True)
+    logs = DeploymentLogSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Deployment
+        fields = [
+            'id', 'environment', 'status', 'commit_sha', 'commit_message', 'branch',
+            'deployed_by', 'workflow_run_id', 'frontend_url', 'backend_url',
+            'backend_deployment_id', 'frontend_deployment_id',
+            'started_at', 'completed_at', 'duration_seconds', 'duration_display',
+            'is_rollback', 'rollback_from_sha', 'rollback_reason', 'rolled_back_by',
+            'backend_tests_passed', 'frontend_tests_passed',
+            'test_coverage_backend', 'test_coverage_frontend',
+            'health_check_passed', 'health_check_attempts',
+            'created_at', 'updated_at', 'logs'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'duration_display', 'logs']
+
+
+class DeploymentCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating deployment records from CI/CD pipelines."""
+    
+    class Meta:
+        model = Deployment
+        fields = [
+            'environment', 'status', 'commit_sha', 'commit_message', 'branch',
+            'deployed_by', 'workflow_run_id', 'frontend_url', 'backend_url',
+            'backend_deployment_id', 'frontend_deployment_id',
+            'started_at', 'completed_at', 'duration_seconds',
+            'is_rollback', 'rollback_from_sha', 'rollback_reason',
+            'backend_tests_passed', 'frontend_tests_passed',
+            'test_coverage_backend', 'test_coverage_frontend',
+            'health_check_passed', 'health_check_attempts'
+        ]
+    
+    def validate_commit_sha(self, value):
+        """Validate commit SHA format."""
+        if value and len(value) not in [7, 40]:
+            raise serializers.ValidationError("Commit SHA must be 7 or 40 characters.")
+        return value
+
+
+class DeploymentListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for deployment lists."""
+    duration_display = serializers.CharField(read_only=True)
+    
+    class Meta:
+        model = Deployment
+        fields = [
+            'id', 'environment', 'status', 'commit_sha', 'branch',
+            'deployed_by', 'started_at', 'completed_at', 'duration_display',
+            'is_rollback', 'health_check_passed'
+        ]
+
+
+class DeploymentStatsSerializer(serializers.Serializer):
+    """Serializer for deployment statistics."""
+    total = serializers.IntegerField()
+    successful = serializers.IntegerField()
+    failed = serializers.IntegerField()
+    rolled_back = serializers.IntegerField()
+    avg_duration = serializers.FloatField(allow_null=True)
+    success_rate = serializers.FloatField()
+    
+    # Extended stats
+    environment = serializers.CharField(required=False)
+    period_days = serializers.IntegerField(required=False)
+    deployments_per_day = serializers.FloatField(required=False)
+    
+    # Recent trend
+    last_deployment = DeploymentListSerializer(required=False, allow_null=True)
+
+
+class DeploymentMetricsSerializer(serializers.Serializer):
+    """Serializer for deployment metrics dashboard."""
+    production_stats = DeploymentStatsSerializer()
+    staging_stats = DeploymentStatsSerializer()
+    recent_deployments = DeploymentListSerializer(many=True)
+    
+    # Trend data
+    daily_deployments = serializers.ListField(
+        child=serializers.DictField(),
+        required=False
+    )
+    
+    # Health indicators
+    current_production_status = serializers.CharField()
+    current_staging_status = serializers.CharField()
+    last_production_deployment = DeploymentListSerializer(allow_null=True)
+    last_staging_deployment = DeploymentListSerializer(allow_null=True)

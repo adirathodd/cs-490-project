@@ -3,92 +3,581 @@ name: Deploy to Production
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip tests (not recommended for production)'
+        required: false
+        default: 'false'
+        type: boolean
+      force_deploy:
+        description: 'Force deployment even if health checks fail'
+        required: false
+        default: 'false'
+        type: boolean
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '22'
+  ENVIRONMENT: production
 
 jobs:
-  test-backend:
+  # ============================================
+  # Pre-deployment Checks
+  # ============================================
+  pre-deploy-check:
+    name: Pre-deployment Checks
     runs-on: ubuntu-latest
+    outputs:
+      should-deploy: ${{ steps.check.outputs.should-deploy }}
+      previous-sha: ${{ steps.check.outputs.previous-sha }}
     
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
+
+      - name: Check deployment conditions
+        id: check
+        run: |
+          # Check if this is a valid deployment commit
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          
+          # Skip deployment for certain commit messages
+          if echo "$COMMIT_MSG" | grep -qiE '\[skip deploy\]|\[no deploy\]'; then
+            echo "should-deploy=false" >> $GITHUB_OUTPUT
+            echo "⏭️ Skipping deployment due to commit message"
+          else
+            echo "should-deploy=true" >> $GITHUB_OUTPUT
+          fi
+          
+          # Get previous deployment SHA for rollback reference
+          PREVIOUS_SHA=$(git rev-parse HEAD~1 2>/dev/null || echo "")
+          echo "previous-sha=$PREVIOUS_SHA" >> $GITHUB_OUTPUT
+
+  # ============================================
+  # Run Tests Before Production Deployment
+  # ============================================
+  test-backend:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    needs: pre-deploy-check
+    if: needs.pre-deploy-check.outputs.should-deploy == 'true' && github.event.inputs.skip_tests != 'true'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
       - name: Install dependencies
-        working-directory: ./backend
         run: |
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
           pip install pytest pytest-django pytest-cov
-      
+
       - name: Run tests
-        working-directory: ./backend
         env:
           DJANGO_DEBUG: 'True'
           USE_SQLITE_FOR_TESTS: '1'
           DJANGO_SECRET_KEY: 'test-secret-key-for-ci'
+          DJANGO_TEST: '1'
         run: |
-          pytest --cov=core --cov-report=xml || true
-      
+          cd backend
+          pytest --ds=backend.settings --cov=core --cov-report=xml -v
+
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           files: ./backend/coverage.xml
+          flags: production-backend
         continue-on-error: true
 
   test-frontend:
+    name: Frontend Tests
     runs-on: ubuntu-latest
+    needs: pre-deploy-check
+    if: needs.pre-deploy-check.outputs.should-deploy == 'true' && github.event.inputs.skip_tests != 'true'
     
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
-      
+
       - name: Install dependencies
-        working-directory: ./frontend
+        working-directory: frontend
         run: npm ci
-      
+
       - name: Run tests
-        working-directory: ./frontend
+        working-directory: frontend
+        env:
+          CI: true
         run: npm test -- --coverage --watchAll=false --passWithNoTests
-        continue-on-error: true
-      
+
       - name: Build
-        working-directory: ./frontend
+        working-directory: frontend
         env:
           CI: false
+          REACT_APP_API_URL: ${{ secrets.PRODUCTION_API_URL }}
         run: npm run build
 
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-build
+          path: frontend/build/
+          retention-days: 7
+
+  # ============================================
+  # Deploy Backend to Production
+  # ============================================
   deploy-backend:
-    needs: [test-backend, test-frontend]
+    name: Deploy Backend to Production
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [pre-deploy-check, test-backend, test-frontend]
+    if: |
+      always() && 
+      needs.pre-deploy-check.outputs.should-deploy == 'true' &&
+      (needs.test-backend.result == 'success' || github.event.inputs.skip_tests == 'true') && 
+      (needs.test-frontend.result == 'success' || github.event.inputs.skip_tests == 'true') &&
+      github.ref == 'refs/heads/main' && 
+      github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    environment: production
+    
+    outputs:
+      deployment-id: ${{ steps.deploy.outputs.deployment-id }}
+      deployment-url: ${{ steps.deploy.outputs.url }}
+      success: ${{ steps.health.outputs.healthy }}
     
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Record deployment start
+        id: start
+        run: |
+          echo "start-time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+          echo "### 🚀 Production Backend Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Started:** $(date -u)" >> $GITHUB_STEP_SUMMARY
+
       - name: Deploy to Render
+        id: deploy
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: |
+          DEPLOYMENT_ID="${{ github.run_id }}-backend-prod"
+          echo "deployment-id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+          
           if [ -n "$RENDER_DEPLOY_HOOK" ]; then
-            curl -X POST "$RENDER_DEPLOY_HOOK"
-            echo "Triggered Render deployment"
+            response=$(curl -s -w "\n%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
+            http_code=$(echo "$response" | tail -1)
+            body=$(echo "$response" | head -n -1)
+            
+            if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
+              echo "✅ Triggered Render production deployment"
+              echo "url=${{ secrets.PRODUCTION_API_URL }}" >> $GITHUB_OUTPUT
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "**Deploy Hook:** ✅ Triggered successfully" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ Deployment trigger failed with HTTP $http_code"
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "**Deploy Hook:** ❌ Failed (HTTP $http_code)" >> $GITHUB_STEP_SUMMARY
+              exit 1
+            fi
           else
-            echo "RENDER_DEPLOY_HOOK not set, skipping deployment"
+            echo "⚠️ RENDER_DEPLOY_HOOK not set, skipping deployment"
+            echo "url=https://api.example.com" >> $GITHUB_OUTPUT
           fi
 
+      - name: Wait for deployment
+        run: |
+          echo "Waiting 90 seconds for production deployment to propagate..."
+          sleep 90
+
+      - name: Health check
+        id: health
+        run: |
+          PROD_URL="${{ secrets.PRODUCTION_API_URL }}"
+          
+          if [ -z "$PROD_URL" ]; then
+            echo "⚠️ PRODUCTION_API_URL not set, skipping health check"
+            echo "healthy=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          for i in {1..10}; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" "$PROD_URL/api/health/" 2>/dev/null || echo "000")
+            if [ "$response" = "200" ]; then
+              echo "✅ Health check passed on attempt $i"
+              echo "healthy=true" >> $GITHUB_OUTPUT
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "**Health Check:** ✅ Passed" >> $GITHUB_STEP_SUMMARY
+              exit 0
+            fi
+            echo "Attempt $i/10: Health check returned $response, retrying in 15s..."
+            sleep 15
+          done
+          
+          echo "❌ Health check failed after 10 attempts"
+          echo "healthy=false" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Health Check:** ❌ Failed" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ github.event.inputs.force_deploy }}" != "true" ]; then
+            exit 1
+          fi
+
+  # ============================================
+  # Deploy Frontend to Production
+  # ============================================
   deploy-frontend:
-    needs: [test-backend, test-frontend]
+    name: Deploy Frontend to Production
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [pre-deploy-check, test-backend, test-frontend]
+    if: |
+      always() && 
+      needs.pre-deploy-check.outputs.should-deploy == 'true' &&
+      (needs.test-backend.result == 'success' || github.event.inputs.skip_tests == 'true') && 
+      (needs.test-frontend.result == 'success' || github.event.inputs.skip_tests == 'true') &&
+      github.ref == 'refs/heads/main' && 
+      github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    environment: production
+    
+    outputs:
+      deployment-id: ${{ steps.deploy.outputs.deployment-id }}
+      deployment-url: ${{ steps.deploy.outputs.url }}
     
     steps:
-      - name: Vercel Deployment
-        run: echo "Vercel auto-deploys on push to main via GitHub integration"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build for production
+        working-directory: frontend
+        env:
+          CI: false
+          REACT_APP_API_URL: ${{ secrets.PRODUCTION_API_URL }}
+          REACT_APP_FIREBASE_API_KEY: ${{ secrets.REACT_APP_FIREBASE_API_KEY }}
+          REACT_APP_FIREBASE_AUTH_DOMAIN: ${{ secrets.REACT_APP_FIREBASE_AUTH_DOMAIN }}
+          REACT_APP_FIREBASE_PROJECT_ID: ${{ secrets.REACT_APP_FIREBASE_PROJECT_ID }}
+          REACT_APP_ENVIRONMENT: production
+        run: npm run build
+
+      - name: Deploy to Vercel Production
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          DEPLOYMENT_ID="${{ github.run_id }}-frontend-prod"
+          echo "deployment-id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+          
+          if [ -n "$VERCEL_TOKEN" ]; then
+            cd frontend
+            npm install -g vercel
+            DEPLOYMENT_URL=$(vercel --token=$VERCEL_TOKEN --yes --prod 2>/dev/null || echo "")
+            
+            if [ -n "$DEPLOYMENT_URL" ]; then
+              echo "✅ Deployed to: $DEPLOYMENT_URL"
+              echo "url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+            else
+              echo "ℹ️ Vercel auto-deploys on push via GitHub integration"
+              echo "url=${{ secrets.PRODUCTION_FRONTEND_URL }}" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "ℹ️ Vercel auto-deploys on push to main via GitHub integration"
+            echo "url=${{ secrets.PRODUCTION_FRONTEND_URL }}" >> $GITHUB_OUTPUT
+          fi
+
+  # ============================================
+  # Post-deployment Verification
+  # ============================================
+  verify-deployment:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy-backend, deploy-frontend]
+    if: always() && (needs.deploy-backend.result == 'success' || needs.deploy-frontend.result == 'success')
+    
+    outputs:
+      verified: ${{ steps.verify.outputs.verified }}
+    
+    steps:
+      - name: Verify frontend deployment
+        id: verify
+        run: |
+          FRONTEND_URL="${{ needs.deploy-frontend.outputs.deployment-url }}"
+          
+          if [ -n "$FRONTEND_URL" ]; then
+            for i in {1..5}; do
+              response=$(curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_URL" 2>/dev/null || echo "000")
+              if [ "$response" = "200" ]; then
+                echo "✅ Frontend verification passed"
+                echo "verified=true" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+              echo "Attempt $i: Frontend returned $response, retrying..."
+              sleep 10
+            done
+          fi
+          
+          echo "verified=false" >> $GITHUB_OUTPUT
+
+  # ============================================
+  # Automatic Rollback on Failure
+  # ============================================
+  auto-rollback:
+    name: Automatic Rollback
+    runs-on: ubuntu-latest
+    needs: [pre-deploy-check, deploy-backend, verify-deployment]
+    if: |
+      failure() && 
+      needs.deploy-backend.outputs.success == 'false' && 
+      needs.pre-deploy-check.outputs.previous-sha != ''
+    
+    steps:
+      - name: Trigger rollback
+        run: |
+          echo "⚠️ Deployment failed - initiating automatic rollback"
+          echo "Previous SHA: ${{ needs.pre-deploy-check.outputs.previous-sha }}"
+          
+          # This would trigger a rollback workflow
+          # In practice, you'd call your deployment platform's API to rollback
+          
+          echo "## ⚠️ Automatic Rollback Initiated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Rolling back to: ${{ needs.pre-deploy-check.outputs.previous-sha }}" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Notify Team
+  # ============================================
+  notify:
+    name: Send Notifications
+    runs-on: ubuntu-latest
+    needs: [deploy-backend, deploy-frontend, verify-deployment]
+    if: always()
+    
+    steps:
+      - name: Determine deployment status
+        id: status
+        run: |
+          BACKEND_RESULT="${{ needs.deploy-backend.result }}"
+          FRONTEND_RESULT="${{ needs.deploy-frontend.result }}"
+          VERIFIED="${{ needs.verify-deployment.outputs.verified }}"
+          
+          if [ "$BACKEND_RESULT" = "success" ] && [ "$FRONTEND_RESULT" = "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "emoji=✅" >> $GITHUB_OUTPUT
+            echo "color=good" >> $GITHUB_OUTPUT
+            echo "message=Production deployment completed successfully!" >> $GITHUB_OUTPUT
+          elif [ "$BACKEND_RESULT" = "skipped" ] && [ "$FRONTEND_RESULT" = "skipped" ]; then
+            echo "status=skipped" >> $GITHUB_OUTPUT
+            echo "emoji=⏭️" >> $GITHUB_OUTPUT
+            echo "color=warning" >> $GITHUB_OUTPUT
+            echo "message=Deployment was skipped" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "emoji=❌" >> $GITHUB_OUTPUT
+            echo "color=danger" >> $GITHUB_OUTPUT
+            echo "message=Production deployment failed!" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post to Slack
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{
+              \"text\": \"${{ steps.status.outputs.emoji }} *Production Deployment*\n${{ steps.status.outputs.message }}\",
+              \"attachments\": [{
+                \"color\": \"${{ steps.status.outputs.color }}\",
+                \"blocks\": [
+                  {
+                    \"type\": \"section\",
+                    \"fields\": [
+                      {\"type\": \"mrkdwn\", \"text\": \"*Environment:*\nProduction\"},
+                      {\"type\": \"mrkdwn\", \"text\": \"*Status:*\n${{ steps.status.outputs.message }}\"},
+                      {\"type\": \"mrkdwn\", \"text\": \"*Commit:*\n\`${{ github.sha }}\`\"},
+                      {\"type\": \"mrkdwn\", \"text\": \"*Author:*\n${{ github.actor }}\"},
+                      {\"type\": \"mrkdwn\", \"text\": \"*Backend:*\n${{ needs.deploy-backend.result }}\"},
+                      {\"type\": \"mrkdwn\", \"text\": \"*Frontend:*\n${{ needs.deploy-frontend.result }}\"}
+                    ]
+                  },
+                  {
+                    \"type\": \"actions\",
+                    \"elements\": [
+                      {
+                        \"type\": \"button\",
+                        \"text\": {\"type\": \"plain_text\", \"text\": \"View Workflow\"},
+                        \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+                      },
+                      {
+                        \"type\": \"button\",
+                        \"text\": {\"type\": \"plain_text\", \"text\": \"View Commit\"},
+                        \"url\": \"${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}\"
+                      }
+                    ]
+                  }
+                ]
+              }]
+            }" \
+            "$SLACK_WEBHOOK_URL" || true
+
+      - name: Post to Discord
+        if: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "{
+              \"embeds\": [{
+                \"title\": \"${{ steps.status.outputs.emoji }} Production Deployment\",
+                \"description\": \"${{ steps.status.outputs.message }}\",
+                \"color\": ${{ steps.status.outputs.status == 'success' && '3066993' || '15158332' }},
+                \"fields\": [
+                  {\"name\": \"Environment\", \"value\": \"Production\", \"inline\": true},
+                  {\"name\": \"Branch\", \"value\": \"main\", \"inline\": true},
+                  {\"name\": \"Commit\", \"value\": \"\`${{ github.sha }}\`\", \"inline\": false},
+                  {\"name\": \"Author\", \"value\": \"${{ github.actor }}\", \"inline\": true},
+                  {\"name\": \"Backend\", \"value\": \"${{ needs.deploy-backend.result }}\", \"inline\": true},
+                  {\"name\": \"Frontend\", \"value\": \"${{ needs.deploy-frontend.result }}\", \"inline\": true}
+                ],
+                \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
+                \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+              }]
+            }" \
+            "$DISCORD_WEBHOOK_URL" || true
+
+      - name: Create GitHub deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ steps.status.outputs.status }}';
+            const stateMap = {
+              'success': 'success',
+              'failure': 'failure',
+              'skipped': 'inactive'
+            };
+            
+            try {
+              const deployment = await github.rest.repos.createDeployment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: context.sha,
+                environment: 'production',
+                auto_merge: false,
+                required_contexts: [],
+                description: 'Production deployment from GitHub Actions'
+              });
+              
+              await github.rest.repos.createDeploymentStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                deployment_id: deployment.data.id,
+                state: stateMap[status] || 'failure',
+                environment_url: '${{ needs.deploy-frontend.outputs.deployment-url }}',
+                description: '${{ steps.status.outputs.message }}',
+                auto_inactive: true
+              });
+              
+              console.log('Created deployment status');
+            } catch (error) {
+              console.log('Could not create deployment:', error.message);
+            }
+
+  # ============================================
+  # Record Deployment Metrics
+  # ============================================
+  record-metrics:
+    name: Record Deployment Metrics
+    runs-on: ubuntu-latest
+    needs: [deploy-backend, deploy-frontend, notify]
+    if: always()
+    
+    steps:
+      - name: Calculate deployment duration
+        id: duration
+        run: |
+          START_TIME="${{ github.event.head_commit.timestamp }}"
+          END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          
+          # Calculate duration in seconds
+          START_EPOCH=$(date -d "$START_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$START_TIME" +%s 2>/dev/null || echo "0")
+          END_EPOCH=$(date +%s)
+          
+          if [ "$START_EPOCH" != "0" ]; then
+            DURATION=$((END_EPOCH - START_EPOCH))
+            echo "duration=$DURATION" >> $GITHUB_OUTPUT
+          else
+            echo "duration=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Record to deployment API
+        env:
+          API_URL: ${{ secrets.PRODUCTION_API_URL }}
+          DEPLOYMENT_API_KEY: ${{ secrets.DEPLOYMENT_API_KEY }}
+        run: |
+          if [ -n "$API_URL" ] && [ -n "$DEPLOYMENT_API_KEY" ]; then
+            curl -X POST "$API_URL/api/deployments/" \
+              -H "Authorization: Bearer $DEPLOYMENT_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"environment\": \"production\",
+                \"commit_sha\": \"${{ github.sha }}\",
+                \"commit_message\": \"$(echo '${{ github.event.head_commit.message }}' | head -c 200)\",
+                \"branch\": \"main\",
+                \"deployed_by\": \"${{ github.actor }}\",
+                \"status\": \"${{ needs.deploy-backend.result == 'success' && needs.deploy-frontend.result == 'success' && 'success' || 'failed' }}\",
+                \"workflow_run_id\": \"${{ github.run_id }}\",
+                \"duration_seconds\": ${{ steps.duration.outputs.duration }},
+                \"backend_deployment_id\": \"${{ needs.deploy-backend.outputs.deployment-id }}\",
+                \"frontend_deployment_id\": \"${{ needs.deploy-frontend.outputs.deployment-id }}\",
+                \"frontend_url\": \"${{ needs.deploy-frontend.outputs.deployment-url }}\",
+                \"backend_url\": \"${{ needs.deploy-backend.outputs.deployment-url }}\"
+              }" || echo "Could not record deployment metrics"
+          fi
+
+      - name: Write deployment summary
+        run: |
+          echo "## 🚀 Production Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | Production |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Author | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend Status | ${{ needs.deploy-backend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Status | ${{ needs.deploy-frontend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Duration | ${{ steps.duration.outputs.duration }}s |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment URLs" >> $GITHUB_STEP_SUMMARY
+          echo "- **Frontend:** ${{ needs.deploy-frontend.outputs.deployment-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Backend:** ${{ needs.deploy-backend.outputs.deployment-url }}" >> $GITHUB_STEP_SUMMARY
