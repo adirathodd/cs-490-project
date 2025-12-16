@@ -83,7 +83,6 @@ const [companySearchStatus, setCompanySearchStatus] = useState('');
   // UC-116: Trigger map refresh after job edits
   const [mapReloadNonce, setMapReloadNonce] = useState(0);
   const formAnchorRef = useRef(null);
-  const formAnchorRef = useRef(null);
 
   // UC-039: Search and Filter State
   const [searchQuery, setSearchQuery] = useState('');
