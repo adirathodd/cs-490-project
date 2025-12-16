@@ -205,6 +205,39 @@ form {
   margin-bottom: 20px;
 }
 
+/* Keep date fields evenly aligned side by side */
+.dates-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-start;
+  margin-bottom: 20px; /* Match form-row spacing */
+}
+
+.dates-row .form-group {
+  flex: 1;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+
+.dates-row .form-group > label {
+  min-height: 24px; /* Enforce consistent label height */
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+}
+
+.dates-row .form-group input[type="date"] {
+  height: 52px;
+  width: 100%;
+}
+
+.dates-row .checkbox-group {
+  margin-top: 8px; /* Reduced margin to bring it closer to the input */
+}
+
 .form-group {
   margin-bottom: 20px;
 }
@@ -268,10 +301,12 @@ form {
 .checkbox-group label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   cursor: pointer;
   font-weight: 500;
   line-height: 1;
+  width: auto; /* Ensure label shrinks to fit content */
+  margin: 0; /* Reset any inherited margin */
 }
 
 /* Inline checkbox style aligned with inputs (mirrors Education form) */
@@ -292,10 +327,11 @@ form {
 }
 
 .checkbox-group input[type="checkbox"] {
-  width: 20px;
-  height: 20px;
+  width: 16px; /* Smaller checkbox */
+  height: 16px;
   cursor: pointer;
   accent-color: #667eea;
+  margin: 0; /* Remove default margin */
 }
 
 .input-with-button {

@@ -713,7 +713,7 @@ const ContactsPanel = ({ open, onClose, inline, openCreate, onReminderChange }) 
                   setCreating(false);
                 }
               }}>
-                <div className="form-row" style={{ padding: 32 }}>
+                <div className="contacts-create-grid">
                   <div className="form-group">
                     <label>Full Name</label>
                     <input type="text" name="name" value={newContact.name} onChange={(e) => setNewContact((p) => ({ ...p, name: e.target.value }))} placeholder="Full name" />
@@ -733,26 +733,18 @@ const ContactsPanel = ({ open, onClose, inline, openCreate, onReminderChange }) 
                     <label>Company</label>
                     <input type="text" name="company" value={newContact.company} onChange={(e) => setNewContact((p) => ({ ...p, company: e.target.value }))} placeholder="Company name" />
                   </div>
-                    <div className="form-group">
-                      <label>Relationship Type</label>
-                      <input type="text" name="relationship_type" value={newContact.relationship_type || ''} onChange={(e) => setNewContact((p) => ({ ...p, relationship_type: e.target.value }))} placeholder="e.g., colleague, mentor" />
-                    </div>
-                    <div className="form-group">
-                      <label>Industry</label>
-                      <select name="industry" value={newContact.industry || ''} onChange={(e) => setNewContact((p) => ({ ...p, industry: e.target.value }))}>
-                        <option value="">Select industry</option>
-                        {industryOptions.map((ind) => (<option key={ind} value={ind}>{ind}</option>))}
-                      </select>
-                    </div>
+
                   <div className="form-group">
-                    <label>Relationship Strength</label>
-                    <input type="range" min="0" max="10" name="relationship_strength" value={newContact.relationship_strength || 0} onChange={(e) => setNewContact((p) => ({ ...p, relationship_strength: Number(e.target.value) }))} />
-                    <div style={{ marginTop: 6 }}>{newContact.relationship_strength || 0}</div>
+                    <label>Relationship Type</label>
+                    <input type="text" name="relationship_type" value={newContact.relationship_type || ''} onChange={(e) => setNewContact((p) => ({ ...p, relationship_type: e.target.value }))} placeholder="e.g., colleague, mentor" />
                   </div>
 
                   <div className="form-group">
-                    <label>Email</label>
-                    <input type="email" name="email" value={newContact.email} onChange={(e) => setNewContact((p) => ({ ...p, email: e.target.value }))} placeholder="contact@example.com" />
+                    <label>Industry</label>
+                    <select name="industry" value={newContact.industry || ''} onChange={(e) => setNewContact((p) => ({ ...p, industry: e.target.value }))}>
+                      <option value="">Select industry</option>
+                      {industryOptions.map((ind) => (<option key={ind} value={ind}>{ind}</option>))}
+                    </select>
                   </div>
 
                   <div className="form-group">
@@ -765,12 +757,18 @@ const ContactsPanel = ({ open, onClose, inline, openCreate, onReminderChange }) 
                     <input type="text" name="location" value={newContact.location} onChange={(e) => setNewContact((p) => ({ ...p, location: e.target.value }))} placeholder="City, State or Remote" />
                   </div>
 
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <div className="form-group">
+                    <label>Relationship Strength</label>
+                    <input type="range" min="0" max="10" name="relationship_strength" value={newContact.relationship_strength || 0} onChange={(e) => setNewContact((p) => ({ ...p, relationship_strength: Number(e.target.value) }))} />
+                    <div style={{ marginTop: 6 }}>Score: {newContact.relationship_strength || 0}</div>
+                  </div>
+
+                  <div className="form-group full-span">
                     <label>Notes</label>
                     <textarea name="notes" value={newContact.notes} onChange={(e) => setNewContact((p) => ({ ...p, notes: e.target.value }))} placeholder="Notes about the contact" rows="5" />
                   </div>
 
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <div className="form-group full-span">
                     <label>Mutual Connections</label>
                     <select 
                       multiple 

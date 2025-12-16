@@ -346,7 +346,7 @@ const Employment = () => {
               </div>
             </div>
 
-            <div className="form-row">
+            <div className="dates-row">
               <div className="form-group">
                 <label>Start Date <span className="required">*</span></label>
                 <input
