@@ -21,10 +21,12 @@ class TestJobsAPI:
     def test_create_list_delete_and_validation(self):
         list_url = reverse('jobs-list-create')
 
-        # Initial list empty
+        # Initial list empty (paginated response)
         resp = self.client.get(list_url)
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert data['count'] == 0
+        assert data['results'] == []
 
         # Validation: required fields
         bad_payload = {
@@ -72,10 +74,11 @@ class TestJobsAPI:
         assert 'message' in data
         job_id = data['id']
 
-        # List returns the created job
+        # List returns the created job (paginated response)
         resp = self.client.get(list_url)
         assert resp.status_code == 200
-        items = resp.json()
+        data = resp.json()
+        items = data['results']
         assert len(items) == 1
         assert items[0]['id'] == job_id
 
@@ -139,11 +142,12 @@ class TestJobsAPI:
         resp = self.client.get(list_url, params)
         assert resp.status_code == 200
         payload = resp.json()
-        assert set(payload.keys()) == {'results', 'count', 'search_query'}
+        # Paginated response includes count, next, previous, results
+        assert 'results' in payload
+        assert 'count' in payload
         assert payload['count'] == 2
         titles = [item['title'] for item in payload['results']]
         assert titles == ['Frontend Engineer', 'Backend Engineer']
-        assert payload['search_query'] == 'engineer'
 
         params = {
             'deadline_from': (today + timedelta(days=10)).isoformat(),
