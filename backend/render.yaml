@@ -5,11 +5,19 @@ services:
     region: ohio
     plan: free
     buildCommand: |
+      # Install Tectonic LaTeX engine for PDF resume generation
+      curl -L -o tectonic.tar.gz "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%400.15.0/tectonic-0.15.0-x86_64-unknown-linux-gnu.tar.gz"
+      tar -xzf tectonic.tar.gz
+      mkdir -p /opt/render/project/.render
+      mv tectonic /opt/render/project/.render/
+      rm tectonic.tar.gz
       pip install -r requirements.txt
       python manage.py collectstatic --noinput
       python manage.py migrate
     startCommand: gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT --workers 2
     envVars:
+      - key: TECTONIC_BINARY
+        value: /opt/render/project/.render/tectonic
       - key: DJANGO_DEBUG
         value: "False"
       - key: DJANGO_SECRET_KEY
