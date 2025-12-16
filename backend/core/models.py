@@ -2380,6 +2380,8 @@ class JobEntry(models.Model):
             models.Index(fields=["industry"]),
             models.Index(fields=["candidate", "status"]),
             models.Index(fields=["candidate", "is_archived"]),
+            models.Index(fields=["candidate", "is_archived", "status"], name="jobentry_arch_status_idx"),
+            models.Index(fields=["candidate", "is_archived", "-updated_at"], name="jobentry_arch_updated_idx"),
             # UC-042: quick lookups for analytics
             models.Index(fields=["resume_doc"]),
             models.Index(fields=["cover_letter_doc"]),

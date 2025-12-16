@@ -3,15 +3,16 @@
 This project is tuned for free-tier friendly scaling. Use this as a runbook.
 
 ## Database
-- Use pooled connections: `DJANGO_DB_CONN_MAX_AGE=120` and `DJANGO_DB_CONN_HEALTH_CHECKS=True`.
-- Prefer managed Postgres with autoscaling storage (Neon/Supabase). Turn on connection pooling if offered.
-- Indexes: `JobEntry` now has candidate + `created_at`/`application_deadline` indexes; run migrations on deploy.
+- Pooled connections: `DJANGO_DB_CONN_MAX_AGE=300`, `DJANGO_DB_CONN_HEALTH_CHECKS=True`, `DJANGO_DB_CONNECT_TIMEOUT=5`. Neon `*-pooler` endpoints already front the DB with pooling; keep using them.
+- Optional guardrail: set `POSTGRES_STATEMENT_TIMEOUT_MS=8000` to prevent long-running queries during spikes.
+- Indexes: `JobEntry` has candidate + `created_at`/`application_deadline` plus combined `(candidate, is_archived, status)` and `(candidate, is_archived, -updated_at)` for the jobs list/stats filters. Run migrations on deploy.
 - For heavy reads, add read replicas if your provider supports them and point read-only workloads via `DATABASE_URL`.
 
 ## Caching (Redis)
-- Default cache uses Redis (DB 1). Configure `REDIS_URL` to your Upstash free-tier URL.
-- Tune redis pool: `REDIS_MAX_CONNECTIONS`, `REDIS_HEALTH_CHECK_INTERVAL`, `REDIS_SOCKET_TIMEOUT`.
+- Default cache uses `django-redis` with Redis (DB 1). Configure `REDIS_URL` to your Upstash free-tier URL.
+- Pool tuning: `REDIS_MAX_CONNECTIONS`, `REDIS_HEALTH_CHECK_INTERVAL`, `REDIS_SOCKET_TIMEOUT`, `CACHE_KEY_PREFIX` (for shared Redis).
 - Job list/stats responses are cached per-user with versioned keys; invalidated on job/status changes.
+- `GET /api/admin/system-metrics` now surfaces Redis pool usage (connected clients, pool max, memory) for quick health checks.
 
 ## Pagination & query shaping
 - Job list API is paginated by default (`page_size` inherits DRF default, `page_size` param up to 100). Legacy clients can disable with `?paginate=false`.
@@ -28,10 +29,11 @@ This project is tuned for free-tier friendly scaling. Use this as a runbook.
 - Upstash: free tier is rate-limited—monitor command count; if you approach limits, add simple in-app circuit breakers to fall back to in-memory caching for non-critical paths.
 
 ## Load testing
-- Example k6 script: `node scripts/k6-smoke-test.js` (requires k6). Configure `BASE_URL` env var; includes auth token placeholder.
-- Run short smoke: `k6 run --vus 10 --duration 30s scripts/k6-smoke-test.js`.
-- Watch metrics during tests: `/api/admin/system-metrics` plus your DB/Redis dashboards.
+- Smoke: `k6 run --vus 10 --duration 30s scripts/k6-smoke-test.js -e BASE_URL=https://<host>/api`.
+- Sustained load (50 concurrent): `k6 run scripts/k6-load-test.js -e BASE_URL=https://<host>/api -e AUTH_TOKEN=<jwt> -e VUS=50 -e HOLD=60s`. Thresholds enforce p95 < 500ms.
+- Watch metrics during tests: `/api/admin/system-metrics` plus DB/Redis dashboards; Redis caching should hold hit latencies under 500ms.
 - Profile slow queries with `django-debug-toolbar` in dev or Postgres `pg_stat_statements` in staging.
+- Frontend check: while k6 is running, keep the React app open on jobs list/dashboard to confirm UI remains responsive and paginated responses stay under the latency threshold.
 
 ## Operational playbook
 - Before deploy: run migrations, warm caches on hot endpoints, and ensure Redis and Postgres URLs are set.

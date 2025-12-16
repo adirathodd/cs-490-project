@@ -162,8 +162,12 @@ def _should_use_sqlite() -> bool:
 
 _USE_SQLITE = _should_use_sqlite()
 
-DB_CONN_MAX_AGE = int(os.environ.get('DJANGO_DB_CONN_MAX_AGE', '120'))
+# Connection pooling / resiliency defaults
+DB_CONN_MAX_AGE = int(os.environ.get('DJANGO_DB_CONN_MAX_AGE', '300'))
 DB_CONN_HEALTH_CHECKS = os.environ.get('DJANGO_DB_CONN_HEALTH_CHECKS', 'True') == 'True'
+DB_CONN_TIMEOUT = int(os.environ.get('DJANGO_DB_CONNECT_TIMEOUT', '5'))
+DB_SSL_MODE = os.environ.get('POSTGRES_SSL_MODE', 'prefer')
+DB_STATEMENT_TIMEOUT = os.environ.get('POSTGRES_STATEMENT_TIMEOUT_MS')
 
 DATABASES = {
     'default': {
@@ -175,6 +179,10 @@ DATABASES = {
         'PORT': os.environ.get('POSTGRES_PORT', '5432'),
         'CONN_MAX_AGE': DB_CONN_MAX_AGE,
         'CONN_HEALTH_CHECKS': DB_CONN_HEALTH_CHECKS,
+        'OPTIONS': {
+            'connect_timeout': DB_CONN_TIMEOUT,
+            'sslmode': DB_SSL_MODE,
+        },
     }
 }
 
@@ -187,6 +195,10 @@ if not _USE_SQLITE:
             conn_health_checks=DB_CONN_HEALTH_CHECKS,
         )
         if parsed:
+            if DB_STATEMENT_TIMEOUT:
+                options = parsed.get('OPTIONS', {})
+                options.setdefault('options', f"-c statement_timeout={DB_STATEMENT_TIMEOUT}")
+                parsed['OPTIONS'] = options
             DATABASES['default'] = parsed
 
 if _USE_SQLITE:
@@ -194,6 +206,9 @@ if _USE_SQLITE:
     DATABASES['default'].pop('PASSWORD')
     DATABASES['default'].pop('HOST')
     DATABASES['default'].pop('PORT')
+else:
+    if DB_STATEMENT_TIMEOUT:
+        DATABASES['default']['OPTIONS']['options'] = f"-c statement_timeout={DB_STATEMENT_TIMEOUT}"
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -431,17 +446,27 @@ JOB_LIST_CACHE_TIMEOUT = int(os.environ.get('JOB_LIST_CACHE_TIMEOUT', '60'))
 JOB_STATS_CACHE_TIMEOUT = int(os.environ.get('JOB_STATS_CACHE_TIMEOUT', '300'))
 
 # Django Cache - use Redis for caching (including OAuth state tokens)
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://redis:6379/1')
+REDIS_MAX_CONNECTIONS = int(os.environ.get('REDIS_MAX_CONNECTIONS', '40'))
+REDIS_HEALTH_CHECK_INTERVAL = int(os.environ.get('REDIS_HEALTH_CHECK_INTERVAL', '30'))
+REDIS_SOCKET_TIMEOUT = float(os.environ.get('REDIS_SOCKET_TIMEOUT', '5'))
+CACHE_KEY_PREFIX = os.environ.get('CACHE_KEY_PREFIX', 'ats')
+
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': os.environ.get('REDIS_URL', 'redis://redis:6379/1'),  # Use DB 1 for cache
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': REDIS_URL,
         'TIMEOUT': int(os.environ.get('CACHE_DEFAULT_TIMEOUT', '300')),
+        'KEY_PREFIX': CACHE_KEY_PREFIX,
         'OPTIONS': {
-            'max_connections': int(os.environ.get('REDIS_MAX_CONNECTIONS', '40')),
-            'health_check_interval': int(os.environ.get('REDIS_HEALTH_CHECK_INTERVAL', '30')),
-            'socket_timeout': float(os.environ.get('REDIS_SOCKET_TIMEOUT', '5')),
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': REDIS_MAX_CONNECTIONS,
+                'health_check_interval': REDIS_HEALTH_CHECK_INTERVAL,
+                'socket_connect_timeout': REDIS_SOCKET_TIMEOUT,
+            },
             'retry_on_timeout': True,
-        }
+        },
     }
 }
 

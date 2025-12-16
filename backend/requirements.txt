@@ -97,6 +97,7 @@ reportlab==4.4.4
 celery==5.3.5
 django-celery-beat==2.8.1
 redis==4.5.4
+django-redis==5.4.0
 gunicorn==21.2.0
 cloudinary==1.36.0
 django-cloudinary-storage==0.3.0

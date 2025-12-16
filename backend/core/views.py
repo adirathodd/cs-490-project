@@ -27,7 +27,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.db.models import Min, Q
-from django.core.cache import cache
+from django.core.cache import cache, caches
 from django.core.management import call_command
 from django.core.mail import send_mail
 from django.http import HttpResponse, JsonResponse, HttpResponseRedirect
@@ -307,6 +307,10 @@ def system_metrics(request):
         },
         "cache_backend": settings.CACHES.get('default', {}).get('BACKEND'),
         "cache_location": settings.CACHES.get('default', {}).get('LOCATION'),
+        "cache": {
+            "backend": settings.CACHES.get('default', {}).get('BACKEND'),
+            "location": settings.CACHES.get('default', {}).get('LOCATION'),
+        },
         "db": {},
     }
 
@@ -322,6 +326,22 @@ def system_metrics(request):
                 data["db"]["active_connections"] = row[0] if row else None
     except Exception as exc:
         data["db"]["error"] = str(exc)
+
+    try:
+        cache_backend = caches['default']
+        client = None
+        if hasattr(cache_backend, 'client'):
+            client = cache_backend.client.get_client(write=True)
+        if client:
+            info = client.info()
+            data["cache"]["used_memory_mb"] = round(info.get("used_memory", 0) / (1024 * 1024), 2)
+            data["cache"]["connected_clients"] = info.get("connected_clients")
+            pool = getattr(client, 'connection_pool', None)
+            max_conn = getattr(pool, 'max_connections', None)
+            if max_conn:
+                data["cache"]["max_connections"] = max_conn
+    except Exception as exc:
+        data["cache"]["error"] = str(exc)
 
     return Response(data, status=status.HTTP_200_OK)
 
