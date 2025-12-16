@@ -76,20 +76,25 @@ const ContactsPage = () => {
         <h1 className="employment-page-title">Contacts</h1>
       </div>
 
-      <div className="employment-header">
+      <div className="employment-header contacts-header">
         <h2><Icon name="users" size="md" /> Your Contacts</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="contacts-actions">
           <button
-            className="add-button"
+            className="contacts-action contacts-action-primary"
             onClick={handleImport}
-            style={{ background: '#059669' }}
             title="Import contacts from Google"
           >
             Import from Google
           </button>
-          <button className="add-button" onClick={() => setImportJobToShow(new URLSearchParams(location.search).get('import_job'))} title="Check import status">Check import status</button>
           <button
-            className="add-button"
+            className="contacts-action contacts-action-secondary"
+            onClick={() => setImportJobToShow(new URLSearchParams(location.search).get('import_job'))}
+            title="Check import status"
+          >
+            Check import status
+          </button>
+          <button
+            className="contacts-action contacts-action-primary"
             onClick={() => setOpenCreate(true)}
           >
             + Add Contact
@@ -106,7 +111,7 @@ const ContactsPage = () => {
       {/* Last import message removed per request */}
 
       <div style={{ padding: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 12 }}>
+        <div className="contacts-layout">
           <div>
             <ContactsPanel 
               inline 

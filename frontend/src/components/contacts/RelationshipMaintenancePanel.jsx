@@ -8,16 +8,18 @@ const pill = {
   padding: '4px 8px',
   borderRadius: 12,
   fontSize: '0.8rem',
-  fontWeight: 600,
+  fontWeight: 700,
+  background: 'var(--gray-100)',
+  color: '#0f172a',
 };
 
 const cardStyle = {
-  background: '#0b132b',
-  color: '#e5e7eb',
+  background: 'var(--white)',
+  color: '#0f172a',
   borderRadius: 12,
   padding: 16,
-  border: '1px solid #1f2937',
-  boxShadow: '0 18px 40px rgba(0,0,0,0.22)',
+  border: '1px solid var(--gray-200)',
+  boxShadow: '0 16px 40px rgba(15, 23, 42, 0.08)',
 };
 
 const sectionTitle = {
@@ -102,60 +104,58 @@ const RelationshipMaintenancePanel = ({ onReminderChange }) => {
 
   return (
     <div style={{ marginTop: 18 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 12, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a', letterSpacing: '0.01em' }}>
           Relationship Maintenance
         </h2>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={generateReminders}
-            className="add-button"
-            style={{ background: '#10b981', color: '#04101f' }}
-          >
-            <Icon name="bell" size="sm" /> Generate check-ins
-          </button>
-        </div>
+        <button
+          onClick={generateReminders}
+          className="contacts-action contacts-action-primary"
+          style={{ gap: 6 }}
+        >
+          <Icon name="bell" size="sm" /> Generate check-ins
+        </button>
       </div>
 
-      {status && <div style={{ marginBottom: 10, padding: 10, background: '#ecfdf3', color: '#166534', borderRadius: 10 }}>{status}</div>}
+      {status && <div style={{ marginBottom: 10, padding: 12, background: '#ecfdf3', color: '#166534', borderRadius: 10, border: '1px solid #bbf7d0' }}>{status}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
         <div style={cardStyle}>
           <div style={sectionTitle}><Icon name="calendar" size="sm" /> Check-in reminders</div>
-          <p style={{ marginTop: 0, color: '#9ca3af' }}>Automatic cadence for important contacts.</p>
+          <p style={{ marginTop: 0, color: '#475569' }}>Automatic cadence for important contacts.</p>
           {(check_in_suggestions || []).slice(0, 4).map((r) => (
-            <div key={r.contact_id} style={{ marginBottom: 10, padding: 10, background: '#111827', borderRadius: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <div style={{ fontWeight: 700 }}>{r.contact_name}</div>
-                <span style={{ ...pill, background: '#1e3a8a', color: '#c7d2fe' }}>{r.recurrence}</span>
+            <div key={r.contact_id} style={{ marginBottom: 10, padding: 10, background: '#f8fafc', borderRadius: 10, border: '1px solid var(--gray-200)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontWeight: 700, color: '#0f172a' }}>{r.contact_name}</div>
+                <span style={{ ...pill, background: '#e0e7ff', color: '#312e81' }}>{r.recurrence}</span>
               </div>
-              <div style={{ color: '#d1d5db', marginTop: 4 }}>{r.message}</div>
-              <div style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: 2 }}>Due by {new Date(r.due_date).toLocaleDateString()} - {r.reason}</div>
+              <div style={{ color: '#334155', marginTop: 4 }}>{r.message}</div>
+              <div style={{ color: '#475569', fontSize: '0.9rem', marginTop: 2 }}>Due by {new Date(r.due_date).toLocaleDateString()} · {r.reason}</div>
               <button
-                className="add-button"
-                style={{ marginTop: 8, background: '#22c55e', color: '#052e16', border: 'none' }}
+                className="contacts-action contacts-action-primary"
+                style={{ marginTop: 8, padding: '9px 12px', minHeight: 'unset' }}
                 onClick={() => generateReminders([r.contact_id])}
               >
                 <Icon name="calendar" size="sm" /> Add to calendar
               </button>
             </div>
           ))}
-          {(!check_in_suggestions || check_in_suggestions.length === 0) && <div style={{ color: '#9ca3af' }}>No check-ins needed this week.</div>}
+          {(!check_in_suggestions || check_in_suggestions.length === 0) && <div style={{ color: '#475569' }}>No check-ins needed this week.</div>}
         </div>
 
         <div style={cardStyle}>
           <div style={sectionTitle}><Icon name="mail" size="sm" /> Personalized outreach</div>
-          <p style={{ marginTop: 0, color: '#9ca3af' }}>Use interest-aware nudges and log the touchpoint.</p>
+          <p style={{ marginTop: 0, color: '#475569' }}>Use interest-aware nudges and log the touchpoint.</p>
           {(personalized_outreach || []).slice(0, 4).map((o) => (
-            <div key={o.contact_id} style={{ marginBottom: 10, padding: 10, background: '#0f172a', borderRadius: 10 }}>
-              <div style={{ fontWeight: 700, color: '#e5e7eb' }}>{o.contact_name}</div>
-              <div style={{ color: '#d1d5db', marginTop: 4 }}>{o.message}</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                <span style={{ ...pill, background: '#164e63', color: '#cffafe' }}>{o.channel}</span>
+            <div key={o.contact_id} style={{ marginBottom: 10, padding: 10, background: '#f8fafc', borderRadius: 10, border: '1px solid var(--gray-200)' }}>
+              <div style={{ fontWeight: 700, color: '#0f172a' }}>{o.contact_name}</div>
+              <div style={{ color: '#334155', marginTop: 4 }}>{o.message}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, justifyContent: 'flex-start' }}>
+                <span style={{ ...pill, background: '#cffafe', color: '#0f172a' }}>{o.channel}</span>
                 <button
                   onClick={() => logOutreach(o)}
-                  className="add-button"
-                  style={{ background: '#38bdf8', color: '#0b132b', padding: '6px 10px', fontSize: '0.9rem' }}
+                  className="contacts-action contacts-action-primary"
+                  style={{ padding: '8px 12px', minHeight: 'unset', lineHeight: 1.1, width: 'auto', minWidth: '0' }}
                 >
                   Log outreach
                 </button>
@@ -166,20 +166,20 @@ const RelationshipMaintenancePanel = ({ onReminderChange }) => {
 
         <div style={cardStyle}>
           <div style={sectionTitle}><Icon name="activity" size="sm" /> Relationship health</div>
-          <p style={{ marginTop: 0, color: '#9ca3af' }}>Frequency + recency signals.</p>
+          <p style={{ marginTop: 0, color: '#475569' }}>Frequency + recency signals.</p>
           <div style={{ display: 'grid', gap: 8 }}>
             {(relationship_health || []).slice(0, 5).map((h) => (
-              <div key={h.contact_id} style={{ background: '#0f172a', borderRadius: 10, padding: 10 }}>
+              <div key={h.contact_id} style={{ background: '#f8fafc', borderRadius: 10, padding: 10, border: '1px solid var(--gray-200)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontWeight: 700 }}>{h.contact_name}</div>
-                  <span style={{ ...pill, background: h.health_score >= 70 ? '#16a34a' : '#f59e0b', color: '#04101f' }}>
+                  <span style={{ ...pill, background: h.health_score >= 70 ? '#dcfce7' : '#fef9c3', color: '#166534' }}>
                     {h.health_score}/100
                   </span>
                 </div>
-                <div style={{ color: '#d1d5db', fontSize: '0.9rem', marginTop: 4 }}>
+                <div style={{ color: '#334155', fontSize: '0.95rem', marginTop: 4 }}>
                   {h.engagement_frequency_per_month} touches/mo · {h.status}
                 </div>
-                <div style={{ color: '#9ca3af', fontSize: '0.85rem' }}>
+                <div style={{ color: '#475569', fontSize: '0.85rem' }}>
                   Last touch: {h.last_interaction ? new Date(h.last_interaction).toLocaleDateString() : 'None yet'}
                 </div>
               </div>
@@ -191,14 +191,14 @@ const RelationshipMaintenancePanel = ({ onReminderChange }) => {
           <div style={sectionTitle}><Icon name="message-circle" size="sm" /> Templates</div>
           <p style={{ marginTop: 0, color: '#9ca3af' }}>Ready-to-send messages for common moments.</p>
           {templates && Object.entries(templates).map(([key, list]) => (
-            <div key={key} style={{ marginBottom: 10 }}>
-              <div style={{ textTransform: 'capitalize', color: '#cbd5e1', fontWeight: 700 }}>{key}</div>
+            <div key={key} style={{ marginBottom: 12 }}>
+              <div style={{ textTransform: 'capitalize', color: '#0f172a', fontWeight: 700, marginBottom: 4 }}>{key}</div>
               {(list || []).map((t, idx) => (
-                <div key={`${key}-${idx}`} style={{ background: '#0f172a', borderRadius: 10, padding: 10, marginTop: 6 }}>
-                  <div style={{ color: '#e5e7eb' }}>{t}</div>
+                <div key={`${key}-${idx}`} style={{ background: '#f8fafc', borderRadius: 10, padding: 10, marginTop: 6, border: '1px solid var(--gray-200)' }}>
+                  <div style={{ color: '#0f172a' }}>{t}</div>
                   <button
                     className="contacts-btn-secondary"
-                    style={{ marginTop: 6 }}
+                    style={{ marginTop: 8, width: '100%' }}
                     onClick={() => copyTemplate(t)}
                   >
                     Copy
@@ -211,14 +211,14 @@ const RelationshipMaintenancePanel = ({ onReminderChange }) => {
 
         <div style={cardStyle}>
           <div style={sectionTitle}><Icon name="scale" size="sm" /> Reciprocity</div>
-          <p style={{ marginTop: 0, color: '#9ca3af' }}>Balance of value exchanged.</p>
+          <p style={{ marginTop: 0, color: '#475569' }}>Balance of value exchanged.</p>
           {(reciprocity || []).slice(0, 4).map((r) => (
-            <div key={r.contact_id} style={{ background: '#0f172a', borderRadius: 10, padding: 10, marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div key={r.contact_id} style={{ background: '#f8fafc', borderRadius: 10, padding: 10, marginBottom: 8, border: '1px solid var(--gray-200)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontWeight: 700 }}>{r.contact_name}</div>
-                <span style={{ ...pill, background: '#1d4ed8', color: '#dbeafe' }}>{r.status}</span>
+                <span style={{ ...pill, background: '#e0e7ff', color: '#312e81' }}>{r.status}</span>
               </div>
-              <div style={{ color: '#d1d5db', fontSize: '0.9rem', marginTop: 4 }}>
+              <div style={{ color: '#334155', fontSize: '0.95rem', marginTop: 4 }}>
                 Given {r.given} · Received {r.received} · Follow-ups {r.outstanding_follow_ups}
               </div>
             </div>
@@ -227,39 +227,39 @@ const RelationshipMaintenancePanel = ({ onReminderChange }) => {
 
         <div style={cardStyle}>
           <div style={sectionTitle}><Icon name="book-open" size="sm" /> Industry news</div>
-          <p style={{ marginTop: 0, color: '#9ca3af' }}>Share timely angles to add value.</p>
+          <p style={{ marginTop: 0, color: '#475569' }}>Share timely angles to add value.</p>
           {(industry_news || []).slice(0, 4).map((n) => (
-            <div key={n.contact_id} style={{ background: '#0f172a', borderRadius: 10, padding: 10, marginBottom: 8 }}>
+            <div key={n.contact_id} style={{ background: '#f8fafc', borderRadius: 10, padding: 10, marginBottom: 8, border: '1px solid var(--gray-200)' }}>
               <div style={{ fontWeight: 700 }}>{n.contact_name}</div>
-              <div style={{ color: '#cbd5e1' }}>{n.headline}</div>
-              <div style={{ color: '#9ca3af', fontSize: '0.9rem' }}>{n.angle}</div>
+              <div style={{ color: '#0f172a' }}>{n.headline}</div>
+              <div style={{ color: '#475569', fontSize: '0.9rem' }}>{n.angle}</div>
             </div>
           ))}
         </div>
 
         <div style={cardStyle}>
           <div style={sectionTitle}><Icon name="trending-up" size="sm" /> Strengthening actions</div>
-          <p style={{ marginTop: 0, color: '#9ca3af' }}>Small moves that keep momentum.</p>
+          <p style={{ marginTop: 0, color: '#475569' }}>Small moves that keep momentum.</p>
           {(strengthening_actions || []).slice(0, 4).map((a) => (
-            <div key={a.contact_id} style={{ background: '#0f172a', borderRadius: 10, padding: 10, marginBottom: 8 }}>
+            <div key={a.contact_id} style={{ background: '#f8fafc', borderRadius: 10, padding: 10, marginBottom: 8, border: '1px solid var(--gray-200)' }}>
               <div style={{ fontWeight: 700 }}>{a.contact_name}</div>
-              <div style={{ color: '#e5e7eb' }}>{a.action}</div>
-              <div style={{ color: '#9ca3af', fontSize: '0.9rem' }}>{a.why}</div>
+              <div style={{ color: '#0f172a' }}>{a.action}</div>
+              <div style={{ color: '#475569', fontSize: '0.9rem' }}>{a.why}</div>
             </div>
           ))}
         </div>
 
         <div style={cardStyle}>
           <div style={sectionTitle}><Icon name="link" size="sm" /> Impact on opportunities</div>
-          <p style={{ marginTop: 0, color: '#9ca3af' }}>How relationships fuel pipelines.</p>
-          <div style={{ color: '#e5e7eb', marginBottom: 8 }}>
+          <p style={{ marginTop: 0, color: '#475569' }}>How relationships fuel pipelines.</p>
+          <div style={{ color: '#0f172a', marginBottom: 8 }}>
             Contacts tied to jobs: {opportunity_impact?.contacts_with_job_links || 0} <br />
             Total linked roles: {opportunity_impact?.total_job_links || 0}
           </div>
           {(opportunity_impact?.top_relationships || []).map((c) => (
-            <div key={c.contact_id} style={{ background: '#0f172a', borderRadius: 10, padding: 10, marginBottom: 8 }}>
+            <div key={c.contact_id} style={{ background: '#f8fafc', borderRadius: 10, padding: 10, marginBottom: 8, border: '1px solid var(--gray-200)' }}>
               <div style={{ fontWeight: 700 }}>{c.contact_name}</div>
-              <div style={{ color: '#d1d5db', fontSize: '0.9rem' }}>
+              <div style={{ color: '#334155', fontSize: '0.9rem' }}>
                 Linked roles: {c.linked_jobs} · Recent touches: {c.recent_interactions}
               </div>
             </div>
