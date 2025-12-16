@@ -3,22 +3,46 @@
 from django.db import migrations, models
 
 
-def safe_remove_fields(apps, schema_editor):
-    """Safely remove fields only if they exist (for fresh databases they won't)."""
+def safe_schema_changes(apps, schema_editor):
+    """
+    Idempotent migration: safely add/remove columns only if needed.
+    Handles both fresh databases and partially migrated ones.
+    """
     from django.db import connection
     with connection.cursor() as cursor:
-        # Check if columns exist before trying to remove them
+        # Get existing columns for gmailintegration
         cursor.execute("""
             SELECT column_name FROM information_schema.columns
             WHERE table_name = 'core_gmailintegration'
-            AND column_name IN ('auto_update_status', 'scan_frequency')
         """)
-        existing_cols = [row[0] for row in cursor.fetchall()]
+        gmail_cols = {row[0] for row in cursor.fetchall()}
         
-        if 'auto_update_status' in existing_cols:
+        # Get existing columns for jobentry
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'core_jobentry'
+        """)
+        job_cols = {row[0] for row in cursor.fetchall()}
+        
+        # Remove old gmail fields if they exist
+        if 'auto_update_status' in gmail_cols:
             cursor.execute('ALTER TABLE core_gmailintegration DROP COLUMN auto_update_status')
-        if 'scan_frequency' in existing_cols:
+        if 'scan_frequency' in gmail_cols:
             cursor.execute('ALTER TABLE core_gmailintegration DROP COLUMN scan_frequency')
+        
+        # Add new gmail fields if they don't exist
+        if 'rate_limit_reset_at' not in gmail_cols:
+            cursor.execute('ALTER TABLE core_gmailintegration ADD COLUMN rate_limit_reset_at TIMESTAMP NULL')
+        
+        # Add jobentry location fields if they don't exist
+        if 'location_lat' not in job_cols:
+            cursor.execute('ALTER TABLE core_jobentry ADD COLUMN location_lat DOUBLE PRECISION NULL')
+        if 'location_lon' not in job_cols:
+            cursor.execute('ALTER TABLE core_jobentry ADD COLUMN location_lon DOUBLE PRECISION NULL')
+        if 'location_geo_precision' not in job_cols:
+            cursor.execute('ALTER TABLE core_jobentry ADD COLUMN location_geo_precision VARCHAR(20) NULL')
+        if 'location_geo_updated_at' not in job_cols:
+            cursor.execute('ALTER TABLE core_jobentry ADD COLUMN location_geo_updated_at TIMESTAMP NULL')
 
 
 class Migration(migrations.Migration):
@@ -28,31 +52,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Safely remove old fields only if they exist
-        migrations.RunPython(safe_remove_fields, migrations.RunPython.noop),
-        migrations.AddField(
-            model_name='gmailintegration',
-            name='rate_limit_reset_at',
-            field=models.DateTimeField(blank=True, help_text='When the rate limit will reset', null=True),
-        ),
-        migrations.AddField(
-            model_name='jobentry',
-            name='location_geo_precision',
-            field=models.CharField(blank=True, choices=[('exact', 'Exact Address'), ('street', 'Street Level'), ('city', 'City Level'), ('region', 'Region/State'), ('country', 'Country')], help_text='Precision level of geocoded location', max_length=20, null=True),
-        ),
-        migrations.AddField(
-            model_name='jobentry',
-            name='location_geo_updated_at',
-            field=models.DateTimeField(blank=True, help_text='Last time coordinates were updated', null=True),
-        ),
-        migrations.AddField(
-            model_name='jobentry',
-            name='location_lat',
-            field=models.FloatField(blank=True, help_text='Latitude coordinate for job location', null=True),
-        ),
-        migrations.AddField(
-            model_name='jobentry',
-            name='location_lon',
-            field=models.FloatField(blank=True, help_text='Longitude coordinate for job location', null=True),
-        ),
+        # Single RunPython that handles all changes idempotently
+        migrations.RunPython(safe_schema_changes, migrations.RunPython.noop),
     ]
