@@ -95,27 +95,31 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
 
     return new Promise((resolve, reject) => {
       const image = new Image();
-      image.src = originalImageSrc;
+      image.crossOrigin = 'anonymous';
       
       image.onload = () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
 
+        // Ensure valid dimensions
+        const width = Math.max(1, Math.floor(croppedAreaPixels.width));
+        const height = Math.max(1, Math.floor(croppedAreaPixels.height));
+
         // Set canvas size to cropped area
-        canvas.width = croppedAreaPixels.width;
-        canvas.height = croppedAreaPixels.height;
+        canvas.width = width;
+        canvas.height = height;
 
         // Draw the cropped image
         ctx.drawImage(
           image,
-          croppedAreaPixels.x,
-          croppedAreaPixels.y,
-          croppedAreaPixels.width,
-          croppedAreaPixels.height,
+          Math.floor(croppedAreaPixels.x),
+          Math.floor(croppedAreaPixels.y),
+          Math.floor(croppedAreaPixels.width),
+          Math.floor(croppedAreaPixels.height),
           0,
           0,
-          croppedAreaPixels.width,
-          croppedAreaPixels.height
+          width,
+          height
         );
 
         // Convert canvas to blob
@@ -127,17 +131,20 @@ const ProfilePictureUpload = ({ onUploadSuccess }) => {
           
           // Create a new File object from the blob
           const croppedFile = new File([blob], selectedFile.name, {
-            type: selectedFile.type,
+            type: selectedFile.type || 'image/jpeg',
             lastModified: Date.now(),
           });
           
           resolve(croppedFile);
-        }, selectedFile.type);
+        }, selectedFile.type || 'image/jpeg', 0.9);
       };
 
       image.onerror = () => {
         reject(new Error('Failed to load image'));
       };
+      
+      // Set src AFTER setting up event handlers
+      image.src = originalImageSrc;
     });
   };
 
