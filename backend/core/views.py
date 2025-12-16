@@ -1551,7 +1551,7 @@ def github_callback(request):
     if not state_expected:
         logger.warning(f"OAuth session not found for state param: {state_param[:16] if state_param else 'None'}")
         # Return a more helpful error with redirect to frontend
-        frontend_url = os.environ.get('FRONTEND_BASE_URL', os.environ.get('FRONTEND_URL', ''))
+        frontend_url = (os.environ.get('FRONTEND_BASE_URL') or os.environ.get('FRONTEND_URL') or '').strip().rstrip('/')
         if frontend_url:
             error_url = f"{frontend_url}/projects?error=oauth_session_expired"
             return redirect(error_url)
@@ -1565,7 +1565,8 @@ def github_callback(request):
     client_id = os.environ.get('GITHUB_CLIENT_ID')
     client_secret = os.environ.get('GITHUB_CLIENT_SECRET')
     redirect_uri = os.environ.get('GITHUB_OAUTH_REDIRECT_URI') or request.build_absolute_uri(reverse('core:github-callback'))
-    frontend_base = os.environ.get('FRONTEND_BASE_URL', os.environ.get('FRONTEND_URL', 'http://localhost:3000')).rstrip('/')
+    # Ensure frontend_base is clean (no trailing whitespace/newlines)
+    frontend_base = (os.environ.get('FRONTEND_BASE_URL') or os.environ.get('FRONTEND_URL') or 'http://localhost:3000').strip().rstrip('/')
     
     if not client_id or not client_secret:
         return redirect(f"{frontend_base}/projects?error=oauth_not_configured")
@@ -1589,7 +1590,6 @@ def github_callback(request):
 
     user_resp = requests.get('https://api.github.com/user', headers=_github_headers(access_token), timeout=20)
     if user_resp.status_code != 200:
-        frontend_base = os.environ.get('FRONTEND_BASE_URL', os.environ.get('FRONTEND_URL', 'http://localhost:3000')).rstrip('/')
         return redirect(f"{frontend_base}/projects?error=github_user_fetch_failed")
     gh_user = user_resp.json() or {}
     gh_id = gh_user.get('id')
@@ -1613,7 +1613,6 @@ def github_callback(request):
     
     if not profile:
         logger.error(f"GitHub callback: profile not found for user_id={user_id}")
-        frontend_base = os.environ.get('FRONTEND_BASE_URL', os.environ.get('FRONTEND_URL', 'http://localhost:3000')).rstrip('/')
         return redirect(f"{frontend_base}/projects?error=profile_not_found")
 
     # Handle unique github_user_id across accounts: transfer to current candidate if already linked
@@ -1654,7 +1653,7 @@ def github_callback(request):
     except Exception:
         pass
 
-    frontend_base = os.environ.get('FRONTEND_BASE_URL', 'http://localhost:3000').rstrip('/')
+    frontend_base = os.environ.get('FRONTEND_BASE_URL', 'http://localhost:3000').strip().rstrip('/')
     # Redirect to Projects page after successful connect
     return redirect(f"{frontend_base}/projects?github=connected")
 
@@ -3478,8 +3477,8 @@ def contacts_import_callback(request):
         # Redirect the user's browser back to the frontend app so the UI
         # can show import progress/results. Frontend URL is configured
         # via settings.FRONTEND_URL or defaults to http://localhost:3000
-        frontend_base = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
-        frontend_url = f"{frontend_base.rstrip('/')}/contacts?import_job={job.id}"
+        frontend_base = str(getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')).strip().rstrip('/')
+        frontend_url = f"{frontend_base}/contacts?import_job={job.id}"
         # Prefer redirect for browser-based OAuth flows so the user returns
         # to the frontend app automatically. Return JSON only when the
         # client explicitly requested JSON (API clients/tests).
@@ -3502,8 +3501,8 @@ def contacts_import_callback(request):
         job.status = 'failed'
         job.errors = [_summarize_exception(exc)]
         job.save(update_fields=['status', 'errors'])
-        frontend_base = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
-        frontend_url = f"{frontend_base.rstrip('/')}/contacts?import_job={job.id}&status=failed"
+        frontend_base = str(getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')).strip().rstrip('/')
+        frontend_url = f"{frontend_base}/contacts?import_job={job.id}&status=failed"
         if request.GET.get('code') and request.GET.get('state'):
             return redirect(frontend_url)
 
@@ -3584,7 +3583,7 @@ def _calendar_oauth_response(
     redirect_override: Optional[str] = None,
     calendar_state: Optional[str] = None,
 ):
-    frontend_base = redirect_override or f"{getattr(settings, 'FRONTEND_URL', 'http://localhost:3000').rstrip('/')}/settings/integrations"
+    frontend_base = redirect_override or f"{str(getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')).strip().rstrip('/')}/settings/integrations"
     params = {'calendar': calendar_state or ('connected' if success else 'error')}
     if message and not success:
         params['error'] = message[:120]
