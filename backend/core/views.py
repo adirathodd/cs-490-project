@@ -1472,12 +1472,13 @@ def github_connect(request):
         'ts': timezone.now().isoformat(),
     }
     request.session['github_oauth'] = session_payload
-    
+
     # Store in cache - this is critical for production where session cookies may not work cross-domain
     from django.core.cache import cache
     cache_key = f'gh_oauth:{state}'
     try:
         cache.set(cache_key, session_payload, timeout=600)
+        logger.info(f"GitHub OAuth: stored state in cache, user_id={session_payload['user_id']}")
         # Verify the cache write succeeded
         if not cache.get(cache_key):
             logger.warning(f"GitHub OAuth: Cache write verification failed for state {state[:8]}...")
@@ -1502,9 +1503,10 @@ def github_connect(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def github_callback(request):
-    state_param = request.GET.get('state', '')
-    
     # Retrieve state from cache first (more reliable across domains), then session
+    state_param = request.GET.get('state', '')
+    logger.info(f"GitHub callback received. State param: {state_param[:8] if state_param else 'None'}...")
+
     from django.core.cache import cache
     cache_key = f"gh_oauth:{state_param}"
     cached = None
@@ -1522,6 +1524,8 @@ def github_callback(request):
     state_expected = data.get('state')
     include_private = bool(data.get('include_private'))
     user_id = data.get('user_id')
+    
+    logger.info(f"OAuth data - state_expected: {bool(state_expected)}, user_id: {user_id}")
 
     if not state_expected:
         logger.error(f"GitHub OAuth callback: OAuth session not found. State param: {state_param[:8]}..., Session keys: {list(request.session.keys())}")
