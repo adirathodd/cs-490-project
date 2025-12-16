@@ -17,15 +17,17 @@ import logging
 import math
 
 from rest_framework import status, serializers
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.decorators import api_view, permission_classes, parser_classes, authentication_classes
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.authentication import SessionAuthentication
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.db.models import Min, Q
+from django.core.cache import cache
 from django.core.management import call_command
 from django.core.mail import send_mail
 from django.http import HttpResponse, JsonResponse, HttpResponseRedirect
@@ -43,8 +45,8 @@ from urllib.parse import urlencode
 from core.models import GitHubAccount, ApplicationQualityReview
 from core import followup_utils
 import sys
-from django.conf import settings
 from core.application_quality import ApplicationQualityScorer, build_quality_history
+from core.utils.cache_utils import build_jobs_cache_key
 from core.serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
@@ -229,6 +231,14 @@ from core import google_import
 import uuid
 import os
 import requests
+import psutil
+
+
+class JobEntryPagination(PageNumberPagination):
+    """Standard pagination for job lists."""
+    page_size = settings.REST_FRAMEWORK.get('PAGE_SIZE', 20)
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 
 # Health check endpoint for production monitoring (UC-133)
@@ -254,6 +264,38 @@ def health_check(request):
         "database": db_status,
         "version": "1.0.0",
     }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def system_metrics(request):
+    """Lightweight resource metrics for operational dashboards."""
+    data = {
+        "cpu_percent": psutil.cpu_percent(interval=None),
+        "memory": {
+            "total": psutil.virtual_memory().total,
+            "used": psutil.virtual_memory().used,
+            "percent": psutil.virtual_memory().percent,
+        },
+        "cache_backend": settings.CACHES.get('default', {}).get('BACKEND'),
+        "cache_location": settings.CACHES.get('default', {}).get('LOCATION'),
+        "db": {},
+    }
+
+    try:
+        from django.db import connection
+        data["db"]["vendor"] = connection.vendor
+        data["db"]["conn_max_age"] = connection.settings_dict.get("CONN_MAX_AGE")
+        data["db"]["conn_health_checks"] = connection.settings_dict.get("CONN_HEALTH_CHECKS")
+        if connection.vendor == 'postgresql':
+            with connection.cursor() as cursor:
+                cursor.execute("select count(*) from pg_stat_activity")
+                row = cursor.fetchone()
+                data["db"]["active_connections"] = row[0] if row else None
+    except Exception as exc:
+        data["db"]["error"] = str(exc)
+
+    return Response(data, status=status.HTTP_200_OK)
 
 
 # UC-116: Geocoding and commute helpers
@@ -6006,9 +6048,10 @@ def jobs_list_create(request):
         if request.method == 'GET':
             # Start with base queryset
             qs = JobEntry.objects.filter(candidate=profile)
+            params = request.query_params
 
             # UC-045: Filter by archive status (default: show only non-archived)
-            show_archived = (request.GET.get('archived') or '').strip().lower()
+            show_archived = (params.get('archived') or '').strip().lower()
             if show_archived == 'true':
                 qs = qs.filter(is_archived=True)
             elif show_archived == 'all':
@@ -6017,12 +6060,12 @@ def jobs_list_create(request):
                 qs = qs.filter(is_archived=False)
 
             # Optional simple status filter (for pipeline and quick filters)
-            status_param = (request.query_params.get('status') or request.GET.get('status') or '').strip()
+            status_param = (params.get('status') or '').strip()
             if status_param:
                 qs = qs.filter(status=status_param)
 
             # UC-039: Advanced search and filters
-            search_query = (request.GET.get('q') or '').strip()
+            search_query = (params.get('q') or '').strip()
             if search_query:
                 qs = qs.filter(
                     Q(title__icontains=search_query) |
@@ -6030,20 +6073,20 @@ def jobs_list_create(request):
                     Q(description__icontains=search_query)
                 )
 
-            industry = (request.GET.get('industry') or '').strip()
+            industry = (params.get('industry') or '').strip()
             if industry:
                 qs = qs.filter(industry__icontains=industry)
 
-            location = (request.GET.get('location') or '').strip()
+            location = (params.get('location') or '').strip()
             if location:
                 qs = qs.filter(location__icontains=location)
 
-            job_type = (request.GET.get('job_type') or '').strip()
+            job_type = (params.get('job_type') or '').strip()
             if job_type:
                 qs = qs.filter(job_type=job_type)
 
-            salary_min = (request.GET.get('salary_min') or '').strip()
-            salary_max = (request.GET.get('salary_max') or '').strip()
+            salary_min = (params.get('salary_min') or '').strip()
+            salary_max = (params.get('salary_max') or '').strip()
             if salary_min:
                 try:
                     from decimal import Decimal, InvalidOperation
@@ -6057,8 +6100,8 @@ def jobs_list_create(request):
                 except ValueError:
                     pass
 
-            deadline_from = (request.GET.get('deadline_from') or '').strip()
-            deadline_to = (request.GET.get('deadline_to') or '').strip()
+            deadline_from = (params.get('deadline_from') or '').strip()
+            deadline_to = (params.get('deadline_to') or '').strip()
             if deadline_from:
                 try:
                     from datetime import datetime
@@ -6075,7 +6118,7 @@ def jobs_list_create(request):
                     pass
 
             # Sorting
-            sort_by = (request.GET.get('sort') or 'date_added').strip()
+            sort_by = (params.get('sort') or 'date_added').strip()
             if sort_by == 'deadline':
                 qs = qs.order_by(F('application_deadline').asc(nulls_last=True), '-updated_at')
             elif sort_by == 'salary':
@@ -6088,40 +6131,25 @@ def jobs_list_create(request):
                 qs = qs.order_by('company_name', '-updated_at')
             else:
                 qs = qs.order_by('-updated_at', '-id')
-            
-            results = JobEntrySerializer(qs, many=True).data
-            # Maintain backward compatibility: return list when default params used
-            default_request = (
-                not status_param and
-                not search_query and
-                not industry and
-                not location and
-                not job_type and
-                not salary_min and
-                not salary_max and
-                not deadline_from and
-                not deadline_to and
-                sort_by in (None, '', 'date_added')
-            )
 
-            if default_request:
-                return Response(results, status=status.HTTP_200_OK)
+            # Allow explicit opt-out of pagination for legacy clients
+            paginate = (params.get('paginate', 'true') or 'true').lower() != 'false'
+            if not paginate:
+                data = JobEntrySerializer(qs, many=True).data
+                return Response(data, status=status.HTTP_200_OK)
 
-            return Response({
-                'results': results,
-                'count': len(results),
-                'search_query': search_query
-            }, status=status.HTTP_200_OK)
+            cache_key = build_jobs_cache_key('jobs:list', profile.id, params)
+            cached = cache.get(cache_key)
+            if cached:
+                return Response(cached, status=status.HTTP_200_OK)
 
-            data = JobEntrySerializer(qs, many=True).data
-
-            # Return a simple list unless advanced search/filter params (excluding status) are used
-            advanced_used = bool(
-                search_query or industry or location or job_type or salary_min or salary_max or deadline_from or deadline_to or (sort_by and sort_by != 'date_added')
-            )
-            if advanced_used:
-                return Response({'results': data, 'count': len(data), 'search_query': search_query}, status=status.HTTP_200_OK)
-            return Response(data, status=status.HTTP_200_OK)
+            paginator = JobEntryPagination()
+            page = paginator.paginate_queryset(qs, request)
+            serializer = JobEntrySerializer(page, many=True)
+            paginated_response = paginator.get_paginated_response(serializer.data)
+            payload = paginated_response.data
+            cache.set(cache_key, payload, timeout=getattr(settings, 'JOB_LIST_CACHE_TIMEOUT', 60))
+            return Response(payload, status=status.HTTP_200_OK)
 
         # POST
         serializer = JobEntrySerializer(data=request.data)
@@ -6259,7 +6287,15 @@ def jobs_stats(request):
     """
     try:
         profile = CandidateProfile.objects.get(user=request.user)
-        qs = JobEntry.objects.filter(candidate=profile)
+        params = request.query_params
+        is_csv_export = (params.get('export') or '').lower() == 'csv'
+        cache_key = build_jobs_cache_key('jobs:stats', profile.id, params)
+        qs = JobEntry.objects.filter(candidate=profile).select_related('candidate').prefetch_related('status_changes')
+
+        if not is_csv_export:
+            cached = cache.get(cache_key)
+            if cached:
+                return Response(cached, status=status.HTTP_200_OK)
 
         # 1) Counts per status
         statuses = [s for (s, _label) in JobEntry.STATUS_CHOICES]
@@ -6485,8 +6521,11 @@ def jobs_stats(request):
                 # ignore and continue without daily breakdown
                 pass
 
+        if not is_csv_export:
+            cache.set(cache_key, payload, timeout=getattr(settings, 'JOB_STATS_CACHE_TIMEOUT', 300))
+
         # CSV export
-        if request.GET.get('export') == 'csv':
+        if is_csv_export:
             import csv, io
             from django.http import HttpResponse
             output = io.StringIO()

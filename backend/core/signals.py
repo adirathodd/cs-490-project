@@ -1,14 +1,16 @@
 import logging
-from django.dispatch import receiver
-from django.contrib.auth.signals import user_logged_in, user_login_failed, user_logged_out
-from django.db.models.signals import post_save
-from django.contrib.auth import get_user_model
-from django.utils import timezone
-from datetime import timedelta
-
-from core.models import UserAccount, JobEntry
 import os
 import requests
+from datetime import timedelta
+
+from django.contrib.auth import get_user_model
+from django.contrib.auth.signals import user_logged_in, user_login_failed, user_logged_out
+from django.db.models.signals import post_delete, post_save
+from django.dispatch import receiver
+from django.utils import timezone
+
+from core.models import JobEntry, JobStatusChange, UserAccount
+from core.utils.cache_utils import bump_jobs_cache_version
 
 logger = logging.getLogger(__name__)
 
@@ -238,4 +240,27 @@ def geocode_job_location(sender, instance: JobEntry, created: bool, **kwargs):
                 pass
     except Exception:
         # Never raise from signal
+        pass
+
+
+@receiver([post_save, post_delete], sender=JobEntry)
+def invalidate_jobentry_cache(sender, instance: JobEntry, **kwargs):
+    """Invalidate cached job lists/stats when a job changes."""
+    try:
+        candidate_id = getattr(instance, 'candidate_id', None)
+        if candidate_id:
+            bump_jobs_cache_version(candidate_id)
+    except Exception:
+        pass
+
+
+@receiver([post_save, post_delete], sender=JobStatusChange)
+def invalidate_jobstatuschange_cache(sender, instance: JobStatusChange, **kwargs):
+    """Invalidate cached job stats when a status change is recorded."""
+    try:
+        job = getattr(instance, 'job', None)
+        candidate_id = getattr(job, 'candidate_id', None)
+        if candidate_id:
+            bump_jobs_cache_version(candidate_id)
+    except Exception:
         pass

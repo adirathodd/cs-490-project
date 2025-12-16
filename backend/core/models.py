@@ -2374,6 +2374,8 @@ class JobEntry(models.Model):
         ordering = ['-updated_at']
         indexes = [
             models.Index(fields=["candidate", "-updated_at"]),
+            models.Index(fields=["candidate", "created_at"]),
+            models.Index(fields=["candidate", "application_deadline"]),
             models.Index(fields=["job_type"]),
             models.Index(fields=["industry"]),
             models.Index(fields=["candidate", "status"]),

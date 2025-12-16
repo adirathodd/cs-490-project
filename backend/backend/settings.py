@@ -15,6 +15,7 @@ import os
 import socket
 import tempfile
 from pathlib import Path
+import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -129,6 +130,9 @@ def _should_use_sqlite() -> bool:
 
 _USE_SQLITE = _should_use_sqlite()
 
+DB_CONN_MAX_AGE = int(os.environ.get('DJANGO_DB_CONN_MAX_AGE', '120'))
+DB_CONN_HEALTH_CHECKS = os.environ.get('DJANGO_DB_CONN_HEALTH_CHECKS', 'True') == 'True'
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3' if _USE_SQLITE else 'django.db.backends.postgresql',
@@ -137,8 +141,21 @@ DATABASES = {
         'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'postgres'),
         'HOST': os.environ.get('POSTGRES_HOST', 'db'),
         'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+        'CONN_MAX_AGE': DB_CONN_MAX_AGE,
+        'CONN_HEALTH_CHECKS': DB_CONN_HEALTH_CHECKS,
     }
 }
+
+if not _USE_SQLITE:
+    database_url = os.environ.get('DATABASE_URL')
+    if database_url:
+        parsed = dj_database_url.config(
+            default=database_url,
+            conn_max_age=DB_CONN_MAX_AGE,
+            conn_health_checks=DB_CONN_HEALTH_CHECKS,
+        )
+        if parsed:
+            DATABASES['default'] = parsed
 
 if _USE_SQLITE:
     DATABASES['default'].pop('USER')
@@ -367,13 +384,20 @@ LINKEDIN_CLIENT_SECRET = os.environ.get('LINKEDIN_CLIENT_SECRET', '')
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', os.environ.get('REDIS_URL', 'redis://redis:6379/0'))
 CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', CELERY_BROKER_URL)
 
+JOB_LIST_CACHE_TIMEOUT = int(os.environ.get('JOB_LIST_CACHE_TIMEOUT', '60'))
+JOB_STATS_CACHE_TIMEOUT = int(os.environ.get('JOB_STATS_CACHE_TIMEOUT', '300'))
+
 # Django Cache - use Redis for caching (including OAuth state tokens)
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
         'LOCATION': os.environ.get('REDIS_URL', 'redis://redis:6379/1'),  # Use DB 1 for cache
+        'TIMEOUT': int(os.environ.get('CACHE_DEFAULT_TIMEOUT', '300')),
         'OPTIONS': {
-            'db': '1',
+            'max_connections': int(os.environ.get('REDIS_MAX_CONNECTIONS', '40')),
+            'health_check_interval': int(os.environ.get('REDIS_HEALTH_CHECK_INTERVAL', '30')),
+            'socket_timeout': float(os.environ.get('REDIS_SOCKET_TIMEOUT', '5')),
+            'retry_on_timeout': True,
         }
     }
 }

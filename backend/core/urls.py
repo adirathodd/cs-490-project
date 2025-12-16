@@ -16,6 +16,7 @@ urlpatterns = [
     path('auth/login', views.login_user, name='login'),
     path('auth/verify-token', views.verify_token, name='verify-token'),
     path('auth/oauth/link', views.oauth_link_via_provider, name='oauth-link-provider'),
+    path('admin/system-metrics', views.system_metrics, name='system-metrics'),
     # Back-compat route expected by tests
     path('auth/oauth/github', views.oauth_github, name='oauth-github'),
     path('auth/logout', views.logout_user, name='logout'),
