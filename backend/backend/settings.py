@@ -48,12 +48,40 @@ firebase_creds_json = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON', '')
 if firebase_creds_json and not os.environ.get('FIREBASE_CREDENTIALS'):
     try:
         creds_data = json.loads(firebase_creds_json)
+        # Properly handle newlines in the private key
+        if 'private_key' in creds_data and isinstance(creds_data['private_key'], str):
+            # Ensure proper newlines: handle both \\n (escaped) and literal \n in JSON strings
+            private_key = creds_data['private_key']
+            # If the key has literal \n (after JSON parsing), it's correct
+            # If it has \\n, we need to replace them
+            if '\\n' in private_key:
+                creds_data['private_key'] = private_key.replace('\\n', '\n')
+        
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             json.dump(creds_data, f)
-            os.environ['FIREBASE_CREDENTIALS'] = f.name
-            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = f.name
-    except json.JSONDecodeError:
-        pass
+            temp_file_path = f.name
+            os.environ['FIREBASE_CREDENTIALS'] = temp_file_path
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = temp_file_path
+            
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Firebase credentials loaded from GOOGLE_APPLICATION_CREDENTIALS_JSON, temp file: {temp_file_path}")
+    except json.JSONDecodeError as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to parse GOOGLE_APPLICATION_CREDENTIALS_JSON: {e}")
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to initialize Firebase credentials: {e}")
+
+# If FIREBASE_CREDENTIALS is a relative path, make it absolute
+firebase_cred_path = os.environ.get('FIREBASE_CREDENTIALS', '')
+if firebase_cred_path and not os.path.isabs(firebase_cred_path):
+    abs_path = BASE_DIR / firebase_cred_path
+    if abs_path.exists():
+        os.environ['FIREBASE_CREDENTIALS'] = str(abs_path)
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = str(abs_path)
 
 # Read secret key and debug flag from environment with sensible defaults
 # ⚠️  UC-117: All external API calls must use core.api_monitoring.track_api_call()

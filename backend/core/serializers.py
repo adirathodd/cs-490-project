@@ -785,8 +785,8 @@ class ProfilePictureSerializer(serializers.ModelSerializer):
         if obj.profile_picture:
             # Verify the file actually exists before returning URL
             try:
-                from django.core.files.storage import default_storage
-                if obj.profile_picture.name and default_storage.exists(obj.profile_picture.name):
+                from core.storage_utils import file_exists
+                if obj.profile_picture.name and file_exists(obj.profile_picture):
                     request = self.context.get('request')
                     if request:
                         return request.build_absolute_uri(obj.profile_picture.url)
@@ -811,8 +811,8 @@ class ProfilePictureSerializer(serializers.ModelSerializer):
         """Check if user has uploaded a profile picture."""
         if obj.profile_picture:
             try:
-                from django.core.files.storage import default_storage
-                return obj.profile_picture.name and default_storage.exists(obj.profile_picture.name)
+                from core.storage_utils import file_exists
+                return obj.profile_picture.name and file_exists(obj.profile_picture)
             except Exception:
                 return False
         return False
