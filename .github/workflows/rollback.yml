@@ -235,57 +235,6 @@ jobs:
             echo "message=Rollback failed" >> $GITHUB_OUTPUT
           fi
 
-      - name: Post to Slack
-        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: |
-          curl -X POST -H 'Content-type: application/json' \
-            --data "{
-              \"text\": \"${{ steps.status.outputs.emoji }} *Rollback - ${{ github.event.inputs.environment }}*\",
-              \"blocks\": [
-                {
-                  \"type\": \"header\",
-                  \"text\": {
-                    \"type\": \"plain_text\",
-                    \"text\": \"${{ steps.status.outputs.emoji }} Rollback - ${{ github.event.inputs.environment }}\"
-                  }
-                },
-                {
-                  \"type\": \"section\",
-                  \"fields\": [
-                    {\"type\": \"mrkdwn\", \"text\": \"*Status:*\n${{ steps.status.outputs.message }}\"},
-                    {\"type\": \"mrkdwn\", \"text\": \"*Environment:*\n${{ github.event.inputs.environment }}\"},
-                    {\"type\": \"mrkdwn\", \"text\": \"*Target SHA:*\n\`${{ needs.prepare.outputs.target-sha }}\`\"},
-                    {\"type\": \"mrkdwn\", \"text\": \"*Initiated By:*\n${{ github.actor }}\"},
-                    {\"type\": \"mrkdwn\", \"text\": \"*Reason:*\n${{ github.event.inputs.reason }}\"}
-                  ]
-                }
-              ]
-            }" \
-            "$SLACK_WEBHOOK_URL" || true
-
-      - name: Post to Discord
-        if: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: |
-          curl -X POST -H 'Content-Type: application/json' \
-            --data "{
-              \"embeds\": [{
-                \"title\": \"${{ steps.status.outputs.emoji }} Rollback - ${{ github.event.inputs.environment }}\",
-                \"description\": \"${{ steps.status.outputs.message }}\",
-                \"color\": ${{ steps.status.outputs.status == 'success' && '3066993' || '15158332' }},
-                \"fields\": [
-                  {\"name\": \"Environment\", \"value\": \"${{ github.event.inputs.environment }}\", \"inline\": true},
-                  {\"name\": \"Target SHA\", \"value\": \"\`${{ needs.prepare.outputs.target-sha }}\`\", \"inline\": true},
-                  {\"name\": \"Initiated By\", \"value\": \"${{ github.actor }}\", \"inline\": true},
-                  {\"name\": \"Reason\", \"value\": \"${{ github.event.inputs.reason }}\", \"inline\": false}
-                ]
-              }]
-            }" \
-            "$DISCORD_WEBHOOK_URL" || true
-
   # ============================================
   # Record Rollback
   # ============================================
