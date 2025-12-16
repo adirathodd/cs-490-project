@@ -61,6 +61,7 @@ import NavBar from './components/common/NavBar';
 import Breadcrumbs from './components/common/Breadcrumbs';
 import { MockInterviewContainer, QuestionBankBrowser, ResponseCoach, ResponseCoachLanding, InterviewResearchBrief, ResponseLibrary } from './components/interview';
 import APIMonitoringDashboard from './components/admin/APIMonitoringDashboard';
+import DeploymentDashboard from './components/admin/DeploymentDashboard';
 import './App.css';
 
 function App() {
@@ -492,6 +493,16 @@ function App() {
                 <NavBar />
                 <Breadcrumbs />
                 <APIMonitoringDashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/admin/deployments"
+            element={
+              <PrivateRoute>
+                <NavBar />
+                <Breadcrumbs />
+                <DeploymentDashboard />
               </PrivateRoute>
             }
           />

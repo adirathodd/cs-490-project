@@ -222,7 +222,7 @@ class ProfilePictureUploadTests(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
     
-    @patch('core.views.delete_old_picture')
+    @patch('core.views.delete_file')
     def test_delete_profile_picture(self, mock_delete):
         """Test deleting profile picture"""
         mock_delete.return_value = None

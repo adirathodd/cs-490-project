@@ -6578,3 +6578,169 @@ class MaterialVersionApplication(models.Model):
         if self.outcome_date and self.applied_date:
             return (self.outcome_date - self.applied_date).days
         return None
+
+
+# ============================================
+# Deployment Tracking Models (UC-099)
+# ============================================
+
+class Deployment(models.Model):
+    """
+    Tracks deployment history for CI/CD pipeline monitoring.
+    Records every deployment to staging and production environments.
+    """
+    ENVIRONMENT_CHOICES = [
+        ('staging', 'Staging'),
+        ('production', 'Production'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('in_progress', 'In Progress'),
+        ('success', 'Success'),
+        ('failed', 'Failed'),
+        ('rolled_back', 'Rolled Back'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Deployment info
+    environment = models.CharField(max_length=20, choices=ENVIRONMENT_CHOICES, db_index=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    
+    # Git info
+    commit_sha = models.CharField(max_length=40, db_index=True)
+    commit_message = models.TextField(blank=True)
+    branch = models.CharField(max_length=255, default='main')
+    
+    # Deployment metadata
+    deployed_by = models.CharField(max_length=100, blank=True, help_text='GitHub username or system')
+    workflow_run_id = models.CharField(max_length=50, blank=True, help_text='GitHub Actions run ID')
+    
+    # URLs
+    frontend_url = models.URLField(blank=True)
+    backend_url = models.URLField(blank=True)
+    
+    # Deployment IDs from providers
+    backend_deployment_id = models.CharField(max_length=100, blank=True)
+    frontend_deployment_id = models.CharField(max_length=100, blank=True)
+    
+    # Timing
+    started_at = models.DateTimeField(default=timezone.now)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    
+    # Rollback info
+    is_rollback = models.BooleanField(default=False)
+    rollback_from_sha = models.CharField(max_length=40, blank=True)
+    rollback_reason = models.TextField(blank=True)
+    rolled_back_by = models.ForeignKey(
+        'Deployment',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='rollback_target',
+        help_text='The deployment that rolled back this deployment'
+    )
+    
+    # Test results
+    backend_tests_passed = models.BooleanField(null=True, blank=True)
+    frontend_tests_passed = models.BooleanField(null=True, blank=True)
+    test_coverage_backend = models.FloatField(null=True, blank=True, help_text='Backend test coverage percentage')
+    test_coverage_frontend = models.FloatField(null=True, blank=True, help_text='Frontend test coverage percentage')
+    
+    # Health check
+    health_check_passed = models.BooleanField(null=True, blank=True)
+    health_check_attempts = models.PositiveSmallIntegerField(default=0)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-started_at']
+        indexes = [
+            models.Index(fields=['environment', '-started_at']),
+            models.Index(fields=['status', '-started_at']),
+            models.Index(fields=['commit_sha']),
+            models.Index(fields=['-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.environment} - {self.commit_sha[:7]} ({self.status})"
+    
+    @property
+    def duration_display(self):
+        """Return human-readable duration."""
+        if self.duration_seconds:
+            minutes, seconds = divmod(self.duration_seconds, 60)
+            if minutes > 0:
+                return f"{minutes}m {seconds}s"
+            return f"{seconds}s"
+        return None
+    
+    @classmethod
+    def get_deployment_stats(cls, environment=None, days=30):
+        """Get deployment statistics for the specified period."""
+        from django.db.models import Avg, Count, Q
+        
+        since = timezone.now() - timedelta(days=days)
+        queryset = cls.objects.filter(started_at__gte=since)
+        
+        if environment:
+            queryset = queryset.filter(environment=environment)
+        
+        stats = queryset.aggregate(
+            total=Count('id'),
+            successful=Count('id', filter=Q(status='success')),
+            failed=Count('id', filter=Q(status='failed')),
+            rolled_back=Count('id', filter=Q(status='rolled_back')),
+            avg_duration=Avg('duration_seconds'),
+        )
+        
+        stats['success_rate'] = (
+            (stats['successful'] / stats['total'] * 100) 
+            if stats['total'] > 0 else 0
+        )
+        
+        return stats
+    
+    @classmethod
+    def get_recent_deployments(cls, environment=None, limit=10):
+        """Get recent deployments."""
+        queryset = cls.objects.all()
+        if environment:
+            queryset = queryset.filter(environment=environment)
+        return queryset[:limit]
+
+
+class DeploymentLog(models.Model):
+    """
+    Stores log entries for deployments for debugging and audit purposes.
+    """
+    LOG_LEVEL_CHOICES = [
+        ('info', 'Info'),
+        ('warning', 'Warning'),
+        ('error', 'Error'),
+        ('debug', 'Debug'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    deployment = models.ForeignKey(
+        Deployment,
+        on_delete=models.CASCADE,
+        related_name='logs'
+    )
+    level = models.CharField(max_length=10, choices=LOG_LEVEL_CHOICES, default='info')
+    message = models.TextField()
+    step = models.CharField(max_length=100, blank=True, help_text='Deployment step name')
+    timestamp = models.DateTimeField(default=timezone.now)
+    
+    class Meta:
+        ordering = ['timestamp']
+        indexes = [
+            models.Index(fields=['deployment', 'timestamp']),
+        ]
+    
+    def __str__(self):
+        return f"[{self.level}] {self.deployment.commit_sha[:7]}: {self.message[:50]}"
