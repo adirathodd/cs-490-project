@@ -1469,6 +1469,7 @@ def github_connect(request):
         'state': state,
         'include_private': include_private,
         'user_id': str(getattr(request.user, 'id', '')),
+        'profile_id': str(profile.id),
         'ts': timezone.now().isoformat(),
     }
     request.session['github_oauth'] = session_payload
@@ -1476,14 +1477,21 @@ def github_connect(request):
     # Store in cache - this is critical for production where session cookies may not work cross-domain
     from django.core.cache import cache
     cache_key = f'gh_oauth:{state}'
+    cache_stored = False
     try:
         cache.set(cache_key, session_payload, timeout=600)
-        logger.info(f"GitHub OAuth: stored state in cache, user_id={session_payload['user_id']}")
-        # Verify the cache write succeeded
-        if not cache.get(cache_key):
-            logger.warning(f"GitHub OAuth: Cache write verification failed for state {state[:8]}...")
+        # Verify the cache write worked
+        verify = cache.get(cache_key)
+        if verify:
+            cache_stored = True
+            logger.info(f"GitHub OAuth: stored state in cache (verified), user_id={session_payload['user_id']}")
+        else:
+            logger.warning(f"GitHub OAuth: cache.set succeeded but verification failed - Redis may not be working")
     except Exception as e:
-        logger.error(f"GitHub OAuth: Failed to store state in cache: {e}")
+        logger.error(f"GitHub OAuth: failed to store state in cache: {e}")
+    
+    if not cache_stored:
+        logger.warning("GitHub OAuth: proceeding without verified cache storage - OAuth callback may fail")
 
     params = {
         'client_id': client_id,
@@ -1511,25 +1519,31 @@ def github_callback(request):
     cache_key = f"gh_oauth:{state_param}"
     cached = None
     try:
-        cached = cache.get(cache_key)
-        if cached:
-            logger.info(f"GitHub OAuth callback: Found state in cache for {state_param[:8]}...")
-        else:
-            logger.warning(f"GitHub OAuth callback: State not found in cache for {state_param[:8]}...")
+        from django.core.cache import cache
+        cache_key = f"gh_oauth:{state_param}"
+        cached = cache.get(cache_key) or {}
+        logger.info(f"Cache lookup for key '{cache_key[:20]}...': {'found' if cached else 'not found'}")
     except Exception as e:
         logger.error(f"GitHub OAuth callback: Cache read failed: {e}")
         cached = None
     
     data = cached or (request.session.get('github_oauth') or {})
+    
     state_expected = data.get('state')
     include_private = bool(data.get('include_private'))
     user_id = data.get('user_id')
+    profile_id = data.get('profile_id')
     
-    logger.info(f"OAuth data - state_expected: {bool(state_expected)}, user_id: {user_id}")
+    logger.info(f"OAuth data - state_expected: {bool(state_expected)}, user_id: {user_id}, profile_id: {profile_id}")
 
     if not state_expected:
-        logger.error(f"GitHub OAuth callback: OAuth session not found. State param: {state_param[:8]}..., Session keys: {list(request.session.keys())}")
-        return Response({'error': 'OAuth session not found.'}, status=status.HTTP_400_BAD_REQUEST)
+        logger.warning(f"OAuth session not found for state param: {state_param[:16] if state_param else 'None'}")
+        # Return a more helpful error with redirect to frontend
+        frontend_url = os.environ.get('FRONTEND_BASE_URL', os.environ.get('FRONTEND_URL', ''))
+        if frontend_url:
+            error_url = f"{frontend_url}/projects?error=oauth_session_expired"
+            return redirect(error_url)
+        return Response({'error': 'OAuth session not found. Please try connecting again.'}, status=status.HTTP_400_BAD_REQUEST)
 
     code = request.GET.get('code')
     state = request.GET.get('state')

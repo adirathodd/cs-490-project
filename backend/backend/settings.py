@@ -414,11 +414,16 @@ CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', os.environ.get('REDIS_UR
 CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', CELERY_BROKER_URL)
 
 # Django Cache - use Redis for caching (including OAuth state tokens)
-# Note: Upstash Redis doesn't support db selection, so we use the default db
+# Note: Upstash Redis requires TLS (rediss://) - convert redis:// to rediss:// if needed
+_redis_url = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
+# Upstash URLs need rediss:// for TLS - auto-convert if it's an upstash URL with redis://
+if 'upstash.io' in _redis_url and _redis_url.startswith('redis://'):
+    _redis_url = _redis_url.replace('redis://', 'rediss://', 1)
+
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': os.environ.get('REDIS_URL', 'redis://redis:6379/0'),
+        'LOCATION': _redis_url,
     }
 }
 
