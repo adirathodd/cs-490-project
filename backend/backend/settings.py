@@ -49,13 +49,14 @@ if firebase_creds_json and not os.environ.get('FIREBASE_CREDENTIALS'):
     try:
         creds_data = json.loads(firebase_creds_json)
         # Properly handle newlines in the private key
+        # Render may store \n as literal two characters or actual newlines
         if 'private_key' in creds_data and isinstance(creds_data['private_key'], str):
-            # Ensure proper newlines: handle both \\n (escaped) and literal \n in JSON strings
             private_key = creds_data['private_key']
-            # If the key has literal \n (after JSON parsing), it's correct
-            # If it has \\n, we need to replace them
-            if '\\n' in private_key:
-                creds_data['private_key'] = private_key.replace('\\n', '\n')
+            # First replace literal backslash-n with actual newline
+            private_key = private_key.replace('\\n', '\n')
+            # Also handle case where it might be double-escaped
+            private_key = private_key.replace('\\\\n', '\n')
+            creds_data['private_key'] = private_key
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             json.dump(creds_data, f)
