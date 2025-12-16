@@ -31,7 +31,7 @@ def generate_ai_role_tasks(job_title: str, company_name: str) -> List[Dict[str, 
     if not api_key:
         return []
 
-    model = getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash-latest')
+    model = getattr(settings, 'GEMINI_MODEL', 'gemini-2.5-flash')
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
     prompt = f"""Generate 3-4 specific, actionable preparation tasks for a {job_title} interview at {company_name}.

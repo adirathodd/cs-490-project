@@ -1083,7 +1083,7 @@ def _calculate_competitive_analysis(profile, user_qs, peer_qs, peer_profiles_sam
 
 def _generate_competitive_ai_recs(profile, user_metrics, peer_metrics, gaps, differentiators):
     api_key = getattr(settings, 'GEMINI_API_KEY', None)
-    model = getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash')
+    model = getattr(settings, 'GEMINI_MODEL', 'gemini-2.5-flash')
     if not api_key:
         return []
 

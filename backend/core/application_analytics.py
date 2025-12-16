@@ -800,7 +800,7 @@ class ApplicationSuccessAnalyzer:
         if api_key and not os.getenv('PYTEST_CURRENT_TEST'):
             try:
                 prompt = self._build_recommendations_prompt(factors)
-                model = 'gemini-1.5-flash-latest'
+                model = getattr(settings, 'GEMINI_MODEL', 'gemini-2.5-flash')
                 url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}'
                 payload = {
                     'contents': [{'parts': [{'text': prompt}]}],
@@ -884,7 +884,7 @@ class ApplicationSuccessAnalyzer:
         if api_key and not os.getenv('PYTEST_CURRENT_TEST'):
             try:
                 prompt = self._build_prediction_prompt(factors, predicted)
-                model = 'gemini-1.5-flash-latest'
+                model = getattr(settings, 'GEMINI_MODEL', 'gemini-2.5-flash')
                 url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}'
                 payload = {
                     'contents': [{'parts': [{'text': prompt}]}],
